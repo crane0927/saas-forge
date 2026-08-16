@@ -1,42 +1,82 @@
 # saas-forge 部署设计
 
-## 部署原则
+## 交付形态
 
-`saas-forge` 应可独立运行。Server、控制台和业务服务可独立开发、部署、扩容和升级；Server 尽可能无状态，以支持水平扩容、负载均衡和高可用。
+| 场景 | 交付方式 | 定位 |
+|---|---|---|
+| 本地开发与体验 | Docker Compose | 启动完整开发依赖，支持 Example 与 E2E |
+| 标准生产 | Kubernetes + Helm | 领域服务独立扩缩容、滚动发布与高可用 |
+| 兼容交付 | 虚拟机裸部署文档与 `systemd` 示例 | 适配不使用 Kubernetes 的环境；遵循相同网络、密钥、备份和监控要求 |
 
-## 一体化体验部署
+## Docker Compose
 
-适用于快速体验、开发环境和中小规模系统：
-
-```text
-Docker Compose
-├── saas-forge-server
-├── saas-forge-console
-├── database
-└── redis
-```
-
-目标体验为执行：
-
-```bash
-docker compose up -d
-```
-
-后可得到 SaaS 平台基础服务、Platform Console 与 Tenant Console。
-
-## 独立业务部署
-
-生产环境推荐分离：
+Compose 用于本地开发、演示和端到端测试，包含：
 
 ```text
-SaaS Product
-├── saas-forge-server
-└── lis-server
-      └── 通过 API / SDK 与 saas-forge-server 集成
+API Gateway
+iam-service
+tenant-access-service
+entitlement-service
+audit-service
+Platform Console
+Tenant Console Shell
+PostgreSQL（提供四个逻辑数据库）
+Redis
+Kafka
+S3 兼容对象存储
+OpenTelemetry Collector
 ```
 
-二者独立开发、部署、扩容和升级。
+本地环境可以使用单节点依赖，但不得把单节点拓扑等同于生产拓扑。
 
-## 演进方向与待补充项
+## 生产拓扑
 
-首期使用 Docker 与 Docker Compose，后续考虑 Kubernetes 与 Helm。原始材料未定义生产网络拓扑、环境配置、容器镜像、配置管理、密钥注入、发布/回滚、备份恢复、监控告警和容量规划；这些需在部署详细设计中补充。
+```text
+Browser / Business Application
+            │ HTTPS
+            ▼
+       API Gateway (≥ 2 replicas)
+            │ mTLS / gRPC or REST
+    ┌───────┼────────┬─────────────┐
+    ▼       ▼        ▼             ▼
+ IAM (≥2) Tenant Access (≥2) Entitlement (≥2) Audit (≥2)
+    │       │        │             │
+    └───────┴────────┴──── Kafka ──┘
+            │
+ External PostgreSQL / Redis / Kafka / S3 / KMS / Observability
+```
+
+Platform Console、Tenant Console Shell 与业务 Remote 独立发布。Gateway 与四个无状态领域服务至少运行 2 个副本，配置滚动发布、readiness/liveness 探针和 PodDisruptionBudget。领域服务不直接暴露公网。
+
+## 有状态依赖
+
+生产 Helm Chart 只接入外部提供的 PostgreSQL、Redis、Kafka、S3 兼容对象存储、密钥管理服务和可观测性后端；不在应用 Chart 内默认部署这些有状态组件。
+
+- PostgreSQL 为四个服务提供独立数据库，需满足 RPO ≤ 5 分钟、RTO ≤ 30 分钟，并定期执行恢复演练。
+- Redis 是 Token 黑名单、会话和登录保护的安全依赖，使用高可用主从与自动故障转移的托管服务或 Sentinel/等效方案。
+- Kafka 至少 3 Broker，主题副本数 3、`min.insync.replicas=2`、生产者 `acks=all`。
+- S3 兼容对象存储仅保存导出任务的临时结果。导出不按 Tenant/Plan 限额，但任务必须异步、流式处理、通过全局有界队列与单 Tenant 公平调度保护系统；结果文件按配置留存期自动删除。
+
+## 网络、配置与密钥
+
+- Gateway 是唯一公网入口，使用 HTTPS；服务间 gRPC 使用 mTLS，所有到 PostgreSQL、Redis、Kafka、对象存储的连接使用 TLS。
+- 密钥由外部密钥管理服务托管。Kubernetes 通过受控同步挂载；虚拟机以仅服务账号可读的系统凭据文件注入。禁止将密钥写入镜像、代码或普通配置。
+- Helm values 与环境变量只包含非敏感配置，如服务地址、资源限额、限流和保留期策略；敏感值只引用密钥管理系统。
+- CORS 仅允许受审核的 Console 与业务 Remote 来源；Remote 的入口和版本由 Manifest 白名单控制。
+
+## 可观测性、SLO 与容量
+
+所有组件导出 OpenTelemetry 数据到 Collector，并接入 Prometheus、Loki、Tempo 和 Grafana。Gateway 按路由与状态码记录请求成功率、延迟和错误预算消耗；黑盒探针验证登录与关键只读操作。
+
+月度 SLO 为 99.9%，范围是 Gateway 暴露的 Platform 与 Tenant Console API。规划容量为 20 个 Tenant、10,000 名活跃用户、1,000 峰值并发用户、100 RPS 基线、200 RPS 突发余量以及 100,000 条审计事件/日（2 倍增长余量）。实际 Pod 资源请求和副本上限须由该压测基线的报告确定，不在文档中虚构固定规格。
+
+## 发布、回滚与变更审计
+
+- GitHub Actions 执行测试、契约、覆盖率、镜像与漏洞扫描、ZAP 基线扫描和 Helm 验证。
+- `main` 必须经 Pull Request 并通过所有自动门禁；单人开发阶段不强制独立批准，团队增加第二位开发者后要求至少一名独立审查者批准。
+- 版本标签发布可追溯的镜像、SDK 制品和 Helm Chart。每次部署记录版本、迁移、配置版本、操作者、开始/完成时间和回滚结果。
+- Flyway 迁移随服务版本发布。生产变更先在等效环境验证；失败时回滚应用版本，数据库迁移按事先验证的前向修复或可逆方案处理。
+
+## 虚拟机裸部署
+
+虚拟机方案以四个独立服务、Gateway、Console 静态资源和受管外部依赖组成。每个服务由独立 `systemd` 单元运行，配置健康检查、受限账号、凭据文件、日志转发和自动重启；不得把所有服务、数据库和 Kafka 压缩为无隔离的单一进程。

@@ -1,15 +1,12 @@
 # saas-forge SDK 设计
 
-## 定位
+## 定位与版本
 
-SDK 是 `saas-forge` 与业务系统间最重要的集成层之一。首期提供 Java SDK 与 Spring Boot Starter；未来可视需求提供 Node.js、Go、Python、.NET SDK。
-
-## Java SDK 模块
-
-初步模块建议：
+Java SDK 与 Spring Boot Starter 是 Java 业务服务接入平台的正式集成层。SDK 与 Starter 使用语义化版本，并通过 BOM 统一锁定模块版本；破坏性 API 仅在主版本升级时引入。
 
 ```text
 saas-forge-java
+├── saas-forge-bom
 ├── saas-forge-sdk-core
 ├── saas-forge-sdk-auth
 ├── saas-forge-sdk-tenant
@@ -20,44 +17,57 @@ saas-forge-java
 └── saas-forge-spring-boot-starter
 ```
 
-是否拆分为上述细粒度模块，需在实际编码阶段验证。
+业务服务通过 `io.saasforge:saas-forge-spring-boot-starter` 接入。除 Java 外的 SDK 不属于首期范围。
 
-## Spring Boot Starter
+## 身份与上下文
 
-业务项目通过以下依赖接入：
+Starter 将 Spring Security Resource Server 与 IAM JWKS 端点集成：按 JWT `kid` 缓存公钥并支持签名密钥轮换。用户 Access Token 只包含：
 
-```xml
-<dependency>
-    <groupId>io.saasforge</groupId>
-    <artifactId>saas-forge-spring-boot-starter</artifactId>
-</dependency>
+```text
+identityId
+membershipId
+tenantId
+jti
 ```
 
-示例配置：
+SDK 对每个用户请求验证签名、有效期和 Redis `jti` 黑名单；黑名单不可用时 fail-closed。SDK 提供只读上下文：
 
-```yaml
-saas-forge:
-  endpoint: http://saas-forge:8080
-  client-id: lis-server
-  client-secret: ${SAAS_FORGE_CLIENT_SECRET}
+```java
+TenantContext.getTenantId();
+IdentityContext.getIdentityId();
+MembershipContext.getMembershipId();
 ```
 
-具体认证机制留待安全设计阶段确定。
+上下文只能由已验证 Token 建立，业务代码不得由请求参数覆盖。Client Credentials 令牌不建立上述用户上下文。
 
-## 核心能力
+## 授权、权益与配额
 
-| 能力 | 拟提供的使用方式 | 约束 |
+| 能力 | SDK 行为 | 一致性规则 |
 |---|---|---|
-| Tenant Context | `TenantContext.getTenantId()` | 必须由可信认证链路建立，不能由业务请求任意指定 |
-| Identity Context | `IdentityContext.getIdentityId()` | 表示当前身份 |
-| Membership Context | `MembershipContext.getMembershipId()` | 表示当前以哪个 Tenant 成员身份访问 |
-| Permission | `@RequirePermission("lis:report:audit")` | 权限校验 |
-| Feature | `@RequireFeature("lis.quality-control")` | 产品权益校验 |
-| Quota | `quotaService.check("lis.device.count")` 或 `@RequireQuota("lis.device.count")` | 配额校验 |
-| Audit | `@Audit("lis.report.publish")` | 关键操作审计 |
+| Permission | `@RequirePermission` 或编程式检查 | JWT 不携带权限；SDK 先查本地短缓存，未命中时经 Gateway 查询 Tenant Access；Kafka 事件失效缓存 |
+| Feature | `@RequireFeature` 或编程式检查 | 与 Permission 相同；两项校验可同时要求 |
+| Quota | `check`、`consume`、`release`、`usage` | 始终同步调用 Entitlement；`consume/release` 带稳定 `operationId`，不以本地缓存作为额度真相 |
+| Audit | `@Audit` 或 `audit.log` | 将最小必要审计事件异步投递到 Audit 服务；不得记录凭据或原始敏感个人信息 |
 
-具体 SDK API 在后续设计阶段确定。
+业务应用可声明：
 
-## 预期开发者体验
+```java
+@RequireFeature("lis.report")
+@RequirePermission("lis:report:list")
+public List<Report> list() {
+    return reportService.list();
+}
+```
 
-开发者启动 `docker compose up -d` 获得 Server 与两类控制台，在业务服务加入 Starter 后，即可在业务接口声明 `@RequireFeature` 与 `@RequirePermission`。业务代码聚焦标本查询、报告审核、订单计算、客户管理等领域能力，不必重复设计 Tenant、RBAC、套餐、Feature、Quota 和数据隔离。
+## 服务调用与韧性
+
+- SDK 对平台 REST API 使用 `application/problem+json` 中的 `code` 进行异常映射，保留 `traceId`。
+- 仅自动重试幂等读取和携带稳定幂等键的写入；超时、退避、重试上限和熔断均可配置。
+- 无幂等保护的写入失败必须返回调用方显式处理，不自动重试。
+- 业务系统通过 API / SDK 集成，不获得平台数据库访问权限。
+
+## Starter 配置边界
+
+配置包含 Gateway 地址、JWKS 地址、服务端 Client Credentials、超时/重试和缓存策略。Client Secret 不得写入代码或普通配置文件，应由运行环境的受控密钥注入提供。
+
+Tenant Context、授权和审计的公共 API 是稳定集成面；平台内部服务或数据库实体不是 SDK 兼容性承诺。
