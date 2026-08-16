@@ -31,6 +31,8 @@ OpenTelemetry Collector
 
 开发 JWT Signing Key 由显式本地初始化生成，保存于 `.gitignore` 的本地密钥目录，并只读挂载给 IAM。Compose 不自动创建或删除该密钥；需要轮换时必须通过显式本地操作重建。该密钥不得用于生产 profile。
 
+开发与端到端测试的 `browser.rootDomain` 固定为 `saasforge.test`：`platform.saasforge.test`、`console.saasforge.test`、`api.saasforge.test`、`remote.saasforge.test` 都解析到 `127.0.0.1`，并经本地受信 TLS 反向代理提供 HTTPS。Quick Start 必须检查或说明本地域名解析与证书信任前置条件；不得用不同 `localhost` 端口替代该安全验收拓扑。
+
 ## 生产拓扑
 
 ```text
@@ -50,6 +52,10 @@ Browser / Business Application
 
 Platform Console、Tenant Console Shell 与业务 Remote 独立发布。Gateway 与四个无状态领域服务至少运行 2 个副本，配置滚动发布、readiness/liveness 探针和 PodDisruptionBudget。领域服务不直接暴露公网。
 
+浏览器入口固定为同一完全受控可注册根域下的 `https://platform.<root>`、`https://console.<root>`、`https://api.<root>` 与 `https://remote.<root>/<module>/<version>`。前三者分别承载 Platform Console、Tenant Console Shell 和 Gateway；Remote 仅由受审的 `remote.<root>` 路径发布。每个 Origin 必须独立配置 TLS 与发布权限。
+
+每个环境在非敏感部署配置中设置 `browser.rootDomain`，以生成上述固定 Origin 和 CORS 白名单。API Gateway 仅允许 Platform Console 与 Tenant Console Shell 的凭据型 CORS；Remote 静态资源仅允许 Tenant Console Shell 无凭据加载。禁止使用 CORS 通配符、`null` Origin 或由 Manifest/运行时改变该白名单。
+
 ## 有状态依赖
 
 生产 Helm Chart 只接入外部提供的 PostgreSQL、Redis、Kafka、S3 兼容对象存储、密钥管理服务和可观测性后端；不在应用 Chart 内默认部署这些有状态组件。
@@ -65,7 +71,7 @@ Platform Console、Tenant Console Shell 与业务 Remote 独立发布。Gateway 
 - 密钥由外部密钥管理服务托管。生产 JWT 私钥只保留在 KMS/HSM，IAM 在 Kubernetes 中通过受限工作负载身份调用签名接口，在虚拟机中仅通过服务账号可读的系统凭据文件取得该调用权限；其他密钥可受控同步挂载或以受限凭据文件注入。禁止将密钥写入镜像、代码或普通配置。
 - 生产 Signing Key 的轮换周期由部署合规策略配置。常规轮换按“发布新 `kid` → 等待 5 分钟 → 切换签名 → 保留旧公钥至少 30 分钟 → 禁用旧版本并移除 JWKS”执行；疑似泄露时立即撤销旧 `kid`，并验证 Gateway 与所有业务服务均已拒绝它后才完成事件处置。
 - Helm values 与环境变量只包含非敏感配置，如服务地址、资源限额、限流和保留期策略；敏感值只引用密钥管理系统。
-- CORS 仅允许受审核的 Console 与业务 Remote 来源；Remote 的入口和版本由 Manifest 白名单控制。
+- API 的凭据型 CORS 仅允许 Platform Console 与 Tenant Console Shell；Remote 静态资源仅允许 Tenant Console Shell 无凭据加载。Remote 的入口和版本由 Manifest 白名单控制。
 
 ## 可观测性、SLO 与容量
 

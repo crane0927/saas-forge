@@ -16,7 +16,15 @@
 - 普通登出只撤销 Refresh Token。密码重置、成员禁用、Tenant 冻结、强制下线等安全事件将 JWT `jti` 写入 Redis 黑名单，TTL 为 Token 剩余有效期。
 - Gateway 与 SDK 每次用户请求检查黑名单；Redis 不可用时 fail-closed，避免已失效 Token 被继续接受。
 
-浏览器 Cookie 必须设置 `Secure`、`HttpOnly`，并在实施前根据 Console 最终域名拓扑选择 SameSite 与 CSRF 防护方案；不得把 Access Token 或 Refresh Token 写入 `localStorage`。
+Refresh Token 只能由 `https://api.<root>` 以 `__Host-sf_refresh; Secure; HttpOnly; SameSite=Strict; Path=/` 签发和接收，且不设置 `Domain`；不得把 Access Token 或 Refresh Token 写入 `localStorage`。Platform Console 与 Tenant Console Shell 可在受控跨 Origin 请求中携带该 Cookie，但不能读取它。
+
+浏览器交付仅使用同一完全受控可注册根域下的固定 HTTPS Origin：`https://platform.<root>`（Platform Console）、`https://console.<root>`（Tenant Console Shell）、`https://api.<root>`（API Gateway）和 `https://remote.<root>/<module>/<version>`（业务 Remote）。业务 Remote 不得使用任意外部域名；Cookie、CSRF 与 CORS 只信任这些已登记的 Origin。
+
+浏览器的所有非安全方法和登录、刷新、登出请求必须使用 `application/json` 并带 `X-SF-CSRF: 1`。Gateway 只接受 `Origin` 精确为 `https://platform.<root>` 或 `https://console.<root>` 的此类请求，拒绝 `remote.<root>` 和外站 Origin，并拒绝 `Sec-Fetch-Site: cross-site`；缺失 Fetch Metadata 时仍要求 Origin 精确匹配。Client Credentials 服务请求不携带浏览器 Cookie，不适用该校验；Remote 只能通过 Shell 的共享 HTTP Client 发起请求。
+
+每个环境由非敏感部署配置 `browser.rootDomain` 推导固定 CORS 值。API Gateway 只对 `https://platform.<root>` 与 `https://console.<root>` 返回凭据型 CORS 许可，允许 `GET`、`HEAD`、`POST`、`PUT`、`PATCH`、`DELETE`、`OPTIONS` 以及 `Authorization`、`Content-Type`、`Idempotency-Key`、`X-SF-CSRF`、`traceparent`、`tracestate`；只暴露 `Location`、`Retry-After`，预检缓存 10 分钟并返回 `Vary: Origin`。Remote 静态资源只允许 `https://console.<root>` 无凭据加载。禁止通配符、`null` Origin 与 Manifest/运行时修改白名单。
+
+开发与端到端测试也必须验证相同安全边界：`platform.saasforge.test`、`console.saasforge.test`、`api.saasforge.test` 与 `remote.saasforge.test` 映射至 `127.0.0.1`，由本地受信 TLS 反向代理提供 HTTPS，并设置 `browser.rootDomain=saasforge.test`。不得以不同 `localhost` 端口替代此验收拓扑。
 
 ### 密码、邀请与服务身份
 
@@ -47,7 +55,7 @@ RBAC 以 `Membership → Role → Permission` 实施。平台角色与租户角�
 ## API、前端与运行时防护
 
 - Gateway 以 Redis 令牌桶按 IP、Identity、Client、Tenant 限流；策略按环境配置。
-- CORS 默认拒绝，仅允许两类控制台和经审核登记的业务微前端来源；禁止携带凭据的通配来源。
+- CORS 默认拒绝。API 的凭据型白名单仅包含两类 Console；业务 Remote 仅允许 Tenant Console Shell 无凭据加载静态资源，具体规则以本节的 `browser.rootDomain` 推导配置为准。
 - Tenant Console Shell 只在内存保存 Access Token；业务 Remote 只能经 Shell 的认证 API 和共享 HTTP Client 调用服务，不能读取或保存令牌。
 - Module Federation Remote 的来源和版本由 Manifest 白名单控制；Tenant 管理员不能录入任意远程脚本地址。
 - 所有创建和变更 API 使用幂等键；失败以 `application/problem+json` 返回稳定 `code` 与 `traceId`。

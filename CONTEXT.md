@@ -24,6 +24,28 @@ _Avoid_: JWT secret, shared signing secret
 已被判定疑似泄露、不得再用于签发或验证 Access Token 的 JWT Signing Key 版本。验证方必须拒绝其 `kid`，即使仍持有对应公钥的缓存。
 _Avoid_: Retired signing key, expired signing key
 
+## Browser Delivery
+
+**Controlled Browser Origin**:
+位于同一完全受控可注册根域下、以 HTTPS 提供 Platform Console、Tenant Console Shell、API Gateway 或业务 Remote 的固定浏览器 Origin。未登记的 Origin 不属于平台浏览器交付边界。
+_Avoid_: Arbitrary remote origin, customer-provided origin
+
+**Refresh Token Cookie**:
+仅由 API Gateway 的 `api.<root>` Origin 签发和接收的 host-only Cookie，用于携带 Refresh Token。它不被 Platform Console、Tenant Console Shell 或业务 Remote 读取。
+_Avoid_: Shared domain cookie, browser token store
+
+**CSRF-Protected Browser Request**:
+来自 Platform Console 或 Tenant Console Shell、可能改变平台状态的浏览器请求。它通过精确 Origin、Fetch Metadata 和专用请求头证明来自受控 Console，而非跨站表单或脚本。
+_Avoid_: Remote API request, cross-site browser request
+
+**Browser Origin Allowlist**:
+由部署期 `browser.rootDomain` 推导的、可向 API Gateway 发起凭据型浏览器请求的固定 Origin 集合。它仅包含 Platform Console 和 Tenant Console Shell，不能被 Manifest 或运行时注册扩展。
+_Avoid_: Dynamic CORS allowlist, remote API allowlist
+
+**Local Browser Topology**:
+用于开发与端到端测试的受控浏览器 Origin 集合，保持与生产相同的主机分离模型。它以 `saasforge.test` 作为本地根域，不代表可用于生产的域名。
+_Avoid_: localhost port topology, production root domain
+
 ## Tenancy
 
 **Tenant**:

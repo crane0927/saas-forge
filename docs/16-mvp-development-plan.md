@@ -70,7 +70,7 @@ flowchart TD
 - [x] 评审并记录 Tenant、Subscription、Plan、Feature、Quota、Invitation 的枚举、允许状态迁移、幂等与错误码；实现必须遵循[核心领域契约](17-core-domain-contracts.md)。
 - [x] 将 MVP Quota 限定为 `max_users` 与 `max_projects`，决定计量单位、`check`/`consume`/`release` 的结果语义、失败补偿规则和并发扣减策略；其他计量类型不阻塞核心闭环。
 - [x] 决定首个 Platform Admin 的安全初始化方式、开发与生产的 JWT 私钥/KMS 接入方式，以及初始凭据轮换流程；见 [ADR 0007](adr/0007-system-creates-the-default-platform-admin.md)、[ADR 0008](adr/0008-production-jwt-signing-uses-kms.md) 与[安全设计](12-security-design.md)。
-- [ ] 确认 Platform Console、Tenant Console Shell、业务 Remote 的最终域名拓扑，从而确定 Cookie `SameSite`、CSRF 方案和 CORS 白名单。
+- [x] 确认 Platform Console、Tenant Console Shell、业务 Remote 的最终域名拓扑，从而确定 Cookie `SameSite`、CSRF 方案和 CORS 白名单；见 [ADR 0009](adr/0009-browser-surfaces-use-controlled-origins.md)、[API 设计](08-api-design.md)与[安全设计](12-security-design.md)。
 - [ ] 明确“Tenant 创建与管理员初始化”“邀请激活”“Tenant 切换”“成员禁用/Tenant 冻结”四条跨服务流程的数据所有权、同步调用、事件、失败恢复与幂等责任。
 - [ ] 确认数据库、Redis 与应用日志规范以版本化文档和 CI 校验维护，不得以跨服务共享领域实体或数据库模型的方式实现。
 - [ ] 为影响服务边界、安全模型和公开契约的决策建立 ADR；导出留存期、Manifest 审批细节等局部决策在对应阶段开始前冻结，不阻塞第 1～5 阶段。
@@ -163,14 +163,14 @@ flowchart TD
 - [ ] 交付 Tenant Console Shell 的 MVP 页面：登录、Tenant 切换、组织、成员/邀请、角色/权限、套餐权益、Quota 使用、租户设置和审计查询；Shell 在内存保存 Access Token，提供认证 API 与共享 HTTP Client。
 - [ ] 在开始 Manifest 功能前冻结审核/启停状态、审批责任和 Remote 来源规则；实现版本化业务能力 Manifest 及 Permission/Feature/Quota Definition 注册，仅允许 CI 的 Client Credentials 注册。
 - [ ] 将 Project/Task 前端实现为 Module Federation Remote；只能由经审核的 Manifest 加载，只使用 Shell 暴露的认证 API 与共享 HTTP Client，不能读取或存储 Token。
-- [ ] Gateway 完成 CORS 默认拒绝、受审来源白名单、Cookie/CSRF 防护和控制台/Remote 路由授权；禁止携带凭据的通配来源。
+- [ ] Gateway 完成由 `browser.rootDomain` 推导的 CORS 默认拒绝与精确白名单、`__Host-sf_refresh` Cookie、`X-SF-CSRF`/Origin/Fetch Metadata 防护和控制台/Remote 路由授权；禁止携带凭据的通配来源、`null` Origin 与 Manifest/运行时扩展白名单。
 
 **完成标准：** 官方 Example 可证明 Core 不包含业务领域模型，同时完整展示租户隔离、角色、权益、配额、Remote 白名单与审计闭环。
 
 ### 8. 本地交付与发布强化
 
 - [ ] 提供 Docker Compose：Gateway、四个服务、两个控制台、Example、含四个逻辑数据库和受限账号的 PostgreSQL、Redis、Kafka、S3 兼容存储及 OpenTelemetry Collector。
-- [ ] 配置健康检查、初始化迁移、开发用受控密钥注入、可重复的种子/清理策略和一条 Quick Start 命令；单节点依赖仅用于本地环境。
+- [ ] 配置健康检查、初始化迁移、开发用受控密钥注入、`saasforge.test` 本地 TLS/域名拓扑、可重复的种子/清理策略和一条 Quick Start 命令；Quick Start 必须覆盖本地域名解析与证书信任前置条件，单节点依赖仅用于本地环境。
 - [ ] 接入结构化日志、Trace、Metric 和健康探针；至少能关联 Gateway、服务调用、Kafka 事件和 Audit 的 `traceId`。
 - [ ] 将 Gateway 强化为唯一公网入口并实现 Redis 令牌桶限流，按 IP、Identity、Client、Tenant 维度使用环境化阈值；领域服务不开放公网端口。
 - [ ] 将数据库迁移、Redis Key Registry 和日志字段白名单接入 CI：迁移须符合服务数据库边界与 RLS 门禁，新增 Redis Key 须登记 TTL/所有者，日志测试须证明敏感字段不会输出。
@@ -182,7 +182,7 @@ flowchart TD
 ### 9. 全链路验收与 MVP 发布门禁
 
 - [ ] 单元、集成、契约、前端、端到端、安全与性能测试均按 [测试策略](13-testing-strategy.md) 落地；全仓库行覆盖率 ≥ 80%、分支覆盖率 ≥ 70%，IAM、Tenant Context、RLS、授权和配额行覆盖率 ≥ 90%。
-- [ ] 用 Playwright 在 Compose 环境执行完整核心端到端闭环，包含 Tenant Console Shell 的菜单授权、业务 Remote 加载和拒绝路径。
+- [ ] 用 Playwright 在 `saasforge.test` Compose 拓扑执行完整核心端到端闭环，验证 host-only Refresh Token Cookie、SameSite/CSRF/CORS 拒绝路径，以及 Tenant Console Shell 的菜单授权、业务 Remote 加载和拒绝路径。
 - [ ] 用 Testcontainers 执行 RLS 强制门禁：Tenant A 上下文不可访问 Tenant B，缺上下文默认拒绝；同时验证用户/服务 Token 的越权、过期、撤销与 Redis 故障路径。
 - [ ] 验证 Permission 与 Feature 组合拒绝、Subscription 到期、Quota 并发不超额和 `operationId` 幂等；验证审计只追加且不含敏感字段。
 - [ ] 验证 Redis Key 的 TTL、命名空间和失效事件符合登记规范；验证结构化日志可按 `traceId` 关联链路，且不输出密码、Token、Client Secret、完整证件或其他原始敏感个人信息。

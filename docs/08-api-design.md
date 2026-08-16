@@ -64,9 +64,10 @@ IAM 的 JWKS 响应以 `Cache-Control: max-age=300` 发布。验证方遇到未�
 
 ## 认证、来源与限流
 
-- 用户请求使用约 15 分钟的 JWT Access Token；刷新令牌由浏览器以 HttpOnly Cookie 携带。
+- 用户请求使用约 15 分钟的 JWT Access Token；刷新令牌仅由 `api.<root>` 以 `__Host-sf_refresh; Secure; HttpOnly; SameSite=Strict; Path=/` Cookie 携带，且不设置 `Domain`。
 - Client Credentials 按 OAuth 2.0 标准实现，服务令牌只含 `client_id` 与显式 `scope`。
-- CORS 默认拒绝，仅允许 Platform Console、Tenant Console Shell 和经审核登记的业务微前端来源；禁止通配符来源和携带凭据的通配配置。
+- CORS 默认拒绝。各环境由非敏感部署配置 `browser.rootDomain` 推导精确 Origin：API Gateway 仅允许 `https://platform.<root>` 与 `https://console.<root>` 的凭据型请求，允许 `GET`、`HEAD`、`POST`、`PUT`、`PATCH`、`DELETE`、`OPTIONS` 方法和 `Authorization`、`Content-Type`、`Idempotency-Key`、`X-SF-CSRF`、`traceparent`、`tracestate` 请求头，只暴露 `Location`、`Retry-After`，预检缓存 10 分钟并返回 `Vary: Origin`。`https://remote.<root>` 不可直接调用 API；Remote 静态资源仅允许 `https://console.<root>` 无凭据加载。未匹配 Origin 不返回 CORS 许可，禁止通配符、`null` Origin 和 Manifest/运行时扩展白名单。
+- 所有浏览器非安全方法，以及 `/api/v1/auth/login`、`/api/v1/auth/refresh`、`/api/v1/auth/logout`，必须使用 `application/json` 并带 `X-SF-CSRF: 1`。Gateway 仅接受 `Origin` 为 `https://platform.<root>` 或 `https://console.<root>` 的此类请求，拒绝 `remote.<root>` 和外站 Origin；`Sec-Fetch-Site: cross-site` 一律拒绝，缺失 Fetch Metadata 时仍以 Origin 精确校验。Client Credentials 服务请求不携带浏览器 Cookie，不适用该校验。
 - Gateway 基于 Redis 令牌桶，按 IP、Identity、Client、Tenant 维度限流；阈值由环境配置，不写死在代码中。
 
 ## 业务能力与前端模块注册
