@@ -51,14 +51,14 @@ API Gateway 是唯一公网入口，负责 TLS 终止、JWT 初步校验、限�
 ### 分页与幂等
 
 - 所有集合查询统一使用 `limit` 与不透明 `cursor`；响应包含 `items`、`nextCursor`、`hasMore`。
-- 创建和其他具有外部可见状态变更的请求支持 `Idempotency-Key`。服务端按调用方与键保存首次结果，在有效期内返回相同结果。
-- Quota 的 `consume` 与 `release` 额外要求稳定 `operationId`，避免网络重试重复扣减或释放。
+- 创建和其他具有外部可见状态变更的请求必须携带 `Idempotency-Key`。键按外部调用方跨全部状态变更接口唯一：用户令牌使用 `identityId`，服务令牌使用 `client_id`；未认证的 Invitation 激活请求在验证令牌后使用 `invitationId`。同键重试完全相同的请求时，服务原样重放首次完成请求的 HTTP 状态码和响应体，而不重新执行业务操作，首个业务 `4xx` 也须重放。方法、规范化路径或规范化请求体不同的同键请求，以 `409 Conflict` 和 `IDEMPOTENCY_KEY_REUSED` 拒绝。首次请求未完成时的同键重复请求，以 `409 Conflict`、`IDEMPOTENCY_REQUEST_IN_PROGRESS` 和 `Retry-After` 拒绝。仅 `2xx` 和业务 `4xx` 是可重放稳定结果；无持久完成记录的基础设施 `5xx` 不缓存并释放键，已提交业务变更与幂等完成记录必须同一事务写入。请求格式或字段校验 `400` 不创建幂等完成记录，修正后可沿用同一键。幂等记录自首次完成起保留 24 小时，期满后同一键可视为新请求；缺失/空白和格式非法的键分别以 `400` / `IDEMPOTENCY_KEY_REQUIRED` 和 `400` / `IDEMPOTENCY_KEY_INVALID` 拒绝，且不预留键。
+- Quota 的 `consume` 与 `release` 额外要求调用方稳定生成的 `operationId`，`check` 不需要；它独立于 HTTP `Idempotency-Key`，用于绑定业务资源的计量动作并避免跨服务重试或补偿链路重复扣减、释放。其作用域与冲突规则以[核心领域契约](17-core-domain-contracts.md#quota)为准。
 
 ### 状态与错误
 
 - 成功使用语义正确的 `200`、`201`、`202`、`204`；认证、授权、资源和并发错误分别使用相应 `4xx` 状态。
 - 失败响应采用 `application/problem+json`，至少包含稳定业务 `code`、`detail`、HTTP 状态和 `traceId`。
-- 客户端应按 `code` 编程，不得解析 `detail` 文本。
+- 稳定业务 `code` 使用全大写 `UPPER_SNAKE_CASE`；领域错误使用领域前缀，跨领域协议错误使用 `IDEMPOTENCY_*`。客户端应按 `code` 编程，不得解析 `detail` 文本。
 
 ## 认证、来源与限流
 

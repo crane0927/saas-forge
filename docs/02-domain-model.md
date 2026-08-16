@@ -49,14 +49,7 @@ Product Metadata 用于产品名称展示、品牌、权限和 Feature 命名空
 
 Tenant 是 SaaS 客户的逻辑隔离空间，其业务含义可为医院、企业、学校、门店集团、政府机构或个人工作空间，不绑定具体行业。
 
-基础能力包括创建、修改、启用、停用、冻结、租户配置、有效期、生命周期和租户管理员。初步生命周期为：
-
-```text
-PENDING → ACTIVE → SUSPENDED
-                 └→ EXPIRED → CLOSED
-```
-
-最终状态模型留待详细设计确定。
+基础能力包括创建、修改、启用、停用、冻结、租户配置、有效期、生命周期和租户管理员。Tenant 的持久状态、派生访问结果与唯一允许状态迁移见[核心领域契约](17-core-domain-contracts.md#tenant)；实现不得推定其中未列出的迁移。
 
 ## Identity、Membership 与 Organization
 
@@ -81,9 +74,9 @@ Permission 推荐命名为 `namespace:resource:action`，例如 `system:user:lis
 ## 商业权益模型
 
 - **Plan**：产品对客户销售或授权的套餐，关联 Feature、Quota、套餐配置和状态。
-- **Subscription**：Tenant 当前订阅 Plan 的关系及生命周期，包含状态、生效/到期时间、试用期、自动续订、取消时间、暂停状态和套餐快照。首期只覆盖产品权益与生命周期，不等同于完整计费系统。
+- **Subscription**：Tenant 当前订阅 Plan 的关系及生命周期，包含状态、生效/到期时间、试用期、自动续订、取消时间、暂停状态和套餐快照。到期由 `endsAt` 在权益判断时派生，不持久化为 `EXPIRED`；MVP 取消即时停止权益，不支持期末取消；其余生命周期规则见[核心领域契约](17-core-domain-contracts.md#subscription)。首期只覆盖产品权益与生命周期，不等同于完整计费系统。
 - **Feature**：可由套餐控制的产品能力。平台管理其定义、状态、Plan 关系、Tenant 实际权益及校验。
-- **Quota**：资源使用额度，模型需考虑 `Quota Definition`、`Quota Limit`、`Quota Usage`；未来 SDK 提供 `check`、`consume`、`release`、`usage`。具体强一致、弱一致和计量方案待详细设计。
+- **Quota**：资源使用额度，模型需考虑 `Quota Definition`、`Quota Limit`、`Quota Usage` 与 `Quota Operation`；SDK 提供 `check`、`consume`、`release`、`usage`。MVP 的计量范围、一致性、重试幂等和失败补偿以[核心领域契约](17-core-domain-contracts.md#quota)为准。
 
 Permission 回答“当前用户能否执行操作”，Feature 回答“当前 Tenant 是否购买或启用产品能力”。一次业务请求可能同时需要 Feature Check 与 Permission Check。
 

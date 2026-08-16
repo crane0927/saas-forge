@@ -19,7 +19,7 @@ audit-service          → audit_db
 |---|---|---|
 | `iam_db` | `identities`、`credentials`、`refresh_tokens`、`oauth_clients`、`oauth_client_secrets`、`signing_key_metadata` | `identities.email` 规范化后全局唯一；密码仅保存 Argon2id 哈希；Refresh Token 和 Client Secret 仅保存哈希；密钥私钥不入库，只记录轮换元数据 |
 | `tenant_access_db` | `tenants`、`memberships`、`organizations`、`organization_units`、`roles`、`permissions`、`role_permissions`、`membership_roles`、`invitations`、`capability_registrations` | Membership 唯一关联 Identity 与 Tenant；Role 绑定 Membership；权限按命名空间、资源、动作定义；邀请保存一次性、限时激活状态 |
-| `entitlement_db` | `plans`、`plan_features`、`plan_quotas`、`subscriptions`、`subscription_entitlement_snapshots`、`quota_definitions`、`quota_usages`、`quota_operations` | 一个 Tenant 任一时刻仅一个生效 Subscription；套餐变更产生新的订阅版本和不可变权益快照；`quota_operations.operation_id` 唯一保证幂等 |
+| `entitlement_db` | `plans`、`plan_features`、`plan_quotas`、`subscriptions`、`subscription_entitlement_snapshots`、`quota_definitions`、`quota_usages`、`quota_operations` | 一个 Tenant 任一时刻仅一个生效 Subscription；套餐变更产生新的订阅版本和不可变权益快照；`quota_operations.operation_id` 为全局唯一 UUIDv7，保证计量幂等 |
 | `audit_db` | `audit_records`、`export_jobs` | `audit_records` 只追加，记录 Tenant、Identity、Membership、Action、Resource、Request ID、IP、User Agent、Timestamp、Result、Metadata；`export_jobs` 仅保存任务元数据，不保存导出结果文件 |
 
 具体字段、枚举与 OpenAPI / Protobuf Schema 须在实现前同步评审；任一服务不得以外键约束或 SQL Join 耦合另一服务数据库。
@@ -43,8 +43,8 @@ RLS 策略读取该值，默认拒绝缺失 Tenant 上下文的读写。常规�
 - 所有 Tenant 范围查询的复合索引以 `tenant_id` 为首列，再按查询的状态、创建时间或业务键排序。
 - 列表接口的游标分页索引必须匹配稳定排序键；推荐 `(tenant_id, created_at, id)`。
 - Identity 邮箱、Permission 编码、Plan 编码、Feature 编码、Quota 定义编码、邀请令牌哈希和 Client Secret 哈希建立唯一约束或唯一索引。
-- Subscription 使用部分唯一约束保证每 Tenant 仅一个当前生效记录。
-- `quota_usages` 使用 `(tenant_id, quota_definition_id)` 唯一约束；扣减与释放以单条条件更新或行锁原子执行，Redis 不作为额度真相来源。
+- Subscription 使用部分唯一约束保证每 Tenant 仅一个当前 `TRIALING` 或 `ACTIVE` 版本；创建、套餐变更和自然到期后的重新订阅在同一事务中将旧版本转为 `SUPERSEDED`、创建新版本并写入新权益快照，避免双重权益窗口。
+- `quota_usages` 使用 `(tenant_id, quota_definition_id)` 唯一约束；MVP `consume` 以 PostgreSQL 单条条件更新在 `used < limit` 时才将用量加一，保证并发不超额；Redis 不保存或裁决额度真相。`release` 的原子语义见核心领域契约。
 - Audit 查询按 `tenant_id`、时间、Action、Identity 和 Resource 建立面向审计检索的索引；保留期由平台级合规配置决定。
 
 ## 迁移、备份与恢复

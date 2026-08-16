@@ -14,14 +14,7 @@ N Tenants
 
 ## Tenant 生命周期与管理
 
-平台支持创建、修改、启用、停用、冻结、租户配置、有效期、生命周期和管理员管理。初步状态模型：
-
-```text
-PENDING → ACTIVE → SUSPENDED
-                 └→ EXPIRED → CLOSED
-```
-
-最终状态转换规则留待详细设计确认。
+平台支持创建、修改、启用、停用、冻结、租户配置、有效期、生命周期和管理员管理。Tenant 的持久状态、派生访问结果与唯一允许状态迁移见[核心领域契约](17-core-domain-contracts.md#tenant)；实现不得推定其中未列出的迁移。
 
 ## Tenant Context
 
