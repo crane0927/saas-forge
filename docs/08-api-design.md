@@ -40,6 +40,8 @@ API Gateway 是唯一公网入口，负责 TLS 终止、JWT 初步校验、限�
 
 用户 Token 的 Tenant 由已验证的 `membershipId` 决定；用户请求不得以请求头、查询参数或请求体覆盖 Tenant。Client Credentials 令牌只代表 `client_id` 与 `scope`，不伪造用户、Membership 或 Tenant 身份。
 
+IAM 的 JWKS 响应以 `Cache-Control: max-age=300` 发布。验证方遇到未知 `kid` 时必须受控地刷新 JWKS；常规密钥轮换在新 `kid` 发布满 5 分钟后才能切换签名，旧公钥在切换后至少保留 30 分钟。验证方仍须在每个请求中拒绝已撤销的 `kid`，不得仅依赖 JWKS 缓存结果。
+
 ## REST 约定
 
 ### 表示与标识

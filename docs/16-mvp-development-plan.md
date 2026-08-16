@@ -69,7 +69,7 @@ flowchart TD
 
 - [x] 评审并记录 Tenant、Subscription、Plan、Feature、Quota、Invitation 的枚举、允许状态迁移、幂等与错误码；实现必须遵循[核心领域契约](17-core-domain-contracts.md)。
 - [x] 将 MVP Quota 限定为 `max_users` 与 `max_projects`，决定计量单位、`check`/`consume`/`release` 的结果语义、失败补偿规则和并发扣减策略；其他计量类型不阻塞核心闭环。
-- [ ] 决定首个 Platform Admin 的安全初始化方式、开发与生产的 JWT 私钥/KMS 接入方式，以及初始凭据轮换流程。
+- [x] 决定首个 Platform Admin 的安全初始化方式、开发与生产的 JWT 私钥/KMS 接入方式，以及初始凭据轮换流程；见 [ADR 0007](adr/0007-system-creates-the-default-platform-admin.md)、[ADR 0008](adr/0008-production-jwt-signing-uses-kms.md) 与[安全设计](12-security-design.md)。
 - [ ] 确认 Platform Console、Tenant Console Shell、业务 Remote 的最终域名拓扑，从而确定 Cookie `SameSite`、CSRF 方案和 CORS 白名单。
 - [ ] 明确“Tenant 创建与管理员初始化”“邀请激活”“Tenant 切换”“成员禁用/Tenant 冻结”四条跨服务流程的数据所有权、同步调用、事件、失败恢复与幂等责任。
 - [ ] 确认数据库、Redis 与应用日志规范以版本化文档和 CI 校验维护，不得以跨服务共享领域实体或数据库模型的方式实现。
@@ -93,7 +93,7 @@ flowchart TD
 - [ ] 为 IAM、Tenant Access、Entitlement、Audit 分别配置独立数据库账号、Flyway 迁移链和 PostgreSQL UUIDv7 主键生成；禁止跨库表、外键与 SQL Join。
 - [ ] 建立服务内 Transactional Outbox、可靠发布器和按事件 ID 幂等消费的统一工程约定；各服务在对应业务切片中落地自己的表和实现，事件携带并传递 `traceId`。
 - [ ] 建立 Tenant 范围表的 RLS 测试夹具：非空 `tenant_id`、事务级 `app.tenant_id` 设置、默认拒绝策略，常规运行账号不拥有 `BYPASSRLS`。
-- [ ] **先发布 Redis Key Registry，再接入 Redis。** 为每个 Key 定义固定前缀/环境/服务/用途/版本/标识符格式、值序列化、TTL、最大基数、失效事件、所有者和故障策略；至少覆盖 JWT `jti` 黑名单（TTL 为 Token 剩余有效期）、Refresh Token/会话缓存、登录保护、Gateway 限流和 SDK 的 Permission/Feature 短缓存。Key 中禁止存放 Token、密码、Secret、邮箱等原始敏感值；Redis 不得作为 Quota 额度真相。
+- [ ] **先发布 Redis Key Registry，再接入 Redis。** 为每个 Key 定义固定前缀/环境/服务/用途/版本/标识符格式、值序列化、TTL、最大基数、失效事件、所有者和故障策略；至少覆盖 JWT `jti` 黑名单（TTL 为 Token 剩余有效期）、撤销 Signing Key `kid`、Refresh Token/会话缓存、登录保护、Gateway 限流和 SDK 的 Permission/Feature 短缓存。Key 中禁止存放 Token、密码、Secret、邮箱等原始敏感值；Redis 不得作为 Quota 额度真相。
 - [ ] **先发布结构化日志规范，再写业务日志。** 规范应定义 JSON 日志事件的必填字段（时间、级别、服务、环境、事件名、`traceId`、`spanId`、`requestId`）、可选关联字段（Tenant、Identity、Membership、Client）和 HTTP/异常字段、字段白名单与脱敏、日志级别、采样、保留与查询规则。容器使用结构化标准输出由 Collector 收集；虚拟机以 `systemd`/日志转发收集，应用不依赖本地滚动日志文件。日志不能替代只追加的 Audit Record。
 - [ ] 建立包含 Gateway、四个服务、PostgreSQL、Redis、Kafka 和 OpenTelemetry Collector 的最小 Docker Compose；S3 兼容存储在第 6 阶段加入。
 - [ ] 使用 Testcontainers 建立 PostgreSQL、Redis 和 Kafka 集成测试基础设施，并建立首版 GitHub Actions 构建、单元测试、契约兼容性和迁移检查。
@@ -116,7 +116,7 @@ flowchart TD
 ### 3. SDK 与 Example 租户隔离闭环
 
 - [ ] 完成 BOM、`sdk-core`、`sdk-auth`、`sdk-tenant` 与 Starter 的首个可用版本；从公开契约生成 REST Client，不暴露内部 gRPC 或数据库模型。
-- [ ] Starter 集成 Spring Security Resource Server 和 IAM JWKS，支持按 `kid` 缓存公钥、密钥轮换、Token 验证、Redis 黑名单 fail-closed，以及不可写的 Identity/Membership/Tenant Context。
+- [ ] Starter 集成 Spring Security Resource Server 和 IAM JWKS，固定只接受 `RS256`，支持按 `kid` 缓存公钥、未知 `kid` 受控刷新、常规密钥轮换、撤销 `kid` 与 `jti` 的 Redis fail-closed 检查，以及不可写的 Identity/Membership/Tenant Context。
 - [ ] 实现 Project/Task Example 的最小业务 API；仅经 Starter 获取 Tenant Context，并在租户范围表使用事务级 `app.tenant_id` 和 RLS。
 - [ ] 为 Example 接入 Gateway 路由、结构化日志、Trace 和最小审计投递；此阶段不依赖控制台或 Module Federation Remote，可通过 API/种子数据验证。
 

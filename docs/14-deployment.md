@@ -29,6 +29,8 @@ OpenTelemetry Collector
 
 本地环境可以使用单节点依赖，但不得把单节点拓扑等同于生产拓扑。
 
+开发 JWT Signing Key 由显式本地初始化生成，保存于 `.gitignore` 的本地密钥目录，并只读挂载给 IAM。Compose 不自动创建或删除该密钥；需要轮换时必须通过显式本地操作重建。该密钥不得用于生产 profile。
+
 ## 生产拓扑
 
 ```text
@@ -60,7 +62,8 @@ Platform Console、Tenant Console Shell 与业务 Remote 独立发布。Gateway 
 ## 网络、配置与密钥
 
 - Gateway 是唯一公网入口，使用 HTTPS；服务间 gRPC 使用 mTLS，所有到 PostgreSQL、Redis、Kafka、对象存储的连接使用 TLS。
-- 密钥由外部密钥管理服务托管。Kubernetes 通过受控同步挂载；虚拟机以仅服务账号可读的系统凭据文件注入。禁止将密钥写入镜像、代码或普通配置。
+- 密钥由外部密钥管理服务托管。生产 JWT 私钥只保留在 KMS/HSM，IAM 在 Kubernetes 中通过受限工作负载身份调用签名接口，在虚拟机中仅通过服务账号可读的系统凭据文件取得该调用权限；其他密钥可受控同步挂载或以受限凭据文件注入。禁止将密钥写入镜像、代码或普通配置。
+- 生产 Signing Key 的轮换周期由部署合规策略配置。常规轮换按“发布新 `kid` → 等待 5 分钟 → 切换签名 → 保留旧公钥至少 30 分钟 → 禁用旧版本并移除 JWKS”执行；疑似泄露时立即撤销旧 `kid`，并验证 Gateway 与所有业务服务均已拒绝它后才完成事件处置。
 - Helm values 与环境变量只包含非敏感配置，如服务地址、资源限额、限流和保留期策略；敏感值只引用密钥管理系统。
 - CORS 仅允许受审核的 Console 与业务 Remote 来源；Remote 的入口和版本由 Manifest 白名单控制。
 

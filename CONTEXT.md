@@ -2,6 +2,28 @@
 
 saas-forge 为单产品、多 Tenant SaaS 提供访问控制、权益和审计等业务无关的核心能力。
 
+## Platform Access Control
+
+**Default Platform Admin**:
+首次部署时由系统直接创建的全局 `Identity`，绑定 Platform 角色而非任何 Tenant `Membership`。其初始密码仅由外部密钥管理系统注入，IAM 只保存 Argon2id 哈希，并要求首次登录时修改。
+_Avoid_: Default tenant administrator, superuser, tenant administrator
+
+**Initial Platform Credential**:
+仅用于首次设置 Default Platform Admin 密码的随机初始密码，在创建后 24 小时失效且不能执行 Platform 管理操作。成功改密后该凭据永久失效；失效或疑似泄露时只能通过受限、可审计的部署侧重置替换。
+_Avoid_: Platform access credential, default password
+
+**Platform Role**:
+在一个 Platform 全局范围内授予权限的角色，与只在单个 Tenant 内生效的 Tenant Role 相互独立。
+_Avoid_: Tenant role, membership role
+
+**JWT Signing Key**:
+用于以 `RS256` 签发 Access Token 的非对称签名密钥。每个密钥版本以唯一 `kid` 标识；生产环境的私钥不可导出，由 KMS/HSM 保管，IAM 仅可用工作负载身份请求签名。
+_Avoid_: JWT secret, shared signing secret
+
+**Revoked Signing Key**:
+已被判定疑似泄露、不得再用于签发或验证 Access Token 的 JWT Signing Key 版本。验证方必须拒绝其 `kid`，即使仍持有对应公钥的缓存。
+_Avoid_: Retired signing key, expired signing key
+
 ## Tenancy
 
 **Tenant**:
