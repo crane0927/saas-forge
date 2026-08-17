@@ -1,0 +1,26 @@
+{
+  "registryVersion": 1,
+  "owner": "gateway",
+  "entries": [
+    {
+      "id": "gateway.rate-limit-bucket.v1",
+      "schemaVersion": 1,
+      "keyPattern": "sf:<environment>:gateway:rate-limit-bucket:v1:<dimension>:<subject_sha256>",
+      "purpose": "按 IP、Identity、Client 或 Tenant 维度保存 Gateway 令牌桶状态",
+      "writer": "gateway",
+      "readers": ["gateway"],
+      "valueFormat": "redis-hash",
+      "ttl": {
+        "mode": "derived",
+        "expression": "根据桶容量与补充速率计算空闲桶回收时间",
+        "configKeys": ["gateway.rate-limit.capacity", "gateway.rate-limit.refill-rate"]
+      },
+      "maxCardinality": "限流窗口内各维度活跃主体的数量",
+      "identifierPolicy": "dimension 仅允许 ip、identity、client、tenant；主体使用 SHA-256 摘要",
+      "invalidation": "策略版本切换后等待旧桶 TTL 到期",
+      "failurePolicy": "process-local-degrade",
+      "migrationStrategy": "新策略使用新 schemaVersion，旧桶不迁移并按 TTL 回收",
+      "containsRawSensitiveData": false
+    }
+  ]
+}

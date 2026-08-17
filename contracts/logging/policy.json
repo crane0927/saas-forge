@@ -1,0 +1,71 @@
+{
+  "policyVersion": 1,
+  "schemaVersion": 1,
+  "topLevelFieldWhitelist": [
+    "timestamp",
+    "level",
+    "service",
+    "environment",
+    "event",
+    "message",
+    "schemaVersion",
+    "traceId",
+    "spanId",
+    "requestId",
+    "tenantId",
+    "identityId",
+    "membershipId",
+    "clientId",
+    "http",
+    "exception",
+    "attributes"
+  ],
+  "sensitiveFieldPatterns": [
+    "authorization",
+    "clientsecret",
+    "cookie",
+    "credential",
+    "email",
+    "password",
+    "privatekey",
+    "refreshtoken",
+    "secret",
+    "token"
+  ],
+  "production": {
+    "debugEnabledByDefault": false,
+    "traceEnabledByDefault": false,
+    "traceConsistentSampling": true
+  },
+  "sampling": {
+    "neverSampleLevels": ["ERROR", "WARN"],
+    "neverSampleEventPrefixes": ["security."]
+  },
+  "retentionClasses": ["operational", "security", "temporary-debug"],
+  "eventPolicies": [
+    {
+      "event": "application.lifecycle",
+      "minimumLevel": "INFO",
+      "sampleRate": 1.0,
+      "retentionClass": "operational"
+    },
+    {
+      "event": "http.request.completed",
+      "minimumLevel": "INFO",
+      "sampleRate": 1.0,
+      "retentionClass": "operational"
+    },
+    {
+      "event": "security.access-denied",
+      "minimumLevel": "WARN",
+      "sampleRate": 1.0,
+      "retentionClass": "security"
+    },
+    {
+      "event": "application.failure",
+      "minimumLevel": "ERROR",
+      "sampleRate": 1.0,
+      "retentionClass": "operational"
+    }
+  ]
+}

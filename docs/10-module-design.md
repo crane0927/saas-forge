@@ -13,7 +13,9 @@ saas-forge
 ├── contracts
 │   ├── openapi
 │   ├── protobuf
-│   └── events
+│   ├── events
+│   ├── redis
+│   └── logging
 ├── sdk
 │   ├── java
 │   └── starters
@@ -42,7 +44,7 @@ API Gateway 是边界组件，不计入领域服务数量。它不持有领域�
 | `entitlement-service` | Plan、Subscription、Feature、Quota | Plan、订阅版本与权益快照、Quota Definition / Usage / Operation | 为 SDK 提供权益与配额的强一致判定 |
 | `audit-service` | 统一审计、审计查询与导出任务 | 只追加 Audit Record、导出任务元数据 | 消费其他服务与业务系统的审计事件 |
 
-服务之间禁止共享领域代码、实体和数据库表。跨服务共享物仅为版本化 OpenAPI / Protobuf / 事件契约、通用安全与可观测性库以及构建 BOM。
+服务之间禁止共享领域代码、实体、数据库模型、数据库表和迁移。跨服务共享物仅为版本化 OpenAPI / Protobuf / 事件契约、Redis 安全基础设施契约、日志 Schema、通用安全与可观测性库以及构建 BOM。契约类型在服务边界映射为各服务自己的内部模型。
 
 ## 通信规则
 

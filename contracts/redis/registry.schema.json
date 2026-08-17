@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://saasforge.io/contracts/redis/registry.schema.json",
+  "title": "SaaS Forge Redis Key Registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["registryVersion", "owner", "entries"],
+  "properties": {
+    "registryVersion": {
+      "const": 1
+    },
+    "owner": {
+      "type": "string",
+      "minLength": 1
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entry"
+      }
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "schemaVersion",
+        "keyPattern",
+        "purpose",
+        "writer",
+        "readers",
+        "valueFormat",
+        "ttl",
+        "maxCardinality",
+        "identifierPolicy",
+        "invalidation",
+        "failurePolicy",
+        "migrationStrategy",
+        "containsRawSensitiveData"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9.-]+\\.v[1-9][0-9]*$"
+        },
+        "schemaVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "keyPattern": {
+          "type": "string",
+          "pattern": "^sf:<environment>:[a-z][a-z0-9-]*:[a-z][a-z0-9-]*:v[1-9][0-9]*:.+$"
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 1
+        },
+        "writer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "readers": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "valueFormat": {
+          "type": "string",
+          "enum": ["boolean", "integer", "json", "redis-hash", "string"]
+        },
+        "ttl": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "expression"],
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["authority-expiry", "configured", "derived"]
+            },
+            "expression": {
+              "type": "string",
+              "minLength": 1
+            },
+            "configKeys": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "maxCardinality": {
+          "type": "string",
+          "minLength": 1
+        },
+        "identifierPolicy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "invalidation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "failurePolicy": {
+          "type": "string",
+          "enum": ["database-fallback", "fail-closed", "process-local-degrade"]
+        },
+        "migrationStrategy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "containsRawSensitiveData": {
+          "const": false
+        }
+      }
+    }
+  }
+}

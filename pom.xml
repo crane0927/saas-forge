@@ -32,6 +32,7 @@
         <module>services</module>
         <module>contracts</module>
         <module>sdk</module>
+        <module>quality-gates</module>
     </modules>
 
     <properties>

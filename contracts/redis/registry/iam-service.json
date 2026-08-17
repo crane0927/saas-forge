@@ -1,0 +1,124 @@
+{
+  "registryVersion": 1,
+  "owner": "iam-service",
+  "entries": [
+    {
+      "id": "iam.jwt-jti-revocation.v1",
+      "schemaVersion": 1,
+      "keyPattern": "sf:<environment>:iam-service:jwt-jti-revocation:v1:<jti_sha256>",
+      "purpose": "拒绝已经撤销但尚未过期的 Access Token",
+      "writer": "iam-service",
+      "readers": ["gateway", "saas-forge-spring-boot-starter"],
+      "valueFormat": "boolean",
+      "ttl": {
+        "mode": "authority-expiry",
+        "expression": "Access Token 剩余有效期"
+      },
+      "maxCardinality": "未过期且已撤销 Access Token 的数量",
+      "identifierPolicy": "仅使用 jti 的 SHA-256 摘要，不保存原始 Token 或 jti",
+      "invalidation": "TTL 到期自动删除",
+      "failurePolicy": "fail-closed",
+      "migrationStrategy": "不兼容变更创建新 schemaVersion，并让全部读取者完成切换后等待旧 Key TTL 到期",
+      "containsRawSensitiveData": false
+    },
+    {
+      "id": "iam.signing-kid-revocation.v1",
+      "schemaVersion": 1,
+      "keyPattern": "sf:<environment>:iam-service:signing-kid-revocation:v1:<kid_sha256>",
+      "purpose": "在本地 JWKS 缓存仍可能包含旧公钥时拒绝已撤销 Signing Key",
+      "writer": "iam-service",
+      "readers": ["gateway", "saas-forge-spring-boot-starter"],
+      "valueFormat": "boolean",
+      "ttl": {
+        "mode": "derived",
+        "expression": "最长 Access Token 有效期加 JWKS 缓存窗口",
+        "configKeys": ["security.jwt.access-token-max-ttl", "security.jwks.cache-window"]
+      },
+      "maxCardinality": "安全窗口内被撤销 Signing Key 的数量",
+      "identifierPolicy": "仅使用 kid 的 SHA-256 摘要",
+      "invalidation": "确认所有受影响 Token 与 JWKS 缓存失效后由 TTL 删除",
+      "failurePolicy": "fail-closed",
+      "migrationStrategy": "新旧版本并行读取直至旧安全窗口结束",
+      "containsRawSensitiveData": false
+    },
+    {
+      "id": "iam.refresh-session.v1",
+      "schemaVersion": 1,
+      "keyPattern": "sf:<environment>:iam-service:refresh-session:v1:<session_id>",
+      "purpose": "缓存 Refresh Token 会话状态以降低 PostgreSQL 读取压力",
+      "writer": "iam-service",
+      "readers": ["iam-service"],
+      "valueFormat": "json",
+      "ttl": {
+        "mode": "authority-expiry",
+        "expression": "不超过 PostgreSQL 会话权威记录的剩余有效期"
+      },
+      "maxCardinality": "未过期活跃会话数量",
+      "identifierPolicy": "使用内部 sessionId，不保存 Refresh Token、Cookie 或其可逆表示",
+      "invalidation": "登出、轮换、成员禁用或 Tenant 冻结后删除，TTL 作为兜底",
+      "failurePolicy": "database-fallback",
+      "migrationStrategy": "切换值版本时先读新版本，未命中回源 PostgreSQL 并回填新版本",
+      "containsRawSensitiveData": false
+    },
+    {
+      "id": "iam.login-failure.v1",
+      "schemaVersion": 1,
+      "keyPattern": "sf:<environment>:iam-service:login-failure:v1:<subject_sha256>",
+      "purpose": "记录认证主体在安全窗口内的登录失败次数",
+      "writer": "iam-service",
+      "readers": ["iam-service"],
+      "valueFormat": "integer",
+      "ttl": {
+        "mode": "configured",
+        "expression": "登录保护计数窗口",
+        "configKeys": ["security.login-protection.failure-window"]
+      },
+      "maxCardinality": "安全窗口内出现登录失败的主体数量",
+      "identifierPolicy": "使用规范化认证主体与限流维度的 SHA-256 摘要，不保存邮箱或 IP 原文",
+      "invalidation": "成功登录或 TTL 到期后删除",
+      "failurePolicy": "fail-closed",
+      "migrationStrategy": "安全规则升级时使用新版本并保留旧版本检查至旧窗口结束",
+      "containsRawSensitiveData": false
+    },
+    {
+      "id": "iam.login-lock.v1",
+      "schemaVersion": 1,
+      "keyPattern": "sf:<environment>:iam-service:login-lock:v1:<subject_sha256>",
+      "purpose": "记录认证主体的临时锁定状态",
+      "writer": "iam-service",
+      "readers": ["iam-service"],
+      "valueFormat": "boolean",
+      "ttl": {
+        "mode": "configured",
+        "expression": "临时锁定持续时间",
+        "configKeys": ["security.login-protection.lock-duration"]
+      },
+      "maxCardinality": "当前处于临时锁定的主体数量",
+      "identifierPolicy": "使用规范化认证主体的 SHA-256 摘要，不保存邮箱原文",
+      "invalidation": "经授权解锁或 TTL 到期后删除",
+      "failurePolicy": "fail-closed",
+      "migrationStrategy": "新版本必须继续检查旧版本直至旧锁定窗口结束",
+      "containsRawSensitiveData": false
+    },
+    {
+      "id": "iam.verification-challenge.v1",
+      "schemaVersion": 1,
+      "keyPattern": "sf:<environment>:iam-service:verification-challenge:v1:<challenge_id>",
+      "purpose": "保存短期登录验证挑战的非敏感状态",
+      "writer": "iam-service",
+      "readers": ["iam-service"],
+      "valueFormat": "json",
+      "ttl": {
+        "mode": "configured",
+        "expression": "验证挑战有效期",
+        "configKeys": ["security.login-protection.challenge-ttl"]
+      },
+      "maxCardinality": "有效期内尚未完成的验证挑战数量",
+      "identifierPolicy": "使用随机 challengeId；值中不得保存验证码、密码或 Secret 原文",
+      "invalidation": "成功、失败次数耗尽或 TTL 到期后删除",
+      "failurePolicy": "fail-closed",
+      "migrationStrategy": "不兼容变更创建新版本，旧挑战按原版本完成或到期",
+      "containsRawSensitiveData": false
+    }
+  ]
+}

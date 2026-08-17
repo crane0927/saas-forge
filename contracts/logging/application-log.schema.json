@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://saasforge.io/contracts/logging/application-log.schema.json",
+  "title": "SaaS Forge Application Log Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["timestamp", "level", "service", "environment", "event", "message", "schemaVersion"],
+  "properties": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "level": {
+      "type": "string",
+      "enum": ["ERROR", "WARN", "INFO", "DEBUG", "TRACE"]
+    },
+    "service": {
+      "type": "string",
+      "minLength": 1
+    },
+    "environment": {
+      "type": "string",
+      "minLength": 1
+    },
+    "event": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:\\.[a-z][a-z0-9-]*)+$"
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "traceId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "spanId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$"
+    },
+    "requestId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tenantId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "identityId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "membershipId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "clientId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "http": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "route", "statusCode", "durationMs"],
+      "properties": {
+        "method": {
+          "type": "string",
+          "enum": ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+        },
+        "route": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "statusCode": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 599
+        },
+        "durationMs": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "exception": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "code", "message"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stackTrace": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "attributes": {
+      "type": "object",
+      "maxProperties": 20,
+      "propertyNames": {
+        "pattern": "^[a-z][A-Za-z0-9]*$"
+      },
+      "additionalProperties": {
+        "type": ["string", "number", "integer", "boolean", "null"]
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": ["traceId"]
+      },
+      "then": {
+        "required": ["spanId"]
+      }
+    },
+    {
+      "if": {
+        "required": ["spanId"]
+      },
+      "then": {
+        "required": ["traceId"]
+      }
+    },
+    {
+      "if": {
+        "required": ["http"]
+      },
+      "then": {
+        "required": ["requestId"]
+      }
+    }
+  ]
+}
