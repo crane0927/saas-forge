@@ -2,7 +2,7 @@
 
 ## 数据库边界
 
-首期唯一支持 PostgreSQL。四个领域服务分别拥有独立的逻辑数据库、独立数据库账号和独立 Flyway 迁移链路；可共用同一 PostgreSQL 集群，但禁止跨服务直连查询、共享表或共享迁移。
+首期唯一支持 PostgreSQL。四个领域服务分别拥有独立的逻辑数据库、独立账号组和独立 Flyway 迁移链路；可共用同一 PostgreSQL 集群，但禁止跨服务直连查询、共享表或共享迁移，也不得启用 FDW、`dblink` 或其他跨数据库访问机制。
 
 ```text
 iam-service            → iam_db
@@ -11,7 +11,11 @@ entitlement-service    → entitlement_db
 audit-service          → audit_db
 ```
 
-独立领域实体默认使用 PostgreSQL 生成的 UUIDv7 主键，API 以 UUID 字符串传输。字段是否存在由数据语义决定，不通过跨服务 `BaseEntity` 或共享持久化模型强制统一。
+每个逻辑数据库使用两个仅属于该服务的账号：`*_migrator` 仅供 Flyway 执行迁移并拥有所属 Schema 中对象的所有权；`*_app` 仅供运行时服务连接，既不是表所有者，也不拥有 `BYPASSRLS`，只被授予所需的 DML 与 Schema `USAGE` 权限。运行时服务不得使用迁移账号；账号不得访问其他服务数据库。
+
+每个逻辑数据库只使用默认 `public` Schema。集群引导必须撤销 `PUBLIC` 对数据库的默认权限及对 `public` 的 `CREATE` 权限；`*_migrator` 获得 `public` 的 `USAGE`、`CREATE`，`*_app` 只获得 `USAGE`。业务表、序列和 `flyway_schema_history` 均由 `*_migrator` 所有；每个建表迁移显式授予 `*_app` 所需的表 DML 与序列权限。运行时账号不得在任何 Schema 创建对象。
+
+独立领域实体默认使用 PostgreSQL 18 原生 `uuidv7()` 生成 UUIDv7 主键，首个建表迁移应声明 `id uuid NOT NULL DEFAULT uuidv7()`；应用插入时不传入 `id`，以 `INSERT ... RETURNING` 取得生成值。API 以 UUID 字符串传输。字段是否存在由数据语义决定，不通过跨服务 `BaseEntity` 或共享持久化模型强制统一。
 
 ## 建模与命名规范
 
@@ -23,7 +27,7 @@ audit-service          → audit_db
 - 枚举保存为稳定字符串并使用 `CHECK` 约束，不使用 PostgreSQL 原生 ENUM。
 - `jsonb` 仅用于结构确实开放的 Metadata，不替代需要查询、索引或约束的正式字段。
 - 可空性、默认值和约束必须显式声明。数据库默认值只用于不依赖调用上下文的稳定技术值；领域默认值由领域逻辑决定。
-- 外键只允许指向同一服务数据库中的表；禁止跨库外键、SQL Join 和查询封装。
+- 外键和 `JOIN` 只允许引用同一服务、同一数据库中的表；禁止跨服务/跨数据库表引用、外键、`JOIN` 及查询封装。
 
 ### 公共字段适用矩阵
 
@@ -47,7 +51,9 @@ audit-service          → audit_db
 | `entitlement_db` | `plans`、`plan_features`、`plan_quotas`、`subscriptions`、`subscription_entitlement_snapshots`、`quota_definitions`、`quota_usages`、`quota_operations` | 一个 Tenant 任一时刻仅一个生效 Subscription；套餐变更产生新的订阅版本和不可变权益快照；`quota_operations.operation_id` 为全局唯一 UUIDv7，保证计量幂等 |
 | `audit_db` | `audit_records`、`export_jobs` | `audit_records` 只追加，记录 Tenant、Identity、Membership、Action、Resource、Request ID、IP、User Agent、Timestamp、Result、Metadata；`export_jobs` 仅保存任务元数据，不保存导出结果文件 |
 
-具体字段、枚举与 OpenAPI / Protobuf Schema 须在实现前同步评审；任一服务不得以外键约束或 SQL Join 耦合另一服务数据库。
+具体字段、枚举与 OpenAPI / Protobuf Schema 须在实现前同步评审；任一服务不得以外键约束、`JOIN`、FDW、`dblink` 或其他跨数据库访问机制耦合另一服务数据库。
+
+`audit_app` 对 `audit_records` 只被授予 `SELECT`、`INSERT`，不得获得 `UPDATE`、`DELETE`、`TRUNCATE`，也不使用软删除；创建该表的迁移必须显式维持此权限。`export_jobs` 是可变任务元数据，按其状态迁移所需权限单独授予。迁移账号保留架构演进责任，但不得修改已进入主分支或发布版本的迁移。
 
 ## 多租户隔离与 RLS
 
@@ -58,6 +64,8 @@ SELECT set_config('app.tenant_id', :tenant_id, true);
 ```
 
 RLS 策略读取该值，默认拒绝缺失、非法 Tenant 上下文的读写。常规业务数据库角色不是表所有者，不得拥有 `BYPASSRLS`。
+
+业务 RLS 策略只授予 `*_app`，并以事务级 `app.tenant_id` 同时限制 `USING` 与 `WITH CHECK`；`*_app` 不得继承或 `SET ROLE` 为迁移账号。每个 Tenant 表另有仅授予 `*_migrator` 的维护策略 `USING (true) WITH CHECK (true)`，供受控迁移任务执行跨 Tenant 数据回填。迁移账号凭据不得进入应用进程或常规业务请求路径。
 
 Tenant 范围内的唯一约束、主要索引和相互引用按 `tenant_id` 限定作用域。Tenant 范围内的外键关系应包含 `tenant_id`，让数据库约束本身阻止跨 Tenant 引用。
 
@@ -76,7 +84,10 @@ Tenant 范围内的唯一约束、主要索引和相互引用按 `tenant_id` 限
 
 ## 迁移、备份与恢复
 
+- 集群引导工件由受控的 PostgreSQL 管理账号执行，负责创建四个逻辑数据库、各库的 `*_migrator` / `*_app` 账号、Schema 基础权限及最小授权。它不属于任何领域服务，且不承载业务表结构或数据迁移；本地 Compose 与生产数据库运行方均执行等价的引导流程。
 - 每个平台服务和官方 Example 在自己的 `src/main/resources/db/migration` 下维护独立 Flyway 迁移链；迁移与服务版本一起发布，不共享脚本或迁移历史。
+- Flyway 只使用所属服务的 `*_migrator` 连接既有数据库；运行时服务只使用对应 `*_app` 账号。Flyway 和服务配置不得持有其他服务数据库或集群管理凭据。
+- Flyway 必须由每个服务独立的一次性迁移任务执行：本地 Compose 使用 one-shot 容器，生产使用部署前 Job；迁移成功是对应应用启动的前提。常驻应用禁用 Flyway 自动迁移，且不得获取 `*_migrator` 凭据。
 - 版本迁移使用 `V<版本>__<描述>.sql`。已进入主分支或发布版本的迁移禁止修改、删除和重排。
 - 生产变更以前向修复为主。应用可以回滚，但不得假设数据库能够自动降级；不把 Flyway Undo 作为标准发布机制。
 - Repeatable Migration 只用于可安全重复构建的视图、函数等对象，不用于表结构和业务数据。
@@ -95,4 +106,4 @@ Tenant 范围内的唯一约束、主要索引和相互引用按 `tenant_id` 限
 
 ## 自动校验
 
-当前仓库的 `./mvnw verify` 校验 Flyway 文件位置与命名、Repeatable Migration 的用途、MyBatis 注解 SQL 禁令、Mapper 接口/XML 映射一致性、公共模块持久化类型禁令以及服务依赖边界。首个持久化实现必须同步加入真实 PostgreSQL/Flyway 与 RLS Testcontainers 测试，覆盖 Tenant A 无法读写改删 Tenant B、无上下文默认拒绝和应用账号无 `BYPASSRLS`。
+当前仓库的 `./mvnw verify` 校验 Flyway 文件位置与命名、Repeatable Migration 的用途、MyBatis 注解 SQL 禁令、Mapper 接口/XML 映射一致性、公共模块持久化类型禁令以及服务依赖边界。首个持久化实现必须同步加入真实 PostgreSQL 18 / Flyway / RLS Testcontainers 测试：集群引导创建四个逻辑数据库、八个账号与最小授权；四条迁移链只能由各自迁移账号执行；运行时账号不能跨库连接、创建对象或绕过 RLS；独立实体默认生成 UUIDv7；`audit_app` 不能更新或删除审计记录；并覆盖 Tenant A 无法读写改删 Tenant B 与无上下文默认拒绝。
