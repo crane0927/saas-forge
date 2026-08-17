@@ -83,7 +83,7 @@ flowchart TD
 - [x] **先冻结 API 通用规范，再定义任何资源接口。** [API 设计](08-api-design.md#rest-约定)已明确路径、字段和枚举命名；UUIDv7、时间、日期、金额/小数与空值的 JSON 表示；参数边界与 `POST`、`PUT`、`PATCH` 语义；过滤、排序和游标分页；文件/异步任务；版本、幂等、关联 ID 和内容协商规则。
 - [x] 明确成功与失败的统一返回模型，并提供 OpenAPI 可复用 Schema 和正反例。[API 设计](08-api-design.md#成功与失败响应)已冻结直接成功表示、`201`／`202` 的 `Location`、`204` 无响应体、集合与 Job 不变式，以及 Problem Details 与字段校验语义；[OpenAPI 公共组件](../contracts/openapi/common.yaml)提供机器可读 Schema、Response、Header 和示例。
 - [x] 在[租户架构](05-tenant-architecture.md#tenant-context)、[API 设计](08-api-design.md#v1-资源边界)、[SDK 设计](09-sdk-design.md#身份与上下文)和[安全设计](12-security-design.md#授权租户与数据隔离)中重申租户安全边界：用户请求不得通过请求头、查询参数、请求体或语义等价别名传入/覆盖 Tenant；此类输入以 `400` 拒绝。服务身份只用 `client_id` 与显式 `scope` 授权，不建立或伪造用户上下文；缺少所需 scope 以 `403` 拒绝。
-- [ ] 先在 `contracts/openapi` 定义第 2、3 阶段需要的 `auth`、Tenant 管理、JWKS 和最小 Runtime API；后续资源契约在对应阶段开始前评审并加入同一 v1 契约。
+- [x] 在 `contracts/openapi/v1.yaml` 定义实施阶段 2、3 所需的 `auth`、Tenant 管理、JWKS 以及管理员初始化所需的最小权益前置链路；第 3 阶段不需要独立 Runtime 端点。Permission、Feature、Quota Runtime 操作和后续资源契约在对应阶段开始前评审，并以兼容方式加入同一 v1 契约；决策见 [ADR 0013](adr/0013-v1-openapi-contracts-follow-delivery-prerequisites.md)。
 - [ ] 在 `contracts/protobuf` 定义 IAM↔Tenant Access 所需的 Membership 即时校验接口；在 `contracts/events` 定义统一 CloudEvents JSON 信封、审计事件和缓存失效事件的版本规则。
 - [ ] 建立 spec-first 代码生成流程：服务端接口骨架、Java REST Client、前端 API Client 都从契约生成；禁止实现反向修改正式契约。
 - [ ] 增加 REST、Protobuf 与事件的兼容性检查，阻止破坏性 v1 变更。
