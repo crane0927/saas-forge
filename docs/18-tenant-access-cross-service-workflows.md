@@ -38,7 +38,7 @@ Invitation 激活的公网资源属于 Tenant Access：`POST /api/v1/tenant/invi
 
 ## Tenant 切换
 
-Tenant 切换的根服务是 IAM：`POST /api/v1/auth/tenant-switches` 只接受目标 `membershipId`。IAM 以当前已认证 `identityId` 同步调用 Tenant Access；Tenant Access 必须确认 Membership 属于该 Identity、仍启用且所属 Tenant 当前可访问，并只返回权威的 `membershipId`、`tenantId`。
+Tenant 切换的根服务是 IAM：`POST /api/v1/auth/tenant-switches` 只接受目标 `membershipId`。IAM 以当前已认证 `identityId` 同步调用 Tenant Access 的 [Membership Validation v1](../contracts/protobuf/tenant_access/membership/v1/membership_validation.proto)；Tenant Access 必须确认 Membership 属于该 Identity、仍启用且所属 Tenant 当前可访问，并只返回权威的 `membershipId`、`tenantId`。
 
 IAM 持久化自身的切换尝试后，先将当前 Access Token `jti` 写入黑名单，再在 IAM 本地事务中更新当前会话的活动 Membership 并写入 `204 No Content` 的 HTTP 幂等结果及 `com.saasforge.iam.tenant-context-switched.v1`。Tenant Console Shell 只在收到 `204` 后调用既有刷新接口取得新 Access Token；切换接口不返回或持久化原始 Token。
 

@@ -116,6 +116,16 @@ _Avoid_: Usage, quota definition
 
 ## Tenant Access
 
+**Membership**:
+一个 Identity 加入某一 Tenant 的成员关系；它决定该 Identity 能否在该 Tenant 建立 Tenant Context，并可被启用或禁用。
+_Avoid_: Tenant account, user-tenant mapping
+
 **Invitation**:
 邀请指定邮箱加入 Tenant 的一次性、限时凭据。Invitation 到期由 `expiresAt` 在激活时派生，而非持久化为 `EXPIRED` 状态。
 _Avoid_: Registration, user creation
+
+## Audit
+
+**Audit Record**:
+由 Audit 服务根据已提交领域事实只追加保存的合规与业务追责记录；它不裁决来源工作流是否成功。
+_Avoid_: Application log, audit event

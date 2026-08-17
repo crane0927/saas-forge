@@ -1,6 +1,6 @@
 # Tenant Access 跨服务工作流事件
 
-本文件定义[跨服务工作流契约](../../docs/18-tenant-access-cross-service-workflows.md)涉及的首批 CloudEvents JSON 类型。所有事件由其拥有数据的服务在本地事务提交后通过 Outbox 发布；Kafka 交付至少一次，消费者必须以 CloudEvents `id`（本文称事件 ID）幂等。
+本文件定义[跨服务工作流契约](../../docs/18-tenant-access-cross-service-workflows.md)涉及的首批 CloudEvents JSON 类型。所有事件由其拥有数据的服务在本地事务提交后通过 Outbox 发布；Kafka 交付至少一次，消费者必须以 CloudEvents `id`（本文称事件 ID）幂等。全部事件必须符合[统一 CloudEvents JSON 信封](cloudevents-envelope.v1.schema.json)及本目录的[版本规则](README.md#版本规则)。
 
 ## 共同约束
 

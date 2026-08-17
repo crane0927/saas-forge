@@ -42,7 +42,7 @@ API Gateway 是边界组件，不计入领域服务数量。它不持有领域�
 | `iam-service` | Identity、密码凭据、会话、JWT、Refresh Token、Client Credentials、JWKS | Identity、Credential、Refresh Token、OAuth Client / Secret 元数据、会话与令牌撤销记录 | 登录与 Tenant 切换时调用 Tenant Access 验证 Membership；为 Tenant Access 提供 Identity/凭据建立与会话撤销 |
 | `tenant-access-service` | Tenant、Membership、Organization、RBAC、Permission、邀请、初始管理员初始化 | Tenant、Membership、Organization、Role、Permission、关联表、Invitation、跨服务工作流记录与补偿/重试工作项 | 为 IAM、SDK 提供成员和授权查询；编排管理员初始化、邀请激活、成员禁用与 Tenant 冻结 |
 | `entitlement-service` | Plan、Subscription、Feature、Quota | Plan、订阅版本与权益快照、Quota Definition / Usage / Operation | 为 SDK 提供权益与配额的强一致判定 |
-| `audit-service` | 统一审计、审计查询与导出任务 | 只追加 Audit Record、导出任务元数据 | 消费其他服务与业务系统的审计事件 |
+| `audit-service` | 统一审计、审计查询与导出任务 | 只追加 Audit Record、导出任务元数据 | 消费其他服务与业务系统的已提交领域事实事件 |
 
 服务之间禁止共享领域代码、实体、数据库模型、数据库表和迁移。跨服务共享物仅为版本化 OpenAPI / Protobuf / 事件契约、Redis 安全基础设施契约、日志 Schema、通用安全与可观测性库以及构建 BOM。契约类型在服务边界映射为各服务自己的内部模型。
 
