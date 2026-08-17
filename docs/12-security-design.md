@@ -13,6 +13,7 @@
 - Access Token 是约 15 分钟有效、以 `RS256` 签名的 JWT，包含 `identityId`、`membershipId`、`tenantId`、`jti`；Gateway 与 SDK 以 IAM JWKS 本地验签，且只接受 `RS256`。
 - Refresh Token 是随机不透明字符串，浏览器仅以 HttpOnly Cookie 发送；PostgreSQL 只保存其哈希并作为权威记录，Redis 可缓存会话状态。
 - Tenant 切换必须调用 IAM；IAM 同步校验目标 Membership 有效后，先使旧 Access Token 失效，再更新当前会话的 `membershipId`、`tenantId` 并返回 `204`。客户端不得覆写 Tenant，Tenant Console Shell 必须随后通过既有刷新接口取得绑定新上下文的 Access Token。
+- 用户请求不得通过请求头、查询参数、请求体或任何语义等价别名传入或覆盖 Tenant；这类输入必须以 `400` 拒绝，不能静默忽略。用户 Tenant Context 只能由已验证 Access Token 的 `membershipId` 解析。
 - 普通登出只撤销 Refresh Token。密码重置、成员禁用、Tenant 冻结、强制下线等安全事件将 JWT `jti` 写入 Redis 黑名单，TTL 为 Token 剩余有效期。
 - Gateway 与 SDK 每次用户请求检查黑名单；Redis 不可用时 fail-closed，避免已失效 Token 被继续接受。
 
@@ -33,14 +34,14 @@ Refresh Token 只能由 `https://api.<root>` 以 `__Host-sf_refresh; Secure; Htt
 - 首个 Platform Admin 由系统在首次部署时直接创建为全局 `Identity` 并授予 Platform 角色，不关联 Tenant `Membership`。其邮箱和随机初始密码仅由外部密钥管理系统注入；IAM 只保存密码的 Argon2id 哈希。初始密码自创建起有效 24 小时，期间只能建立完成改密所需的受限会话，不能调用 Platform 管理接口。首次成功改密后，初始密码永久失效并撤销关联会话；过期或疑似泄露时，只能由部署侧受限凭据执行可审计的重置并生成新的随机初始密码。不得通过公网首注、代码、镜像或普通配置创建或重置该管理员。
 - 无风险事件下不强制周期性改密；发生泄露、高风险登录或管理员强制重置时，要求改密并撤销相关会话。
 - Tenant 管理员创建用户只发送一次性、限时激活链接，由用户自行设置密码；管理员不能设置或查看初始密码。
-- 服务间采用 OAuth 2.0 Client Credentials。服务 Token 只表示 `client_id` 与显式 `scope`，不得伪造用户、Membership、Tenant。Client Secret 仅在创建或轮换时明文展示一次，平台保存哈希，支持重叠轮换和立即吊销。
+- 服务间采用 OAuth 2.0 Client Credentials。服务 Token 的身份与授权语义只限 `client_id` 与显式 `scope`，不得伪造用户、Membership、Tenant 或用户 RBAC 上下文；缺少所需 scope 时必须以 `403` 拒绝。服务可在契约明确的内部调用或可信消息元数据中携带 Tenant Operation Target，但下游必须按 `client_id` 与 `scope` 授权并校验其与目标资源的关系，它不建立 Tenant Context。Client Secret 仅在创建或轮换时明文展示一次，平台保存哈希，支持重叠轮换和立即吊销。
 - IAM 经版本化 JWKS 发布公钥。生产环境的 JWT 私钥使用 KMS/HSM 托管的不可导出 `RS256` Signing Key；IAM 仅以工作负载身份调用签名接口，每个 KMS 密钥版本映射唯一 `kid`，不得将私钥挂载到应用进程。Gateway、SDK 和业务服务的验签算法白名单只能包含 `RS256`。
 - JWT Signing Key 的常规轮换由生产部署的合规策略触发，不在代码中写死周期：新 `kid` 先与旧公钥共同发布于 JWKS，等待 5 分钟缓存窗口后才切换签名；旧公钥至少保留 30 分钟，随后禁用旧版本签名并从 JWKS 移除。疑似私钥泄露时，立即停止旧版本签名、将其 `kid` 写入 Redis 撤销集合并从 JWKS 移除；Gateway、SDK 和业务服务每个请求都检查该集合，Redis 不可用时 fail-closed，即使本地 JWKS 缓存仍有该公钥也必须拒绝。开发环境采用相同 `kid`/JWKS 切换语义，但仅允许显式本地轮换。
 - 仅开发 profile 可使用显式本地初始化生成的开发专用非对称密钥对；密钥位于 `.gitignore` 的本地密钥目录，并以只读方式提供给 IAM。Compose 不得自动生成、删除或在生产 profile 回退使用该密钥；开发密钥轮换必须显式触发。
 
 ## 授权、租户与数据隔离
 
-请求必须经 Authentication → Identity → Membership → Tenant Resolve → Tenant Context，再执行 Permission、Feature、Quota 和业务逻辑。Tenant Context 需可信、明确、支持跨线程、异步和消息场景传播；不得使用请求中的 `tenantId` 作为安全边界。
+用户请求必须经 Authentication → Identity → Membership → Tenant Resolve → Tenant Context，再执行 Permission、Feature、Quota 和业务逻辑。Tenant Context 需可信、明确、支持跨线程、异步和消息场景传播；不得使用请求中的 Tenant 标识作为安全边界。服务请求不建立用户 Tenant Context，且只能按 `client_id` 与显式 `scope` 执行授权。
 
 RBAC 以 `Membership → Role → Permission` 实施。平台角色与租户角色隔离；Permission 与 Feature 必须可同时校验。所有 Tenant 范围数据表采用 `tenant_id` 与 PostgreSQL RLS；事务级 `app.tenant_id` 缺失时默认拒绝，常规账号无 `BYPASSRLS`。
 

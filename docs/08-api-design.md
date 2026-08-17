@@ -38,7 +38,9 @@ API Gateway 是唯一公网入口，负责 TLS 终止、JWT 初步校验、限�
 | `/api/v1/runtime` | Tenant Access、Entitlement | 业务系统的 Permission / Feature 查询与 Quota `check`、`consume`、`release` |
 | `/api/v1/audit` | Audit | 经过授权的审计查询与导出任务 |
 
-用户 Token 的 Tenant 由已验证的 `membershipId` 决定；用户请求不得以请求头、查询参数或请求体覆盖 Tenant。Client Credentials 令牌只代表 `client_id` 与 `scope`，不伪造用户、Membership 或 Tenant 身份。
+用户 Token 的 Tenant 由已验证的 `membershipId` 决定。用户请求不得通过请求头、查询参数、请求体或任何语义等价别名传入或覆盖 Tenant；这类输入必须作为字段校验失败以 `400` 拒绝，而非静默忽略。Tenant 切换接口只接受目标 `membershipId`，由 IAM 校验后建立新上下文，不接受 Tenant 标识。
+
+Client Credentials 的身份与授权语义只限 `client_id` 与显式 `scope`，不得伪造用户、Membership、Tenant 或用户 RBAC 上下文；缺少所需 scope 时返回 `403`。服务可在契约明确的内部调用或可信消息元数据中携带 Tenant Operation Target，但下游必须按 `client_id` 与 `scope` 授权并校验其与目标资源的关系；它不建立 Tenant Context。
 
 Tenant 切换为 IAM 的 `POST /api/v1/auth/tenant-switches`：请求只携带目标 `membershipId`，IAM 必须同步向 Tenant Access 验证该 Membership 属于当前 Identity、仍启用且所属 Tenant 可访问。它成功时只更新 IAM 会话上下文并返回 `204 No Content`；Tenant Console Shell 随后调用刷新接口取得新 Access Token。Invitation 激活为 Tenant Access 的 `POST /api/v1/tenant/invitation-activations`：它不接受客户端提供的 Tenant 上下文，而是由 Invitation 令牌解析所属 Tenant。
 
@@ -90,7 +92,7 @@ IAM 的 JWKS 响应以 `Cache-Control: max-age=300` 发布。验证方遇到未�
 ## 认证、来源与限流
 
 - 用户请求使用约 15 分钟的 JWT Access Token；刷新令牌仅由 `api.<root>` 以 `__Host-sf_refresh; Secure; HttpOnly; SameSite=Strict; Path=/` Cookie 携带，且不设置 `Domain`。
-- Client Credentials 按 OAuth 2.0 标准实现，服务令牌只含 `client_id` 与显式 `scope`。
+- Client Credentials 按 OAuth 2.0 标准实现；服务令牌的身份与授权语义只限 `client_id` 与显式 `scope`，不建立用户 Tenant Context，也不得伪造用户、Membership、Tenant 或用户 RBAC 上下文。
 - CORS 默认拒绝。各环境由非敏感部署配置 `browser.rootDomain` 推导精确 Origin：API Gateway 仅允许 `https://platform.<root>` 与 `https://console.<root>` 的凭据型请求，允许 `GET`、`HEAD`、`POST`、`PUT`、`PATCH`、`DELETE`、`OPTIONS` 方法和 `Authorization`、`Content-Type`、`Idempotency-Key`、`X-SF-CSRF`、`traceparent`、`tracestate` 请求头，只暴露 `Location`、`Retry-After`，预检缓存 10 分钟并返回 `Vary: Origin`。`https://remote.<root>` 不可直接调用 API；Remote 静态资源仅允许 `https://console.<root>` 无凭据加载。未匹配 Origin 不返回 CORS 许可，禁止通配符、`null` Origin 和 Manifest/运行时扩展白名单。
 - 所有浏览器非安全方法，以及 `/api/v1/auth/login`、`/api/v1/auth/refresh`、`/api/v1/auth/logout`，必须使用 `application/json` 并带 `X-SF-CSRF: 1`。Gateway 仅接受 `Origin` 为 `https://platform.<root>` 或 `https://console.<root>` 的此类请求，拒绝 `remote.<root>` 和外站 Origin；`Sec-Fetch-Site: cross-site` 一律拒绝，缺失 Fetch Metadata 时仍以 Origin 精确校验。Client Credentials 服务请求不携带浏览器 Cookie，不适用该校验。
 - Gateway 基于 Redis 令牌桶，按 IP、Identity、Client、Tenant 维度限流；阈值由环境配置，不写死在代码中。

@@ -38,7 +38,7 @@ IdentityContext.getIdentityId();
 MembershipContext.getMembershipId();
 ```
 
-上下文只能由已验证 Token 建立，业务代码不得由请求参数覆盖。Client Credentials 令牌不建立上述用户上下文。
+上下文只能由已验证 Token 建立。用户请求不得通过请求头、查询参数、请求体或任何语义等价别名传入或覆盖 Tenant；这类输入必须在建立上下文前以 `400` 拒绝，业务代码也不得覆写上下文。Client Credentials 令牌不建立上述用户上下文；服务授权只基于 `client_id` 与显式 `scope`，不得伪造用户、Membership、Tenant 或用户 RBAC 上下文。
 
 ## 授权、权益与配额
 

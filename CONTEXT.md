@@ -52,6 +52,14 @@ _Avoid_: localhost port topology, production root domain
 SaaS 客户的逻辑隔离空间，其业务含义由接入产品定义。Tenant 的持久生命周期状态为 `PENDING`、`ACTIVE`、`SUSPENDED` 或 `CLOSED`。
 _Avoid_: Customer, account
 
+**Tenant Context**:
+面向用户请求、由已验证 Access Token 的 `membershipId` 解析出的可信 Tenant 安全上下文。用户不能通过请求头、查询参数、请求体或其语义等价别名传入或覆盖它；Client Credentials 服务令牌也不建立该上下文。
+_Avoid_: Client-selected tenant, service tenant identity
+
+**Tenant Operation Target**:
+已认证服务在契约明确的内部调用或可信消息元数据中携带的 Tenant 标识，用于确定业务操作目标。它不是 Tenant Context，不代表用户、Membership 或 Tenant 身份；下游必须按 `client_id` 与显式 `scope` 授权并校验目标 Tenant 与业务资源的关系。
+_Avoid_: Service tenant context, impersonated tenant
+
 **Tenant Access Status**:
 Tenant 在特定时刻是否可访问平台的派生结果；当 Tenant 为 `ACTIVE` 且未到 `expiresAt` 时可访问，达到 `expiresAt` 时结果为 `EXPIRED`。
 _Avoid_: Tenant status, expired Tenant state

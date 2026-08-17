@@ -31,7 +31,9 @@ Request
   → Business Logic
 ```
 
-Tenant Context 必须可信、明确、不可由普通请求随意伪造，并支持跨线程安全传播、异步场景和消息场景。
+Tenant Context 必须可信、明确、不可由普通请求随意伪造，并支持跨线程安全传播、异步场景和消息场景。面向用户的 Tenant Context 只能由已验证 Access Token 的 `membershipId` 解析：用户请求不得通过请求头、查询参数、请求体或任何语义等价别名传入或覆盖 Tenant；出现这类输入时必须以 `400` 拒绝。
+
+服务身份不建立 Tenant Context。Client Credentials 只用 `client_id` 与显式 `scope` 授权，不得伪造用户、Membership、Tenant 或用户 RBAC 上下文；缺少所需 scope 时必须以 `403` 拒绝。服务可在契约明确的内部调用或可信消息元数据中携带 Tenant Operation Target，但下游必须按该服务身份授权并校验目标 Tenant 与业务资源的关系，不能将其当作用户上下文。
 
 业务系统不能将 `request.getTenantId()` 作为核心安全模型。推荐链路是：认证请求 → 可信 Tenant Context → 数据隔离，Tenant ID 由平台上下文决定。
 
