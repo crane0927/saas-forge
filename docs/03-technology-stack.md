@@ -4,7 +4,7 @@
 
 | 领域 | 选型 | 约束与用途 |
 |---|---|---|
-| JVM | JDK 17 | 源码与最低运行版本为 JDK 17；CI 同时验证 JDK 17、JDK 21；禁止依赖 Java 21 专有 API |
+| JVM | JDK 17 | 源码与最低运行版本为 JDK 17；统一以 `release=17` 编译；JDK 17、JDK 21均为正式支持的构建和运行环境，CI 在两者上执行完整 `verify` |
 | 服务端 | Spring Boot 4.1.x、Spring Security | 固定至 4.1 系列最新补丁；Spring Boot 4.1 要求 Java 17 及以上，满足运行时基线（[官方系统要求](https://docs.spring.io/spring-boot/system-requirements.html)） |
 | 构建 | Maven、Maven Wrapper | 所有服务、SDK 与 Starter 统一入口 |
 | 持久化 | MyBatis 3 | 需要精确控制 PostgreSQL RLS 上下文、UUIDv7、游标分页和原子配额更新；不使用 MyBatis-Plus 或 JPA |
@@ -30,7 +30,7 @@
 - 服务间不共享领域代码、实体或数据库模型。
 - 可共享的内容仅限版本化 OpenAPI / Protobuf / 事件契约、Redis 安全基础设施契约、日志 Schema、通用安全与可观测性库、构建 BOM；契约类型在服务边界映射为各服务自己的内部模型。
 - Java SDK 与 Starter 使用语义化版本并通过 BOM 锁定模块版本；破坏性变更仅进入主版本。
-- SDK 与服务端均使用 Maven Wrapper，避免开发机和 CI 的构建工具版本漂移。
+- SDK 与服务端均使用固定 Maven 3.9.14及发行包 SHA-256 校验的 Maven Wrapper；依赖、测试、覆盖率与发布约定见 [Maven 构建与制品发布](21-maven-build-and-release.md)。
 
 ## 可观测性与性能基线
 

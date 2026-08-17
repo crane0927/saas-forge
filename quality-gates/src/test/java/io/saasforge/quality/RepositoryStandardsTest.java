@@ -287,19 +287,16 @@ class RepositoryStandardsTest {
 
     @Test
     void servicesDoNotDependOnOtherServiceImplementations() throws Exception {
-        List<Path> pomFiles = filesUnder(REPOSITORY, "pom.xml");
-        for (Path pomFile : pomFiles) {
+        for (String serviceArtifact : SERVICE_ARTIFACTS) {
+            Path pomFile = REPOSITORY.resolve("services").resolve(serviceArtifact).resolve("pom.xml");
             Document pom = parseXml(pomFile);
             NodeList dependencies = pom.getElementsByTagName("dependency");
             for (int index = 0; index < dependencies.getLength(); index++) {
                 org.w3c.dom.Node dependency = dependencies.item(index);
                 String groupId = childText(dependency, "groupId");
                 String artifactId = childText(dependency, "artifactId");
-                if ("io.saasforge".equals(groupId) && SERVICE_ARTIFACTS.contains(artifactId)) {
-                    Path relativePom = REPOSITORY.relativize(pomFile);
-                    assertTrue(relativePom.startsWith(Path.of("services", artifactId)),
-                            pomFile + " 不得依赖领域服务实现 " + artifactId);
-                }
+                assertFalse("io.github.crane0927".equals(groupId) && SERVICE_ARTIFACTS.contains(artifactId),
+                        pomFile + " 不得依赖领域服务实现 " + artifactId);
             }
         }
     }

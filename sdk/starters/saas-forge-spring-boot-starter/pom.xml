@@ -5,9 +5,9 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>io.saasforge</groupId>
+        <groupId>io.github.crane0927</groupId>
         <artifactId>saas-forge</artifactId>
-        <version>0.1.0-SNAPSHOT</version>
+        <version>${revision}</version>
         <relativePath>../../../pom.xml</relativePath>
     </parent>
 
@@ -16,39 +16,32 @@
 
     <dependencies>
         <dependency>
-            <groupId>io.saasforge</groupId>
+            <groupId>io.github.crane0927</groupId>
             <artifactId>saas-forge-sdk-core</artifactId>
-            <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.saasforge</groupId>
+            <groupId>io.github.crane0927</groupId>
             <artifactId>saas-forge-sdk-auth</artifactId>
-            <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.saasforge</groupId>
+            <groupId>io.github.crane0927</groupId>
             <artifactId>saas-forge-sdk-tenant</artifactId>
-            <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.saasforge</groupId>
+            <groupId>io.github.crane0927</groupId>
             <artifactId>saas-forge-sdk-permission</artifactId>
-            <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.saasforge</groupId>
+            <groupId>io.github.crane0927</groupId>
             <artifactId>saas-forge-sdk-feature</artifactId>
-            <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.saasforge</groupId>
+            <groupId>io.github.crane0927</groupId>
             <artifactId>saas-forge-sdk-quota</artifactId>
-            <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.saasforge</groupId>
+            <groupId>io.github.crane0927</groupId>
             <artifactId>saas-forge-sdk-audit</artifactId>
-            <version>${project.version}</version>
         </dependency>
     </dependencies>
 </project>

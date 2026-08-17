@@ -1,10 +1,10 @@
-package io.saasforge.entitlement;
+package io.saasforge.tenantaccess;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class EntitlementServiceApplicationTests {
+class TenantAccessServiceApplicationTest {
 
     @Test
     void contextLoads() {

@@ -1,0 +1,90 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify JDK ${{ matrix.java }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ["17", "21"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+      - name: Verify release version
+        shell: bash
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tag must match vX.Y.Z: $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          ./mvnw --batch-mode --no-transfer-progress -Drevision="$version" verify
+
+  publish:
+    name: Publish Maven Central artifacts
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Resolve release inputs
+        id: release
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          timestamp="$(git show -s --format=%cI "$GITHUB_SHA")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "timestamp=$timestamp" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+          server-id: central
+          server-username: CENTRAL_USERNAME
+          server-password: CENTRAL_PASSWORD
+          gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+      - name: Publish
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+        run: >-
+          ./mvnw --batch-mode --no-transfer-progress
+          -Prelease
+          -Drevision="${{ steps.release.outputs.version }}"
+          -Dproject.build.outputTimestamp="${{ steps.release.outputs.timestamp }}"
+          deploy
+      - name: Record release provenance
+        shell: bash
+        run: |
+          {
+            echo "### Maven Central release"
+            echo
+            echo "- Version: ${{ steps.release.outputs.version }}"
+            echo "- Commit: $GITHUB_SHA"
+            echo "- Build timestamp: ${{ steps.release.outputs.timestamp }}"
+            echo "- JDK: $(java -version 2>&1 | head -n 1)"
+            echo "- Maven: $(./mvnw --version | head -n 1)"
+            echo
+            echo '```text'
+            find sdk/java sdk/starters -path '*/target/*.jar' -type f -exec shasum -a 256 {} \; | sort
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

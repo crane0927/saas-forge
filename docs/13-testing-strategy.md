@@ -47,6 +47,7 @@ Playwright 还必须覆盖 Tenant Console Shell 登录、菜单权限、微前�
 
 - 全仓库行覆盖率不低于 80%，分支覆盖率不低于 70%。
 - IAM、Tenant Context、RLS、授权和配额关键模块行覆盖率不低于 90%。
+- Maven 单元测试使用 `*Test`，集成与契约测试使用 `*IT`；JaCoCo 聚合两类测试后执行覆盖率门禁，具体模块清单与命令见 [Maven 构建与制品发布](21-maven-build-and-release.md)。
 - `main` 仅能通过 Pull Request 合并，且必须通过测试、契约、覆盖率、漏洞、镜像和 ZAP 门禁。单人开发阶段不强制独立批准；团队出现第二位开发者后，要求至少一名独立审查者批准。
 - 版本标签触发可追溯的制品和 Helm Chart 发布。
 

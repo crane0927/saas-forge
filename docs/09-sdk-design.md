@@ -17,7 +17,7 @@ saas-forge-java
 └── saas-forge-spring-boot-starter
 ```
 
-业务服务通过 `io.saasforge:saas-forge-spring-boot-starter` 接入。除 Java 外的 SDK 不属于首期范围。
+业务服务通过 `io.github.crane0927:saas-forge-spring-boot-starter` 接入。除 Java 外的 SDK 不属于首期范围；Maven 坐标与 Java 包名分离的原因见 [ADR 0012](adr/0012-maven-coordinates-use-github-namespace.md)。
 
 ## 身份与上下文
 

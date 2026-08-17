@@ -79,7 +79,7 @@ flowchart TD
 
 ### 1. 工程与运行基线
 
-- [ ] 固化 Maven Wrapper、JDK 17 构建与 JDK 21 兼容性验证；补齐依赖版本管理、测试、覆盖率和制品发布的父 POM 约定。
+- [x] 固化 Maven Wrapper、JDK 17 构建与 JDK 21 兼容性验证；补齐依赖版本管理、测试、覆盖率和制品发布的父 POM 约定。详见 [Maven 构建与制品发布](21-maven-build-and-release.md)与 [ADR 0012](adr/0012-maven-coordinates-use-github-namespace.md)。
 - [ ] **先冻结 API 通用规范，再定义任何资源接口。** 在 `docs/08-api-design.md` 或其引用的规范文件中明确：路径、字段和枚举命名；UUIDv7、时间、日期、金额/小数与空值的 JSON 表示；路径参数、查询参数、请求头和请求体的使用边界；`POST`、`PUT`、`PATCH` 的请求体及部分更新语义；过滤、排序和游标分页；文件/异步任务；版本、幂等、关联 ID 和内容协商规则。
 - [ ] 明确成功与失败的统一返回模型，并提供 OpenAPI 可复用 Schema 和正反例。现有设计已固定集合响应为 `{ items, nextCursor, hasMore }`，失败响应为 `application/problem+json`（含稳定 `code`、`detail`、HTTP 状态和 `traceId`）；还需决定单资源/创建响应是否采用通用外层包装。建议保持资源直接作为成功响应，避免额外的 `code/message/data` 包装；HTTP 状态表达协议结果，业务拒绝使用 Problem Details 的稳定 `code` 表达。若选择包装，必须同时定义其对 `201`、`202`、`204`、列表和缓存语义的影响。
 - [ ] 在规范中重申租户安全边界：用户请求不得通过请求头、查询参数或请求体传入/覆盖 `tenantId`；服务身份只使用 `client_id` 与显式 `scope`，不得伪造用户上下文。

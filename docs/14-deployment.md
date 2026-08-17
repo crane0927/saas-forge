@@ -83,7 +83,7 @@ Platform Console、Tenant Console Shell 与业务 Remote 独立发布。Gateway 
 
 - GitHub Actions 执行测试、契约、覆盖率、镜像与漏洞扫描、ZAP 基线扫描和 Helm 验证。
 - `main` 必须经 Pull Request 并通过所有自动门禁；单人开发阶段不强制独立批准，团队增加第二位开发者后要求至少一名独立审查者批准。
-- 版本标签发布可追溯的镜像、SDK 制品和 Helm Chart。每次部署记录版本、迁移、配置版本、操作者、开始/完成时间和回滚结果。
+- 受保护的 `vX.Y.Z` 标签在 JDK 17/21门禁通过后，由 JDK 17向 Maven Central 发布签名的 SDK、Starter 与 BOM；Maven 发布约定见 [Maven 构建与制品发布](21-maven-build-and-release.md)。镜像与 Helm Chart 仍由各自发布流程处理。每次部署记录版本、迁移、配置版本、操作者、开始/完成时间和回滚结果。
 - Flyway 迁移随服务版本发布。生产变更先在等效环境验证；失败时回滚应用版本，数据库迁移按事先验证的前向修复或可逆方案处理。
 
 ## 虚拟机裸部署

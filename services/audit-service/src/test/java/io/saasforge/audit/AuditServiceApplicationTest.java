@@ -1,10 +1,10 @@
-package io.saasforge.gateway;
+package io.saasforge.audit;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class GatewayApplicationTests {
+class AuditServiceApplicationTest {
 
     @Test
     void contextLoads() {
