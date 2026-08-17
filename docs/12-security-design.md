@@ -12,7 +12,7 @@
 
 - Access Token 是约 15 分钟有效、以 `RS256` 签名的 JWT，包含 `identityId`、`membershipId`、`tenantId`、`jti`；Gateway 与 SDK 以 IAM JWKS 本地验签，且只接受 `RS256`。
 - Refresh Token 是随机不透明字符串，浏览器仅以 HttpOnly Cookie 发送；PostgreSQL 只保存其哈希并作为权威记录，Redis 可缓存会话状态。
-- 令牌切换 Tenant 必须调用 IAM；IAM 同步校验 Membership 有效后签发绑定新 `membershipId`、`tenantId` 的新令牌。客户端不得覆写 Tenant。
+- Tenant 切换必须调用 IAM；IAM 同步校验目标 Membership 有效后，先使旧 Access Token 失效，再更新当前会话的 `membershipId`、`tenantId` 并返回 `204`。客户端不得覆写 Tenant，Tenant Console Shell 必须随后通过既有刷新接口取得绑定新上下文的 Access Token。
 - 普通登出只撤销 Refresh Token。密码重置、成员禁用、Tenant 冻结、强制下线等安全事件将 JWT `jti` 写入 Redis 黑名单，TTL 为 Token 剩余有效期。
 - Gateway 与 SDK 每次用户请求检查黑名单；Redis 不可用时 fail-closed，避免已失效 Token 被继续接受。
 

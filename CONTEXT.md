@@ -57,8 +57,12 @@ Tenant 在特定时刻是否可访问平台的派生结果；当 Tenant 为 `ACT
 _Avoid_: Tenant status, expired Tenant state
 
 **Tenant Administrator Initialization**:
-为新 Tenant 建立初始管理员 Membership 的过程。只有该过程成功后，`PENDING` Tenant 才可变为 `ACTIVE`。
+为新 Tenant 建立初始管理员 Membership 并授予 Tenant Administrator Role 的过程。只有该过程成功后，`PENDING` Tenant 才可变为 `ACTIVE`。
 _Avoid_: Early activation
+
+**Tenant Administrator Role**:
+某一 Tenant 专属、由系统管理的 Tenant Role，授予该 Tenant 的核心 `system` 管理权限。它不授予任何业务模块 Permission，也不是绕过 RBAC 的管理员标记。
+_Avoid_: Superuser, administrator flag
 
 **Tenant Suspension**:
 平台对可恢复 Tenant 执行的人工访问冻结。`SUSPENDED` Tenant 可在显式恢复后回到 `ACTIVE`，但仍受有效期约束。

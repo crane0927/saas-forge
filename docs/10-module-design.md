@@ -37,8 +37,8 @@ API Gateway 是边界组件，不计入领域服务数量。它不持有领域�
 
 | 服务 | 负责的领域 | 独占数据 | 同步协作 |
 |---|---|---|---|
-| `iam-service` | Identity、密码凭据、邀请激活、会话、JWT、Refresh Token、Client Credentials、JWKS | Identity、Credential、Refresh Token、OAuth Client / Secret 元数据 | 登录与 Tenant 切换时调用 Tenant Access 验证 Membership |
-| `tenant-access-service` | Tenant、Membership、Organization、RBAC、Permission、业务能力注册 | Tenant、Membership、Organization、Role、Permission、关联表、邀请 | 为 IAM、SDK 提供成员和授权查询 |
+| `iam-service` | Identity、密码凭据、会话、JWT、Refresh Token、Client Credentials、JWKS | Identity、Credential、Refresh Token、OAuth Client / Secret 元数据、会话与令牌撤销记录 | 登录与 Tenant 切换时调用 Tenant Access 验证 Membership；为 Tenant Access 提供 Identity/凭据建立与会话撤销 |
+| `tenant-access-service` | Tenant、Membership、Organization、RBAC、Permission、邀请、初始管理员初始化 | Tenant、Membership、Organization、Role、Permission、关联表、Invitation、跨服务工作流记录与补偿/重试工作项 | 为 IAM、SDK 提供成员和授权查询；编排管理员初始化、邀请激活、成员禁用与 Tenant 冻结 |
 | `entitlement-service` | Plan、Subscription、Feature、Quota | Plan、订阅版本与权益快照、Quota Definition / Usage / Operation | 为 SDK 提供权益与配额的强一致判定 |
 | `audit-service` | 统一审计、审计查询与导出任务 | 只追加 Audit Record、导出任务元数据 | 消费其他服务与业务系统的审计事件 |
 
@@ -53,9 +53,9 @@ SDK → Gateway → REST runtime endpoint
 All services → Kafka Outbox → Audit / cache invalidation consumers
 ```
 
-- 需要即时结论的认证、成员校验、Permission / Feature 查询与 Quota 判定走同步路径。
-- Tenant、Membership、Identity、Subscription 与权益状态变更通过 Kafka 通知其他服务收敛缓存和审计。
-- 所有领域事件采用 Transactional Outbox：业务事务同时写入领域数据和 Outbox；发布器可靠投递 Kafka；消费者按事件 ID 幂等。
+- 需要即时结论的认证、成员校验、Permission / Feature 查询、Quota 判定与会话撤销走同步路径；Kafka 不承担这些路径的成功判定。
+- Tenant、Membership、Identity、Subscription 与权益状态变更通过 Kafka 通知其他服务收敛缓存和审计。流程根服务、同步调用顺序与恢复责任以[跨服务工作流契约](18-tenant-access-cross-service-workflows.md)为准。
+- 所有领域事件采用 Transactional Outbox：业务事务同时写入领域数据和 Outbox；发布器可靠投递 Kafka；消费者按事件 ID 幂等。事件只表达来源服务已提交的事实，不作为跨服务命令。
 
 ## 前端模块
 

@@ -30,15 +30,17 @@ API Gateway 是唯一公网入口，负责 TLS 终止、JWT 初步校验、限�
 
 | 路径前缀 | 服务 | 资源与操作 |
 |---|---|---|
-| `/api/v1/auth` | IAM | 登录、刷新、登出、租户成员身份切换、邀请激活 |
+| `/api/v1/auth` | IAM | 登录、刷新、登出、Tenant 切换 |
 | `/oauth2/token` | IAM | 仅服务间 Client Credentials；不承载面向用户的第三方授权登录 |
 | `/.well-known/jwks.json` | IAM | 版本化 JWKS 公钥发布 |
 | `/api/v1/platform` | Tenant Access、Entitlement | Tenant、平台管理员、Plan、Subscription、Feature、Quota 定义和能力注册 |
-| `/api/v1/tenant` | Tenant Access | Membership、Organization、Role、Permission、邀请与租户设置 |
+| `/api/v1/tenant` | Tenant Access | Membership、Organization、Role、Permission、邀请、未认证的 Invitation 激活与租户设置 |
 | `/api/v1/runtime` | Tenant Access、Entitlement | 业务系统的 Permission / Feature 查询与 Quota `check`、`consume`、`release` |
 | `/api/v1/audit` | Audit | 经过授权的审计查询与导出任务 |
 
 用户 Token 的 Tenant 由已验证的 `membershipId` 决定；用户请求不得以请求头、查询参数或请求体覆盖 Tenant。Client Credentials 令牌只代表 `client_id` 与 `scope`，不伪造用户、Membership 或 Tenant 身份。
+
+Tenant 切换为 IAM 的 `POST /api/v1/auth/tenant-switches`：请求只携带目标 `membershipId`，IAM 必须同步向 Tenant Access 验证该 Membership 属于当前 Identity、仍启用且所属 Tenant 可访问。它成功时只更新 IAM 会话上下文并返回 `204 No Content`；Tenant Console Shell 随后调用刷新接口取得新 Access Token。Invitation 激活为 Tenant Access 的 `POST /api/v1/tenant/invitation-activations`：它不接受客户端提供的 Tenant 上下文，而是由 Invitation 令牌解析所属 Tenant。
 
 IAM 的 JWKS 响应以 `Cache-Control: max-age=300` 发布。验证方遇到未知 `kid` 时必须受控地刷新 JWKS；常规密钥轮换在新 `kid` 发布满 5 分钟后才能切换签名，旧公钥在切换后至少保留 30 分钟。验证方仍须在每个请求中拒绝已撤销的 `kid`，不得仅依赖 JWKS 缓存结果。
 

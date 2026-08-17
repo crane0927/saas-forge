@@ -24,6 +24,12 @@
 
 必填键缺失或空白时，服务以 `400 Bad Request` 和 `IDEMPOTENCY_KEY_REQUIRED` 拒绝；格式非法时以 `400 Bad Request` 和 `IDEMPOTENCY_KEY_INVALID` 拒绝。两种情形均不预留或消耗键。
 
+## 跨服务工作流幂等
+
+跨服务流程不存在共享数据库事务或全局幂等表。接收外部状态变更请求的服务是流程根：它以外部调用方和 `Idempotency-Key` 唯一确定一个持久化工作流，并在该工作流中一次性分配、持久化子操作 ID。重试必须恢复同一工作流，不能创建新的子操作。
+
+外部 `Idempotency-Key` 不跨服务透传。IAM 与 Entitlement 分别按调用服务和稳定子操作 ID 去重、重放结果或继续执行；Quota 仍以既有 `operationId` 契约为准。流程根必须将本地领域变更、稳定 HTTP 结果、Outbox 和尚未完成的补偿/重试工作项置于同一事务。工作流及其子操作 ID 必须保留至所有必需的前向操作或补偿完成；事件消费者再以 CloudEvents `id` 幂等消费。四条流程的根服务和恢复顺序见[跨服务工作流契约](18-tenant-access-cross-service-workflows.md)。
+
 ## Subscription
 
 Subscription 的到期由 `endsAt` 在权益判断时派生；`EXPIRED` 不属于其持久状态。实现不得依赖定时任务将 Subscription 改写为 `EXPIRED`，也不得在已到期但状态尚未刷新的窗口继续授予权益。
@@ -232,11 +238,11 @@ Invitation 仅在密码凭据已建立、启用 Membership 已创建且 `max_use
 
 管理员按 Invitation ID 查询、撤销等操作的目标不存在时，服务返回 `404 Not Found` / `INVITATION_NOT_FOUND`。激活令牌无效或无法解析时仍返回 `400 Bad Request` / `INVITATION_TOKEN_INVALID`，不得借此泄露 Invitation 是否存在。
 
-Tenant Access 拥有 Invitation 状态迁移，并在激活时同步编排 IAM 的凭据建立与 Entitlement 的 `max_users` `consume`。若扣减后的步骤失败，Tenant Access 必须持久化 `release` 补偿并保持 Invitation 为 `PENDING`。
+Tenant Access 拥有 Invitation 状态迁移，并在激活时同步编排 IAM 的 Identity/凭据确认与 Entitlement 的 `max_users` `consume`。IAM 遇到已有可用凭据的 Identity 必须复用该 Identity，不得因 Invitation 修改既有密码。若扣减后的步骤失败，Tenant Access 必须持久化 `release` 补偿并保持 Invitation 为 `PENDING`。
 
 一次激活尝试预先分配一对稳定 UUIDv7：一个用于 `max_users` `consume`，另一个用于必要时的 `release` 补偿。同一未完成尝试的重试必须复用这对 `operationId`；若该尝试的补偿已成功释放额度，后续重新激活必须创建新尝试和新的 `operationId`，以重新原子占用额度。激活尝试是工作流记录，不增加 Invitation 的持久状态。
 
-激活顺序固定为：验证令牌并解析 Invitation → 判定所属 Tenant 可访问 → 锁定并验证 `PENDING` Invitation → 使用本次激活尝试的 `consume operationId` 执行 `max_users` `consume` → IAM 建立凭据 → Tenant Access 本地事务创建启用 Membership 并写入 `ACCEPTED`。扣减后的后续失败使用本次尝试的 `release operationId` 执行补偿。
+激活顺序固定为：验证令牌并解析 Invitation → 判定所属 Tenant 可访问 → 锁定并验证 `PENDING` Invitation → 使用本次激活尝试的 `consume operationId` 执行 `max_users` `consume` → IAM 确认 Identity 并在其尚无凭据时建立凭据 → Tenant Access 本地事务创建启用 Membership 并写入 `ACCEPTED`。扣减后的后续失败使用本次尝试的 `release operationId` 执行补偿；不得删除或重置已由 IAM 建立的 Identity/凭据。
 
 若 `release` 补偿尚未完成，Invitation 继续保持 `PENDING`，但不得接受新的激活尝试；服务返回 `503 Service Unavailable` / `INVITATION_ACTIVATION_COMPENSATING`，并携带 `Retry-After`。补偿完成后，Invitation 恢复可激活状态。
 
@@ -291,3 +297,5 @@ Tenant 不存在时，服务返回 `404 Not Found` 和 `TENANT_NOT_FOUND`。
 请求不在 Tenant 状态迁移矩阵中的变更时，服务返回 `409 Conflict` 和 `TENANT_INVALID_STATE_TRANSITION`。
 
 `PENDING → ACTIVE` 的管理员初始化前置条件尚未满足时，服务返回 `409 Conflict` 和 `TENANT_ADMIN_INITIALIZATION_REQUIRED`。
+
+Tenant Administrator Initialization 由 Tenant Access 串行化。它必须先由 IAM 确认初始管理员 Identity，再以稳定 `operationId` 占用一个 `max_users` 名额；随后在 Tenant Access 的同一事务中建立启用 Membership、创建或确保 Tenant Administrator Role 并完成其分配、将 Tenant 转为 `ACTIVE`、写入稳定 HTTP 结果和 Outbox。任何本地提交前的后续失败都必须以稳定 `release operationId` 补偿已占用的额度，Tenant 保持 `PENDING`；Identity 不回滚。若 Identity 尚无可用密码凭据，Tenant Access 在提交后通过持久化工作项请求 IAM 发送一次性、限时的密码设置链接，该投递不回滚激活。
