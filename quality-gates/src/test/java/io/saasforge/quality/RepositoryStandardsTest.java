@@ -58,6 +58,8 @@ class RepositoryStandardsTest {
             "R__([a-z0-9]+(?:_[a-z0-9]+)*)\\.sql");
     private static final Pattern REPEATABLE_FORBIDDEN_SQL = Pattern.compile(
             "(?is)\\b(create|alter|drop)\\s+table\\b|\\b(insert|update|delete)\\s+(?:into|from)?\\s*");
+    private static final Pattern CROSS_DATABASE_ACCESS = Pattern.compile(
+            "(?is)\\b(dblink|postgres_fdw|foreign\\s+data\\s+wrapper|create\\s+server|import\\s+foreign\\s+schema)\\b");
     private static final Pattern LOG_EVENT = Pattern.compile(
             "^[a-z][a-z0-9]*(?:\\.[a-z][a-z0-9-]*)+$");
     private static final Pattern MAPPER_NAMESPACE = Pattern.compile(
@@ -276,6 +278,9 @@ class RepositoryStandardsTest {
                     assertFalse(REPEATABLE_FORBIDDEN_SQL.matcher(sql).find(),
                             file + " 的 Repeatable Migration 不得修改表结构或业务数据");
                 }
+                String sql = Files.readString(file, StandardCharsets.UTF_8);
+                assertFalse(CROSS_DATABASE_ACCESS.matcher(sql).find(),
+                        file + " 不得使用 FDW、dblink 或其他跨数据库访问机制");
             }
 
             if (file.getFileName().toString().endsWith("Mapper.xml")) {
