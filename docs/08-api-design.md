@@ -21,7 +21,7 @@ API Gateway 是唯一公网入口，负责 TLS 终止、JWT 初步校验、限�
 
 - OpenAPI 3.1 是正式且受版本控制的 REST 契约；Swagger UI 只可作为查看和调试界面。
 - 契约采用 spec-first：先审查 OpenAPI，再生成服务端接口骨架、Java REST Client 与前端 API Client；实现不得反向修改契约。
-- 公共 API 使用 URI 主版本，例如 `/api/v1/...`；破坏性变更进入新主版本。
+- 平台自有公共 REST API 只使用 URI 主版本，例如 `/api/v1/...`，不同时使用自定义版本请求头或媒体类型参数。`/oauth2/token`、`/.well-known/jwks.json` 等受标准路径约束的端点保持既有非版本路径。删除、重命名或改变字段类型/语义，收紧既有有效输入，或新增必填字段均为破坏性变更，必须进入新的主版本；同一主版本只允许新增可选字段、枚举值或可选能力等向后兼容变更。
 - 内部同步接口使用版本化 Protobuf；Kafka 事件使用 CloudEvents JSON 与版本化类型，例如 `com.saasforge.tenant.suspended.v1`。
 
 ## v1 资源边界
@@ -46,17 +46,37 @@ IAM 的 JWKS 响应以 `Cache-Control: max-age=300` 发布。验证方遇到未�
 
 ## REST 约定
 
-### 表示与标识
+### 命名、标识与 JSON 表示
 
-- 请求与响应使用 UTF-8 JSON；实体 ID 为 UUIDv7 字符串。
-- 资源路径使用复数名词；创建、读取、替换、部分更新、删除分别使用 `POST`、`GET`、`PUT`、`PATCH`、`DELETE`。
-- 非同步导出、导入或长耗时操作返回 `202 Accepted` 和任务资源；结果通过短期签名 URL 获取。
+- 资源路径使用小写 `kebab-case` 复数名词；JSON 字段与查询参数使用 `lowerCamelCase`；枚举和稳定业务错误码使用 `UPPER_SNAKE_CASE`。`/api/v1/tenant` 是由当前认证上下文解析出的单例 Tenant 作用域，不是集合；其下的真实资源仍使用复数。`auth`、`platform`、`runtime` 与 `audit` 是既定能力边界，不以其单复数形式推断资源语义。
+- 独立实体 ID、`Idempotency-Key` 和其他声明为 UUIDv7 的标识符，均使用 RFC 9562 的 36 位、小写、连字符分隔文本形式；拒绝大写、无连字符或其他 UUID 文本表示。
+- 时间点使用 UTC RFC 3339 字符串，固定三位毫秒并以 `Z` 结尾，例如 `2026-08-17T09:30:45.123Z`；拒绝无时区或非 UTC 偏移的时间、Unix 时间戳和浮点秒。纯日历日期使用 `YYYY-MM-DD`，不得附加时间或时区。
+- 所有精确小数使用非科学计数法的十进制 JSON 字符串，例如 `"12.3400"`；不得使用 JSON number、`NaN` 或 `Infinity`，服务按字段业务精度校验。金额使用 `{"amount":"12.34","currency":"CNY"}`，其中 `currency` 为大写 ISO 4217 三字母代码；不得将金额和币种拼为一个字符串，也不得省略币种。
+- JSON `null` 只表示字段已知但没有值，或请求中显式清空可写可空字段；不得用空字符串、零值、空数组或哨兵枚举替代。字段缺失的含义由创建、替换和部分更新语义决定。
 
-### 分页与幂等
+### 参数与方法
 
-- 所有集合查询统一使用 `limit` 与不透明 `cursor`；响应包含 `items`、`nextCursor`、`hasMore`。
-- 创建和其他具有外部可见状态变更的请求必须携带 `Idempotency-Key`。键按外部调用方跨全部状态变更接口唯一：用户令牌使用 `identityId`，服务令牌使用 `client_id`；未认证的 Invitation 激活请求在验证令牌后使用 `invitationId`。同键重试完全相同的请求时，服务原样重放首次完成请求的 HTTP 状态码和响应体，而不重新执行业务操作，首个业务 `4xx` 也须重放。方法、规范化路径或规范化请求体不同的同键请求，以 `409 Conflict` 和 `IDEMPOTENCY_KEY_REUSED` 拒绝。首次请求未完成时的同键重复请求，以 `409 Conflict`、`IDEMPOTENCY_REQUEST_IN_PROGRESS` 和 `Retry-After` 拒绝。仅 `2xx` 和业务 `4xx` 是可重放稳定结果；无持久完成记录的基础设施 `5xx` 不缓存并释放键，已提交业务变更与幂等完成记录必须同一事务写入。请求格式或字段校验 `400` 不创建幂等完成记录，修正后可沿用同一键。幂等记录自首次完成起保留 24 小时，期满后同一键可视为新请求；缺失/空白和格式非法的键分别以 `400` / `IDEMPOTENCY_KEY_REQUIRED` 和 `400` / `IDEMPOTENCY_KEY_INVALID` 拒绝，且不预留键。
+- 路径参数只定位资源或资源层级，不承载筛选条件、操作选项或秘密。查询参数只表达安全读取的筛选、排序、分页和投影选项；`GET` 与 `HEAD` 不使用请求体。请求头只承载认证、内容协商、幂等、关联与条件请求等跨资源传输元数据。请求体只承载创建、替换、更新的资源表示或明确操作输入，不得重复资源 ID、Tenant 身份、认证信息、分页或排序。
+- `POST` 只向集合创建新资源，或创建显式命名的操作/任务资源；客户端不得指定服务器生成的资源 ID，且不得用 `POST` 作通用替换或部分更新。状态转换等非 CRUD 行为必须建模为资源，例如 `POST /subscriptions/{subscriptionId}/cancellations`，而不是动词式路径。
+- `PUT` 只完整替换路径定位的既有资源。请求体必须包含全部可写字段；缺字段返回 `400`，目标不存在返回 `404`，不支持隐式创建（upsert）。
+- `PATCH` 只使用 `application/merge-patch+json`。请求体仅包含要变更的可写字段；缺失字段保持不变，`null` 显式清空可空字段，向必填或不可空字段写入 `null` 返回 `400`，目标不存在返回 `404`。
+
+### 过滤、排序与分页
+
+- 每个集合只能接受其 OpenAPI 契约明确白名单的 `lowerCamelCase` 过滤参数，例如 `status=ACTIVE`、`createdAfter=...`；不提供自由字段路径、SQL/OData/RSQL 表达式或未声明字段过滤。
+- 可选的 `sort` 使用逗号分隔字段；无前缀为升序，`-` 前缀为降序，例如 `sort=-createdAt,name`。每个集合只开放已声明字段，服务始终追加 `id` 作为稳定最终排序键；默认排序也必须由该集合契约明确声明。
+- 所有集合查询使用游标分页：`limit` 是正整数，默认 `50`、最大 `100`；超出范围返回 `400`。首页省略 `cursor`；游标由服务端生成且不透明，并绑定资源、筛选条件和排序，格式非法、过期或不匹配时返回 `400`。响应包含 `items`、`nextCursor`、`hasMore`；末页必须返回 `"nextCursor": null` 与 `"hasMore": false`。
+
+### 文件、异步任务与幂等
+
+- v1 不提供通用 `/files` 或上传 API。平台导出一律先创建显式导出任务资源，返回 `202 Accepted` 和任务 `Location`；客户端轮询任务资源，完成后取得短期签名下载 URL。文件字节不经平台 API 中转；任何未来领域文件能力必须另行定义其所有权、类型、大小、病毒扫描与留存规则。
+- 创建和其他具有外部可见状态变更的请求必须携带规范 UUIDv7 形式的 `Idempotency-Key`，包括 `PUT`、`PATCH`、`DELETE` 和操作资源的 `POST`。键按外部调用方跨全部状态变更接口唯一：用户令牌使用 `identityId`，服务令牌使用 `client_id`；未认证的 Invitation 激活请求在验证令牌后使用 `invitationId`。同键重试完全相同的请求时，服务原样重放首次完成请求的 HTTP 状态码和响应体，而不重新执行业务操作，首个业务 `4xx` 也须重放。方法、规范化路径或规范化请求体不同的同键请求，以 `409 Conflict` 和 `IDEMPOTENCY_KEY_REUSED` 拒绝。首次请求未完成时的同键重复请求，以 `409 Conflict`、`IDEMPOTENCY_REQUEST_IN_PROGRESS` 和 `Retry-After` 拒绝。仅 `2xx` 和业务 `4xx` 是可重放稳定结果；无持久完成记录的基础设施 `5xx` 不缓存并释放键，已提交业务变更与幂等完成记录必须同一事务写入。请求格式或字段校验 `400` 不创建幂等完成记录，修正后可沿用同一键。幂等记录自首次完成起保留 24 小时，期满后同一键可视为新请求；缺失/空白和格式非法的键分别以 `400` / `IDEMPOTENCY_KEY_REQUIRED` 和 `400` / `IDEMPOTENCY_KEY_INVALID` 拒绝，且不预留键。
 - Quota 的 `consume` 与 `release` 额外要求调用方稳定生成的 `operationId`，`check` 不需要；它独立于 HTTP `Idempotency-Key`，用于绑定业务资源的计量动作并避免跨服务重试或补偿链路重复扣减、释放。其作用域与冲突规则以[核心领域契约](17-core-domain-contracts.md#quota)为准。
+
+### 关联与内容协商
+
+- W3C Trace Context 是唯一跨边界关联机制。Gateway 接受有效的 `traceparent`、`tracestate` 并透传；它们缺失或无效时新建 Trace。所有服务必须继续该上下文；Problem Details 必须返回 `traceId`。`requestId` 仅用于内部日志，不作为公共 HTTP 契约，也不增加 `X-Request-ID` 或其他业务自定义关联头。
+- JSON 请求使用 `Content-Type: application/json`，`PATCH` 使用 `application/merge-patch+json`。JSON 成功响应使用 `application/json; charset=utf-8`，错误响应使用 `application/problem+json; charset=utf-8`。缺省 `Accept` 时按相应默认类型返回；不接受的 `Accept` 返回 `406`，不支持的请求 `Content-Type` 返回 `415`。不得使用厂商媒体类型或媒体类型参数承载 API 版本。
 
 ### 状态与错误
 
