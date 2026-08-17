@@ -17,6 +17,45 @@ jobs:
         java: ["17", "21"]
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Protect published v1 contract baselines
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
+            exit 0
+          fi
+          changes="$(git diff --name-status "$BASE_SHA" "$GITHUB_SHA" -- contracts/compatibility-baselines/v1)"
+          if [[ -n "$(printf '%s\n' "$changes" | awk '$1 !~ /^A/')" ]]; then
+            echo "已发布 v1 契约基线不可修改或删除；仅允许新增快照目录。" >&2
+            printf '%s\n' "$changes" >&2
+            exit 1
+          fi
+          while IFS= read -r tag; do
+            [[ -z "$tag" ]] && continue
+            if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "新增 v1 契约基线目录必须使用待发布 Git tag: $tag" >&2
+              exit 1
+            fi
+            baseline="contracts/compatibility-baselines/v1/$tag"
+            diff -u contracts/openapi/v1.yaml "$baseline/openapi/v1.yaml"
+            diff -u contracts/openapi/common.yaml "$baseline/openapi/common.yaml"
+            diff -u \
+              <(find contracts/protobuf -path '*/v1/*.proto' -type f | sed 's#^contracts/protobuf/##' | sort) \
+              <(find "$baseline/protobuf" -type f -name '*.proto' | sed "s#^$baseline/protobuf/##" | sort)
+            while IFS= read -r proto; do
+              diff -u "contracts/protobuf/$proto" "$baseline/protobuf/$proto"
+            done < <(find contracts/protobuf -path '*/v1/*.proto' -type f | sed 's#^contracts/protobuf/##' | sort)
+            diff -u \
+              <(find contracts/events -type f -name '*.v1.schema.json' | sed 's#^contracts/events/##' | sort) \
+              <(find "$baseline/events" -type f -name '*.v1.schema.json' | sed "s#^$baseline/events/##" | sort)
+            while IFS= read -r schema; do
+              diff -u "contracts/events/$schema" "$baseline/events/$schema"
+            done < <(find contracts/events -type f -name '*.v1.schema.json' | sed 's#^contracts/events/##' | sort)
+          done < <(git diff --name-only --diff-filter=A "$BASE_SHA" "$GITHUB_SHA" -- contracts/compatibility-baselines/v1 \
+            | awk -F/ 'NF >= 5 {print $4}' | sort -u)
       - uses: actions/setup-java@v5
         with:
           distribution: temurin

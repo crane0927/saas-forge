@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Audit Record Stored Event v1",
+  "allOf": [
+    { "$ref": "cloudevents-envelope.v1.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "source": { "const": "urn:saasforge:audit-service" },
+        "type": { "const": "com.saasforge.audit.recorded.v1" },
+        "data": {
+          "type": "object",
+          "required": ["auditRecordId", "sourceEventId", "recordedAt"],
+          "properties": {
+            "auditRecordId": { "$ref": "#/$defs/uuidV7" },
+            "sourceEventId": { "$ref": "#/$defs/uuidV7" },
+            "recordedAt": {
+              "type": "string",
+              "format": "date-time",
+              "description": "RFC 3339 UTC time at which Audit stored the record."
+            },
+            "tenantId": { "$ref": "#/$defs/uuidV7" }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "uuidV7": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    }
+  }
+}

@@ -1,0 +1,810 @@
+openapi: 3.1.1
+info:
+  title: saas-forge Public API
+  version: 1.0.0
+  description: |
+    The versioned public REST contract for saas-forge. This document contains only
+    delivery-stage-two and delivery-stage-three resources. Permission, Feature,
+    and Quota runtime operations are intentionally absent until their domain
+    contracts are reviewed.
+servers:
+  - url: https://api.example.invalid
+    description: Deployment-specific API Gateway origin.
+tags:
+  - name: Authentication
+  - name: Discovery
+  - name: Platform tenants
+  - name: Platform entitlement bootstrap
+  - name: OAuth clients
+paths:
+  /api/v1/auth/login:
+    post:
+      tags: [Authentication]
+      operationId: login
+      x-saasforge-service: iam-service
+      summary: Start a browser session with email and password
+      description: |
+        The request never accepts a Tenant or Membership identifier. A user with one
+        accessible Membership receives an Access Token; a user with multiple
+        Memberships receives the server-verified selection candidates without an
+        Access Token. A Refresh Token is set only as an HttpOnly cookie.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authentication succeeded.
+          headers:
+            Set-Cookie:
+              $ref: '#/components/headers/RefreshCookie'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthenticationResult'
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/auth/refresh:
+    post:
+      tags: [Authentication]
+      operationId: refreshAccessToken
+      x-saasforge-service: iam-service
+      summary: Rotate the browser Refresh Token and issue the current Access Token
+      description: The Refresh Token is supplied only by the HttpOnly refresh cookie.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmptyRequest'
+      responses:
+        '200':
+          description: The Refresh Token was rotated.
+          headers:
+            Set-Cookie:
+              $ref: '#/components/headers/RefreshCookie'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthenticationResult'
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/auth/logout:
+    post:
+      tags: [Authentication]
+      operationId: logout
+      x-saasforge-service: iam-service
+      summary: Revoke the browser Refresh Token
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmptyRequest'
+      responses:
+        '204':
+          description: The current browser session was logged out.
+          headers:
+            Set-Cookie:
+              $ref: '#/components/headers/ClearedRefreshCookie'
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/auth/tenant-switches:
+    post:
+      tags: [Authentication]
+      operationId: switchTenantContext
+      x-saasforge-service: iam-service
+      summary: Select or switch the session Membership
+      description: |
+        Accepts only the target Membership. The current Identity is authenticated by
+        either its Access Token or Refresh Token cookie; IAM verifies ownership and
+        Tenant accessibility before changing the session. Call refresh after 204.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantSwitchRequest'
+      responses:
+        '204': { $ref: './common.yaml#/components/responses/NoContent' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /oauth2/token:
+    post:
+      tags: [Authentication]
+      operationId: issueClientCredentialsToken
+      x-saasforge-service: iam-service
+      summary: Issue a Client Credentials Access Token
+      description: |
+        Supports only grant_type=client_credentials. The OAuth Client authenticates
+        with HTTP Basic; requested scope must be a subset of its allowedScopes.
+      security:
+        - OAuthClientBasic: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ClientCredentialsTokenRequest'
+      responses:
+        '200':
+          description: A service Access Token was issued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientCredentialsTokenResponse'
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /.well-known/jwks.json:
+    get:
+      tags: [Discovery]
+      operationId: getJwks
+      x-saasforge-service: iam-service
+      summary: Get current JWT verification keys
+      description: Anonymous RS256 verification-key discovery. Private material and internal signing-key metadata are never published.
+      responses:
+        '200':
+          description: Current public signing keys.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/JwksCacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Jwks'
+
+  /api/v1/platform/tenants:
+    post:
+      tags: [Platform tenants]
+      operationId: createPlatformTenant
+      x-saasforge-service: tenant-access-service
+      summary: Create a pending Tenant
+      description: Requires a Platform Admin user token. The new Tenant is PENDING until administrator initialization succeeds.
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTenantRequest'
+      responses:
+        '201':
+          description: The Tenant was created in PENDING state.
+          headers:
+            Location: { $ref: './common.yaml#/components/headers/Location' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tenant' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/tenants/{tenantId}/administrator-initializations:
+    post:
+      tags: [Platform tenants]
+      operationId: initializeTenantAdministrator
+      x-saasforge-service: tenant-access-service
+      summary: Initialize the first Tenant Administrator
+      description: |
+        Requires a Platform Admin. The Tenant Access workflow verifies or creates the
+        Identity, consumes max_users, assigns the administrator role, then moves the
+        Tenant from PENDING to ACTIVE. An existing Identity is reused.
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdministratorInitializationRequest' }
+      responses:
+        '200':
+          description: The Tenant is active and has an initial administrator.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tenant' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/tenants/{tenantId}/suspensions:
+    post:
+      tags: [Platform tenants]
+      operationId: suspendTenant
+      x-saasforge-service: tenant-access-service
+      summary: Suspend an active Tenant
+      description: Requires a Platform Admin. Suspension revokes matching sessions before the Tenant becomes SUSPENDED.
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: The Tenant was suspended.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tenant' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+    delete:
+      tags: [Platform tenants]
+      operationId: resumeTenant
+      x-saasforge-service: tenant-access-service
+      summary: Remove the current Tenant suspension
+      description: Requires a Platform Admin. Resuming never restores revoked sessions.
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: The Tenant was returned to ACTIVE state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tenant' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/quota-definitions:
+    post:
+      tags: [Platform entitlement bootstrap]
+      operationId: createQuotaDefinition
+      x-saasforge-service: entitlement-service
+      summary: Create the max_users Quota Definition in DRAFT state
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateQuotaDefinitionRequest' }
+      responses:
+        '201':
+          description: The Quota Definition was created in DRAFT state.
+          headers:
+            Location: { $ref: './common.yaml#/components/headers/Location' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuotaDefinition' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/quota-definitions/{quotaDefinitionId}/activations:
+    post:
+      tags: [Platform entitlement bootstrap]
+      operationId: activateQuotaDefinition
+      x-saasforge-service: entitlement-service
+      summary: Activate a DRAFT Quota Definition
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/QuotaDefinitionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: The Quota Definition is ACTIVE.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuotaDefinition' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/plans:
+    post:
+      tags: [Platform entitlement bootstrap]
+      operationId: createPlan
+      x-saasforge-service: entitlement-service
+      summary: Create a DRAFT Plan with its max_users limit
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePlanRequest' }
+      responses:
+        '201':
+          description: The Plan was created in DRAFT state.
+          headers:
+            Location: { $ref: './common.yaml#/components/headers/Location' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Plan' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/plans/{planId}/activations:
+    post:
+      tags: [Platform entitlement bootstrap]
+      operationId: activatePlan
+      x-saasforge-service: entitlement-service
+      summary: Activate a DRAFT Plan
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: The Plan is ACTIVE.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Plan' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/tenants/{tenantId}/subscriptions:
+    post:
+      tags: [Platform entitlement bootstrap]
+      operationId: createInitialSubscription
+      x-saasforge-service: entitlement-service
+      summary: Create the first active Subscription for a Tenant
+      description: Requires a Platform Admin and an ACTIVE Plan. This batch supports only immediate ACTIVE Subscriptions.
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateInitialSubscriptionRequest' }
+      responses:
+        '201':
+          description: The first active Subscription was created.
+          headers:
+            Location: { $ref: './common.yaml#/components/headers/Location' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Subscription' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/oauth-clients:
+    post:
+      tags: [OAuth clients]
+      operationId: createOAuthClient
+      x-saasforge-service: iam-service
+      summary: Create an OAuth Client and reveal its Secret once
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateOAuthClientRequest' }
+      responses:
+        '201':
+          description: The OAuth Client was created. Store clientSecret now; it cannot be retrieved again.
+          headers:
+            Location: { $ref: './common.yaml#/components/headers/Location' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OAuthClientSecretResult' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/oauth-clients/{clientId}/secret-rotations:
+    post:
+      tags: [OAuth clients]
+      operationId: rotateOAuthClientSecret
+      x-saasforge-service: iam-service
+      summary: Rotate an OAuth Client Secret and reveal the new Secret once
+      description: The previous and new Secret overlap for the service-controlled rotation window; revocation ends all Client access immediately.
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ClientId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: The Secret was rotated. Store clientSecret now; it cannot be retrieved again.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OAuthClientSecretResult' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/oauth-clients/{clientId}/revocations:
+    post:
+      tags: [OAuth clients]
+      operationId: revokeOAuthClient
+      x-saasforge-service: iam-service
+      summary: Irreversibly revoke an OAuth Client
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ClientId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204': { $ref: './common.yaml#/components/responses/NoContent' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+
+components:
+  securitySchemes:
+    UserBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: A Platform Admin user Access Token. OAuth Client tokens cannot access platform management operations.
+    OAuthClientBasic:
+      type: http
+      scheme: basic
+      description: OAuth Client client_id and client_secret.
+  headers:
+    RefreshCookie:
+      description: A rotated __Host-sf_refresh HttpOnly, Secure, SameSite=Strict cookie scoped to Path=/.
+      required: true
+      schema: { type: string }
+    ClearedRefreshCookie:
+      description: An expired __Host-sf_refresh cookie with Path=/.
+      required: true
+      schema: { type: string }
+    JwksCacheControl:
+      description: JWKS cache policy.
+      required: true
+      schema:
+        type: string
+        const: max-age=300
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+    CsrfHeader:
+      name: X-SF-CSRF
+      in: header
+      required: true
+      schema:
+        type: string
+        const: '1'
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+    QuotaDefinitionId:
+      name: quotaDefinitionId
+      in: path
+      required: true
+      schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+    PlanId:
+      name: planId
+      in: path
+      required: true
+      schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+    ClientId:
+      name: clientId
+      in: path
+      required: true
+      schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+  schemas:
+    Timestamp:
+      type: string
+      format: date-time
+      pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'
+    Email:
+      type: string
+      format: email
+      minLength: 3
+      maxLength: 320
+    EmptyRequest:
+      type: object
+      additionalProperties: false
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { $ref: '#/components/schemas/Email' }
+        password:
+          type: string
+          format: password
+          minLength: 1
+          writeOnly: true
+      additionalProperties: false
+    AccessTokenResult:
+      type: object
+      required: [contextState, accessToken, tokenType, expiresIn]
+      properties:
+        contextState: { const: ACCESS_TOKEN_ISSUED }
+        accessToken: { type: string, minLength: 1 }
+        tokenType: { type: string, const: Bearer }
+        expiresIn: { type: integer, minimum: 1 }
+      additionalProperties: false
+    MembershipCandidate:
+      type: object
+      required: [membershipId, tenantId, tenantDisplayName]
+      properties:
+        membershipId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        tenantId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        tenantDisplayName: { type: string, minLength: 1, maxLength: 200 }
+      additionalProperties: false
+    ContextSelectionRequiredResult:
+      type: object
+      required: [contextState, memberships]
+      properties:
+        contextState: { const: CONTEXT_SELECTION_REQUIRED }
+        memberships:
+          type: array
+          minItems: 2
+          items: { $ref: '#/components/schemas/MembershipCandidate' }
+      additionalProperties: false
+    AuthenticationResult:
+      oneOf:
+        - $ref: '#/components/schemas/AccessTokenResult'
+        - $ref: '#/components/schemas/ContextSelectionRequiredResult'
+    TenantSwitchRequest:
+      type: object
+      required: [membershipId]
+      properties:
+        membershipId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+      additionalProperties: false
+    ClientCredentialsTokenRequest:
+      type: object
+      required: [grant_type]
+      properties:
+        grant_type: { type: string, const: client_credentials }
+        scope:
+          type: string
+          description: Space-delimited requested scopes, each of which must have been granted to the OAuth Client.
+      additionalProperties: false
+    ClientCredentialsTokenResponse:
+      type: object
+      required: [access_token, token_type, expires_in, scope]
+      properties:
+        access_token: { type: string, minLength: 1 }
+        token_type: { type: string, const: Bearer }
+        expires_in: { type: integer, minimum: 1 }
+        scope:
+          type: string
+          description: Space-delimited scopes granted to this token.
+      additionalProperties: false
+    Jwk:
+      type: object
+      required: [kty, use, alg, kid, n, e]
+      properties:
+        kty: { type: string, const: RSA }
+        use: { type: string, const: sig }
+        alg: { type: string, const: RS256 }
+        kid: { type: string, minLength: 1 }
+        n: { type: string, minLength: 1, description: Base64url-encoded RSA modulus. }
+        e: { type: string, minLength: 1, description: Base64url-encoded RSA public exponent. }
+      additionalProperties: false
+    Jwks:
+      type: object
+      required: [keys]
+      properties:
+        keys:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/Jwk' }
+      additionalProperties: false
+    TenantStatus:
+      type: string
+      enum: [PENDING, ACTIVE, SUSPENDED, CLOSED]
+    Tenant:
+      type: object
+      required: [id, displayName, status, expiresAt, createdAt, updatedAt]
+      properties:
+        id: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        displayName: { type: string, minLength: 1, maxLength: 200 }
+        status: { $ref: '#/components/schemas/TenantStatus' }
+        expiresAt:
+          oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
+        createdAt: { $ref: '#/components/schemas/Timestamp' }
+        updatedAt: { $ref: '#/components/schemas/Timestamp' }
+      additionalProperties: false
+    CreateTenantRequest:
+      type: object
+      required: [displayName]
+      properties:
+        displayName: { type: string, minLength: 1, maxLength: 200 }
+        expiresAt:
+          oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
+      additionalProperties: false
+    AdministratorInitializationRequest:
+      type: object
+      required: [administratorEmail]
+      properties:
+        administratorEmail: { $ref: '#/components/schemas/Email' }
+      additionalProperties: false
+    QuotaDefinitionStatus:
+      type: string
+      enum: [DRAFT, ACTIVE, RETIRED]
+    QuotaDefinition:
+      type: object
+      required: [id, code, status, createdAt, updatedAt]
+      properties:
+        id: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        code: { type: string, const: max_users }
+        status: { $ref: '#/components/schemas/QuotaDefinitionStatus' }
+        createdAt: { $ref: '#/components/schemas/Timestamp' }
+        updatedAt: { $ref: '#/components/schemas/Timestamp' }
+      additionalProperties: false
+    CreateQuotaDefinitionRequest:
+      type: object
+      required: [code]
+      properties:
+        code: { type: string, const: max_users }
+      additionalProperties: false
+    PlanStatus:
+      type: string
+      enum: [DRAFT, ACTIVE, RETIRED]
+    PlanQuotaLimit:
+      type: object
+      required: [quotaDefinitionId, limit]
+      properties:
+        quotaDefinitionId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        limit: { type: integer, minimum: 0 }
+      additionalProperties: false
+    Plan:
+      type: object
+      required: [id, code, displayName, status, quotaLimits, createdAt, updatedAt]
+      properties:
+        id: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        code:
+          type: string
+          pattern: '^[a-z][a-z0-9-]{1,62}$'
+        displayName: { type: string, minLength: 1, maxLength: 200 }
+        status: { $ref: '#/components/schemas/PlanStatus' }
+        quotaLimits:
+          type: array
+          minItems: 1
+          maxItems: 1
+          items: { $ref: '#/components/schemas/PlanQuotaLimit' }
+        createdAt: { $ref: '#/components/schemas/Timestamp' }
+        updatedAt: { $ref: '#/components/schemas/Timestamp' }
+      additionalProperties: false
+    CreatePlanRequest:
+      type: object
+      required: [code, displayName, quotaLimits]
+      properties:
+        code:
+          type: string
+          pattern: '^[a-z][a-z0-9-]{1,62}$'
+        displayName: { type: string, minLength: 1, maxLength: 200 }
+        quotaLimits:
+          type: array
+          minItems: 1
+          maxItems: 1
+          items: { $ref: '#/components/schemas/PlanQuotaLimit' }
+      additionalProperties: false
+    Subscription:
+      type: object
+      required: [id, tenantId, planId, status, endsAt, createdAt]
+      properties:
+        id: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        tenantId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        planId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        status: { type: string, const: ACTIVE }
+        endsAt:
+          oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
+        createdAt: { $ref: '#/components/schemas/Timestamp' }
+      additionalProperties: false
+    CreateInitialSubscriptionRequest:
+      type: object
+      required: [planId]
+      properties:
+        planId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        endsAt:
+          oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
+      additionalProperties: false
+    RuntimeScope:
+      type: string
+      enum: ['runtime:read', 'runtime:quota:write']
+    OAuthClientStatus:
+      type: string
+      enum: [ACTIVE, REVOKED]
+    OAuthClient:
+      type: object
+      required: [clientId, displayName, allowedScopes, status, createdAt, updatedAt]
+      properties:
+        clientId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        displayName: { type: string, minLength: 1, maxLength: 200 }
+        allowedScopes:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/RuntimeScope' }
+        status: { $ref: '#/components/schemas/OAuthClientStatus' }
+        createdAt: { $ref: '#/components/schemas/Timestamp' }
+        updatedAt: { $ref: '#/components/schemas/Timestamp' }
+      additionalProperties: false
+    CreateOAuthClientRequest:
+      type: object
+      required: [displayName, allowedScopes]
+      properties:
+        displayName: { type: string, minLength: 1, maxLength: 200 }
+        allowedScopes:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/RuntimeScope' }
+      additionalProperties: false
+    OAuthClientSecretResult:
+      type: object
+      required: [clientId, displayName, allowedScopes, status, createdAt, updatedAt, clientSecret]
+      properties:
+        clientId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        displayName: { type: string, minLength: 1, maxLength: 200 }
+        allowedScopes:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/RuntimeScope' }
+        status: { $ref: '#/components/schemas/OAuthClientStatus' }
+        createdAt: { $ref: '#/components/schemas/Timestamp' }
+        updatedAt: { $ref: '#/components/schemas/Timestamp' }
+        clientSecret:
+          type: string
+          minLength: 1
+          writeOnly: true
+          description: Returned exactly once. Store it in a controlled secret manager.
+      additionalProperties: false

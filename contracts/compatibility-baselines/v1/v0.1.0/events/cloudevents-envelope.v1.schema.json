@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SaaS Forge CloudEvents JSON Envelope v1",
+  "type": "object",
+  "required": ["specversion", "id", "source", "type", "time", "datacontenttype", "data"],
+  "properties": {
+    "specversion": {
+      "const": "1.0"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "description": "Stable UUIDv7 for one committed Outbox fact."
+    },
+    "source": {
+      "type": "string",
+      "pattern": "^urn:saasforge:[a-z][a-z0-9-]*$",
+      "description": "Stable source URN of the producing service."
+    },
+    "type": {
+      "type": "string",
+      "pattern": "^com\\.saasforge\\.[a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9-]*)*\\.v[1-9][0-9]*$",
+      "description": "Versioned event type; the trailing vN is its major version."
+    },
+    "subject": {
+      "type": "string",
+      "minLength": 1
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339 UTC timestamp of the committed fact."
+    },
+    "datacontenttype": {
+      "const": "application/json"
+    },
+    "dataschema": {
+      "type": "string",
+      "format": "uri"
+    },
+    "traceId": {
+      "type": "string",
+      "pattern": "^(?!0{32}$)[0-9a-f]{32}$",
+      "description": "Optional non-zero lowercase W3C Trace Context trace ID."
+    },
+    "data": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}

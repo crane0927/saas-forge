@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package io.saasforge.contracts.tenantaccess.membership.v1;
+
+option java_multiple_files = true;
+option java_package = "io.saasforge.contracts.tenantaccess.membership.v1";
+
+// Tenant Access is the authoritative owner of Membership usability.
+// The service is called synchronously over mTLS by authorized internal callers.
+service MembershipValidationService {
+  // Validates that membership_id belongs to identity_id, is enabled, and its
+  // Tenant is currently accessible. It is a read-only, fail-closed operation.
+  // Malformed IDs return INVALID_ARGUMENT; business denials use
+  // membership_not_usable without a reason.
+  rpc ValidateMembership(ValidateMembershipRequest) returns (ValidateMembershipResponse);
+}
+
+message ValidateMembershipRequest {
+  // Canonical lowercase, hyphenated UUIDv7 Identity ID.
+  string identity_id = 1;
+
+  // Canonical lowercase, hyphenated UUIDv7 Membership ID.
+  string membership_id = 2;
+}
+
+message ValidateMembershipResponse {
+  oneof outcome {
+    // Present only when the Membership is usable for the specified Identity.
+    ValidatedMembership validated_membership = 1;
+
+    // A deliberately reason-free denial. It must not disclose Membership
+    // ownership, enabled state, or Tenant access state.
+    MembershipNotUsable membership_not_usable = 2;
+  }
+}
+
+message ValidatedMembership {
+  string membership_id = 1;
+  string tenant_id = 2;
+}
+
+message MembershipNotUsable {}

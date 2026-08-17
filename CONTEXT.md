@@ -129,3 +129,9 @@ _Avoid_: Registration, user creation
 **Audit Record**:
 由 Audit 服务根据已提交领域事实只追加保存的合规与业务追责记录；它不裁决来源工作流是否成功。
 _Avoid_: Application log, audit event
+
+## Contract Governance
+
+**v1 Contract Baseline**:
+仓库中经显式评审后固定且不可修改的 REST、Protobuf 和事件 v1 已发布契约快照；兼容性门禁以全部历史基线为依据拒绝破坏性变更。
+_Avoid_: Current contract, generated client, automatic snapshot

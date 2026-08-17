@@ -24,3 +24,5 @@
 `authorization` 缓存失效由 Tenant Access 发布，`entitlement` 缓存失效由 Entitlement 发布；其他缓存域不是 v1 契约的一部分。
 
 Tenant、Invitation、Membership、Tenant 切换、会话撤销与 `max_users` 的首批事件及负载白名单见 [Tenant Access 跨服务工作流](tenant-access-workflows.md)。
+
+全部 `*.v1.schema.json`（包括 CloudEvents 信封）受已发布契约基线保护；质量门拒绝删除事件字段、改变类型或常量、增加必填字段、收紧枚举和 schema 约束。
