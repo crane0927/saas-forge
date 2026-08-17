@@ -3,6 +3,7 @@
 *.iml
 target/
 node_modules/
+.pnpm-store/
 
 # 本地环境与密钥
 .env
@@ -31,6 +32,7 @@ dist/
 coverage/
 playwright-report/
 test-results/
+consoles/shared/api-client/.generated/
 
 # 本地覆盖配置
 application-local.yml

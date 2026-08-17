@@ -1,0 +1,5 @@
+{
+  "name": "saas-forge-consoles",
+  "private": true,
+  "packageManager": "pnpm@11.22.0"
+}

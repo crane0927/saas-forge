@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -37,6 +38,18 @@ class RepositoryStandardsTest {
             "tenant-access-service", "io.saasforge.tenantaccess",
             "entitlement-service", "io.saasforge.entitlement",
             "audit-service", "io.saasforge.audit");
+    private static final Map<String, String> OPENAPI_TAG_OWNERS = Map.of(
+            "Authentication", "iam-service",
+            "Discovery", "iam-service",
+            "OAuth clients", "iam-service",
+            "Platform tenants", "tenant-access-service",
+            "Platform entitlement bootstrap", "entitlement-service");
+    private static final Map<String, String> OPENAPI_TAG_GENERATOR_NAMES = Map.of(
+            "Authentication", "Authentication",
+            "Discovery", "Discovery",
+            "OAuth clients", "OAuthClients",
+            "Platform tenants", "PlatformTenants",
+            "Platform entitlement bootstrap", "PlatformEntitlementBootstrap");
     private static final Pattern ANNOTATED_SQL = Pattern.compile(
             "@(Select|Insert|Update|Delete)(Provider)?\\b");
     private static final Pattern VERSIONED_MIGRATION = Pattern.compile(
@@ -53,6 +66,15 @@ class RepositoryStandardsTest {
             "<(?:select|insert|update|delete)\\b[^>]*\\bid=\"([^\"]+)\"", Pattern.CASE_INSENSITIVE);
     private static final Pattern MAPPER_METHOD = Pattern.compile(
             "(?m)^\\s*(?:[A-Za-z0-9_$.<>?, \\[\\]]+\\s+)([A-Za-z][A-Za-z0-9_]*)\\s*\\([^;{}]*\\)\\s*;");
+    private static final Pattern OPENAPI_PATH = Pattern.compile("^  (/[^:]+):$");
+    private static final Pattern OPENAPI_METHOD = Pattern.compile("^    (get|post|put|patch|delete|head|options|trace):$");
+    private static final Pattern OPENAPI_TAGS = Pattern.compile("^      tags: \\[([^]]+)]$");
+    private static final Pattern OPENAPI_SERVICE_OWNER = Pattern.compile("^      x-saasforge-service: ([a-z-]+)$");
+    private static final Pattern SPRING_HTTP_MAPPING = Pattern.compile(
+            "@(RequestMapping|GetMapping|PostMapping|PutMapping|PatchMapping|DeleteMapping)\\b");
+    private static final Pattern REST_CONTROLLER = Pattern.compile("@RestController\\b");
+    private static final Pattern GENERATED_API_IMPLEMENTATION = Pattern.compile(
+            "class\\s+[A-Za-z][A-Za-z0-9_]*\\s+implements\\s+[A-Za-z0-9_., <>?]+Api\\b");
 
     @Test
     void redisRegistryIsCompleteAndConsistent() throws Exception {
@@ -115,6 +137,55 @@ class RepositoryStandardsTest {
                 String lower = (id + " " + entry.path("purpose").asText()).toLowerCase();
                 assertFalse(lower.contains("permission") || lower.contains("feature") || lower.contains("quota"),
                         id + " 不得把 Permission、Feature 或 Quota 作为平台 Redis 用途");
+            }
+        }
+    }
+
+    @Test
+    void publicRestOperationsHaveOneServiceOwnerAndMatchingServerGeneration() throws Exception {
+        List<OpenApiOperation> operations = parseOpenApiOperations(
+                REPOSITORY.resolve("contracts/openapi/v1.yaml"));
+        assertFalse(operations.isEmpty(), "OpenAPI 根契约至少需要一个 operation");
+
+        Map<String, Set<String>> tagsByService = new HashMap<>();
+        for (OpenApiOperation operation : operations) {
+            assertEquals(1, operation.tags().size(), operation.displayName() + " 必须恰有一个 tag");
+            assertEquals(1, operation.ownerDeclarations(), operation.displayName()
+                    + " 必须恰有一个 x-saasforge-service");
+            assertTrue(SERVICE_ARTIFACTS.contains(operation.owner()), operation.displayName()
+                    + " 使用了未知的 x-saasforge-service: " + operation.owner());
+
+            String tag = operation.tags().iterator().next();
+            String expectedOwner = OPENAPI_TAG_OWNERS.get(tag);
+            assertNotNull(expectedOwner, operation.displayName() + " 使用了未登记归属的 tag: " + tag);
+            assertEquals(expectedOwner, operation.owner(), operation.displayName()
+                    + " 的 x-saasforge-service 必须与 tag 的生成归属一致");
+            tagsByService.computeIfAbsent(operation.owner(), ignored -> new LinkedHashSet<>()).add(tag);
+        }
+
+        for (Map.Entry<String, Set<String>> entry : tagsByService.entrySet()) {
+            Path pom = REPOSITORY.resolve("services").resolve(entry.getKey()).resolve("pom.xml");
+            String pomSource = Files.readString(pom, StandardCharsets.UTF_8);
+            for (String tag : entry.getValue()) {
+                String generatorName = OPENAPI_TAG_GENERATOR_NAMES.get(tag);
+                assertNotNull(generatorName, "缺少 tag " + tag + " 的 OpenAPI Generator 名称");
+                assertTrue(pomSource.contains(generatorName), pom + " 必须为 tag " + tag + " 生成服务端接口");
+            }
+        }
+    }
+
+    @Test
+    void handWrittenControllersCannotDefinePublicHttpRoutes() throws Exception {
+        for (String serviceArtifact : SERVICE_ARTIFACTS) {
+            Path serviceRoot = REPOSITORY.resolve("services").resolve(serviceArtifact).resolve("src/main/java");
+            for (Path javaFile : filesUnder(serviceRoot, ".java")) {
+                String source = Files.readString(javaFile, StandardCharsets.UTF_8);
+                assertFalse(SPRING_HTTP_MAPPING.matcher(source).find(), javaFile
+                        + " 不得手写 Spring HTTP 路由；公开路由必须来自生成的 OpenAPI 接口");
+                if (REST_CONTROLLER.matcher(source).find()) {
+                    assertTrue(GENERATED_API_IMPLEMENTATION.matcher(source).find(), javaFile
+                            + " 的 @RestController 必须实现生成的 OpenAPI Api 接口");
+                }
             }
         }
     }
@@ -335,6 +406,64 @@ class RepositoryStandardsTest {
         return values;
     }
 
+    private static List<OpenApiOperation> parseOpenApiOperations(Path spec) throws IOException {
+        String path = null;
+        String method = null;
+        Set<String> tags = Set.of();
+        String owner = null;
+        int ownerDeclarations = 0;
+        List<OpenApiOperation> operations = new ArrayList<>();
+
+        for (String line : Files.readAllLines(spec, StandardCharsets.UTF_8)) {
+            Matcher pathMatcher = OPENAPI_PATH.matcher(line);
+            if (pathMatcher.matches()) {
+                if (method != null) {
+                    operations.add(new OpenApiOperation(path, method, tags, owner, ownerDeclarations));
+                    method = null;
+                    tags = Set.of();
+                    owner = null;
+                    ownerDeclarations = 0;
+                }
+                path = pathMatcher.group(1);
+                continue;
+            }
+
+            Matcher methodMatcher = OPENAPI_METHOD.matcher(line);
+            if (methodMatcher.matches()) {
+                if (method != null) {
+                    operations.add(new OpenApiOperation(path, method, tags, owner, ownerDeclarations));
+                }
+                method = methodMatcher.group(1);
+                tags = Set.of();
+                owner = null;
+                ownerDeclarations = 0;
+                continue;
+            }
+
+            if (method == null) {
+                continue;
+            }
+            Matcher tagsMatcher = OPENAPI_TAGS.matcher(line);
+            if (tagsMatcher.matches()) {
+                Set<String> parsedTags = new LinkedHashSet<>();
+                for (String tag : tagsMatcher.group(1).split(",")) {
+                    parsedTags.add(tag.trim());
+                }
+                tags = parsedTags;
+                continue;
+            }
+            Matcher ownerMatcher = OPENAPI_SERVICE_OWNER.matcher(line);
+            if (ownerMatcher.matches()) {
+                owner = ownerMatcher.group(1);
+                ownerDeclarations++;
+            }
+        }
+        if (method != null) {
+            operations.add(new OpenApiOperation(path, method, tags, owner, ownerDeclarations));
+        }
+        return operations;
+    }
+
     private static List<Path> filesUnder(Path root, String suffix) throws IOException {
         if (!Files.exists(root)) {
             return List.of();
@@ -409,5 +538,17 @@ class RepositoryStandardsTest {
             }
         }
         return "";
+    }
+
+    private record OpenApiOperation(
+            String path,
+            String method,
+            Set<String> tags,
+            String owner,
+            int ownerDeclarations) {
+
+        private String displayName() {
+            return method.toUpperCase() + " " + path;
+        }
     }
 }

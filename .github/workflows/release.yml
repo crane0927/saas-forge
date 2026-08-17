@@ -27,6 +27,11 @@ jobs:
           distribution: temurin
           java-version: ${{ matrix.java }}
           cache: maven
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24.14.1"
+      - run: corepack enable
+      - run: pnpm --dir consoles install --frozen-lockfile
       - name: Verify release version
         shell: bash
         run: |
@@ -61,6 +66,11 @@ jobs:
           server-password: CENTRAL_PASSWORD
           gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
           gpg-passphrase: MAVEN_GPG_PASSPHRASE
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24.14.1"
+      - run: corepack enable
+      - run: pnpm --dir consoles install --frozen-lockfile
       - name: Publish
         env:
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}

@@ -22,4 +22,9 @@ jobs:
           distribution: temurin
           java-version: ${{ matrix.java }}
           cache: maven
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24.14.1"
+      - run: corepack enable
+      - run: pnpm --dir consoles install --frozen-lockfile
       - run: ./mvnw --batch-mode --no-transfer-progress verify

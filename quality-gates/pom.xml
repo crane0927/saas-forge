@@ -115,6 +115,9 @@
                         <configuration>
                             <excludes>
                                 <exclude>**/*Application.class</exclude>
+                                <exclude>**/contract/**</exclude>
+                                <exclude>org/openapitools/configuration/**</exclude>
+                                <exclude>**/sdk/core/rest/**</exclude>
                             </excludes>
                         </configuration>
                     </execution>
