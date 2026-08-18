@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://saasforge.io/contracts/events/engineering-registry.schema.json",
+  "title": "SaaS Forge Event Engineering Registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["registryVersion", "entries"],
+  "properties": {
+    "registryVersion": {
+      "const": 1
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entry"
+      }
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "producerService",
+        "source",
+        "schema",
+        "topic",
+        "orderingKey",
+        "allowedConsumers"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "pattern": "^com\\.saasforge\\.[a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9-]*)*\\.v[1-9][0-9]*$"
+        },
+        "producerService": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*-service$"
+        },
+        "source": {
+          "type": "string",
+          "pattern": "^urn:saasforge:[a-z][a-z0-9-]*-service$"
+        },
+        "schema": {
+          "type": "string",
+          "pattern": "^contracts/events/[a-z][a-z0-9._/-]*\\.schema\\.json$"
+        },
+        "topic": {
+          "type": "string",
+          "pattern": "^saasforge\\.<environment>\\.[a-z][a-z0-9-]*-service\\.events$"
+        },
+        "orderingKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "allowedConsumers": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/consumer"
+          }
+        }
+      }
+    },
+    "consumer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["service", "consumerName"],
+      "properties": {
+        "service": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*-service$"
+        },
+        "consumerName": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9-]*)+$"
+        }
+      }
+    }
+  }
+}

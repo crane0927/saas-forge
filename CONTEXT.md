@@ -132,6 +132,10 @@ _Avoid_: Application log, audit event
 
 ## Contract Governance
 
+**Committed Fact Event**:
+由其数据权威服务提交后对外传播的不可变事实；它不是命令，也不表示某个跨服务工作流已经成功。重投同一事实时保留同一 Event ID 与 Trace 关联。
+_Avoid_: Message, command, notification
+
 **v1 Contract Baseline**:
 仓库中经显式评审后固定且不可修改的 REST、Protobuf 和事件 v1 已发布契约快照；兼容性门禁以全部历史基线为依据拒绝破坏性变更。
 _Avoid_: Current contract, generated client, automatic snapshot

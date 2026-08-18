@@ -62,6 +62,14 @@ class RepositoryStandardsTest {
             "(?is)\\b(dblink|postgres_fdw|foreign\\s+data\\s+wrapper|create\\s+server|import\\s+foreign\\s+schema)\\b");
     private static final Pattern LOG_EVENT = Pattern.compile(
             "^[a-z][a-z0-9]*(?:\\.[a-z][a-z0-9-]*)+$");
+    private static final Pattern EVENT_TYPE = Pattern.compile(
+            "^com\\.saasforge\\.[a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9-]*)*\\.v[1-9][0-9]*$");
+    private static final Pattern EVENT_SOURCE = Pattern.compile(
+            "^urn:saasforge:[a-z][a-z0-9-]*-service$");
+    private static final Pattern EVENT_TOPIC = Pattern.compile(
+            "^saasforge\\.<environment>\\.[a-z][a-z0-9-]*-service\\.events$");
+    private static final Pattern CONSUMER_NAME = Pattern.compile(
+            "^[a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9-]*)+$");
     private static final Pattern MAPPER_NAMESPACE = Pattern.compile(
             "<mapper\\s+[^>]*namespace=\"([^\"]+)\"", Pattern.CASE_INSENSITIVE);
     private static final Pattern MAPPER_STATEMENT = Pattern.compile(
@@ -139,6 +147,69 @@ class RepositoryStandardsTest {
                 String lower = (id + " " + entry.path("purpose").asText()).toLowerCase();
                 assertFalse(lower.contains("permission") || lower.contains("feature") || lower.contains("quota"),
                         id + " 不得把 Permission、Feature 或 Quota 作为平台 Redis 用途");
+            }
+        }
+    }
+
+    @Test
+    void eventEngineeringRegistryIsCompleteAndConsistent() throws Exception {
+        Path schemaPath = REPOSITORY.resolve("contracts/events/engineering-registry.schema.json");
+        JsonNode schema = readJson(schemaPath);
+        Set<String> requiredEntryFields = textSet(schema.at("/$defs/entry/required"));
+        assertEquals(Set.of("type", "producerService", "source", "schema", "topic", "orderingKey", "allowedConsumers"),
+                requiredEntryFields, "事件工程注册表字段发生变化时必须显式评审");
+
+        JsonNode registry = readJson(REPOSITORY.resolve("contracts/events/engineering-registry.json"));
+        assertEquals(1, registry.path("registryVersion").asInt(), "事件工程注册表 registryVersion 必须为 1");
+        assertTrue(registry.path("entries").isArray(), "事件工程注册表 entries 必须是数组");
+
+        Set<String> registeredEvents = new HashSet<>();
+        for (JsonNode entry : registry.path("entries")) {
+            for (String field : requiredEntryFields) {
+                assertTrue(entry.has(field), "事件工程登记缺少字段 " + field);
+            }
+            String type = requiredText(entry, "type", Path.of("contracts/events/engineering-registry.json"));
+            String producerService = requiredText(entry, "producerService",
+                    Path.of("contracts/events/engineering-registry.json"));
+            String source = requiredText(entry, "source", Path.of("contracts/events/engineering-registry.json"));
+            String eventSchema = requiredText(entry, "schema", Path.of("contracts/events/engineering-registry.json"));
+            String topic = requiredText(entry, "topic", Path.of("contracts/events/engineering-registry.json"));
+            assertTrue(SERVICE_ARTIFACTS.contains(producerService), type + " 使用了未知生产服务 " + producerService);
+            assertTrue(EVENT_TYPE.matcher(type).matches(), "事件 type 不合法: " + type);
+            assertTrue(EVENT_SOURCE.matcher(source).matches(), "事件 source 不合法: " + source);
+            assertEquals("urn:saasforge:" + producerService, source, type + " 的 source 必须归属生产服务");
+            assertTrue(EVENT_TOPIC.matcher(topic).matches(), "事件 topic 不合法: " + topic);
+            assertEquals("saasforge.<environment>." + producerService + ".events", topic,
+                    type + " 的 topic 必须归属生产服务");
+            assertFalse(requiredText(entry, "orderingKey", Path.of("contracts/events/engineering-registry.json")).isBlank(),
+                    type + " 必须声明 orderingKey");
+            assertTrue(registeredEvents.add(source + "|" + type), "事件 source/type 重复登记: " + source + " " + type);
+
+            Path schemaFile = REPOSITORY.resolve(eventSchema).normalize();
+            assertTrue(schemaFile.startsWith(REPOSITORY.resolve("contracts/events")),
+                    type + " 的 schema 必须位于 contracts/events");
+            assertTrue(Files.isRegularFile(schemaFile), type + " 的 schema 不存在: " + eventSchema);
+            JsonNode eventSchemaJson = readJson(schemaFile);
+            boolean referencesEnvelope = false;
+            boolean declaresRegisteredType = false;
+            for (JsonNode branch : eventSchemaJson.path("allOf")) {
+                referencesEnvelope |= "cloudevents-envelope.v1.schema.json".equals(branch.path("$ref").asText());
+                declaresRegisteredType |= type.equals(branch.at("/properties/type/const").asText());
+            }
+            assertTrue(referencesEnvelope, type + " 的 schema 必须组合 CloudEvents v1 信封");
+            assertTrue(declaresRegisteredType, type + " 的 schema 必须约束登记的 type");
+
+            assertTrue(entry.path("allowedConsumers").isArray(), type + " 的 allowedConsumers 必须是数组");
+            Set<String> consumers = new HashSet<>();
+            for (JsonNode consumer : entry.path("allowedConsumers")) {
+                String service = requiredText(consumer, "service", Path.of("contracts/events/engineering-registry.json"));
+                String consumerName = requiredText(consumer, "consumerName",
+                        Path.of("contracts/events/engineering-registry.json"));
+                assertTrue(SERVICE_ARTIFACTS.contains(service), type + " 使用了未知消费者服务 " + service);
+                assertTrue(CONSUMER_NAME.matcher(consumerName).matches(),
+                        type + " 的 consumerName 不合法: " + consumerName);
+                assertTrue(consumers.add(service + "|" + consumerName),
+                        type + " 的消费者重复登记: " + service + " " + consumerName);
             }
         }
     }

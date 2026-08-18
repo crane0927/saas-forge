@@ -62,7 +62,7 @@ Platform Console、Tenant Console Shell 与业务 Remote 独立发布。Gateway 
 
 - PostgreSQL 为四个服务提供独立数据库，需满足 RPO ≤ 5 分钟、RTO ≤ 30 分钟，并定期执行恢复演练。
 - Redis 是 Token 黑名单、会话和登录保护的安全依赖，使用高可用主从与自动故障转移的托管服务或 Sentinel/等效方案。
-- Kafka 至少 3 Broker，主题副本数 3、`min.insync.replicas=2`、生产者 `acks=all`。
+- Kafka 至少 3 Broker，主题副本数 3、`min.insync.replicas=2`、生产者 `acks=all`。生产者 topic 固定为 `saasforge.<environment>.<producer-service>.events`；Kafka ACL 仅授予服务写入自己的 topic、读取事件工程注册表允许的 topic，以及消费者自己的隔离 topic 写入权限。
 - S3 兼容对象存储仅保存导出任务的临时结果。导出不按 Tenant/Plan 限额，但任务必须异步、流式处理、通过全局有界队列与单 Tenant 公平调度保护系统；结果文件按配置留存期自动删除。
 
 ## 网络、配置与密钥
@@ -76,6 +76,8 @@ Platform Console、Tenant Console Shell 与业务 Remote 独立发布。Gateway 
 ## 可观测性、SLO 与容量
 
 所有组件导出 OpenTelemetry 数据到 Collector，并接入 Prometheus、Loki、Tempo 和 Grafana。Gateway 按路由与状态码记录请求成功率、延迟和错误预算消耗；黑盒探针验证登录与关键只读操作。
+
+每个事件生产服务还必须监控 Outbox 最早待发布年龄、待发布数量、租约/重试、发布成功失败与耗时；消费者监控处理延迟、重复命中、校验拒绝、隔离数量与最早隔离年龄。告警阈值属于环境配置，日志不得输出事件 payload。
 
 月度 SLO 为 99.9%，范围是 Gateway 暴露的 Platform 与 Tenant Console API。规划容量为 20 个 Tenant、10,000 名活跃用户、1,000 峰值并发用户、100 RPS 基线、200 RPS 突发余量以及 100,000 条审计事件/日（2 倍增长余量）。实际 Pod 资源请求和副本上限须由该压测基线的报告确定，不在文档中虚构固定规格。
 

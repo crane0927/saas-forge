@@ -42,6 +42,10 @@ audit-service          → audit_db
 
 不使用通用 `deleted` 布尔字段；它缺少删除时间，并容易与 `status` 产生双重事实。`created_by`、`updated_by` 等操作者字段按已证明的审计或查询需求逐表评审，不设为默认字段。
 
+## Transactional Outbox 与消费去重
+
+服务首次生产或消费已提交事实事件时，在自己的数据库和 Flyway 迁移链中分别建立本地 Outbox、消费去重和（需要时）隔离记录；不得预建没有业务切片的表，也不得在 SDK、契约模块或其他服务创建共享实现。Outbox 保存事务内生成的不可变完整 CloudEvents 快照，消费去重以 `(consumer_name, event_id)` 为唯一约束并与业务副作用同一事务提交。字段、索引、租约和保留要求见[事件工程约定](../contracts/events/transactional-outbox.md)。
+
 ## 逻辑数据模型
 
 | 数据库 | 主要表 | 关键关系与约束 |

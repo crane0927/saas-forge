@@ -2,6 +2,8 @@
 
 事件只表达来源服务已提交的事实，不能作为跨服务命令或同步流程的成功依据。发布使用 Transactional Outbox，Kafka 至少一次交付；消费者按 CloudEvents `id` 幂等。
 
+实际业务切片的本地 Outbox、发布器、消费者和去重表必须遵循[Transactional Outbox 工程约定](transactional-outbox.md)。每个实际实现事件还必须先登记到[事件工程注册表](engineering-registry.json)，其字段由[v1 Schema](engineering-registry.schema.json)约束；当前没有业务切片实现，注册表因此为空。
+
 ## 统一信封
 
 全部事件采用 CloudEvents 1.0 structured JSON，并通过 [CloudEvents JSON Envelope v1](cloudevents-envelope.v1.schema.json) 校验。`specversion` 固定为 `1.0`，`id` 是在 Outbox 创建时分配的 UUIDv7，重投和恢复时不得改变；新事实才产生新 ID。`source` 使用固定服务 URN（`urn:saasforge:<service>`），`type` 使用带主版本的 `com.saasforge.*.vN`，`time` 为事实提交时间的 RFC 3339 UTC 值，`datacontenttype` 固定为 `application/json`。`traceId` 是唯一允许的扩展属性，且仅在已有 W3C Trace Context 时出现。

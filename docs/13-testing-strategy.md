@@ -51,6 +51,10 @@ Playwright 还必须覆盖 Tenant Console Shell 登录、菜单权限、微前�
 - `main` 仅能通过 Pull Request 合并，且必须通过测试、契约、覆盖率、漏洞、镜像和 ZAP 门禁。单人开发阶段不强制独立批准；团队出现第二位开发者后，要求至少一名独立审查者批准。
 - 版本标签触发可追溯的制品和 Helm Chart 发布。
 
+## 事件可靠性用例
+
+首个实际事件切片必须使用 PostgreSQL 与 Kafka 集成测试验证：领域提交与 Outbox 快照原子性、Kafka 确认前故障后的同 ID 重投、领取租约接管、同 `orderingKey` 的顺序、按 `(consumerName, eventId)` 的幂等副作用、不同消费者独立处理、CloudEvents/schema 拒绝、隔离与同 ID 重放，以及 `traceId` 从业务入口经 Outbox 到消费者的原样保留。事件工程注册表及其服务/topic/schema 对应关系由 `./mvnw verify` 校验。
+
 ## 容量、性能与可用性验证
 
 首期规划容量：20 个 Tenant、每 Tenant 500 名活跃用户，共 10,000 名活跃用户；峰值按 10% 同时在线，即 1,000 并发用户。按每位并发用户平均每 10 秒 1 次 API 请求，基线为 100 RPS，并验证 200 RPS 突发余量。审计按 100,000 条/日规划，并保留 2 倍增长余量。
