@@ -5,10 +5,8 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -17,6 +15,12 @@ import org.springframework.web.filter.OncePerRequestFilter;
  */
 @Component
 class OpenApiRouteGuard extends OncePerRequestFilter {
+
+    private final GatewayProblemDetailsWriter problemDetailsWriter;
+
+    OpenApiRouteGuard(GatewayProblemDetailsWriter problemDetailsWriter) {
+        this.problemDetailsWriter = problemDetailsWriter;
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -27,10 +31,10 @@ class OpenApiRouteGuard extends OncePerRequestFilter {
             return;
         }
         if (routes.stream().noneMatch(route -> route.method().matches(request.getMethod()))) {
-            response.setHeader("Allow", routes.stream().map(route -> route.method().name()).sorted()
-                    .reduce((left, right) -> left + ", " + right).orElseThrow());
             writeProblem(request, response, HttpStatus.METHOD_NOT_ALLOWED, "METHOD_NOT_ALLOWED",
                     "The requested method is not declared for this route.");
+            response.setHeader("Allow", routes.stream().map(route -> route.method().name()).sorted()
+                    .reduce((left, right) -> left + ", " + right).orElseThrow());
             return;
         }
         filterChain.doFilter(request, response);
@@ -44,14 +48,6 @@ class OpenApiRouteGuard extends OncePerRequestFilter {
     private void writeProblem(HttpServletRequest request, HttpServletResponse response, HttpStatus status, String code,
             String detail)
             throws IOException {
-        String traceId = TraceContext.current(request).traceId();
-        String title = status == HttpStatus.NOT_FOUND ? "Route not found" : "Method not allowed";
-        String type = "urn:saasforge:problem:" + code.toLowerCase().replace('_', '-');
-        String body = ("{\"type\":\"%s\",\"title\":\"%s\",\"status\":%d,\"code\":\"%s\","
-                + "\"detail\":\"%s\",\"traceId\":\"%s\"}").formatted(type, title, status.value(), code, detail, traceId);
-        response.setStatus(status.value());
-        response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
-        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        response.getWriter().write(body);
+        problemDetailsWriter.write(request, response, status, code, detail);
     }
 }
