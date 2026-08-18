@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.AfterAll;
@@ -29,7 +30,7 @@ class GatewayJwksRouteTest {
 
     private static final Pattern TRACEPARENT = Pattern.compile("00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}");
 
-    private static final AtomicReference<ObservedRequest> IAM_REQUEST = new AtomicReference<>();
+    private static final Map<String, AtomicReference<ObservedRequest>> OBSERVED_REQUESTS = new ConcurrentHashMap<>();
 
     private static final HttpServer IAM_SERVER = startServer("iam");
     private static final HttpServer TENANT_ACCESS_SERVER = startServer("tenant-access");
@@ -88,7 +89,26 @@ class GatewayJwksRouteTest {
                 route("POST", "/api/v1/platform/oauth-clients", "iam"),
                 route("POST", "/api/v1/platform/oauth-clients/018f2d3a-4b5c-7d6e-8f90-123456789abc/secret-rotations", "iam"),
                 route("POST", "/api/v1/platform/oauth-clients/018f2d3a-4b5c-7d6e-8f90-123456789abc/revocations", "iam"))) {
-            assertEquals(route.service(), send(route.method(), route.path()).body(), route.path());
+            resetObservedRequest(route.service());
+            String query = "acceptanceOperation=" + route.path().substring(route.path().lastIndexOf('/') + 1);
+            String body = "POST".equals(route.method()) ? "{\"operation\":\"" + route.service() + "\"}" : "";
+            HttpRequest.Builder request = HttpRequest.newBuilder(gatewayUri(route.path() + "?" + query));
+            if (body.isEmpty()) {
+                request.method(route.method(), HttpRequest.BodyPublishers.noBody());
+            } else {
+                request.header("Content-Type", "application/json")
+                        .method(route.method(), HttpRequest.BodyPublishers.ofString(body));
+            }
+
+            HttpResponse<String> response = send(request.build());
+
+            assertEquals(200, response.statusCode(), route.path());
+            assertEquals(route.service(), response.body(), route.path());
+            assertEquals(route.service(), response.headers().firstValue("X-Acceptance-Service").orElseThrow(), route.path());
+            ObservedRequest observed = observedRequest(route.service());
+            assertEquals(route.method(), observed.method(), route.path());
+            assertEquals(route.path() + "?" + query, observed.pathAndQuery(), route.path());
+            assertEquals(body, observed.body(), route.path());
         }
     }
 
@@ -109,7 +129,7 @@ class GatewayJwksRouteTest {
 
     @Test
     void continuesValidTraceContextAndTracestate() throws IOException, InterruptedException {
-        IAM_REQUEST.set(null);
+        resetObservedRequest("iam");
         String traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
         String tracestate = "acme=vendor,state=active";
 
@@ -120,7 +140,7 @@ class GatewayJwksRouteTest {
                 .build());
 
         assertEquals(200, response.statusCode());
-        ObservedRequest observed = observedIamRequest();
+        ObservedRequest observed = observedRequest("iam");
         assertEquals(traceparent, observed.firstHeader("traceparent"));
         assertEquals(tracestate, observed.firstHeader("tracestate"));
         assertFalse(observed.hasHeader("X-Identity"));
@@ -132,17 +152,17 @@ class GatewayJwksRouteTest {
     @Test
     void createsTraceContextForMissingOrInvalidInputAndUsesItForGatewayErrors()
             throws IOException, InterruptedException {
-        IAM_REQUEST.set(null);
+        resetObservedRequest("iam");
         send("POST", "/api/v1/auth/login");
-        assertTrue(TRACEPARENT.matcher(observedIamRequest().firstHeader("traceparent")).matches());
+        assertTrue(TRACEPARENT.matcher(observedRequest("iam").firstHeader("traceparent")).matches());
 
-        IAM_REQUEST.set(null);
+        resetObservedRequest("iam");
         send(HttpRequest.newBuilder(gatewayUri("/api/v1/auth/login"))
                 .header("traceparent", "00-00000000000000000000000000000000-0000000000000000-01")
                 .header("tracestate", "discarded=with-invalid-parent")
                 .POST(HttpRequest.BodyPublishers.noBody())
                 .build());
-        ObservedRequest regenerated = observedIamRequest();
+        ObservedRequest regenerated = observedRequest("iam");
         assertTrue(TRACEPARENT.matcher(regenerated.firstHeader("traceparent")).matches());
         assertFalse(regenerated.hasHeader("tracestate"));
 
@@ -157,7 +177,7 @@ class GatewayJwksRouteTest {
 
     @Test
     void preservesRequestSemanticsAndAllowedBusinessHeaders() throws IOException, InterruptedException {
-        IAM_REQUEST.set(null);
+        resetObservedRequest("iam");
         HttpResponse<String> response = send(HttpRequest.newBuilder(gatewayUri("/api/v1/auth/login?source=portal"))
                 .header("Content-Type", "application/json")
                 .header("X-Request-Source", "portal")
@@ -165,7 +185,7 @@ class GatewayJwksRouteTest {
                 .build());
 
         assertEquals(200, response.statusCode());
-        ObservedRequest observed = observedIamRequest();
+        ObservedRequest observed = observedRequest("iam");
         assertEquals("POST", observed.method());
         assertEquals("/api/v1/auth/login?source=portal", observed.pathAndQuery());
         assertEquals("{\"username\":\"alice\"}", observed.body());
@@ -175,7 +195,7 @@ class GatewayJwksRouteTest {
 
     @Test
     void removesClientSuppliedForwardingAndHopByHopHeaders() throws IOException, InterruptedException {
-        IAM_REQUEST.set(null);
+        resetObservedRequest("iam");
         HttpResponse<String> response = send(HttpRequest.newBuilder(gatewayUri("/.well-known/jwks.json"))
                 .header("Forwarded", "for=198.51.100.24;host=attacker.example;proto=https")
                 .header("X-Forwarded-For", "198.51.100.24")
@@ -185,7 +205,7 @@ class GatewayJwksRouteTest {
                 .build());
 
         assertEquals(200, response.statusCode());
-        ObservedRequest observed = observedIamRequest();
+        ObservedRequest observed = observedRequest("iam");
         assertFalse(observed.hasHeader("Forwarded"));
         assertFalse(observed.hasHeader("X-Forwarded-For"));
         assertFalse(observed.hasHeader("X-Forwarded-Host"));
@@ -208,10 +228,14 @@ class GatewayJwksRouteTest {
         return URI.create("http://127.0.0.1:" + gatewayPort + path);
     }
 
-    private ObservedRequest observedIamRequest() {
-        ObservedRequest observed = IAM_REQUEST.get();
+    private void resetObservedRequest(String service) {
+        OBSERVED_REQUESTS.computeIfAbsent(service, ignored -> new AtomicReference<>()).set(null);
+    }
+
+    private ObservedRequest observedRequest(String service) {
+        ObservedRequest observed = OBSERVED_REQUESTS.computeIfAbsent(service, ignored -> new AtomicReference<>()).get();
         if (observed == null) {
-            throw new AssertionError("IAM downstream request was not observed");
+            throw new AssertionError(service + " downstream request was not observed");
         }
         return observed;
     }
@@ -226,12 +250,12 @@ class GatewayJwksRouteTest {
             server.createContext("/", exchange -> {
                 Map<String, List<String>> headers = new LinkedHashMap<>();
                 exchange.getRequestHeaders().forEach((name, values) -> headers.put(name, List.copyOf(values)));
-                if ("iam".equals(service)) {
-                    IAM_REQUEST.set(new ObservedRequest(exchange.getRequestMethod(), exchange.getRequestURI().toString(),
-                            headers, new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8)));
-                }
+                OBSERVED_REQUESTS.computeIfAbsent(service, ignored -> new AtomicReference<>()).set(new ObservedRequest(
+                        exchange.getRequestMethod(), exchange.getRequestURI().toString(), headers,
+                        new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8)));
                 byte[] body = service.getBytes(StandardCharsets.UTF_8);
                 exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.getResponseHeaders().set("X-Acceptance-Service", service);
                 exchange.sendResponseHeaders(200, body.length);
                 exchange.getResponseBody().write(body);
                 exchange.close();
