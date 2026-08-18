@@ -56,7 +56,10 @@ class PostgreSqlDataBoundaryIT {
 
     private static final DatabaseAccount IAM = DATABASES.get(0);
     private static final DatabaseAccount TENANT_ACCESS = DATABASES.get(1);
+    private static final DatabaseAccount ENTITLEMENT = DATABASES.get(2);
     private static final DatabaseAccount AUDIT = DATABASES.get(3);
+    private static final List<DatabaseAccount> TENANT_SCOPED_DATABASES = List.of(TENANT_ACCESS, ENTITLEMENT);
+    private static final String TENANT_BOUNDARY_FIXTURE = "tenant_boundary_fixture";
 
     @Container
     private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(DockerImageName.parse("postgres:18"))
@@ -95,6 +98,8 @@ class PostgreSqlDataBoundaryIT {
                 assertTrue(databaseExists(admin, database.databaseName()));
                 assertFalse(roleCanBypassRls(admin, database.appRole()));
                 assertFalse(roleCanInherit(admin, database.appRole()));
+                assertFalse(roleCanBypassRls(admin, database.migratorRole()));
+                assertFalse(roleHasMembership(admin, database.appRole(), database.migratorRole()));
                 assertEquals(database.migratorRole(), tableOwner(database, "flyway_schema_history"));
                 assertEquals(1, migrationCount(database));
             }
@@ -110,9 +115,11 @@ class PostgreSqlDataBoundaryIT {
                 () -> connection(TENANT_ACCESS.databaseName(), IAM.appRole(), IAM.appPassword()));
         assertThrows(SQLException.class,
                 () -> execute(IAM, IAM.appRole(), IAM.appPassword(), "CREATE TABLE runtime_object_probe (id uuid)"));
-        assertThrows(SQLException.class,
-                () -> execute(TENANT_ACCESS, TENANT_ACCESS.appRole(), TENANT_ACCESS.appPassword(),
-                        "SET ROLE tenant_access_migrator"));
+        for (DatabaseAccount database : TENANT_SCOPED_DATABASES) {
+            assertThrows(SQLException.class,
+                    () -> execute(database, database.appRole(), database.appPassword(),
+                            "SET ROLE " + database.migratorRole()));
+        }
         assertThrows(SQLException.class,
                 () -> execute(IAM, IAM.appRole(), IAM.appPassword(), "CREATE EXTENSION dblink"));
     }
@@ -145,43 +152,22 @@ class PostgreSqlDataBoundaryIT {
 
     @Test
     void tenantRuntimeAccountIsRestrictedByTenantContextWhileMigratorCanBackfill() throws SQLException {
-        execute(TENANT_ACCESS, TENANT_ACCESS.migratorRole(), TENANT_ACCESS.migratorPassword(),
-                "DROP TABLE IF EXISTS tenant_boundary_fixture");
-        execute(TENANT_ACCESS, TENANT_ACCESS.migratorRole(), TENANT_ACCESS.migratorPassword(),
-                "CREATE TABLE tenant_boundary_fixture (id uuid PRIMARY KEY DEFAULT uuidv7(), tenant_id uuid NOT NULL, value text NOT NULL)");
-        execute(TENANT_ACCESS, TENANT_ACCESS.migratorRole(), TENANT_ACCESS.migratorPassword(),
-                "ALTER TABLE tenant_boundary_fixture ENABLE ROW LEVEL SECURITY");
-        execute(TENANT_ACCESS, TENANT_ACCESS.migratorRole(), TENANT_ACCESS.migratorPassword(),
-                "ALTER TABLE tenant_boundary_fixture FORCE ROW LEVEL SECURITY");
-        execute(TENANT_ACCESS, TENANT_ACCESS.migratorRole(), TENANT_ACCESS.migratorPassword(),
-                "CREATE POLICY tenant_runtime_access ON tenant_boundary_fixture FOR ALL TO tenant_access_app "
-                        + "USING (tenant_id = current_setting('app.tenant_id', true)::uuid) "
-                        + "WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid)");
-        execute(TENANT_ACCESS, TENANT_ACCESS.migratorRole(), TENANT_ACCESS.migratorPassword(),
-                "CREATE POLICY tenant_migration_access ON tenant_boundary_fixture FOR ALL TO tenant_access_migrator "
-                        + "USING (true) WITH CHECK (true)");
-        execute(TENANT_ACCESS, TENANT_ACCESS.migratorRole(), TENANT_ACCESS.migratorPassword(),
-                "GRANT SELECT, INSERT, UPDATE, DELETE ON tenant_boundary_fixture TO tenant_access_app");
-
         UUID tenantA = UUID.fromString("019535d9-3df7-79fb-b466-fa907fa17f9e");
         UUID tenantB = UUID.fromString("019535d9-3df8-79fb-b466-fa907fa17f9e");
-        try (Connection migrator = connection(
-                TENANT_ACCESS.databaseName(), TENANT_ACCESS.migratorRole(), TENANT_ACCESS.migratorPassword());
-                PreparedStatement insert = migrator.prepareStatement(
-                        "INSERT INTO tenant_boundary_fixture (tenant_id, value) VALUES (?, ?)")) {
-            insert.setObject(1, tenantA);
-            insert.setString(2, "tenant-a");
-            insert.executeUpdate();
-            insert.setObject(1, tenantB);
-            insert.setString(2, "tenant-b");
-            insert.executeUpdate();
-        }
+        for (DatabaseAccount database : TENANT_SCOPED_DATABASES) {
+            createTenantBoundaryFixture(database);
+            seedTenantBoundaryFixture(database, tenantA, tenantB);
 
-        assertEquals(0, tenantRowCount(null));
-        assertEquals(1, tenantRowCount(tenantA));
-        assertEquals(1, tenantRowCount(tenantB));
-        assertEquals(2, queryLong(TENANT_ACCESS, TENANT_ACCESS.migratorRole(), TENANT_ACCESS.migratorPassword(),
-                "SELECT count(*) FROM tenant_boundary_fixture"));
+            assertTenantFixtureMetadata(database);
+            assertEquals(0, tenantRowCount(database, null));
+            assertEquals(1, tenantRowCount(database, tenantA));
+            assertEquals(1, tenantRowCount(database, tenantB));
+            assertOwnTenantDmlWorks(database, tenantA);
+            assertForeignTenantDmlIsBlocked(database, tenantA, tenantB);
+            assertMissingAndInvalidTenantContextAreRejected(database, tenantA);
+            assertTenantContextDoesNotLeakAfterCommit(database, tenantA);
+            assertMigratorCanBackfillAcrossTenants(database, tenantA, tenantB);
+        }
     }
 
     @Test
@@ -201,26 +187,202 @@ class PostgreSqlDataBoundaryIT {
                 () -> execute(AUDIT, AUDIT.appRole(), AUDIT.appPassword(), "TRUNCATE audit_records"));
     }
 
-    private static int tenantRowCount(UUID tenantId) throws SQLException {
-        try (Connection connection = connection(
-                TENANT_ACCESS.databaseName(), TENANT_ACCESS.appRole(), TENANT_ACCESS.appPassword())) {
+    private static void createTenantBoundaryFixture(DatabaseAccount database) throws SQLException {
+        execute(database, database.migratorRole(), database.migratorPassword(),
+                "DROP TABLE IF EXISTS " + TENANT_BOUNDARY_FIXTURE);
+        execute(database, database.migratorRole(), database.migratorPassword(),
+                "CREATE TABLE " + TENANT_BOUNDARY_FIXTURE
+                        + " (id uuid PRIMARY KEY DEFAULT uuidv7(), tenant_id uuid NOT NULL, value text NOT NULL)");
+        execute(database, database.migratorRole(), database.migratorPassword(),
+                "ALTER TABLE " + TENANT_BOUNDARY_FIXTURE + " ENABLE ROW LEVEL SECURITY");
+        execute(database, database.migratorRole(), database.migratorPassword(),
+                "ALTER TABLE " + TENANT_BOUNDARY_FIXTURE + " FORCE ROW LEVEL SECURITY");
+        execute(database, database.migratorRole(), database.migratorPassword(),
+                "CREATE POLICY tenant_runtime_access ON " + TENANT_BOUNDARY_FIXTURE + " FOR ALL TO " + database.appRole()
+                        + " USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid) "
+                        + "WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)");
+        execute(database, database.migratorRole(), database.migratorPassword(),
+                "CREATE POLICY tenant_migration_access ON " + TENANT_BOUNDARY_FIXTURE + " FOR ALL TO "
+                        + database.migratorRole() + " USING (true) WITH CHECK (true)");
+        execute(database, database.migratorRole(), database.migratorPassword(),
+                "GRANT SELECT, INSERT, UPDATE, DELETE ON " + TENANT_BOUNDARY_FIXTURE + " TO " + database.appRole());
+    }
+
+    private static void seedTenantBoundaryFixture(DatabaseAccount database, UUID tenantA, UUID tenantB) throws SQLException {
+        try (Connection migrator = connection(database.databaseName(), database.migratorRole(), database.migratorPassword());
+                PreparedStatement insert = migrator.prepareStatement(
+                        "INSERT INTO " + TENANT_BOUNDARY_FIXTURE + " (tenant_id, value) VALUES (?, ?)")) {
+            insert.setObject(1, tenantA);
+            insert.setString(2, "tenant-a");
+            insert.executeUpdate();
+            insert.setObject(1, tenantB);
+            insert.setString(2, "tenant-b");
+            insert.executeUpdate();
+        }
+    }
+
+    private static void assertTenantFixtureMetadata(DatabaseAccount database) throws SQLException {
+        try (Connection connection = connection(database.databaseName(), database.migratorRole(), database.migratorPassword())) {
+            assertTrue(tableUsesForcedRowLevelSecurity(connection));
+            assertTrue(tenantIdIsNotNull(connection));
+            assertEquals(List.of(database.appRole()), policyRoles(connection, "tenant_runtime_access"));
+            assertEquals(List.of(database.migratorRole()), policyRoles(connection, "tenant_migration_access"));
+        }
+    }
+
+    private static void assertOwnTenantDmlWorks(DatabaseAccount database, UUID tenantId) throws SQLException {
+        try (Connection connection = connection(database.databaseName(), database.appRole(), database.appPassword())) {
             connection.setAutoCommit(false);
             try {
-                if (tenantId != null) {
-                    try (PreparedStatement statement = connection.prepareStatement(
-                            "SELECT set_config('app.tenant_id', ?, true)")) {
-                        statement.setString(1, tenantId.toString());
-                        statement.execute();
-                    }
+                setTenantContext(connection, tenantId.toString());
+                assertEquals(1, tenantRowCount(connection));
+                try (PreparedStatement insert = connection.prepareStatement(
+                        "INSERT INTO " + TENANT_BOUNDARY_FIXTURE + " (tenant_id, value) VALUES (?, ?)")) {
+                    insert.setObject(1, tenantId);
+                    insert.setString(2, "tenant-a-created");
+                    assertEquals(1, insert.executeUpdate());
                 }
-                try (Statement statement = connection.createStatement();
-                        ResultSet result = statement.executeQuery("SELECT count(*) FROM tenant_boundary_fixture")) {
-                    assertTrue(result.next());
-                    return result.getInt(1);
+                try (PreparedStatement update = connection.prepareStatement(
+                        "UPDATE " + TENANT_BOUNDARY_FIXTURE + " SET value = ? WHERE value = ?")) {
+                    update.setString(1, "tenant-a-updated");
+                    update.setString(2, "tenant-a-created");
+                    assertEquals(1, update.executeUpdate());
+                }
+                try (PreparedStatement delete = connection.prepareStatement(
+                        "DELETE FROM " + TENANT_BOUNDARY_FIXTURE + " WHERE value = ?")) {
+                    delete.setString(1, "tenant-a-updated");
+                    assertEquals(1, delete.executeUpdate());
+                }
+                connection.commit();
+            } finally {
+                connection.rollback();
+            }
+        }
+    }
+
+    private static void assertForeignTenantDmlIsBlocked(
+            DatabaseAccount database,
+            UUID tenantId,
+            UUID foreignTenantId) throws SQLException {
+        try (Connection connection = connection(database.databaseName(), database.appRole(), database.appPassword())) {
+            connection.setAutoCommit(false);
+            try {
+                setTenantContext(connection, tenantId.toString());
+                try (PreparedStatement update = connection.prepareStatement(
+                        "UPDATE " + TENANT_BOUNDARY_FIXTURE + " SET value = 'foreign-update' WHERE tenant_id = ?")) {
+                    update.setObject(1, foreignTenantId);
+                    assertEquals(0, update.executeUpdate());
+                }
+                try (PreparedStatement delete = connection.prepareStatement(
+                        "DELETE FROM " + TENANT_BOUNDARY_FIXTURE + " WHERE tenant_id = ?")) {
+                    delete.setObject(1, foreignTenantId);
+                    assertEquals(0, delete.executeUpdate());
+                }
+                connection.commit();
+            } finally {
+                connection.rollback();
+            }
+        }
+
+        try (Connection connection = connection(database.databaseName(), database.appRole(), database.appPassword())) {
+            connection.setAutoCommit(false);
+            try {
+                setTenantContext(connection, tenantId.toString());
+                try (PreparedStatement insert = connection.prepareStatement(
+                        "INSERT INTO " + TENANT_BOUNDARY_FIXTURE + " (tenant_id, value) VALUES (?, ?)")) {
+                    insert.setObject(1, foreignTenantId);
+                    insert.setString(2, "foreign-insert");
+                    assertThrows(SQLException.class, insert::executeUpdate);
                 }
             } finally {
                 connection.rollback();
             }
+        }
+    }
+
+    private static void assertMissingAndInvalidTenantContextAreRejected(DatabaseAccount database, UUID tenantId) throws SQLException {
+        try (Connection connection = connection(database.databaseName(), database.appRole(), database.appPassword())) {
+            connection.setAutoCommit(false);
+            try {
+                assertEquals(0, tenantRowCount(connection));
+                try (PreparedStatement insert = connection.prepareStatement(
+                        "INSERT INTO " + TENANT_BOUNDARY_FIXTURE + " (tenant_id, value) VALUES (?, ?)")) {
+                    insert.setObject(1, tenantId);
+                    insert.setString(2, "missing-context");
+                    assertThrows(SQLException.class, insert::executeUpdate);
+                }
+            } finally {
+                connection.rollback();
+            }
+        }
+
+        try (Connection connection = connection(database.databaseName(), database.appRole(), database.appPassword())) {
+            connection.setAutoCommit(false);
+            try {
+                setTenantContext(connection, "not-a-uuid");
+                assertThrows(SQLException.class, () -> tenantRowCount(connection));
+            } finally {
+                connection.rollback();
+            }
+        }
+    }
+
+    private static void assertTenantContextDoesNotLeakAfterCommit(DatabaseAccount database, UUID tenantId) throws SQLException {
+        try (Connection connection = connection(
+                database.databaseName(), database.appRole(), database.appPassword())) {
+            connection.setAutoCommit(false);
+            try {
+                setTenantContext(connection, tenantId.toString());
+                assertEquals(1, tenantRowCount(connection));
+                connection.commit();
+                assertEquals(0, tenantRowCount(connection));
+            } finally {
+                connection.rollback();
+            }
+        }
+    }
+
+    private static void assertMigratorCanBackfillAcrossTenants(
+            DatabaseAccount database,
+            UUID tenantA,
+            UUID tenantB) throws SQLException {
+        try (Connection connection = connection(database.databaseName(), database.migratorRole(), database.migratorPassword());
+                PreparedStatement update = connection.prepareStatement(
+                        "UPDATE " + TENANT_BOUNDARY_FIXTURE + " SET value = 'backfilled' WHERE tenant_id IN (?, ?)")) {
+            update.setObject(1, tenantA);
+            update.setObject(2, tenantB);
+            assertEquals(2, update.executeUpdate());
+        }
+        assertEquals(2, queryLong(database, database.migratorRole(), database.migratorPassword(),
+                "SELECT count(*) FROM " + TENANT_BOUNDARY_FIXTURE + " WHERE value = 'backfilled'"));
+    }
+
+    private static int tenantRowCount(DatabaseAccount database, UUID tenantId) throws SQLException {
+        try (Connection connection = connection(database.databaseName(), database.appRole(), database.appPassword())) {
+            connection.setAutoCommit(false);
+            try {
+                if (tenantId != null) {
+                    setTenantContext(connection, tenantId.toString());
+                }
+                return tenantRowCount(connection);
+            } finally {
+                connection.rollback();
+            }
+        }
+    }
+
+    private static int tenantRowCount(Connection connection) throws SQLException {
+        try (Statement statement = connection.createStatement();
+                ResultSet result = statement.executeQuery("SELECT count(*) FROM " + TENANT_BOUNDARY_FIXTURE)) {
+            assertTrue(result.next());
+            return result.getInt(1);
+        }
+    }
+
+    private static void setTenantContext(Connection connection, String tenantId) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("SELECT set_config('app.tenant_id', ?, true)")) {
+            statement.setString(1, tenantId);
+            statement.execute();
         }
     }
 
@@ -257,6 +419,53 @@ class PostgreSqlDataBoundaryIT {
 
     private static boolean roleCanInherit(Connection connection, String roleName) throws SQLException {
         return roleAttribute(connection, roleName, "rolinherit");
+    }
+
+    private static boolean roleHasMembership(Connection connection, String memberRole, String targetRole) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("SELECT pg_has_role(?, ?, 'member')")) {
+            statement.setString(1, memberRole);
+            statement.setString(2, targetRole);
+            try (ResultSet result = statement.executeQuery()) {
+                assertTrue(result.next());
+                return result.getBoolean(1);
+            }
+        }
+    }
+
+    private static boolean tableUsesForcedRowLevelSecurity(Connection connection) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid = ?::regclass")) {
+            statement.setString(1, TENANT_BOUNDARY_FIXTURE);
+            try (ResultSet result = statement.executeQuery()) {
+                assertTrue(result.next());
+                return result.getBoolean(1);
+            }
+        }
+    }
+
+    private static boolean tenantIdIsNotNull(Connection connection) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT is_nullable = 'NO' FROM information_schema.columns "
+                        + "WHERE table_schema = 'public' AND table_name = ? AND column_name = 'tenant_id'")) {
+            statement.setString(1, TENANT_BOUNDARY_FIXTURE);
+            try (ResultSet result = statement.executeQuery()) {
+                assertTrue(result.next());
+                return result.getBoolean(1);
+            }
+        }
+    }
+
+    private static List<String> policyRoles(Connection connection, String policyName) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT array_to_string(roles, ',') FROM pg_policies WHERE schemaname = 'public' AND tablename = ? "
+                        + "AND policyname = ?")) {
+            statement.setString(1, TENANT_BOUNDARY_FIXTURE);
+            statement.setString(2, policyName);
+            try (ResultSet result = statement.executeQuery()) {
+                assertTrue(result.next());
+                return List.of(result.getString(1).split(","));
+            }
+        }
     }
 
     private static boolean roleAttribute(Connection connection, String roleName, String attribute) throws SQLException {
