@@ -193,6 +193,10 @@ services:
       dockerfile: deploy/compose/Dockerfile
       args:
         MODULE: gateway
+    environment:
+      GATEWAY_TARGETS_IAM: http://iam-service:8080
+      GATEWAY_TARGETS_TENANT_ACCESS: http://tenant-access-service:8080
+      GATEWAY_TARGETS_ENTITLEMENT: http://entitlement-service:8080
     depends_on:
       iam-service:
         condition: service_started
