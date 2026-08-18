@@ -4,6 +4,7 @@ import static org.springframework.cloud.gateway.server.mvc.filter.BeforeFilterFu
 import static org.springframework.cloud.gateway.server.mvc.handler.GatewayRouterFunctions.route;
 import static org.springframework.cloud.gateway.server.mvc.handler.HandlerFunctions.http;
 
+import org.springframework.http.HttpMethod;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -16,9 +17,29 @@ class GatewayRouteConfiguration {
 
     @Bean
     RouterFunction<ServerResponse> gatewayRoutes(GatewayTargetsProperties targets) {
-        return route("iam-jwks")
-                .GET("/.well-known/jwks.json", http())
-                .before(uri(targets.iam()))
-                .build();
+        RouterFunction<ServerResponse> routes = null;
+        for (GatewayOpenApiRoutes.Route route : GatewayOpenApiRoutes.routes()) {
+            RouterFunction<ServerResponse> gatewayRoute = gatewayRoute(route, targets);
+            routes = routes == null ? gatewayRoute : routes.and(gatewayRoute);
+        }
+        if (routes == null) {
+            throw new IllegalStateException("OpenAPI route whitelist must not be empty");
+        }
+        return routes;
+    }
+
+    private RouterFunction<ServerResponse> gatewayRoute(GatewayOpenApiRoutes.Route route,
+            GatewayTargetsProperties targets) {
+        var builder = route(route.operationId());
+        if (route.method() == HttpMethod.GET) {
+            builder.GET(route.path(), http());
+        } else if (route.method() == HttpMethod.POST) {
+            builder.POST(route.path(), http());
+        } else if (route.method() == HttpMethod.DELETE) {
+            builder.DELETE(route.path(), http());
+        } else {
+            throw new IllegalStateException("Unsupported OpenAPI HTTP method: " + route.method());
+        }
+        return builder.before(uri(route.target().resolve(targets))).build();
     }
 }
