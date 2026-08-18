@@ -6,7 +6,7 @@ saas-forge 是一个面向单 SaaS 产品、多租户场景的业务无关开源
 
 ## 当前状态
 
-当前仓库处于项目骨架阶段：Maven 多模块构建、Gateway 与四个领域服务的启动验证、SDK/Starter 制品坐标、契约目录、控制台与部署目录边界均已建立。尚未实现 API、领域规则、数据存储、前端构建、Docker Compose 或官方业务示例。
+当前仓库处于项目骨架阶段：Maven 多模块构建、Gateway 与四个领域服务的启动验证、SDK/Starter 制品坐标、契约目录和最小 Docker Compose 运行拓扑均已建立。尚未实现 API、领域规则、业务数据存储、前端构建或官方业务示例。
 
 ## 构建
 
@@ -23,6 +23,10 @@ saas-forge 是一个面向单 SaaS 产品、多租户场景的业务无关开源
 - consoles/：Platform Console、Tenant Console Shell、业务 Remote 与共享前端边界。
 - examples/：官方示例的预留位置。
 - deploy/：Compose、Helm 与 systemd 交付物的预留位置。
+
+## 本地 Compose
+
+最小运行拓扑包含 Gateway、四个领域服务、PostgreSQL、Redis、Kafka、OpenTelemetry Collector 与四个 Flyway 迁移任务；对象存储将在第 6 阶段加入。使用方式见 [deploy/README.md](deploy/README.md)。
 
 详细的产品、领域、架构、安全与部署约束见 docs/。
 

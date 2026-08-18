@@ -10,7 +10,7 @@
 
 ## Docker Compose
 
-Compose 用于本地开发、演示和端到端测试，包含：
+完整 Compose 目标用于本地开发、演示和端到端测试，包含：
 
 ```text
 API Gateway
@@ -26,6 +26,8 @@ Kafka
 S3 兼容对象存储
 OpenTelemetry Collector
 ```
+
+当前第 1 阶段的最小 Compose 仅包含 Gateway、四个领域服务、PostgreSQL、Redis、Kafka、OpenTelemetry Collector 和各服务的 Flyway 迁移任务。Platform Console、Tenant Console Shell、业务 Remote 与 S3 兼容对象存储随对应业务阶段加入；对象存储不早于第 6 阶段。
 
 本地环境可以使用单节点依赖，但不得把单节点拓扑等同于生产拓扑。
 

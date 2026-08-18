@@ -1,60 +1,84 @@
-# Docker Compose
+# 最小本地 Docker Compose
 
-Compose 用于本地开发、演示和端到端测试。
+[English](README-en.md)
 
-当前编排提供 PostgreSQL 18 集群引导和 IAM、Tenant Access、Entitlement、Audit 的独立 Flyway 迁移任务，不包含尚未实现的领域服务镜像。
+本目录提供 saas-forge 的最小本地运行拓扑，供开发、演示和端到端测试使用。
+
+## 包含内容
+
+- Gateway；IAM、Tenant Access、Entitlement、Audit 四个领域服务
+- PostgreSQL 18，以及四个服务各自的一次性 Flyway 迁移任务
+- Redis、单节点 KRaft Kafka 与 OpenTelemetry Collector
+- PostgreSQL、Redis、Kafka 的独立命名卷
+
+S3 兼容对象存储不属于当前拓扑，将在第 6 阶段加入。当前 Collector 仅通过 `debug` exporter 输出遥测数据，不部署 Prometheus、Loki、Tempo 或 Grafana。
 
 ## 启动
 
-在本目录准备本地凭据并启动：
+在本目录执行：
 
 ```bash
-cp .env.example .env
-# 将 .env 中的 replace-with-a-secret 替换为本地随机密码
-docker compose up -d
+test -f .env || cp .env.example .env
+# 为 .env 中的全部变量填写仅用于本地开发的值
+docker compose config
+docker compose up --build
 ```
 
-`.env` 是本地文件，已被 Git 忽略。它包含 9 个密码：一个集群引导管理员密码和四个服务各自的 migrator、app 账号密码。八个服务账号名由 `bootstrap.sh` 固定创建，密码只保存在 `.env`。
-
-## PostgreSQL 集群引导
-
-`../postgresql/bootstrap.sh` 只在 `postgres-data` 首次创建时执行。它创建四个独立数据库（`iam_db`、`tenant_access_db`、`entitlement_db`、`audit_db`）和对应账号，撤销 `PUBLIC` 默认权限，并只授予 migrator 账号创建 schema 对象的权限。
-
-脚本必须保留可执行权限。若 PostgreSQL 日志出现 `/usr/bin/env: bad interpreter: Permission denied`，在仓库根目录执行：
+首次启动时，PostgreSQL healthy 后四个 `*-migrate` 任务会完成各自数据库迁移；对应领域服务随后启动，Gateway 最后启动。可用以下命令查看状态：
 
 ```bash
-chmod +x deploy/postgresql/bootstrap.sh
+docker compose ps --all
 ```
 
-随后必须重新初始化。仅在确认没有需要保留的本地数据时执行以下命令；它会删除 `postgres-data` volume：
+`*-migrate` 显示 `Exited (0)` 表示迁移成功。当前服务尚未提供业务路由，因此直接请求服务根路径返回 `404` 是预期行为。
+
+> [!IMPORTANT]
+> `.env` 仅限本地使用，已被 Git 忽略。必须填写一个 PostgreSQL 管理员用户名及全部 10 个密码变量；不要提交 `.env`，也不要将本地短码用于任何非本地环境。
+
+## 本地端口
+
+所有宿主机端口均只绑定到 `127.0.0.1`，不会暴露到局域网。
+
+| 组件 | 本地端口 | 说明 |
+| --- | ---: | --- |
+| Gateway | 8080 | HTTP |
+| IAM | 8081 | HTTP |
+| Tenant Access | 8082 | HTTP |
+| Entitlement | 8083 | HTTP |
+| Audit | 8084 | HTTP |
+| PostgreSQL | 5432 | 数据库连接 |
+| Redis | 6379 | 需使用 `REDIS_PASSWORD` 认证 |
+| Kafka | 29092 | 主机外部监听；容器内服务使用 `kafka:9092` |
+| OpenTelemetry Collector | 4317 / 4318 | OTLP gRPC / HTTP |
+
+## 环境变量
+
+`.env.example` 包含所需变量名，不提供默认密码。`POSTGRES_ADMIN_USER` 是 PostgreSQL 初始化管理员账号；其余变量均为密码：
+
+| 服务 | migrator 密码 | app 密码 |
+| --- | --- | --- |
+| PostgreSQL 集群引导 | `POSTGRES_ADMIN_PASSWORD` | — |
+| IAM | `IAM_MIGRATOR_PASSWORD` | `IAM_APP_PASSWORD` |
+| Tenant Access | `TENANT_ACCESS_MIGRATOR_PASSWORD` | `TENANT_ACCESS_APP_PASSWORD` |
+| Entitlement | `ENTITLEMENT_MIGRATOR_PASSWORD` | `ENTITLEMENT_APP_PASSWORD` |
+| Audit | `AUDIT_MIGRATOR_PASSWORD` | `AUDIT_APP_PASSWORD` |
+| Redis | `REDIS_PASSWORD` | — |
+
+`bootstrap.sh` 在首次创建 PostgreSQL 数据卷时建立 `iam_db`、`tenant_access_db`、`entitlement_db`、`audit_db`，以及各服务独立的 `*_migrator` 和 `*_app` 账号。迁移任务使用 migrator 账号，运行时服务使用 app 账号。
+
+## 停止与重置
+
+日常停止环境：
 
 ```bash
-cd deploy/compose
+docker compose down
+```
+
+需要彻底重置 PostgreSQL、Redis 与 Kafka 的本地数据时：
+
+```bash
 docker compose down -v
-docker compose up -d
 ```
 
-生产环境由数据库运行方执行等价的集群引导流程，不应通过删除数据卷重新初始化。
-
-## Flyway 迁移任务
-
-四个 `*-migrate` 容器是一次性任务，分别迁移自己的数据库：
-
-| 容器 | 数据库 |
-| --- | --- |
-| `iam-migrate` | `iam_db` |
-| `tenant-access-migrate` | `tenant_access_db` |
-| `entitlement-migrate` | `entitlement_db` |
-| `audit-migrate` | `audit_db` |
-
-PostgreSQL healthy 后，它们以各自的 `*_migrator` 账号读取服务目录下的 `db/migration` 并执行未应用的迁移。首次初始化、新增迁移后，以及测试、预发或生产发布前应运行它们。`Exited (0)` 表示任务成功完成；日常使用不需要保持运行。再次运行且没有新迁移时，Flyway 只校验历史记录后退出。
-
-## Navicat 连接
-
-PostgreSQL 仅发布到本机 `127.0.0.1:5432`，不会暴露到局域网。Navicat 可使用以下参数连接：
-
-- 主机：`127.0.0.1`
-- 端口：`5432`
-- 数据库：四个服务数据库之一，例如 `iam_db`
-- 用户：对应服务的 `*_app` 或 `*_migrator` 账号，例如 `iam_app`
-- 密码：`.env` 中相应的密码变量
+> [!CAUTION]
+> `down -v` 会删除此 Compose 项目的三个命名数据卷。仅在确认其中没有需要保留的本地数据时使用。

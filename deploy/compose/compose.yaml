@@ -24,6 +24,56 @@ services:
       - postgres-data:/var/lib/postgresql
       - ../postgresql/bootstrap.sh:/docker-entrypoint-initdb.d/01-bootstrap.sh:ro
 
+  redis:
+    image: redis:8.8.1
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - redis-data:/data
+
+  kafka:
+    image: apache/kafka:4.0.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:9092,EXTERNAL://:29092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    ports:
+      - "127.0.0.1:29092:29092"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+
+  otel-collector:
+    image: otel/opentelemetry-collector:0.119.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    ports:
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
+
   iam-migrate:
     image: flyway/flyway:12
     depends_on:
@@ -84,5 +134,78 @@ services:
     volumes:
       - ../../services/audit-service/src/main/resources/db/migration:/flyway/sql:ro
 
+  iam-service:
+    image: saasforge/iam-service:local
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile
+      args:
+        MODULE: services/iam-service
+    depends_on:
+      iam-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:8081:8080"
+
+  tenant-access-service:
+    image: saasforge/tenant-access-service:local
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile
+      args:
+        MODULE: services/tenant-access-service
+    depends_on:
+      tenant-access-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:8082:8080"
+
+  entitlement-service:
+    image: saasforge/entitlement-service:local
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile
+      args:
+        MODULE: services/entitlement-service
+    depends_on:
+      entitlement-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:8083:8080"
+
+  audit-service:
+    image: saasforge/audit-service:local
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile
+      args:
+        MODULE: services/audit-service
+    depends_on:
+      audit-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:8084:8080"
+
+  gateway:
+    image: saasforge/gateway:local
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile
+      args:
+        MODULE: gateway
+    depends_on:
+      iam-service:
+        condition: service_started
+      tenant-access-service:
+        condition: service_started
+      entitlement-service:
+        condition: service_started
+      audit-service:
+        condition: service_started
+    ports:
+      - "127.0.0.1:8080:8080"
+
 volumes:
   postgres-data:
+  redis-data:
+  kafka-data:
