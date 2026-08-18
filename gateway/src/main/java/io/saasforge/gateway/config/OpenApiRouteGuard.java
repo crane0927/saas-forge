@@ -7,7 +7,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -24,13 +23,13 @@ class OpenApiRouteGuard extends OncePerRequestFilter {
             throws ServletException, IOException {
         List<GatewayOpenApiRoutes.Route> routes = GatewayOpenApiRoutes.matching(requestPath(request));
         if (routes.isEmpty()) {
-            writeProblem(response, HttpStatus.NOT_FOUND, "ROUTE_NOT_FOUND", "The requested route is not declared.");
+            writeProblem(request, response, HttpStatus.NOT_FOUND, "ROUTE_NOT_FOUND", "The requested route is not declared.");
             return;
         }
         if (routes.stream().noneMatch(route -> route.method().matches(request.getMethod()))) {
             response.setHeader("Allow", routes.stream().map(route -> route.method().name()).sorted()
                     .reduce((left, right) -> left + ", " + right).orElseThrow());
-            writeProblem(response, HttpStatus.METHOD_NOT_ALLOWED, "METHOD_NOT_ALLOWED",
+            writeProblem(request, response, HttpStatus.METHOD_NOT_ALLOWED, "METHOD_NOT_ALLOWED",
                     "The requested method is not declared for this route.");
             return;
         }
@@ -42,9 +41,10 @@ class OpenApiRouteGuard extends OncePerRequestFilter {
         return request.getRequestURI().substring(contextPath.length());
     }
 
-    private void writeProblem(HttpServletResponse response, HttpStatus status, String code, String detail)
+    private void writeProblem(HttpServletRequest request, HttpServletResponse response, HttpStatus status, String code,
+            String detail)
             throws IOException {
-        String traceId = UUID.randomUUID().toString().replace("-", "");
+        String traceId = TraceContext.current(request).traceId();
         String title = status == HttpStatus.NOT_FOUND ? "Route not found" : "Method not allowed";
         String type = "urn:saasforge:problem:" + code.toLowerCase().replace('_', '-');
         String body = ("{\"type\":\"%s\",\"title\":\"%s\",\"status\":%d,\"code\":\"%s\","
