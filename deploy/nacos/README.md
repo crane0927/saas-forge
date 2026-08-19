@@ -8,7 +8,7 @@
 - `entitlement-service.yaml`
 - `audit-service.yaml`
 
-目录和 Nacos namespace 一一对应；清单不引入共享资源。应用的 `application.yaml` 只导入同名资源，Nacos 连接地址、namespace 和工作负载凭据继续由 Helm values 或环境变量提供。
+目录和 Nacos namespace 一一对应；清单不引入共享资源。应用的 `application.yaml` 只导入同名资源，Nacos 连接地址、namespace 和工作负载凭据继续由 Helm values 或环境变量提供。生产连接参数和外部 Secret 引用受 [`../helm/nacos-production-contract.yaml`](../helm/nacos-production-contract.yaml) 约束。
 
 ## 校验与发布
 

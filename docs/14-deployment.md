@@ -66,7 +66,7 @@ Platform Console、Tenant Console Shell 与业务 Remote 独立发布。Gateway 
 - PostgreSQL 为四个服务提供独立数据库，需满足 RPO ≤ 5 分钟、RTO ≤ 30 分钟，并定期执行恢复演练。
 - Redis 是 Token 黑名单、会话和登录保护的安全依赖，使用高可用主从与自动故障转移的托管服务或 Sentinel/等效方案。
 - Kafka 至少 3 Broker，主题副本数 3、`min.insync.replicas=2`、生产者 `acks=all`。生产者 topic 固定为 `saasforge.<environment>.<producer-service>.events`；Kafka ACL 仅授予服务写入自己的 topic、读取事件工程注册表允许的 topic，以及消费者自己的隔离 topic 写入权限。
-- Nacos 在本地 Compose 使用单节点；生产使用独立部署的高可用集群，供 Gateway 与领域服务注册、发现健康实例并读取非敏感运行配置。
+- Nacos 在本地 Compose 使用单节点；生产使用独立部署的高可用集群或其高可用 HTTPS 接入端点，供 Gateway 与领域服务注册、发现健康实例并读取非敏感运行配置。应用 Chart 仅引用该外部端点，不部署 Nacos Server。
 - S3 兼容对象存储仅保存导出任务的临时结果。导出不按 Tenant/Plan 限额，但任务必须异步、流式处理、通过全局有界队列与单 Tenant 公平调度保护系统；结果文件按配置留存期自动删除。
 
 ## 网络、配置与密钥
@@ -80,10 +80,12 @@ Platform Console、Tenant Console Shell 与业务 Remote 独立发布。Gateway 
 - Nacos 在 `SAAS_FORGE` group 中按可部署应用保存独立配置资源：`gateway.yaml`、`iam-service.yaml`、`tenant-access-service.yaml`、`entitlement-service.yaml`、`audit-service.yaml`。当前不设置共享配置资源。
 - Gateway 与每个领域服务使用独立的 Nacos 工作负载身份，只能注册、发现服务并读取自身配置；生产配置写入仅允许受控发布流水线，人工运维使用独立、可审计的应急身份。
 - Nacos 工作负载身份凭据由外部密钥管理服务注入。本地 Compose 可在隔离网络中使用非 TLS 开发连接，但不得使用 Nacos 默认账户或任何生产凭据。
+- 生产应用为 Nacos Config Client 设置 `NACOS_TLS_ENABLED=true`，并通过 `JAVA_TOOL_OPTIONS` 设置 `-Dcom.alibaba.nacos.client.naming.tls.enable=true`；五个工作负载的用户名和密码均通过各自的外部 Secret 注入。具体 Chart 接口见 [`../deploy/helm/nacos-production-contract.yaml`](../deploy/helm/nacos-production-contract.yaml)。
 - Nacos 注册名固定为 `gateway`、`iam-service`、`tenant-access-service`、`entitlement-service` 和 `audit-service`；新业务服务以稳定模块名注册。Gateway 仅将代码白名单中的 API 映射至相应服务名，不因注册自动开放公网入口。
 - 非敏感 Nacos 配置以仓库中受版本控制的配置清单为权威来源，由 CI 校验并发布。Nacos Console 仅用于查看和受审计的应急处置；任何应急变更都必须回写仓库并经 Git 复核。
 - 清单目录、CI 发布身份、最小权限矩阵、回滚和 Console 应急回写步骤由 [`deploy/nacos/README.md`](../deploy/nacos/README.md) 约束；生产发布使用受保护的 GitHub Environment。
 - Nacos 运行时不可用时，已启动实例继续使用最后一次成功加载的配置与已知健康实例；新实例若不能加载必需配置或完成注册不得 Ready。Gateway 找不到健康实例时返回 `503`，不得回退到静态服务地址。
+- 本地可用 `bash scripts/verify-nacos-failure-recovery.sh` 对上述行为执行隔离的 Compose 故障注入验收；脚本不会停止已有开发栈，并在退出时删除自己的临时容器和卷。
 - API 的凭据型 CORS 仅允许 Platform Console 与 Tenant Console Shell；Remote 静态资源仅允许 Tenant Console Shell 无凭据加载。Remote 的入口和版本由 Manifest 白名单控制。
 
 ## 可观测性、SLO 与容量

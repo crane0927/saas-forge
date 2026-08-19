@@ -8,6 +8,8 @@ spring:
       config:
         server-addr: ${NACOS_SERVER_ADDR:nacos:8848}
         namespace: ${NACOS_NAMESPACE:dev}
+        ssl:
+          enabled: ${NACOS_TLS_ENABLED:false}
       discovery:
         server-addr: ${NACOS_SERVER_ADDR:nacos:8848}
         namespace: ${NACOS_NAMESPACE:dev}

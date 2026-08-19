@@ -1,0 +1,31 @@
+# 故障恢复验收运行在独立 Compose 项目中，不占用开发栈的宿主机端口。
+services:
+  postgres:
+    ports: !reset []
+  redis:
+    ports: !reset []
+  kafka:
+    ports: !reset []
+  otel-collector:
+    ports: !reset []
+  nacos:
+    ports: !reset []
+  iam-service:
+    ports: !reset []
+  tenant-access-service:
+    ports: !reset []
+  entitlement-service:
+    ports: !reset []
+  audit-service:
+    ports: !reset []
+  gateway:
+    ports: !reset []
+    # 故障恢复验收只覆盖 IAM 路由，避免无关服务的镜像构建挤占本地 Nacos 所需资源。
+    depends_on: !override
+      nacos-init:
+        condition: service_completed_successfully
+      iam-service:
+        condition: service_started
+  failure-recovery-probe:
+    image: curlimages/curl:8.12.1
+    entrypoint: ["curl"]

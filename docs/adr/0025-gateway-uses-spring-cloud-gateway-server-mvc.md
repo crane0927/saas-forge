@@ -2,7 +2,7 @@
 
 Gateway 与领域服务使用 Nacos 进行服务注册、发现和非敏感运行配置管理，同时继续使用 Spring Cloud Gateway Server MVC，不引入 Reactive Gateway。Gateway 和服务客户端按服务名发现健康实例，避免依赖固定部署地址；公开路由仍以代码中的 OpenAPI 白名单定义，服务注册或配置变更不得增加公网入口。密码、数据库凭据、OAuth Client Secret 和 JWT/KMS 凭据仍由外部密钥管理服务托管，不写入 Nacos 普通配置。
 
-Docker Compose 为本地开发提供单节点 Nacos；生产环境接入独立部署的高可用 Nacos 集群，应用 Helm Chart 不默认部署该集群。
+Docker Compose 为本地开发提供单节点、非 TLS 的 Nacos；生产环境接入独立部署的高可用 HTTPS Nacos 集群或其高可用接入端点，应用 Helm Chart 只引用该端点且不部署该集群。生产工作负载通过外部密钥管理服务注入各自的 Nacos 身份，Config Client 启用 TLS，Naming Client 以 `-Dcom.alibaba.nacos.client.naming.tls.enable=true` 启用 TLS。
 
 Nacos 配置默认随版本滚动发布生效；只有被显式标记为可热更新的低风险策略才允许动态刷新。服务发现可动态收敛健康实例，但公开路由白名单、认证与 CORS 边界、TLS、数据库连接和迁移不得通过配置热更新改变。
 

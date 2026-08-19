@@ -103,6 +103,8 @@ jobs:
       - uses: actions/checkout@v6
       - name: Validate every Git-managed Nacos configuration
         run: bash scripts/validate-nacos-config.sh
+      - name: Validate the production Nacos deployment contract
+        run: bash scripts/validate-nacos-production-contract.sh
       - name: Publish dev manifest with the constrained publisher identity
         working-directory: deploy/compose
         run: |
@@ -115,6 +117,8 @@ jobs:
         run: |
           NACOS_SERVER_ADDR=http://127.0.0.1:8848 \
             bash scripts/verify-nacos-acl.sh
+      - name: Verify Nacos failure recovery
+        run: bash scripts/verify-nacos-failure-recovery.sh
       - name: Remove ephemeral Nacos data
         if: always()
         working-directory: deploy/compose

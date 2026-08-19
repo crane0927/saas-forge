@@ -24,7 +24,7 @@ docker compose config
 docker compose up --build
 ```
 
-首次启动时，Nacos 会用 `.env` 中的显式管理员密码完成首次初始化，并由 `nacos-init` 创建非默认的 IAM、Tenant Access、Entitlement、Audit、Gateway 开发身份、配置发布身份、`dev` namespace，以及 `SAAS_FORGE` group 中各自的配置资源；PostgreSQL healthy 后四个 `*-migrate` 任务会完成各自数据库迁移；对应领域服务随后启动，Gateway 最后启动。任一服务的 Nacos 配置不存在、Nacos 不可达或注册失败时不会 Ready；Gateway 仅通过 Nacos 的健康实例代理当前公开路由所属服务，Audit 注册不会开放新入口。Nacos 本地控制台访问 <http://127.0.0.1:8849/>。可用以下命令查看状态：
+首次启动时，Nacos 会用 `.env` 中的显式管理员密码完成首次初始化，并由 `nacos-init` 创建非默认的 IAM、Tenant Access、Entitlement、Audit、Gateway 开发身份、配置发布身份、`dev` namespace，以及 `SAAS_FORGE` group 中各自的配置资源；PostgreSQL healthy 后四个 `*-migrate` 任务会完成各自数据库迁移；对应领域服务随后启动，Gateway 最后启动。Compose 明确向所有应用传入 `NACOS_TLS_ENABLED=false`，因为它只提供隔离网络内的单节点开发 Nacos；不得将此拓扑、地址或凭据复制到生产。五个应用均以 `refreshEnabled=false` 导入自身配置资源，常规配置变更由受控发布流程配合滚动发布生效；当前没有可在本地热更新的策略。任一服务的 Nacos 配置不存在、Nacos 不可达或注册失败时不会 Ready；Gateway 仅通过 Nacos 的健康实例代理当前公开路由所属服务，Audit 注册不会开放新入口。Nacos 本地控制台访问 <http://127.0.0.1:8849/>。可用以下命令查看状态：
 
 ```bash
 docker compose ps --all
@@ -69,6 +69,16 @@ docker compose ps --all
 `NACOS_IAM_USERNAME`、`NACOS_TENANT_ACCESS_USERNAME`、`NACOS_ENTITLEMENT_USERNAME`、`NACOS_AUDIT_USERNAME` 与 `NACOS_GATEWAY_USERNAME` 必须是非默认开发身份。`NACOS_AUTH_IDENTITY_KEY`、`NACOS_AUTH_IDENTITY_VALUE` 与 `NACOS_AUTH_TOKEN` 均须填写仅用于本地的随机值；`NACOS_AUTH_TOKEN` 必须是由至少 32 个原始字符生成的 Base64 字符串。`nacos-init` 仅用初始化管理员身份创建 namespace、用户和权限，随后改用仅可写入五个受控配置资源的 `NACOS_PUBLISH_USERNAME` 发布清单；每个领域服务身份仅被授予读取自己的配置和注册自己的稳定服务名，Gateway 身份仅被授予读取自己的配置、注册 `gateway` 与读取 `iam-service`、`tenant-access-service`、`entitlement-service` 健康实例的权限。完整清单、CI 发布和应急回写流程见 [`../nacos/README.md`](../nacos/README.md)。
 
 `bootstrap.sh` 在首次创建 PostgreSQL 数据卷时建立 `iam_db`、`tenant_access_db`、`entitlement_db`、`audit_db`，以及各服务独立的 `*_migrator` 和 `*_app` 账号。迁移任务使用 migrator 账号，运行时服务使用 app 账号。
+
+## Nacos 故障恢复验收
+
+在已准备好本地 `.env` 后，从仓库根目录运行：
+
+```bash
+bash scripts/verify-nacos-failure-recovery.sh
+```
+
+该脚本使用独立 Compose 项目和 `failure-recovery.override.yaml`，不会占用或停止开发栈的宿主机端口和容器。它依次验证 Gateway 无健康 IAM 实例时返回 `503` 且没有静态地址回退、Nacos 短暂停止后已启动 Gateway 继续使用已知健康实例，以及控制面不可用时新的 IAM 实例无法因缺少必需配置而启动。退出时只删除该独立验收项目创建的容器和卷。
 
 ## 停止与重置
 

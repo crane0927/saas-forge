@@ -1,0 +1,18 @@
+# 此文件是生产应用 Chart 与外部 Nacos 集群的接口样例，不会部署 Nacos Server。
+nacos:
+  serverAddress: https://nacos.prod.example:443
+  namespace: prod
+  tls:
+    enabled: true
+    namingJavaToolOptions: -Dcom.alibaba.nacos.client.naming.tls.enable=true
+  workloadCredentials:
+    gateway:
+      existingSecretName: saas-forge-nacos-gateway
+    iam-service:
+      existingSecretName: saas-forge-nacos-iam-service
+    tenant-access-service:
+      existingSecretName: saas-forge-nacos-tenant-access-service
+    entitlement-service:
+      existingSecretName: saas-forge-nacos-entitlement-service
+    audit-service:
+      existingSecretName: saas-forge-nacos-audit-service
