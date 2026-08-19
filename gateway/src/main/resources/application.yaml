@@ -1,0 +1,21 @@
+spring:
+  application:
+    name: gateway
+  cloud:
+    nacos:
+      username: ${NACOS_GATEWAY_USERNAME:?NACOS_GATEWAY_USERNAME is required}
+      password: ${NACOS_GATEWAY_PASSWORD:?NACOS_GATEWAY_PASSWORD is required}
+      config:
+        server-addr: ${NACOS_SERVER_ADDR:nacos:8848}
+        namespace: ${NACOS_NAMESPACE:dev}
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:nacos:8848}
+        namespace: ${NACOS_NAMESPACE:dev}
+        service: gateway
+        fail-fast: true
+---
+spring:
+  config:
+    activate:
+      on-profile: "!gateway-test"
+    import: nacos:gateway.yaml?group=SAAS_FORGE&refreshEnabled=false

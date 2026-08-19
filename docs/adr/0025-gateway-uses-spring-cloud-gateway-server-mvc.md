@@ -22,4 +22,4 @@ Nacos 注册名固定为 `gateway`、`iam-service`、`tenant-access-service`、`
 
 Nacos 运行时不可用时，已启动实例继续使用最后一次成功加载的配置与已知健康实例。新实例若不能加载必需配置或完成注册不得 Ready；Gateway 找不到健康实例时返回 `503`，不得回退到静态服务地址。
 
-Gateway 只生成自身的 `ROUTE_NOT_FOUND`、`METHOD_NOT_ALLOWED`、`UPSTREAM_INVALID_RESPONSE` 与 `UPSTREAM_TIMEOUT` Problem Details；合格的下游 Problem Details 原样透传。它仅透传或新建 W3C `traceparent`／`tracestate`，不自动重试上游请求，也不信任或转发客户端给出的 `Forwarded`、`X-Forwarded-*` 头，直到来源策略明确受信代理边界。
+Gateway 只生成自身的 `ROUTE_NOT_FOUND`、`METHOD_NOT_ALLOWED`、`UPSTREAM_UNAVAILABLE`、`UPSTREAM_INVALID_RESPONSE` 与 `UPSTREAM_TIMEOUT` Problem Details；无健康服务实例时使用稳定的 `503 UPSTREAM_UNAVAILABLE`。合格的下游 Problem Details 原样透传。它仅透传或新建 W3C `traceparent`／`tracestate`，不自动重试上游请求，也不信任或转发客户端给出的 `Forwarded`、`X-Forwarded-*` 头，直到来源策略明确受信代理边界。

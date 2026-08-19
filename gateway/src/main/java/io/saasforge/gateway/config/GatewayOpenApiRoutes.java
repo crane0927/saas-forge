@@ -8,7 +8,7 @@ import org.springframework.web.util.pattern.PathPatternParser;
 import org.springframework.http.server.PathContainer;
 
 /**
- * 当前 OpenAPI v1 的公开路由白名单；部署配置只能改变目标地址，不能增加公开入口。
+ * 当前 OpenAPI v1 的公开路由白名单；服务发现和部署配置都不能增加公开入口。
  */
 final class GatewayOpenApiRoutes {
 
@@ -59,25 +59,16 @@ final class GatewayOpenApiRoutes {
     }
 
     enum Target {
-        IAM {
-            @Override
-            URI resolve(GatewayTargetsProperties targets) {
-                return targets.iam();
-            }
-        },
-        TENANT_ACCESS {
-            @Override
-            URI resolve(GatewayTargetsProperties targets) {
-                return targets.tenantAccess();
-            }
-        },
-        ENTITLEMENT {
-            @Override
-            URI resolve(GatewayTargetsProperties targets) {
-                return targets.entitlement();
-            }
-        };
+        IAM,
+        TENANT_ACCESS,
+        ENTITLEMENT;
 
-        abstract URI resolve(GatewayTargetsProperties targets);
+        URI resolveDeploymentTarget(GatewayTargetsProperties targets) {
+            return switch (this) {
+                case TENANT_ACCESS -> targets.tenantAccess();
+                case ENTITLEMENT -> targets.entitlement();
+                case IAM -> throw new IllegalStateException("IAM target must use service discovery");
+            };
+        }
     }
 }

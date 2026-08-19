@@ -24,7 +24,7 @@ docker compose config
 docker compose up --build
 ```
 
-On the first start, Nacos initializes with the explicit administrator password in `.env`; `nacos-init` then creates a non-default IAM development identity and publishes `iam-service.yaml` into the `dev` namespace and `SAAS_FORGE` group. PostgreSQL then becomes healthy, the four `*-migrate` jobs migrate their own databases, the domain services start, and Gateway starts last. IAM does not become Ready when its Nacos configuration is absent, Nacos is unavailable, or registration fails. Access the local Nacos console at <http://127.0.0.1:8849/>. Inspect the status with:
+On the first start, Nacos initializes with the explicit administrator password in `.env`; `nacos-init` then creates non-default IAM and Gateway development identities and publishes `iam-service.yaml` and `gateway.yaml` into the `dev` namespace and `SAAS_FORGE` group. PostgreSQL then becomes healthy, the four `*-migrate` jobs migrate their own databases, the domain services start, and Gateway starts last. IAM or Gateway does not start when its Nacos configuration is absent or Nacos is unavailable; Gateway proxies IAM routes only through healthy Nacos `iam-service` instances. Access the local Nacos console at <http://127.0.0.1:8849/>. Inspect the status with:
 
 ```bash
 docker compose ps --all
@@ -64,9 +64,9 @@ Every host port binds only to `127.0.0.1`; none is exposed to the local network.
 | Entitlement | `ENTITLEMENT_MIGRATOR_PASSWORD` | `ENTITLEMENT_APP_PASSWORD` |
 | Audit | `AUDIT_MIGRATOR_PASSWORD` | `AUDIT_APP_PASSWORD` |
 | Redis | `REDIS_PASSWORD` | — |
-| Nacos | `NACOS_BOOTSTRAP_PASSWORD` | `NACOS_IAM_PASSWORD` |
+| Nacos | `NACOS_BOOTSTRAP_PASSWORD` | `NACOS_IAM_PASSWORD`, `NACOS_GATEWAY_PASSWORD` |
 
-`NACOS_IAM_USERNAME` must be a non-default development identity. Fill `NACOS_AUTH_IDENTITY_KEY`, `NACOS_AUTH_IDENTITY_VALUE`, and `NACOS_AUTH_TOKEN` with local-only random values; `NACOS_AUTH_TOKEN` must be a Base64 string generated from at least 32 raw characters. `nacos-init` uses only the bootstrap administrator identity to publish the version-controlled `../nacos/dev/iam-service.yaml`; the IAM identity receives permission only to read that configuration and register `iam-service`.
+`NACOS_IAM_USERNAME` and `NACOS_GATEWAY_USERNAME` must be non-default development identities. Fill `NACOS_AUTH_IDENTITY_KEY`, `NACOS_AUTH_IDENTITY_VALUE`, and `NACOS_AUTH_TOKEN` with local-only random values; `NACOS_AUTH_TOKEN` must be a Base64 string generated from at least 32 raw characters. `nacos-init` uses only the bootstrap administrator identity to publish the version-controlled `../nacos/dev/iam-service.yaml` and `../nacos/dev/gateway.yaml`; the IAM identity may only read its own configuration and register `iam-service`, while the Gateway identity may only read its own configuration, register `gateway`, and read healthy `iam-service` instances.
 
 On initial PostgreSQL volume creation, `bootstrap.sh` creates `iam_db`, `tenant_access_db`, `entitlement_db`, and `audit_db`, with separate `*_migrator` and `*_app` accounts for each service. Migration jobs use migrator accounts; runtime services use app accounts.
 

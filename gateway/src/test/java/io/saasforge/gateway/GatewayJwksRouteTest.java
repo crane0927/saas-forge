@@ -22,10 +22,19 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.annotation.Import;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
+        "spring.cloud.nacos.config.enabled=false",
+        "spring.cloud.nacos.discovery.enabled=false",
+        "spring.cloud.loadbalancer.cache.enabled=false",
+        "saasforge.gateway.configuration-revision=test"
+})
+@Import(GatewayTestDiscoveryConfiguration.class)
+@ActiveProfiles("gateway-test")
 class GatewayJwksRouteTest {
 
     private static final Pattern TRACEPARENT = Pattern.compile("00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}");
@@ -33,9 +42,12 @@ class GatewayJwksRouteTest {
     private static final Map<String, AtomicReference<ObservedRequest>> OBSERVED_REQUESTS = new ConcurrentHashMap<>();
 
     private static final HttpServer IAM_SERVER = startServer("iam");
+    private static final HttpServer STATIC_IAM_FALLBACK_SERVER = startServer("static-iam-fallback");
     private static final HttpServer TENANT_ACCESS_SERVER = startServer("tenant-access");
     private static final HttpServer ENTITLEMENT_SERVER = startServer("entitlement");
     private static final URI IAM_URI = URI.create("http://127.0.0.1:" + IAM_SERVER.getAddress().getPort());
+    private static final URI STATIC_IAM_FALLBACK_URI = URI.create(
+            "http://127.0.0.1:" + STATIC_IAM_FALLBACK_SERVER.getAddress().getPort());
     private static final URI TENANT_ACCESS_URI = URI.create(
             "http://127.0.0.1:" + TENANT_ACCESS_SERVER.getAddress().getPort());
     private static final URI ENTITLEMENT_URI = URI.create("http://127.0.0.1:" + ENTITLEMENT_SERVER.getAddress().getPort());
@@ -45,7 +57,8 @@ class GatewayJwksRouteTest {
 
     @DynamicPropertySource
     static void gatewayTargets(DynamicPropertyRegistry registry) {
-        registry.add("gateway.targets.iam", () -> IAM_URI.toString());
+        GatewayTestDiscoveryConfiguration.discoverIamAt(IAM_URI);
+        registry.add("gateway.targets.iam", () -> STATIC_IAM_FALLBACK_URI.toString());
         registry.add("gateway.targets.tenant-access", () -> TENANT_ACCESS_URI.toString());
         registry.add("gateway.targets.entitlement", () -> ENTITLEMENT_URI.toString());
     }
@@ -53,6 +66,7 @@ class GatewayJwksRouteTest {
     @AfterAll
     static void stopIamServer() {
         IAM_SERVER.stop(0);
+        STATIC_IAM_FALLBACK_SERVER.stop(0);
         TENANT_ACCESS_SERVER.stop(0);
         ENTITLEMENT_SERVER.stop(0);
     }
@@ -64,6 +78,25 @@ class GatewayJwksRouteTest {
         assertEquals(200, response.statusCode());
         assertEquals("application/json", response.headers().firstValue("Content-Type").orElseThrow());
         assertEquals("iam", response.body());
+    }
+
+    @Test
+    void returnsGateway503WhenNoHealthyIamInstanceExistsWithoutUsingStaticFallback()
+            throws IOException, InterruptedException {
+        GatewayTestDiscoveryConfiguration.clearIamInstances();
+        resetObservedRequest("static-iam-fallback");
+        HttpResponse<String> response;
+        try {
+            response = send("GET", "/.well-known/jwks.json");
+        } finally {
+            GatewayTestDiscoveryConfiguration.discoverIamAt(IAM_URI);
+        }
+
+        assertEquals(503, response.statusCode());
+        assertTrue(response.headers().firstValue("Content-Type").orElseThrow()
+                .startsWith("application/problem+json"));
+        assertTrue(response.body().contains("\"code\":\"UPSTREAM_UNAVAILABLE\""));
+        assertFalse(hasObservedRequest("static-iam-fallback"));
     }
 
     @Test
@@ -238,6 +271,10 @@ class GatewayJwksRouteTest {
             throw new AssertionError(service + " downstream request was not observed");
         }
         return observed;
+    }
+
+    private boolean hasObservedRequest(String service) {
+        return OBSERVED_REQUESTS.computeIfAbsent(service, ignored -> new AtomicReference<>()).get() != null;
     }
 
     private static RouteExpectation route(String method, String path, String service) {

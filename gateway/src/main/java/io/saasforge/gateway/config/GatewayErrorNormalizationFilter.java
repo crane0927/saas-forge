@@ -14,6 +14,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.util.ContentCachingResponseWrapper;
@@ -69,6 +70,11 @@ class GatewayErrorNormalizationFilter extends OncePerRequestFilter {
 
     private void writeUpstreamProblem(HttpServletRequest request, HttpServletResponse response, Throwable exception)
             throws IOException {
+        if (hasNoHealthyInstanceCause(exception)) {
+            problemDetailsWriter.write(request, response, HttpStatus.SERVICE_UNAVAILABLE, "UPSTREAM_UNAVAILABLE",
+                    "No healthy upstream service instance is available.");
+            return;
+        }
         if (hasTimeoutCause(exception)) {
             problemDetailsWriter.write(request, response, HttpStatus.GATEWAY_TIMEOUT, "UPSTREAM_TIMEOUT",
                     "The upstream service did not respond before the configured timeout.");
@@ -123,11 +129,27 @@ class GatewayErrorNormalizationFilter extends OncePerRequestFilter {
     private boolean hasUpstreamFailureCause(Throwable exception) {
         Throwable cause = exception;
         while (cause != null) {
-            if (cause instanceof ResourceAccessException) {
+            if (cause instanceof ResourceAccessException || isNoHealthyInstance(cause)) {
                 return true;
             }
             cause = cause.getCause();
         }
         return false;
+    }
+
+    private boolean hasNoHealthyInstanceCause(Throwable exception) {
+        Throwable cause = exception;
+        while (cause != null) {
+            if (isNoHealthyInstance(cause)) {
+                return true;
+            }
+            cause = cause.getCause();
+        }
+        return false;
+    }
+
+    private boolean isNoHealthyInstance(Throwable exception) {
+        return exception instanceof HttpServerErrorException serverError
+                && serverError.getStatusCode().value() == HttpStatus.SERVICE_UNAVAILABLE.value();
     }
 }

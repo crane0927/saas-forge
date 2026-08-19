@@ -18,10 +18,19 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.annotation.Import;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
+        "spring.cloud.nacos.config.enabled=false",
+        "spring.cloud.nacos.discovery.enabled=false",
+        "spring.cloud.loadbalancer.cache.enabled=false",
+        "saasforge.gateway.configuration-revision=test"
+})
+@Import(GatewayTestDiscoveryConfiguration.class)
+@ActiveProfiles("gateway-test")
 class GatewayProblemDetailsTest {
 
     private static final AtomicReference<DownstreamResponse> IAM_RESPONSE = new AtomicReference<>(
@@ -42,7 +51,7 @@ class GatewayProblemDetailsTest {
 
     @DynamicPropertySource
     static void gatewayTargets(DynamicPropertyRegistry registry) {
-        registry.add("gateway.targets.iam", () -> IAM_URI.toString());
+        GatewayTestDiscoveryConfiguration.discoverIamAt(IAM_URI);
         registry.add("gateway.targets.tenant-access", () -> "http://127.0.0.1:1");
         registry.add("gateway.targets.entitlement", () -> ENTITLEMENT_URI.toString());
         registry.add("spring.http.clients.read-timeout", () -> "100ms");
@@ -56,6 +65,7 @@ class GatewayProblemDetailsTest {
 
     @BeforeEach
     void resetIamResponse() {
+        GatewayTestDiscoveryConfiguration.discoverIamAt(IAM_URI);
         IAM_RESPONSE.set(new DownstreamResponse(200, "application/json", "iam", 0));
         IAM_REQUESTS.set(0);
     }

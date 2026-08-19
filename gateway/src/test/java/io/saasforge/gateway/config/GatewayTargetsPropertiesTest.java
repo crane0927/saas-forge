@@ -9,12 +9,14 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 class GatewayTargetsPropertiesTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
-            .withUserConfiguration(GatewayApplication.class);
+            .withUserConfiguration(GatewayApplication.class)
+            .withPropertyValues(
+                    "spring.cloud.nacos.discovery.enabled=false",
+                    "saasforge.gateway.configuration-revision=test");
 
     @Test
-    void startsWithAbsoluteHttpTargetsWithoutPathPrefixes() {
+    void startsWithAbsoluteHttpTargetsWithoutPathPrefixesAndNoStaticIamTarget() {
         contextRunner.withPropertyValues(
-                "gateway.targets.iam=https://iam.internal",
                 "gateway.targets.tenant-access=http://tenant-access.internal",
                 "gateway.targets.entitlement=https://entitlement.internal/")
                 .run(context -> assertThat(context.getStartupFailure()).isNull());
@@ -23,7 +25,6 @@ class GatewayTargetsPropertiesTest {
     @Test
     void rejectsMissingTargets() {
         contextRunner.withPropertyValues(
-                "gateway.targets.iam=https://iam.internal",
                 "gateway.targets.tenant-access=http://tenant-access.internal")
                 .run(context -> assertThat(context.getStartupFailure()).isNotNull());
     }
@@ -31,9 +32,18 @@ class GatewayTargetsPropertiesTest {
     @Test
     void rejectsPathPrefixedTargets() {
         contextRunner.withPropertyValues(
-                "gateway.targets.iam=https://iam.internal/api",
-                "gateway.targets.tenant-access=http://tenant-access.internal",
+                "gateway.targets.tenant-access=http://tenant-access.internal/api",
                 "gateway.targets.entitlement=https://entitlement.internal")
+                .run(context -> assertThat(context.getStartupFailure()).isNotNull());
+    }
+
+    @Test
+    void rejectsMissingNacosConfiguration() {
+        new ApplicationContextRunner().withUserConfiguration(GatewayApplication.class)
+                .withPropertyValues(
+                        "spring.cloud.nacos.discovery.enabled=false",
+                        "gateway.targets.tenant-access=http://tenant-access.internal",
+                        "gateway.targets.entitlement=https://entitlement.internal")
                 .run(context -> assertThat(context.getStartupFailure()).isNotNull());
     }
 }

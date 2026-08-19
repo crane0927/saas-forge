@@ -49,6 +49,7 @@ class GatewayProblemDetailsWriter {
             case "METHOD_NOT_ALLOWED" -> "Method not allowed";
             case "UPSTREAM_INVALID_RESPONSE" -> "Upstream invalid response";
             case "UPSTREAM_TIMEOUT" -> "Upstream timeout";
+            case "UPSTREAM_UNAVAILABLE" -> "Upstream service unavailable";
             default -> throw new IllegalArgumentException("Unsupported Gateway Problem Details code: " + code);
         };
     }

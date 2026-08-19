@@ -1,6 +1,7 @@
 package io.saasforge.gateway.config;
 
 import static org.springframework.cloud.gateway.server.mvc.filter.BeforeFilterFunctions.uri;
+import static org.springframework.cloud.gateway.server.mvc.filter.LoadBalancerFilterFunctions.lb;
 import static org.springframework.cloud.gateway.server.mvc.handler.GatewayRouterFunctions.route;
 import static org.springframework.cloud.gateway.server.mvc.handler.HandlerFunctions.http;
 
@@ -14,6 +15,8 @@ import org.springframework.web.servlet.function.ServerResponse;
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(GatewayTargetsProperties.class)
 class GatewayRouteConfiguration {
+
+    private static final String IAM_SERVICE_ID = "iam-service";
 
     @Bean
     RouterFunction<ServerResponse> gatewayRoutes(GatewayTargetsProperties targets) {
@@ -40,6 +43,9 @@ class GatewayRouteConfiguration {
         } else {
             throw new IllegalStateException("Unsupported OpenAPI HTTP method: " + route.method());
         }
-        return builder.before(uri(route.target().resolve(targets))).build();
+        return switch (route.target()) {
+            case IAM -> builder.filter(lb(IAM_SERVICE_ID)).build();
+            case TENANT_ACCESS, ENTITLEMENT -> builder.before(uri(route.target().resolveDeploymentTarget(targets))).build();
+        };
     }
 }
