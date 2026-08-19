@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: iam-service
+  config:
+    import: nacos:iam-service.yaml?group=SAAS_FORGE&refreshEnabled=false
+  cloud:
+    nacos:
+      username: ${NACOS_IAM_USERNAME:?NACOS_IAM_USERNAME is required}
+      password: ${NACOS_IAM_PASSWORD:?NACOS_IAM_PASSWORD is required}
+      config:
+        server-addr: ${NACOS_SERVER_ADDR:nacos:8848}
+        namespace: ${NACOS_NAMESPACE:dev}
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:nacos:8848}
+        namespace: ${NACOS_NAMESPACE:dev}
+        service: iam-service
+        fail-fast: true

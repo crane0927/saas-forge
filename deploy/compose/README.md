@@ -8,7 +8,7 @@
 
 - Gateway；IAM、Tenant Access、Entitlement、Audit 四个领域服务
 - PostgreSQL 18，以及四个服务各自的一次性 Flyway 迁移任务
-- Redis、单节点 KRaft Kafka 与 OpenTelemetry Collector
+- Redis、单节点 KRaft Kafka、单节点 Nacos 与 OpenTelemetry Collector
 - PostgreSQL、Redis、Kafka 的独立命名卷
 
 S3 兼容对象存储不属于当前拓扑，将在第 6 阶段加入。当前 Collector 仅通过 `debug` exporter 输出遥测数据，不部署 Prometheus、Loki、Tempo 或 Grafana。
@@ -24,7 +24,7 @@ docker compose config
 docker compose up --build
 ```
 
-首次启动时，PostgreSQL healthy 后四个 `*-migrate` 任务会完成各自数据库迁移；对应领域服务随后启动，Gateway 最后启动。可用以下命令查看状态：
+首次启动时，Nacos 会用 `.env` 中的显式管理员密码完成首次初始化，并由 `nacos-init` 创建非默认的 IAM 开发身份、`dev` namespace、`SAAS_FORGE` group 中的 `iam-service.yaml`；PostgreSQL healthy 后四个 `*-migrate` 任务会完成各自数据库迁移；对应领域服务随后启动，Gateway 最后启动。IAM 的 Nacos 配置不存在、Nacos 不可达或注册失败时不会 Ready。Nacos 本地控制台访问 <http://127.0.0.1:8849/>。可用以下命令查看状态：
 
 ```bash
 docker compose ps --all
@@ -49,11 +49,12 @@ docker compose ps --all
 | PostgreSQL | 5432 | 数据库连接 |
 | Redis | 6379 | 需使用 `REDIS_PASSWORD` 认证 |
 | Kafka | 29092 | 主机外部监听；容器内服务使用 `kafka:9092` |
+| Nacos | 8848 / 8849 | 配置与服务发现 API / 本地控制台；仅限本地开发 |
 | OpenTelemetry Collector | 4317 / 4318 | OTLP gRPC / HTTP |
 
 ## 环境变量
 
-`.env.example` 包含所需变量名，不提供默认密码。`POSTGRES_ADMIN_USER` 是 PostgreSQL 初始化管理员账号；其余变量均为密码：
+`.env.example` 包含所需变量名，不提供默认密码。`POSTGRES_ADMIN_USER` 是 PostgreSQL 初始化管理员账号；其余变量均为密码或 Nacos 认证材料：
 
 | 服务 | migrator 密码 | app 密码 |
 | --- | --- | --- |
@@ -63,6 +64,9 @@ docker compose ps --all
 | Entitlement | `ENTITLEMENT_MIGRATOR_PASSWORD` | `ENTITLEMENT_APP_PASSWORD` |
 | Audit | `AUDIT_MIGRATOR_PASSWORD` | `AUDIT_APP_PASSWORD` |
 | Redis | `REDIS_PASSWORD` | — |
+| Nacos | `NACOS_BOOTSTRAP_PASSWORD` | `NACOS_IAM_PASSWORD` |
+
+`NACOS_IAM_USERNAME` 必须是非默认开发身份。`NACOS_AUTH_IDENTITY_KEY`、`NACOS_AUTH_IDENTITY_VALUE` 与 `NACOS_AUTH_TOKEN` 均须填写仅用于本地的随机值；`NACOS_AUTH_TOKEN` 必须是由至少 32 个原始字符生成的 Base64 字符串。`nacos-init` 只用初始化管理员身份发布仓库中的 `../nacos/dev/iam-service.yaml`，IAM 身份仅被授予读取该配置和注册 `iam-service` 的权限。
 
 `bootstrap.sh` 在首次创建 PostgreSQL 数据卷时建立 `iam_db`、`tenant_access_db`、`entitlement_db`、`audit_db`，以及各服务独立的 `*_migrator` 和 `*_app` 账号。迁移任务使用 migrator 账号，运行时服务使用 app 账号。
 

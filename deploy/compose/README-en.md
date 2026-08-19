@@ -8,7 +8,7 @@ This directory provides the minimum saas-forge local runtime topology for develo
 
 - Gateway and the IAM, Tenant Access, Entitlement, and Audit domain services
 - PostgreSQL 18 and one Flyway migration job per domain service
-- Redis, single-node KRaft Kafka, and the OpenTelemetry Collector
+- Redis, single-node KRaft Kafka, single-node Nacos, and the OpenTelemetry Collector
 - Separate named volumes for PostgreSQL, Redis, and Kafka
 
 S3-compatible object storage is outside this topology and will be introduced in phase 6. The Collector currently uses only the `debug` exporter; Prometheus, Loki, Tempo, and Grafana are not deployed.
@@ -24,7 +24,7 @@ docker compose config
 docker compose up --build
 ```
 
-On the first start, PostgreSQL becomes healthy, the four `*-migrate` jobs migrate their own databases, the domain services start, and Gateway starts last. Inspect the status with:
+On the first start, Nacos initializes with the explicit administrator password in `.env`; `nacos-init` then creates a non-default IAM development identity and publishes `iam-service.yaml` into the `dev` namespace and `SAAS_FORGE` group. PostgreSQL then becomes healthy, the four `*-migrate` jobs migrate their own databases, the domain services start, and Gateway starts last. IAM does not become Ready when its Nacos configuration is absent, Nacos is unavailable, or registration fails. Access the local Nacos console at <http://127.0.0.1:8849/>. Inspect the status with:
 
 ```bash
 docker compose ps --all
@@ -49,11 +49,12 @@ Every host port binds only to `127.0.0.1`; none is exposed to the local network.
 | PostgreSQL | 5432 | Database connection |
 | Redis | 6379 | Authenticate with `REDIS_PASSWORD` |
 | Kafka | 29092 | Host external listener; containers use `kafka:9092` |
+| Nacos | 8848 / 8849 | Configuration and service-discovery API / local console; local development only |
 | OpenTelemetry Collector | 4317 / 4318 | OTLP gRPC / HTTP |
 
 ## Environment variables
 
-`.env.example` lists the required variable names but provides no default passwords. `POSTGRES_ADMIN_USER` is the PostgreSQL bootstrap administrator; every other variable below is a password.
+`.env.example` lists the required variable names but provides no default passwords. `POSTGRES_ADMIN_USER` is the PostgreSQL bootstrap administrator; the remaining values are passwords or Nacos authentication material.
 
 | Service | migrator password | app password |
 | --- | --- | --- |
@@ -63,6 +64,9 @@ Every host port binds only to `127.0.0.1`; none is exposed to the local network.
 | Entitlement | `ENTITLEMENT_MIGRATOR_PASSWORD` | `ENTITLEMENT_APP_PASSWORD` |
 | Audit | `AUDIT_MIGRATOR_PASSWORD` | `AUDIT_APP_PASSWORD` |
 | Redis | `REDIS_PASSWORD` | — |
+| Nacos | `NACOS_BOOTSTRAP_PASSWORD` | `NACOS_IAM_PASSWORD` |
+
+`NACOS_IAM_USERNAME` must be a non-default development identity. Fill `NACOS_AUTH_IDENTITY_KEY`, `NACOS_AUTH_IDENTITY_VALUE`, and `NACOS_AUTH_TOKEN` with local-only random values; `NACOS_AUTH_TOKEN` must be a Base64 string generated from at least 32 raw characters. `nacos-init` uses only the bootstrap administrator identity to publish the version-controlled `../nacos/dev/iam-service.yaml`; the IAM identity receives permission only to read that configuration and register `iam-service`.
 
 On initial PostgreSQL volume creation, `bootstrap.sh` creates `iam_db`, `tenant_access_db`, `entitlement_db`, and `audit_db`, with separate `*_migrator` and `*_app` accounts for each service. Migration jobs use migrator accounts; runtime services use app accounts.
 
