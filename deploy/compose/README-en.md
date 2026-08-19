@@ -24,7 +24,7 @@ docker compose config
 docker compose up --build
 ```
 
-On the first start, Nacos initializes with the explicit administrator password in `.env`; `nacos-init` then creates non-default IAM and Gateway development identities and publishes `iam-service.yaml` and `gateway.yaml` into the `dev` namespace and `SAAS_FORGE` group. PostgreSQL then becomes healthy, the four `*-migrate` jobs migrate their own databases, the domain services start, and Gateway starts last. IAM or Gateway does not start when its Nacos configuration is absent or Nacos is unavailable; Gateway proxies IAM routes only through healthy Nacos `iam-service` instances. Access the local Nacos console at <http://127.0.0.1:8849/>. Inspect the status with:
+On the first start, Nacos initializes with the explicit administrator password in `.env`; `nacos-init` then creates non-default IAM, Tenant Access, Entitlement, and Gateway development identities and publishes their separate configuration resources into the `dev` namespace and `SAAS_FORGE` group. PostgreSQL then becomes healthy, the four `*-migrate` jobs migrate their own databases, the domain services start, and Gateway starts last. IAM, Tenant Access, Entitlement, or Gateway does not start when its Nacos configuration is absent or Nacos is unavailable; Gateway proxies every current public route only through healthy Nacos instances of its owning service. Access the local Nacos console at <http://127.0.0.1:8849/>. Inspect the status with:
 
 ```bash
 docker compose ps --all
@@ -33,7 +33,7 @@ docker compose ps --all
 An `Exited (0)` status for a `*-migrate` job means its migration succeeded. The services do not yet expose business routes, so a `404` from a service root path is expected.
 
 > [!IMPORTANT]
-> `.env` is for local use only and is ignored by Git. Set one PostgreSQL administrator user and all ten password variables. Do not commit `.env` or use its local short codes outside local development.
+> `.env` is for local use only and is ignored by Git. Set one PostgreSQL administrator user and every required variable. Do not commit `.env` or use its local short codes outside local development.
 
 ## Local ports
 
@@ -64,9 +64,9 @@ Every host port binds only to `127.0.0.1`; none is exposed to the local network.
 | Entitlement | `ENTITLEMENT_MIGRATOR_PASSWORD` | `ENTITLEMENT_APP_PASSWORD` |
 | Audit | `AUDIT_MIGRATOR_PASSWORD` | `AUDIT_APP_PASSWORD` |
 | Redis | `REDIS_PASSWORD` | — |
-| Nacos | `NACOS_BOOTSTRAP_PASSWORD` | `NACOS_IAM_PASSWORD`, `NACOS_GATEWAY_PASSWORD` |
+| Nacos | `NACOS_BOOTSTRAP_PASSWORD` | `NACOS_IAM_PASSWORD`, `NACOS_TENANT_ACCESS_PASSWORD`, `NACOS_ENTITLEMENT_PASSWORD`, `NACOS_GATEWAY_PASSWORD` |
 
-`NACOS_IAM_USERNAME` and `NACOS_GATEWAY_USERNAME` must be non-default development identities. Fill `NACOS_AUTH_IDENTITY_KEY`, `NACOS_AUTH_IDENTITY_VALUE`, and `NACOS_AUTH_TOKEN` with local-only random values; `NACOS_AUTH_TOKEN` must be a Base64 string generated from at least 32 raw characters. `nacos-init` uses only the bootstrap administrator identity to publish the version-controlled `../nacos/dev/iam-service.yaml` and `../nacos/dev/gateway.yaml`; the IAM identity may only read its own configuration and register `iam-service`, while the Gateway identity may only read its own configuration, register `gateway`, and read healthy `iam-service` instances.
+`NACOS_IAM_USERNAME`, `NACOS_TENANT_ACCESS_USERNAME`, `NACOS_ENTITLEMENT_USERNAME`, and `NACOS_GATEWAY_USERNAME` must be non-default development identities. Fill `NACOS_AUTH_IDENTITY_KEY`, `NACOS_AUTH_IDENTITY_VALUE`, and `NACOS_AUTH_TOKEN` with local-only random values; `NACOS_AUTH_TOKEN` must be a Base64 string generated from at least 32 raw characters. `nacos-init` uses only the bootstrap administrator identity to publish the four version-controlled service configuration resources; every domain-service identity may only read its own configuration and register its own stable service name, while the Gateway identity may only read its own configuration, register `gateway`, and read healthy `iam-service`, `tenant-access-service`, and `entitlement-service` instances.
 
 On initial PostgreSQL volume creation, `bootstrap.sh` creates `iam_db`, `tenant_access_db`, `entitlement_db`, and `audit_db`, with separate `*_migrator` and `*_app` accounts for each service. Migration jobs use migrator accounts; runtime services use app accounts.
 

@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: tenant-access-service
+  config:
+    import: nacos:tenant-access-service.yaml?group=SAAS_FORGE&refreshEnabled=false
+  cloud:
+    nacos:
+      username: ${NACOS_TENANT_ACCESS_USERNAME:?NACOS_TENANT_ACCESS_USERNAME is required}
+      password: ${NACOS_TENANT_ACCESS_PASSWORD:?NACOS_TENANT_ACCESS_PASSWORD is required}
+      config:
+        server-addr: ${NACOS_SERVER_ADDR:nacos:8848}
+        namespace: ${NACOS_NAMESPACE:dev}
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:nacos:8848}
+        namespace: ${NACOS_NAMESPACE:dev}
+        service: tenant-access-service
+        fail-fast: true

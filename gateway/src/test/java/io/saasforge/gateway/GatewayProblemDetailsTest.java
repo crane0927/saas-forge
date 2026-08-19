@@ -50,10 +50,12 @@ class GatewayProblemDetailsTest {
     private int gatewayPort;
 
     @DynamicPropertySource
-    static void gatewayTargets(DynamicPropertyRegistry registry) {
-        GatewayTestDiscoveryConfiguration.discoverIamAt(IAM_URI);
-        registry.add("gateway.targets.tenant-access", () -> "http://127.0.0.1:1");
-        registry.add("gateway.targets.entitlement", () -> ENTITLEMENT_URI.toString());
+    static void discoverServices(DynamicPropertyRegistry registry) {
+        GatewayTestDiscoveryConfiguration.discoverAt(GatewayTestDiscoveryConfiguration.IAM_SERVICE_ID, IAM_URI);
+        GatewayTestDiscoveryConfiguration.discoverAt(
+                GatewayTestDiscoveryConfiguration.TENANT_ACCESS_SERVICE_ID, URI.create("http://127.0.0.1:1"));
+        GatewayTestDiscoveryConfiguration.discoverAt(
+                GatewayTestDiscoveryConfiguration.ENTITLEMENT_SERVICE_ID, ENTITLEMENT_URI);
         registry.add("spring.http.clients.read-timeout", () -> "100ms");
     }
 
@@ -65,7 +67,7 @@ class GatewayProblemDetailsTest {
 
     @BeforeEach
     void resetIamResponse() {
-        GatewayTestDiscoveryConfiguration.discoverIamAt(IAM_URI);
+        GatewayTestDiscoveryConfiguration.discoverAt(GatewayTestDiscoveryConfiguration.IAM_SERVICE_ID, IAM_URI);
         IAM_RESPONSE.set(new DownstreamResponse(200, "application/json", "iam", 0));
         IAM_REQUESTS.set(0);
     }

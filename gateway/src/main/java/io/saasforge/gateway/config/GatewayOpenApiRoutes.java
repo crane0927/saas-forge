@@ -1,6 +1,5 @@
 package io.saasforge.gateway.config;
 
-import java.net.URI;
 import java.util.List;
 import org.springframework.http.HttpMethod;
 import org.springframework.web.util.pattern.PathPattern;
@@ -59,16 +58,18 @@ final class GatewayOpenApiRoutes {
     }
 
     enum Target {
-        IAM,
-        TENANT_ACCESS,
-        ENTITLEMENT;
+        IAM("iam-service"),
+        TENANT_ACCESS("tenant-access-service"),
+        ENTITLEMENT("entitlement-service");
 
-        URI resolveDeploymentTarget(GatewayTargetsProperties targets) {
-            return switch (this) {
-                case TENANT_ACCESS -> targets.tenantAccess();
-                case ENTITLEMENT -> targets.entitlement();
-                case IAM -> throw new IllegalStateException("IAM target must use service discovery");
-            };
+        private final String serviceId;
+
+        Target(String serviceId) {
+            this.serviceId = serviceId;
+        }
+
+        String serviceId() {
+            return serviceId;
         }
     }
 }

@@ -40,12 +40,26 @@ curl --silent --show-error --request POST \
   "$api/v3/admin/core/namespace" >/dev/null || true
 
 ensure_user "$NACOS_IAM_USERNAME" "$NACOS_IAM_PASSWORD"
+ensure_user "$NACOS_TENANT_ACCESS_USERNAME" "$NACOS_TENANT_ACCESS_PASSWORD"
+ensure_user "$NACOS_ENTITLEMENT_USERNAME" "$NACOS_ENTITLEMENT_PASSWORD"
 ensure_user "$NACOS_GATEWAY_USERNAME" "$NACOS_GATEWAY_PASSWORD"
 
 curl --silent --show-error --request POST \
   --header "Authorization: Bearer $bootstrap_token" \
   --data-urlencode "username=$NACOS_IAM_USERNAME" \
   --data-urlencode 'role=iam-service-dev' \
+  "$api/v3/auth/role" >/dev/null || true
+
+curl --silent --show-error --request POST \
+  --header "Authorization: Bearer $bootstrap_token" \
+  --data-urlencode "username=$NACOS_TENANT_ACCESS_USERNAME" \
+  --data-urlencode 'role=tenant-access-service-dev' \
+  "$api/v3/auth/role" >/dev/null || true
+
+curl --silent --show-error --request POST \
+  --header "Authorization: Bearer $bootstrap_token" \
+  --data-urlencode "username=$NACOS_ENTITLEMENT_USERNAME" \
+  --data-urlencode 'role=entitlement-service-dev' \
   "$api/v3/auth/role" >/dev/null || true
 
 curl --silent --show-error --request POST \
@@ -68,11 +82,40 @@ for permission in \
     "$api/v3/auth/permission" >/dev/null || true
 done
 
-# Gateway 只读取自己的配置、注册自身并读取 IAM 的健康实例；它不能通过发现权限修改 IAM 注册信息。
+# Tenant Access 和 Entitlement 分别只读取自己的配置并注册自己的稳定服务名。
+for permission in \
+  "dev:SAAS_FORGE:config/tenant-access-service.yaml:r" \
+  "dev:DEFAULT_GROUP:naming/tenant-access-service:w"; do
+  resource="${permission%:*}"
+  action="${permission##*:}"
+  curl --silent --show-error --request POST \
+    --header "Authorization: Bearer $bootstrap_token" \
+    --data-urlencode 'role=tenant-access-service-dev' \
+    --data-urlencode "resource=$resource" \
+    --data-urlencode "action=$action" \
+    "$api/v3/auth/permission" >/dev/null || true
+done
+
+for permission in \
+  "dev:SAAS_FORGE:config/entitlement-service.yaml:r" \
+  "dev:DEFAULT_GROUP:naming/entitlement-service:w"; do
+  resource="${permission%:*}"
+  action="${permission##*:}"
+  curl --silent --show-error --request POST \
+    --header "Authorization: Bearer $bootstrap_token" \
+    --data-urlencode 'role=entitlement-service-dev' \
+    --data-urlencode "resource=$resource" \
+    --data-urlencode "action=$action" \
+    "$api/v3/auth/permission" >/dev/null || true
+done
+
+# Gateway 只读取自己的配置、注册自身并读取当前公开路由所属服务的健康实例；它不能修改这些服务的注册信息。
 for permission in \
   "dev:SAAS_FORGE:config/gateway.yaml:r" \
   "dev:DEFAULT_GROUP:naming/gateway:w" \
-  "dev:DEFAULT_GROUP:naming/iam-service:r"; do
+  "dev:DEFAULT_GROUP:naming/iam-service:r" \
+  "dev:DEFAULT_GROUP:naming/tenant-access-service:r" \
+  "dev:DEFAULT_GROUP:naming/entitlement-service:r"; do
   resource="${permission%:*}"
   action="${permission##*:}"
   curl --silent --show-error --request POST \
@@ -90,6 +133,24 @@ curl --fail --silent --show-error --request POST \
   --data-urlencode "namespaceId=$NACOS_NAMESPACE" \
   --data-urlencode 'type=yaml' \
   --data-urlencode 'content@/config/iam-service.yaml' \
+  "$api/v3/admin/cs/config" | grep -q '"code":0'
+
+curl --fail --silent --show-error --request POST \
+  --header "Authorization: Bearer $bootstrap_token" \
+  --data-urlencode 'dataId=tenant-access-service.yaml' \
+  --data-urlencode 'groupName=SAAS_FORGE' \
+  --data-urlencode "namespaceId=$NACOS_NAMESPACE" \
+  --data-urlencode 'type=yaml' \
+  --data-urlencode 'content@/config/tenant-access-service.yaml' \
+  "$api/v3/admin/cs/config" | grep -q '"code":0'
+
+curl --fail --silent --show-error --request POST \
+  --header "Authorization: Bearer $bootstrap_token" \
+  --data-urlencode 'dataId=entitlement-service.yaml' \
+  --data-urlencode 'groupName=SAAS_FORGE' \
+  --data-urlencode "namespaceId=$NACOS_NAMESPACE" \
+  --data-urlencode 'type=yaml' \
+  --data-urlencode 'content@/config/entitlement-service.yaml' \
   "$api/v3/admin/cs/config" | grep -q '"code":0'
 
 curl --fail --silent --show-error --request POST \

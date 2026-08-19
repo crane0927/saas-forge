@@ -10,9 +10,7 @@ import org.springframework.test.context.ActiveProfiles;
 @SpringBootTest(properties = {
         "spring.cloud.nacos.config.enabled=false",
         "spring.cloud.nacos.discovery.enabled=false",
-        "saasforge.gateway.configuration-revision=test",
-        "gateway.targets.tenant-access=http://127.0.0.1:18082",
-        "gateway.targets.entitlement=http://127.0.0.1:18083"
+        "saasforge.gateway.configuration-revision=test"
 })
 @ActiveProfiles("gateway-test")
 class GatewayApplicationTest {
@@ -30,9 +28,7 @@ class GatewayApplicationTest {
                         "spring.cloud.nacos.config.server-addr=127.0.0.1:1",
                         "spring.cloud.nacos.username=gateway-test",
                         "spring.cloud.nacos.password=gateway-test-password",
-                        "spring.cloud.nacos.discovery.enabled=false",
-                        "gateway.targets.tenant-access=http://tenant-access.internal",
-                        "gateway.targets.entitlement=https://entitlement.internal")
+                        "spring.cloud.nacos.discovery.enabled=false")
                 .run());
     }
 }

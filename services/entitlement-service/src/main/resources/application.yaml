@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: entitlement-service
+  config:
+    import: nacos:entitlement-service.yaml?group=SAAS_FORGE&refreshEnabled=false
+  cloud:
+    nacos:
+      username: ${NACOS_ENTITLEMENT_USERNAME:?NACOS_ENTITLEMENT_USERNAME is required}
+      password: ${NACOS_ENTITLEMENT_PASSWORD:?NACOS_ENTITLEMENT_PASSWORD is required}
+      config:
+        server-addr: ${NACOS_SERVER_ADDR:nacos:8848}
+        namespace: ${NACOS_NAMESPACE:dev}
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:nacos:8848}
+        namespace: ${NACOS_NAMESPACE:dev}
+        service: entitlement-service
+        fail-fast: true

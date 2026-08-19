@@ -105,11 +105,17 @@ services:
       NACOS_NAMESPACE: dev
       NACOS_IAM_USERNAME: ${NACOS_IAM_USERNAME:?NACOS_IAM_USERNAME is required}
       NACOS_IAM_PASSWORD: ${NACOS_IAM_PASSWORD:?NACOS_IAM_PASSWORD is required}
+      NACOS_TENANT_ACCESS_USERNAME: ${NACOS_TENANT_ACCESS_USERNAME:?NACOS_TENANT_ACCESS_USERNAME is required}
+      NACOS_TENANT_ACCESS_PASSWORD: ${NACOS_TENANT_ACCESS_PASSWORD:?NACOS_TENANT_ACCESS_PASSWORD is required}
+      NACOS_ENTITLEMENT_USERNAME: ${NACOS_ENTITLEMENT_USERNAME:?NACOS_ENTITLEMENT_USERNAME is required}
+      NACOS_ENTITLEMENT_PASSWORD: ${NACOS_ENTITLEMENT_PASSWORD:?NACOS_ENTITLEMENT_PASSWORD is required}
       NACOS_GATEWAY_USERNAME: ${NACOS_GATEWAY_USERNAME:?NACOS_GATEWAY_USERNAME is required}
       NACOS_GATEWAY_PASSWORD: ${NACOS_GATEWAY_PASSWORD:?NACOS_GATEWAY_PASSWORD is required}
     volumes:
       - ./nacos-init.sh:/scripts/nacos-init.sh:ro
       - ../nacos/dev/iam-service.yaml:/config/iam-service.yaml:ro
+      - ../nacos/dev/tenant-access-service.yaml:/config/tenant-access-service.yaml:ro
+      - ../nacos/dev/entitlement-service.yaml:/config/entitlement-service.yaml:ro
       - ../nacos/dev/gateway.yaml:/config/gateway.yaml:ro
 
   iam-migrate:
@@ -202,6 +208,13 @@ services:
     depends_on:
       tenant-access-migrate:
         condition: service_completed_successfully
+      nacos-init:
+        condition: service_completed_successfully
+    environment:
+      NACOS_SERVER_ADDR: nacos:8848
+      NACOS_NAMESPACE: dev
+      NACOS_TENANT_ACCESS_USERNAME: ${NACOS_TENANT_ACCESS_USERNAME:?NACOS_TENANT_ACCESS_USERNAME is required}
+      NACOS_TENANT_ACCESS_PASSWORD: ${NACOS_TENANT_ACCESS_PASSWORD:?NACOS_TENANT_ACCESS_PASSWORD is required}
     ports:
       - "127.0.0.1:8082:8080"
 
@@ -215,6 +228,13 @@ services:
     depends_on:
       entitlement-migrate:
         condition: service_completed_successfully
+      nacos-init:
+        condition: service_completed_successfully
+    environment:
+      NACOS_SERVER_ADDR: nacos:8848
+      NACOS_NAMESPACE: dev
+      NACOS_ENTITLEMENT_USERNAME: ${NACOS_ENTITLEMENT_USERNAME:?NACOS_ENTITLEMENT_USERNAME is required}
+      NACOS_ENTITLEMENT_PASSWORD: ${NACOS_ENTITLEMENT_PASSWORD:?NACOS_ENTITLEMENT_PASSWORD is required}
     ports:
       - "127.0.0.1:8083:8080"
 
@@ -243,8 +263,6 @@ services:
       NACOS_NAMESPACE: dev
       NACOS_GATEWAY_USERNAME: ${NACOS_GATEWAY_USERNAME:?NACOS_GATEWAY_USERNAME is required}
       NACOS_GATEWAY_PASSWORD: ${NACOS_GATEWAY_PASSWORD:?NACOS_GATEWAY_PASSWORD is required}
-      GATEWAY_TARGETS_TENANT_ACCESS: http://tenant-access-service:8080
-      GATEWAY_TARGETS_ENTITLEMENT: http://entitlement-service:8080
     depends_on:
       nacos-init:
         condition: service_completed_successfully

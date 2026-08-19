@@ -42,12 +42,9 @@ class GatewayJwksRouteTest {
     private static final Map<String, AtomicReference<ObservedRequest>> OBSERVED_REQUESTS = new ConcurrentHashMap<>();
 
     private static final HttpServer IAM_SERVER = startServer("iam");
-    private static final HttpServer STATIC_IAM_FALLBACK_SERVER = startServer("static-iam-fallback");
     private static final HttpServer TENANT_ACCESS_SERVER = startServer("tenant-access");
     private static final HttpServer ENTITLEMENT_SERVER = startServer("entitlement");
     private static final URI IAM_URI = URI.create("http://127.0.0.1:" + IAM_SERVER.getAddress().getPort());
-    private static final URI STATIC_IAM_FALLBACK_URI = URI.create(
-            "http://127.0.0.1:" + STATIC_IAM_FALLBACK_SERVER.getAddress().getPort());
     private static final URI TENANT_ACCESS_URI = URI.create(
             "http://127.0.0.1:" + TENANT_ACCESS_SERVER.getAddress().getPort());
     private static final URI ENTITLEMENT_URI = URI.create("http://127.0.0.1:" + ENTITLEMENT_SERVER.getAddress().getPort());
@@ -56,17 +53,17 @@ class GatewayJwksRouteTest {
     private int gatewayPort;
 
     @DynamicPropertySource
-    static void gatewayTargets(DynamicPropertyRegistry registry) {
-        GatewayTestDiscoveryConfiguration.discoverIamAt(IAM_URI);
-        registry.add("gateway.targets.iam", () -> STATIC_IAM_FALLBACK_URI.toString());
-        registry.add("gateway.targets.tenant-access", () -> TENANT_ACCESS_URI.toString());
-        registry.add("gateway.targets.entitlement", () -> ENTITLEMENT_URI.toString());
+    static void discoverServices(DynamicPropertyRegistry registry) {
+        GatewayTestDiscoveryConfiguration.discoverAt(GatewayTestDiscoveryConfiguration.IAM_SERVICE_ID, IAM_URI);
+        GatewayTestDiscoveryConfiguration.discoverAt(
+                GatewayTestDiscoveryConfiguration.TENANT_ACCESS_SERVICE_ID, TENANT_ACCESS_URI);
+        GatewayTestDiscoveryConfiguration.discoverAt(
+                GatewayTestDiscoveryConfiguration.ENTITLEMENT_SERVICE_ID, ENTITLEMENT_URI);
     }
 
     @AfterAll
     static void stopIamServer() {
         IAM_SERVER.stop(0);
-        STATIC_IAM_FALLBACK_SERVER.stop(0);
         TENANT_ACCESS_SERVER.stop(0);
         ENTITLEMENT_SERVER.stop(0);
     }
@@ -81,22 +78,28 @@ class GatewayJwksRouteTest {
     }
 
     @Test
-    void returnsGateway503WhenNoHealthyIamInstanceExistsWithoutUsingStaticFallback()
+    void returnsGateway503WhenNoHealthyOwningServiceInstanceExists()
             throws IOException, InterruptedException {
-        GatewayTestDiscoveryConfiguration.clearIamInstances();
-        resetObservedRequest("static-iam-fallback");
-        HttpResponse<String> response;
-        try {
-            response = send("GET", "/.well-known/jwks.json");
-        } finally {
-            GatewayTestDiscoveryConfiguration.discoverIamAt(IAM_URI);
-        }
+        for (UnavailableRoute route : List.of(
+                unavailableRoute(GatewayTestDiscoveryConfiguration.IAM_SERVICE_ID, IAM_URI,
+                        "GET", "/.well-known/jwks.json"),
+                unavailableRoute(GatewayTestDiscoveryConfiguration.TENANT_ACCESS_SERVICE_ID, TENANT_ACCESS_URI,
+                        "POST", "/api/v1/platform/tenants"),
+                unavailableRoute(GatewayTestDiscoveryConfiguration.ENTITLEMENT_SERVICE_ID, ENTITLEMENT_URI,
+                        "POST", "/api/v1/platform/quota-definitions"))) {
+            GatewayTestDiscoveryConfiguration.clearInstances(route.serviceId());
+            HttpResponse<String> response;
+            try {
+                response = send(route.method(), route.path());
+            } finally {
+                GatewayTestDiscoveryConfiguration.discoverAt(route.serviceId(), route.uri());
+            }
 
-        assertEquals(503, response.statusCode());
-        assertTrue(response.headers().firstValue("Content-Type").orElseThrow()
-                .startsWith("application/problem+json"));
-        assertTrue(response.body().contains("\"code\":\"UPSTREAM_UNAVAILABLE\""));
-        assertFalse(hasObservedRequest("static-iam-fallback"));
+            assertEquals(503, response.statusCode(), route.serviceId());
+            assertTrue(response.headers().firstValue("Content-Type").orElseThrow()
+                    .startsWith("application/problem+json"));
+            assertTrue(response.body().contains("\"code\":\"UPSTREAM_UNAVAILABLE\""));
+        }
     }
 
     @Test
@@ -273,12 +276,12 @@ class GatewayJwksRouteTest {
         return observed;
     }
 
-    private boolean hasObservedRequest(String service) {
-        return OBSERVED_REQUESTS.computeIfAbsent(service, ignored -> new AtomicReference<>()).get() != null;
-    }
-
     private static RouteExpectation route(String method, String path, String service) {
         return new RouteExpectation(method, path, service);
+    }
+
+    private static UnavailableRoute unavailableRoute(String serviceId, URI uri, String method, String path) {
+        return new UnavailableRoute(serviceId, uri, method, path);
     }
 
     private static HttpServer startServer(String service) {
@@ -305,6 +308,9 @@ class GatewayJwksRouteTest {
     }
 
     private record RouteExpectation(String method, String path, String service) {
+    }
+
+    private record UnavailableRoute(String serviceId, URI uri, String method, String path) {
     }
 
     private record ObservedRequest(String method, String pathAndQuery, Map<String, List<String>> headers, String body) {
