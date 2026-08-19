@@ -4,13 +4,25 @@ saas-forge 为单产品、多 Tenant SaaS 提供访问控制、权益和审计�
 
 ## Platform Access Control
 
+**Identity**:
+IAM 管理的全局认证主体，以唯一的规范化邮箱地址识别，并可有显示名；它独立于 Tenant，也不等同于任何 Membership。
+_Avoid_: User, account, tenant user
+
 **Default Platform Admin**:
 首次部署时由系统直接创建的全局 `Identity`，绑定 Platform 角色而非任何 Tenant `Membership`。其初始密码仅由外部密钥管理系统注入，IAM 只保存 Argon2id 哈希，并要求首次登录时修改。
 _Avoid_: Default tenant administrator, superuser, tenant administrator
 
 **Initial Platform Credential**:
-仅用于首次设置 Default Platform Admin 密码的随机初始密码，在创建后 24 小时失效且不能执行 Platform 管理操作。成功改密后该凭据永久失效；失效或疑似泄露时只能通过受限、可审计的部署侧重置替换。
+仅用于首次设置 Default Platform Admin 密码的随机初始密码，在创建后 24 小时失效且不能执行 Platform 管理操作。成功改密后该凭据永久失效并保留失效记录；失效或疑似泄露时只能通过受限、可审计的部署侧重置替换。
 _Avoid_: Platform access credential, default password
+
+**Credential**:
+由 IAM 管理、供一个 Identity 证明其认证能力的凭据。MVP 仅有 `INITIAL_PLATFORM_PASSWORD` 与 `PASSWORD` 两种类型。
+_Avoid_: API key, external identity
+
+**Password Credential**:
+一个 Identity 用于常规密码认证的 `PASSWORD` Credential；首次改密时新建该记录，原 Initial Platform Credential 永久失效。一个 Identity 任意时刻最多有一个有效 Password Credential，IAM 仅持久化其 Argon2id 哈希，绝不保存原始密码。
+_Avoid_: Password, shared secret
 
 **Platform Role**:
 在一个 Platform 全局范围内授予权限的角色，与只在单个 Tenant 内生效的 Tenant Role 相互独立。
@@ -20,9 +32,25 @@ _Avoid_: Tenant role, membership role
 用于以 `RS256` 签发 Access Token 的非对称签名密钥。每个密钥版本以唯一 `kid` 标识；生产环境的私钥不可导出，由 KMS/HSM 保管，IAM 仅可用工作负载身份请求签名。
 _Avoid_: JWT secret, shared signing secret
 
+**Signing Key Metadata**:
+IAM 对一个 JWT Signing Key 版本保存的公开标识、KMS/HSM Key Version 引用、JWKS 公开材料与生命周期记录，不包含私钥。其生命周期为 `PUBLISHED`、`ACTIVE`、`RETIRING`、`RETIRED`，或不可逆的 `REVOKED`。
+_Avoid_: Private key, JWT secret
+
 **Revoked Signing Key**:
 已被判定疑似泄露、不得再用于签发或验证 Access Token 的 JWT Signing Key 版本。验证方必须拒绝其 `kid`，即使仍持有对应公钥的缓存。
 _Avoid_: Retired signing key, expired signing key
+
+**Refresh Token Family**:
+为同一浏览器会话连续签发并轮换的 Refresh Token 谱系，持有该会话的 `identityId` 及可为空的 Membership/Tenant 上下文。它自首次登录起最长有效 8 小时、空闲最长 30 分钟，轮换不延长期限；已轮换 Token 的摘要保留至 Family 到期，任一被重放时整个 Family 均被撤销。
+_Avoid_: Access token, browser cookie
+
+**OAuth Client**:
+由 IAM 注册、以 `client_id` 和显式 scope 表示的服务认证主体。它不代表用户、Membership 或 Tenant Context。
+_Avoid_: User, service tenant identity
+
+**Client Secret**:
+OAuth Client 的机器生成认证机密，仅在创建或轮换时明文展示一次。IAM 仅保存其 SHA-256 摘要；轮换后的旧 Secret 最多与新 Secret 重叠 24 小时，重叠期内不允许再次轮换。
+_Avoid_: Password, API key
 
 ## Browser Delivery
 

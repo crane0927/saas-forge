@@ -11,8 +11,8 @@
 ### 用户令牌
 
 - Access Token 是约 15 分钟有效、以 `RS256` 签名的 JWT，包含 `identityId`、`membershipId`、`tenantId`、`jti`；Gateway 与 SDK 以 IAM JWKS 本地验签，且只接受 `RS256`。
-- Refresh Token 是随机不透明字符串，浏览器仅以 HttpOnly Cookie 发送；PostgreSQL 只保存其哈希并作为权威记录，Redis 可缓存会话状态。
-- Tenant 切换必须调用 IAM；IAM 同步校验目标 Membership 有效后，先使旧 Access Token 失效，再更新当前会话的 `membershipId`、`tenantId` 并返回 `204`。客户端不得覆写 Tenant，Tenant Console Shell 必须随后通过既有刷新接口取得绑定新上下文的 Access Token。
+- Refresh Token 是由 CSPRNG 生成的 256 位随机不透明字符串，浏览器仅以 HttpOnly Cookie 发送；PostgreSQL 只保存其 SHA-256 摘要并作为权威记录，Redis 可缓存会话状态。每个 Token 归属一个稳定的 Refresh Token Family，自首次登录起最长有效 8 小时、空闲最长 30 分钟；轮换不延长绝对期限。IAM 仅在成功登录或刷新时更新 Family 的 `lastUsedAt`。已轮换 Token 的摘要必须保留至所属 Family 的绝对到期，此前不得物理清理；轮换后再次提交旧 Token 时，IAM 必须撤销整个 Family。
+- Tenant 切换必须调用 IAM；IAM 同步校验目标 Membership 有效后，先使旧 Access Token 失效，再原子更新当前 Refresh Token Family 的 `membershipId`、`tenantId` 并返回 `204`。后续轮换继承该上下文。客户端不得覆写 Tenant，Tenant Console Shell 必须随后通过既有刷新接口取得绑定新上下文的 Access Token。
 - 用户请求不得通过请求头、查询参数、请求体或任何语义等价别名传入或覆盖 Tenant；这类输入必须以 `400` 拒绝，不能静默忽略。用户 Tenant Context 只能由已验证 Access Token 的 `membershipId` 解析。
 - 普通登出只撤销 Refresh Token。密码重置、成员禁用、Tenant 冻结、强制下线等安全事件将 JWT `jti` 写入 Redis 黑名单，TTL 为 Token 剩余有效期。
 - Gateway 与 SDK 每次用户请求检查黑名单；Redis 不可用时 fail-closed，避免已失效 Token 被继续接受。
@@ -29,14 +29,15 @@ Refresh Token 只能由 `https://api.<root>` 以 `__Host-sf_refresh; Secure; Htt
 
 ### 密码、邀请与服务身份
 
-- 用户以全局唯一、规范化的邮箱地址登录；显示名可重复。MVP 不支持公共注册、手机号登录、外部身份源、OIDC、SSO、LDAP 或第三方登录。
-- 密码使用 Argon2id 哈希，至少 12 个字符，不强制字符类别组合，并拒绝已知泄露密码。
+- 用户以全局唯一、规范化的 ASCII 邮箱地址登录；Identity 的显示名可重复且可为空。输入先去除首尾空白，再以 `Locale.ROOT` 小写形式持久化并用于登录查找。Tenant 管理员初始化可选传入 1–200 字符的显示名，IAM 仅在新建 Identity 时写入，复用既有 Identity 时不得覆盖。MVP 不支持 EAI/国际化邮箱、公共注册、手机号登录、外部身份源、OIDC、SSO、LDAP 或第三方登录。
+- 密码使用 Argon2id 哈希（`m=19456 KiB`、`t=2`、`p=1`），至少 12 个字符，不强制字符类别组合，并拒绝已知泄露密码。
+- Credential 仅有 `INITIAL_PLATFORM_PASSWORD` 与 `PASSWORD` 两种类型。一个 Identity 任意时刻最多有一个有效密码凭据；首次成功改密时，初始凭据永久失效但保留其失效记录，并新建常规密码凭据，不得覆盖或删除初始凭据。
 - 首个 Platform Admin 由系统在首次部署时直接创建为全局 `Identity` 并授予 Platform 角色，不关联 Tenant `Membership`。其邮箱和随机初始密码仅由外部密钥管理系统注入；IAM 只保存密码的 Argon2id 哈希。初始密码自创建起有效 24 小时，期间只能建立完成改密所需的受限会话，不能调用 Platform 管理接口。首次成功改密后，初始密码永久失效并撤销关联会话；过期或疑似泄露时，只能由部署侧受限凭据执行可审计的重置并生成新的随机初始密码。不得通过公网首注、代码、镜像或普通配置创建或重置该管理员。
 - 无风险事件下不强制周期性改密；发生泄露、高风险登录或管理员强制重置时，要求改密并撤销相关会话。
 - Tenant 管理员创建用户只发送一次性、限时激活链接，由用户自行设置密码；管理员不能设置或查看初始密码。
-- 服务间采用 OAuth 2.0 Client Credentials。服务 Token 的身份与授权语义只限 `client_id` 与显式 `scope`，不得伪造用户、Membership、Tenant 或用户 RBAC 上下文；缺少所需 scope 时必须以 `403` 拒绝。服务可在契约明确的内部调用或可信消息元数据中携带 Tenant Operation Target，但下游必须按 `client_id` 与 `scope` 授权并校验其与目标资源的关系，它不建立 Tenant Context。Client Secret 仅在创建或轮换时明文展示一次，平台保存哈希，支持重叠轮换和立即吊销。
+- 服务间采用 OAuth 2.0 Client Credentials。服务 Token 的身份与授权语义只限 `client_id` 与显式 `scope`，不得伪造用户、Membership、Tenant 或用户 RBAC 上下文；缺少所需 scope 时必须以 `403` 拒绝。服务可在契约明确的内部调用或可信消息元数据中携带 Tenant Operation Target，但下游必须按 `client_id` 与 `scope` 授权并校验其与目标资源的关系，它不建立 Tenant Context。OAuth Client 的 `allowedScopes` 使用受限 `text[]` 存储，MVP 仅允许 `runtime:read`、`runtime:quota:write`。Client Secret 由 CSPRNG 生成 256 位随机值，仅在创建或轮换时明文展示一次；平台仅保存其 SHA-256 摘要。轮换时新 Secret 立即可用，旧 Secret 最多重叠 24 小时后自动失效，并支持立即吊销；重叠窗口内拒绝同一 Client 的再次轮换，因此最多同时接受一把新 Secret 与一把即将失效的旧 Secret。
 - IAM 经版本化 JWKS 发布公钥。生产环境的 JWT 私钥使用 KMS/HSM 托管的不可导出 `RS256` Signing Key；IAM 仅以工作负载身份调用签名接口，每个 KMS 密钥版本映射唯一 `kid`，不得将私钥挂载到应用进程。Gateway、SDK 和业务服务的验签算法白名单只能包含 `RS256`。
-- JWT Signing Key 的常规轮换由生产部署的合规策略触发，不在代码中写死周期：新 `kid` 先与旧公钥共同发布于 JWKS，等待 5 分钟缓存窗口后才切换签名；旧公钥至少保留 30 分钟，随后禁用旧版本签名并从 JWKS 移除。疑似私钥泄露时，立即停止旧版本签名、将其 `kid` 写入 Redis 撤销集合并从 JWKS 移除；Gateway、SDK 和业务服务每个请求都检查该集合，Redis 不可用时 fail-closed，即使本地 JWKS 缓存仍有该公钥也必须拒绝。开发环境采用相同 `kid`/JWKS 切换语义，但仅允许显式本地轮换。
+- Signing Key Metadata 必须持久化唯一 `kid`、KMS/HSM Key Version 引用、JWKS 所需的公开 `n`/`e` 与生命周期时间，私钥绝不入库。其状态只能为 `PUBLISHED`、`ACTIVE`、`RETIRING`、`RETIRED` 或不可逆的 `REVOKED`；全局恰有一个 `ACTIVE` Key。JWT Signing Key 的常规轮换由生产部署的合规策略触发，不在代码中写死周期：新 `kid` 先以 `PUBLISHED` 与旧公钥共同发布于 JWKS，等待 5 分钟缓存窗口后才转为 `ACTIVE`；原 Active Key 转为 `RETIRING` 并至少保留 30 分钟，随后转为 `RETIRED` 并从 JWKS 移除。疑似私钥泄露时，立即转为 `REVOKED`，停止签名、将其 `kid` 写入 Redis 撤销集合并从 JWKS 移除；Gateway、SDK 和业务服务每个请求都检查该集合，Redis 不可用时 fail-closed，即使本地 JWKS 缓存仍有该公钥也必须拒绝。开发环境采用相同 `kid`/JWKS 切换语义，但仅允许显式本地轮换。
 - 仅开发 profile 可使用显式本地初始化生成的开发专用非对称密钥对；密钥位于 `.gitignore` 的本地密钥目录，并以只读方式提供给 IAM。Compose 不得自动生成、删除或在生产 profile 回退使用该密钥；开发密钥轮换必须显式触发。
 
 ## 授权、租户与数据隔离

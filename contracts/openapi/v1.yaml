@@ -734,6 +734,10 @@ components:
       required: [administratorEmail]
       properties:
         administratorEmail: { $ref: '#/components/schemas/Email' }
+        administratorDisplayName:
+          type: string
+          minLength: 1
+          maxLength: 200
       additionalProperties: false
     QuotaDefinitionStatus:
       type: string
