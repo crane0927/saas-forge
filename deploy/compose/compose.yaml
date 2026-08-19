@@ -109,6 +109,8 @@ services:
       NACOS_TENANT_ACCESS_PASSWORD: ${NACOS_TENANT_ACCESS_PASSWORD:?NACOS_TENANT_ACCESS_PASSWORD is required}
       NACOS_ENTITLEMENT_USERNAME: ${NACOS_ENTITLEMENT_USERNAME:?NACOS_ENTITLEMENT_USERNAME is required}
       NACOS_ENTITLEMENT_PASSWORD: ${NACOS_ENTITLEMENT_PASSWORD:?NACOS_ENTITLEMENT_PASSWORD is required}
+      NACOS_AUDIT_USERNAME: ${NACOS_AUDIT_USERNAME:?NACOS_AUDIT_USERNAME is required}
+      NACOS_AUDIT_PASSWORD: ${NACOS_AUDIT_PASSWORD:?NACOS_AUDIT_PASSWORD is required}
       NACOS_GATEWAY_USERNAME: ${NACOS_GATEWAY_USERNAME:?NACOS_GATEWAY_USERNAME is required}
       NACOS_GATEWAY_PASSWORD: ${NACOS_GATEWAY_PASSWORD:?NACOS_GATEWAY_PASSWORD is required}
     volumes:
@@ -116,6 +118,7 @@ services:
       - ../nacos/dev/iam-service.yaml:/config/iam-service.yaml:ro
       - ../nacos/dev/tenant-access-service.yaml:/config/tenant-access-service.yaml:ro
       - ../nacos/dev/entitlement-service.yaml:/config/entitlement-service.yaml:ro
+      - ../nacos/dev/audit-service.yaml:/config/audit-service.yaml:ro
       - ../nacos/dev/gateway.yaml:/config/gateway.yaml:ro
 
   iam-migrate:
@@ -248,6 +251,13 @@ services:
     depends_on:
       audit-migrate:
         condition: service_completed_successfully
+      nacos-init:
+        condition: service_completed_successfully
+    environment:
+      NACOS_SERVER_ADDR: nacos:8848
+      NACOS_NAMESPACE: dev
+      NACOS_AUDIT_USERNAME: ${NACOS_AUDIT_USERNAME:?NACOS_AUDIT_USERNAME is required}
+      NACOS_AUDIT_PASSWORD: ${NACOS_AUDIT_PASSWORD:?NACOS_AUDIT_PASSWORD is required}
     ports:
       - "127.0.0.1:8084:8080"
 

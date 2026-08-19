@@ -42,6 +42,7 @@ curl --silent --show-error --request POST \
 ensure_user "$NACOS_IAM_USERNAME" "$NACOS_IAM_PASSWORD"
 ensure_user "$NACOS_TENANT_ACCESS_USERNAME" "$NACOS_TENANT_ACCESS_PASSWORD"
 ensure_user "$NACOS_ENTITLEMENT_USERNAME" "$NACOS_ENTITLEMENT_PASSWORD"
+ensure_user "$NACOS_AUDIT_USERNAME" "$NACOS_AUDIT_PASSWORD"
 ensure_user "$NACOS_GATEWAY_USERNAME" "$NACOS_GATEWAY_PASSWORD"
 
 curl --silent --show-error --request POST \
@@ -60,6 +61,12 @@ curl --silent --show-error --request POST \
   --header "Authorization: Bearer $bootstrap_token" \
   --data-urlencode "username=$NACOS_ENTITLEMENT_USERNAME" \
   --data-urlencode 'role=entitlement-service-dev' \
+  "$api/v3/auth/role" >/dev/null || true
+
+curl --silent --show-error --request POST \
+  --header "Authorization: Bearer $bootstrap_token" \
+  --data-urlencode "username=$NACOS_AUDIT_USERNAME" \
+  --data-urlencode 'role=audit-service-dev' \
   "$api/v3/auth/role" >/dev/null || true
 
 curl --silent --show-error --request POST \
@@ -109,6 +116,20 @@ for permission in \
     "$api/v3/auth/permission" >/dev/null || true
 done
 
+# Audit 只读取自己的配置并注册自身；它没有 Gateway 公开入口，因此 Gateway 不读取其注册信息。
+for permission in \
+  "dev:SAAS_FORGE:config/audit-service.yaml:r" \
+  "dev:DEFAULT_GROUP:naming/audit-service:w"; do
+  resource="${permission%:*}"
+  action="${permission##*:}"
+  curl --silent --show-error --request POST \
+    --header "Authorization: Bearer $bootstrap_token" \
+    --data-urlencode 'role=audit-service-dev' \
+    --data-urlencode "resource=$resource" \
+    --data-urlencode "action=$action" \
+    "$api/v3/auth/permission" >/dev/null || true
+done
+
 # Gateway 只读取自己的配置、注册自身并读取当前公开路由所属服务的健康实例；它不能修改这些服务的注册信息。
 for permission in \
   "dev:SAAS_FORGE:config/gateway.yaml:r" \
@@ -151,6 +172,15 @@ curl --fail --silent --show-error --request POST \
   --data-urlencode "namespaceId=$NACOS_NAMESPACE" \
   --data-urlencode 'type=yaml' \
   --data-urlencode 'content@/config/entitlement-service.yaml' \
+  "$api/v3/admin/cs/config" | grep -q '"code":0'
+
+curl --fail --silent --show-error --request POST \
+  --header "Authorization: Bearer $bootstrap_token" \
+  --data-urlencode 'dataId=audit-service.yaml' \
+  --data-urlencode 'groupName=SAAS_FORGE' \
+  --data-urlencode "namespaceId=$NACOS_NAMESPACE" \
+  --data-urlencode 'type=yaml' \
+  --data-urlencode 'content@/config/audit-service.yaml' \
   "$api/v3/admin/cs/config" | grep -q '"code":0'
 
 curl --fail --silent --show-error --request POST \

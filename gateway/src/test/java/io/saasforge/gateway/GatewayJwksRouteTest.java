@@ -156,6 +156,10 @@ class GatewayJwksRouteTest {
                 .startsWith("application/problem+json"));
         assertTrue(unknownRoute.body().contains("\"code\":\"ROUTE_NOT_FOUND\""));
 
+        HttpResponse<String> auditRoute = send("GET", "/api/v1/audit");
+        assertEquals(404, auditRoute.statusCode());
+        assertTrue(auditRoute.body().contains("\"code\":\"ROUTE_NOT_FOUND\""));
+
         HttpResponse<String> unsupportedMethod = send("PUT",
                 "/api/v1/platform/tenants/018f2d3a-4b5c-7d6e-8f90-123456789abc/suspensions");
         assertEquals(405, unsupportedMethod.statusCode());

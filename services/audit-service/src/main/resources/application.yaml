@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: audit-service
+  config:
+    import: nacos:audit-service.yaml?group=SAAS_FORGE&refreshEnabled=false
+  cloud:
+    nacos:
+      username: ${NACOS_AUDIT_USERNAME:?NACOS_AUDIT_USERNAME is required}
+      password: ${NACOS_AUDIT_PASSWORD:?NACOS_AUDIT_PASSWORD is required}
+      config:
+        server-addr: ${NACOS_SERVER_ADDR:nacos:8848}
+        namespace: ${NACOS_NAMESPACE:dev}
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:nacos:8848}
+        namespace: ${NACOS_NAMESPACE:dev}
+        service: audit-service
+        fail-fast: true
