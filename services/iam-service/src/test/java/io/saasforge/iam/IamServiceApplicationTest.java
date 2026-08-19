@@ -1,15 +1,26 @@
 package io.saasforge.iam;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.saasforge.iam.config.NacosRegistrationReadinessHealthIndicator;
+import io.saasforge.iam.config.RequiredNacosConfiguration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.health.contributor.Status;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.cloud.client.discovery.event.InstanceRegisteredEvent;
 
 class NacosRegistrationReadinessHealthIndicatorTest {
+
+    @Test
+    void createsRequiredNacosConfigurationWhenTheMarkerIsProvided() {
+        new ApplicationContextRunner()
+                .withUserConfiguration(RequiredNacosConfiguration.class)
+                .withPropertyValues("saasforge.iam.configuration-revision=test")
+                .run(context -> assertThat(context).hasSingleBean(RequiredNacosConfiguration.class));
+    }
 
     @Test
     void remainsDownUntilTheServiceRegistryConfirmsRegistration() {

@@ -67,3 +67,55 @@ jobs:
       - run: corepack enable
       - run: pnpm --dir consoles install --frozen-lockfile
       - run: ./mvnw --batch-mode --no-transfer-progress verify
+
+  nacos-config:
+    name: Nacos configuration and permissions
+    runs-on: ubuntu-latest
+    env:
+      POSTGRES_ADMIN_USER: postgres-test
+      POSTGRES_ADMIN_PASSWORD: postgres-test-password
+      IAM_MIGRATOR_PASSWORD: iam-migrator-test-password
+      IAM_APP_PASSWORD: iam-app-test-password
+      TENANT_ACCESS_MIGRATOR_PASSWORD: tenant-access-migrator-test-password
+      TENANT_ACCESS_APP_PASSWORD: tenant-access-app-test-password
+      ENTITLEMENT_MIGRATOR_PASSWORD: entitlement-migrator-test-password
+      ENTITLEMENT_APP_PASSWORD: entitlement-app-test-password
+      AUDIT_MIGRATOR_PASSWORD: audit-migrator-test-password
+      AUDIT_APP_PASSWORD: audit-app-test-password
+      REDIS_PASSWORD: redis-test-password
+      NACOS_BOOTSTRAP_PASSWORD: nacos-bootstrap-test-password
+      NACOS_PUBLISH_USERNAME: nacos-publisher-test
+      NACOS_PUBLISH_PASSWORD: nacos-publisher-test-password
+      NACOS_IAM_USERNAME: iam-workload-test
+      NACOS_IAM_PASSWORD: iam-workload-test-password
+      NACOS_TENANT_ACCESS_USERNAME: tenant-access-workload-test
+      NACOS_TENANT_ACCESS_PASSWORD: tenant-access-workload-test-password
+      NACOS_ENTITLEMENT_USERNAME: entitlement-workload-test
+      NACOS_ENTITLEMENT_PASSWORD: entitlement-workload-test-password
+      NACOS_AUDIT_USERNAME: audit-workload-test
+      NACOS_AUDIT_PASSWORD: audit-workload-test-password
+      NACOS_GATEWAY_USERNAME: gateway-workload-test
+      NACOS_GATEWAY_PASSWORD: gateway-workload-test-password
+      NACOS_AUTH_IDENTITY_KEY: nacos-test-identity-key
+      NACOS_AUTH_IDENTITY_VALUE: nacos-test-identity-value
+      NACOS_AUTH_TOKEN: MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate every Git-managed Nacos configuration
+        run: bash scripts/validate-nacos-config.sh
+      - name: Publish dev manifest with the constrained publisher identity
+        working-directory: deploy/compose
+        run: |
+          docker compose up -d --wait nacos
+          docker compose run --rm nacos-init
+          cd ../..
+          NACOS_SERVER_ADDR=http://127.0.0.1:8848 \
+            bash scripts/publish-nacos-config.sh dev
+      - name: Verify independent workload permissions
+        run: |
+          NACOS_SERVER_ADDR=http://127.0.0.1:8848 \
+            bash scripts/verify-nacos-acl.sh
+      - name: Remove ephemeral Nacos data
+        if: always()
+        working-directory: deploy/compose
+        run: docker compose down -v --remove-orphans

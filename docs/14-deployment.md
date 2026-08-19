@@ -82,6 +82,7 @@ Platform Console、Tenant Console Shell 与业务 Remote 独立发布。Gateway 
 - Nacos 工作负载身份凭据由外部密钥管理服务注入。本地 Compose 可在隔离网络中使用非 TLS 开发连接，但不得使用 Nacos 默认账户或任何生产凭据。
 - Nacos 注册名固定为 `gateway`、`iam-service`、`tenant-access-service`、`entitlement-service` 和 `audit-service`；新业务服务以稳定模块名注册。Gateway 仅将代码白名单中的 API 映射至相应服务名，不因注册自动开放公网入口。
 - 非敏感 Nacos 配置以仓库中受版本控制的配置清单为权威来源，由 CI 校验并发布。Nacos Console 仅用于查看和受审计的应急处置；任何应急变更都必须回写仓库并经 Git 复核。
+- 清单目录、CI 发布身份、最小权限矩阵、回滚和 Console 应急回写步骤由 [`deploy/nacos/README.md`](../deploy/nacos/README.md) 约束；生产发布使用受保护的 GitHub Environment。
 - Nacos 运行时不可用时，已启动实例继续使用最后一次成功加载的配置与已知健康实例；新实例若不能加载必需配置或完成注册不得 Ready。Gateway 找不到健康实例时返回 `503`，不得回退到静态服务地址。
 - API 的凭据型 CORS 仅允许 Platform Console 与 Tenant Console Shell；Remote 静态资源仅允许 Tenant Console Shell 无凭据加载。Remote 的入口和版本由 Manifest 白名单控制。
 
@@ -96,7 +97,7 @@ Platform Console、Tenant Console Shell 与业务 Remote 独立发布。Gateway 
 ## 发布、回滚与变更审计
 
 - GitHub Actions 执行测试、契约、覆盖率、镜像与漏洞扫描、ZAP 基线扫描和 Helm 验证。
-- `main` 必须经 Pull Request 并通过所有自动门禁；单人开发阶段不强制独立批准，团队增加第二位开发者后要求至少一名独立审查者批准。
+- `master` 必须经 Pull Request 并通过所有自动门禁；单人开发阶段不强制独立批准，团队增加第二位开发者后要求至少一名独立审查者批准。
 - 受保护的 `vX.Y.Z` 标签在 JDK 17/21门禁通过后，由 JDK 17向 Maven Central 发布签名的 SDK、Starter 与 BOM；Maven 发布约定见 [Maven 构建与制品发布](21-maven-build-and-release.md)。镜像与 Helm Chart 仍由各自发布流程处理。每次部署记录版本、迁移、配置版本、操作者、开始/完成时间和回滚结果。
 - Flyway 迁移随服务版本发布。生产变更先在等效环境验证；失败时回滚应用版本，数据库迁移按事先验证的前向修复或可逆方案处理。
 

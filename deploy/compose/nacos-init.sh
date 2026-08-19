@@ -33,6 +33,44 @@ curl --silent --show-error --request POST \
 bootstrap_token="$(login nacos "$NACOS_BOOTSTRAP_PASSWORD")"
 test -n "$bootstrap_token"
 
+for workload_username in \
+  "$NACOS_IAM_USERNAME" \
+  "$NACOS_TENANT_ACCESS_USERNAME" \
+  "$NACOS_ENTITLEMENT_USERNAME" \
+  "$NACOS_AUDIT_USERNAME" \
+  "$NACOS_GATEWAY_USERNAME" \
+  "$NACOS_PUBLISH_USERNAME"; do
+  if [ "$workload_username" = "nacos" ]; then
+    echo "Nacos 工作负载与配置发布身份不得使用 nacos 管理员账号" >&2
+    exit 1
+  fi
+done
+
+for workload_username in \
+  "$NACOS_IAM_USERNAME" \
+  "$NACOS_TENANT_ACCESS_USERNAME" \
+  "$NACOS_ENTITLEMENT_USERNAME" \
+  "$NACOS_AUDIT_USERNAME" \
+  "$NACOS_GATEWAY_USERNAME" \
+  "$NACOS_PUBLISH_USERNAME"; do
+  username_occurrences=0
+  for candidate_username in \
+    "$NACOS_IAM_USERNAME" \
+    "$NACOS_TENANT_ACCESS_USERNAME" \
+    "$NACOS_ENTITLEMENT_USERNAME" \
+    "$NACOS_AUDIT_USERNAME" \
+    "$NACOS_GATEWAY_USERNAME" \
+    "$NACOS_PUBLISH_USERNAME"; do
+    if [ "$workload_username" = "$candidate_username" ]; then
+      username_occurrences=$((username_occurrences + 1))
+    fi
+  done
+  if [ "$username_occurrences" -ne 1 ]; then
+    echo "Nacos 工作负载和配置发布身份必须彼此独立" >&2
+    exit 1
+  fi
+done
+
 curl --silent --show-error --request POST \
   --header "Authorization: Bearer $bootstrap_token" \
   --data-urlencode "namespaceId=$NACOS_NAMESPACE" \
@@ -44,6 +82,7 @@ ensure_user "$NACOS_TENANT_ACCESS_USERNAME" "$NACOS_TENANT_ACCESS_PASSWORD"
 ensure_user "$NACOS_ENTITLEMENT_USERNAME" "$NACOS_ENTITLEMENT_PASSWORD"
 ensure_user "$NACOS_AUDIT_USERNAME" "$NACOS_AUDIT_PASSWORD"
 ensure_user "$NACOS_GATEWAY_USERNAME" "$NACOS_GATEWAY_PASSWORD"
+ensure_user "$NACOS_PUBLISH_USERNAME" "$NACOS_PUBLISH_PASSWORD"
 
 curl --silent --show-error --request POST \
   --header "Authorization: Bearer $bootstrap_token" \
@@ -75,7 +114,13 @@ curl --silent --show-error --request POST \
   --data-urlencode 'role=gateway-dev' \
   "$api/v3/auth/role" >/dev/null || true
 
-# IAM 只读取自己的配置并注册自己的稳定服务名；配置发布仍由初始化身份负责。
+curl --silent --show-error --request POST \
+  --header "Authorization: Bearer $bootstrap_token" \
+  --data-urlencode "username=$NACOS_PUBLISH_USERNAME" \
+  --data-urlencode 'role=config-publisher-dev' \
+  "$api/v3/auth/role" >/dev/null || true
+
+# IAM 只读取自己的配置并注册自己的稳定服务名；配置发布由独立发布身份负责。
 for permission in \
   "dev:SAAS_FORGE:config/iam-service.yaml:r" \
   "dev:DEFAULT_GROUP:naming/iam-service:w"; do
@@ -147,8 +192,21 @@ for permission in \
     "$api/v3/auth/permission" >/dev/null || true
 done
 
+# 配置发布身份仅能写入当前环境的五份受控资源；它没有服务注册或发现权限。
+for application in gateway iam-service tenant-access-service entitlement-service audit-service; do
+  curl --silent --show-error --request POST \
+    --header "Authorization: Bearer $bootstrap_token" \
+    --data-urlencode 'role=config-publisher-dev' \
+    --data-urlencode "resource=dev:SAAS_FORGE:config/$application.yaml" \
+    --data-urlencode 'action=w' \
+    "$api/v3/auth/permission" >/dev/null || true
+done
+
+publisher_token="$(login "$NACOS_PUBLISH_USERNAME" "$NACOS_PUBLISH_PASSWORD")"
+test -n "$publisher_token"
+
 curl --fail --silent --show-error --request POST \
-  --header "Authorization: Bearer $bootstrap_token" \
+  --header "Authorization: Bearer $publisher_token" \
   --data-urlencode 'dataId=iam-service.yaml' \
   --data-urlencode 'groupName=SAAS_FORGE' \
   --data-urlencode "namespaceId=$NACOS_NAMESPACE" \
@@ -157,7 +215,7 @@ curl --fail --silent --show-error --request POST \
   "$api/v3/admin/cs/config" | grep -q '"code":0'
 
 curl --fail --silent --show-error --request POST \
-  --header "Authorization: Bearer $bootstrap_token" \
+  --header "Authorization: Bearer $publisher_token" \
   --data-urlencode 'dataId=tenant-access-service.yaml' \
   --data-urlencode 'groupName=SAAS_FORGE' \
   --data-urlencode "namespaceId=$NACOS_NAMESPACE" \
@@ -166,7 +224,7 @@ curl --fail --silent --show-error --request POST \
   "$api/v3/admin/cs/config" | grep -q '"code":0'
 
 curl --fail --silent --show-error --request POST \
-  --header "Authorization: Bearer $bootstrap_token" \
+  --header "Authorization: Bearer $publisher_token" \
   --data-urlencode 'dataId=entitlement-service.yaml' \
   --data-urlencode 'groupName=SAAS_FORGE' \
   --data-urlencode "namespaceId=$NACOS_NAMESPACE" \
@@ -175,7 +233,7 @@ curl --fail --silent --show-error --request POST \
   "$api/v3/admin/cs/config" | grep -q '"code":0'
 
 curl --fail --silent --show-error --request POST \
-  --header "Authorization: Bearer $bootstrap_token" \
+  --header "Authorization: Bearer $publisher_token" \
   --data-urlencode 'dataId=audit-service.yaml' \
   --data-urlencode 'groupName=SAAS_FORGE' \
   --data-urlencode "namespaceId=$NACOS_NAMESPACE" \
@@ -184,7 +242,7 @@ curl --fail --silent --show-error --request POST \
   "$api/v3/admin/cs/config" | grep -q '"code":0'
 
 curl --fail --silent --show-error --request POST \
-  --header "Authorization: Bearer $bootstrap_token" \
+  --header "Authorization: Bearer $publisher_token" \
   --data-urlencode 'dataId=gateway.yaml' \
   --data-urlencode 'groupName=SAAS_FORGE' \
   --data-urlencode "namespaceId=$NACOS_NAMESPACE" \

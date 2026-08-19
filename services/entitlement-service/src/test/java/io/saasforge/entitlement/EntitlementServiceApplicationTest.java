@@ -1,15 +1,26 @@
 package io.saasforge.entitlement;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.saasforge.entitlement.config.NacosRegistrationReadinessHealthIndicator;
+import io.saasforge.entitlement.config.RequiredNacosConfiguration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.health.contributor.Status;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.cloud.client.discovery.event.InstanceRegisteredEvent;
 
 class EntitlementServiceApplicationTest {
+
+    @Test
+    void createsRequiredNacosConfigurationWhenTheMarkerIsProvided() {
+        new ApplicationContextRunner()
+                .withUserConfiguration(RequiredNacosConfiguration.class)
+                .withPropertyValues("saasforge.entitlement.configuration-revision=test")
+                .run(context -> assertThat(context).hasSingleBean(RequiredNacosConfiguration.class));
+    }
 
     @Test
     void remainsDownUntilTheServiceRegistryConfirmsRegistration() {

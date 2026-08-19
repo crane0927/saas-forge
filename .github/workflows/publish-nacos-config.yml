@@ -1,0 +1,45 @@
+name: Publish Nacos configuration
+
+on:
+  workflow_dispatch:
+    inputs:
+      nacos_environment:
+        description: Target Nacos namespace and GitHub Environment
+        required: true
+        type: choice
+        options:
+          - dev
+          - test
+          - staging
+          - prod
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nacos-config-${{ inputs.nacos_environment }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish ${{ inputs.nacos_environment }} configuration
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.nacos_environment }}
+    env:
+      NACOS_SERVER_ADDR: ${{ vars.NACOS_SERVER_ADDR }}
+      NACOS_PUBLISH_USERNAME: ${{ secrets.NACOS_PUBLISH_USERNAME }}
+      NACOS_PUBLISH_PASSWORD: ${{ secrets.NACOS_PUBLISH_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Require the protected integration branch
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/master" ]]; then
+            echo "Nacos 配置只能从受保护的 master 分支发布，当前为 $GITHUB_REF" >&2
+            exit 1
+          fi
+      - name: Validate Git-managed Nacos configuration
+        run: bash scripts/validate-nacos-config.sh "${{ inputs.nacos_environment }}"
+      - name: Publish the reviewed manifest
+        run: bash scripts/publish-nacos-config.sh "${{ inputs.nacos_environment }}"

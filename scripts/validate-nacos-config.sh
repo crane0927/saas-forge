@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly nacos_root="$repository_root/deploy/nacos"
+readonly applications=(gateway iam-service tenant-access-service entitlement-service audit-service)
+readonly environments=(dev test staging prod)
+
+usage() {
+  echo "用法: $0 [dev|test|staging|prod]" >&2
+  exit 64
+}
+
+is_known_environment() {
+  local candidate="$1"
+  local environment
+  for environment in "${environments[@]}"; do
+    if [[ "$candidate" == "$environment" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+validate_configuration_file() {
+  local environment="$1"
+  local application="$2"
+  local configuration_file="$3"
+
+  ruby - "$configuration_file" "$application" "$environment" <<'RUBY'
+require "yaml"
+
+configuration_file, application, environment = ARGV
+components = {
+  "gateway" => "gateway",
+  "iam-service" => "iam",
+  "tenant-access-service" => "tenant-access",
+  "entitlement-service" => "entitlement",
+  "audit-service" => "audit"
+}.freeze
+
+document = YAML.safe_load(File.read(configuration_file), aliases: true)
+abort "#{configuration_file}: YAML 根节点必须是映射" unless document.is_a?(Hash)
+
+component = components.fetch(application)
+revision = document.dig("saasforge", component, "configuration-revision")
+if !revision.is_a?(String) || revision.empty?
+  abort "#{configuration_file}: 必须声明 saasforge.#{component}.configuration-revision"
+end
+
+forbidden_key_parts = %w[
+  password passwd secret token credential privatekey accesskey clientsecret apikey keystore
+].freeze
+forbidden_nacos_paths = [
+  %w[spring cloud nacos username],
+  %w[spring cloud nacos password],
+  %w[spring cloud nacos namespace],
+  %w[spring cloud nacos server-addr],
+  %w[spring config import]
+].freeze
+
+inspect_node = lambda do |value, path|
+  if value.is_a?(Hash)
+    value.each do |raw_key, child|
+      key = raw_key.to_s
+      normalized_key = key.downcase.delete("-_")
+      if forbidden_key_parts.include?(normalized_key)
+        abort "#{configuration_file}: 禁止将敏感键 #{(path + [key]).join(".")} 纳入 Nacos 清单"
+      end
+      child_path = path + [key]
+      if forbidden_nacos_paths.include?(child_path)
+        abort "#{configuration_file}: Nacos 连接参数必须留在部署环境变量或 Helm values，不得出现在清单中"
+      end
+      inspect_node.call(child, child_path)
+    end
+  elsif value.is_a?(Array)
+    value.each_with_index { |child, index| inspect_node.call(child, path + [index.to_s]) }
+  end
+end
+inspect_node.call(document, [])
+
+puts "已校验 #{environment}/#{application}.yaml"
+RUBY
+}
+
+validate_environment() {
+  local environment="$1"
+  local environment_directory="$nacos_root/$environment"
+  local expected actual application configuration_file
+
+  if [[ ! -d "$environment_directory" ]]; then
+    echo "缺少 Nacos 环境目录: $environment_directory" >&2
+    exit 1
+  fi
+
+  expected="$(printf '%s.yaml\n' "${applications[@]}" | sort)"
+  actual="$(find "$environment_directory" -maxdepth 1 -type f -name '*.yaml' -exec basename {} \; | sort)"
+  if [[ "$actual" != "$expected" ]]; then
+    echo "$environment_directory 必须且只能包含五个已声明的应用配置资源" >&2
+    diff -u <(printf '%s\n' "$expected") <(printf '%s\n' "$actual") || true
+    exit 1
+  fi
+
+  for application in "${applications[@]}"; do
+    configuration_file="$environment_directory/$application.yaml"
+    validate_configuration_file "$environment" "$application" "$configuration_file"
+  done
+}
+
+if [[ $# -gt 1 ]]; then
+  usage
+fi
+
+if [[ $# -eq 1 ]]; then
+  is_known_environment "$1" || usage
+  validate_environment "$1"
+else
+  for environment in "${environments[@]}"; do
+    validate_environment "$environment"
+  done
+fi

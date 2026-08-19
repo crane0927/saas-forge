@@ -1,15 +1,26 @@
 package io.saasforge.audit;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.saasforge.audit.config.NacosRegistrationReadinessHealthIndicator;
+import io.saasforge.audit.config.RequiredNacosConfiguration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.health.contributor.Status;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.cloud.client.discovery.event.InstanceRegisteredEvent;
 
 class AuditServiceApplicationTest {
+
+    @Test
+    void createsRequiredNacosConfigurationWhenTheMarkerIsProvided() {
+        new ApplicationContextRunner()
+                .withUserConfiguration(RequiredNacosConfiguration.class)
+                .withPropertyValues("saasforge.audit.configuration-revision=test")
+                .run(context -> assertThat(context).hasSingleBean(RequiredNacosConfiguration.class));
+    }
 
     @Test
     void remainsDownUntilTheServiceRegistryConfirmsRegistration() {

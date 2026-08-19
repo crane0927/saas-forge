@@ -1,0 +1,29 @@
+saasforge:
+  entitlement:
+    configuration-revision: "1"
+
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,nacosRegistrationReadiness
+
+spring:
+  nacos:
+    config:
+      health-indicator:
+        enabled: true
+  cloud:
+    nacos:
+      discovery:
+        health-indicator:
+          enabled: true
+    discovery:
+      client:
+        health-indicator:
+          use-services-query: false
