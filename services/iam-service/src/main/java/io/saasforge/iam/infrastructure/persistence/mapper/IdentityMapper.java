@@ -11,9 +11,15 @@ public interface IdentityMapper {
 
     IdentityRow insertIdentity(@Param("row") IdentityRow row);
 
+    IdentityRow insertIdentityIfAbsent(@Param("row") IdentityRow row);
+
     IdentityRow findIdentityByEmail(@Param("normalizedEmail") String normalizedEmail);
 
     CredentialRow insertCredential(@Param("row") CredentialRow row);
+
+    CredentialRow replaceInitialPassword(
+            @Param("initialCredentialId") UUID initialCredentialId,
+            @Param("password") CredentialRow password);
 
     int hasValidRegularPassword(@Param("identityId") UUID identityId);
 

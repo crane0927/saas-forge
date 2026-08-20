@@ -2,6 +2,7 @@ package io.saasforge.iam.infrastructure.persistence;
 
 import io.saasforge.iam.domain.identity.Argon2idPasswordHash;
 import io.saasforge.iam.domain.identity.CredentialType;
+import io.saasforge.iam.domain.identity.DuplicateIdentityEmailException;
 import io.saasforge.iam.domain.identity.Identity;
 import io.saasforge.iam.domain.identity.IdentityRepository;
 import io.saasforge.iam.domain.identity.NormalizedEmail;
@@ -13,7 +14,9 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 public class MyBatisIdentityRepository implements IdentityRepository {
@@ -25,8 +28,23 @@ public class MyBatisIdentityRepository implements IdentityRepository {
     }
 
     @Override
-    public Identity save(Identity identity) {
-        return toDomain(mapper.insertIdentity(toRow(identity)));
+    public Identity create(Identity identity) {
+        try {
+            return toDomain(mapper.insertIdentity(toRow(identity)));
+        } catch (DuplicateKeyException exception) {
+            throw new DuplicateIdentityEmailException();
+        }
+    }
+
+    @Override
+    @Transactional
+    public Identity findOrCreate(Identity identity) {
+        IdentityRow inserted = mapper.insertIdentityIfAbsent(toRow(identity));
+        if (inserted != null) {
+            return toDomain(inserted);
+        }
+        return findByEmail(identity.email())
+                .orElseThrow(() -> new IllegalStateException("Identity 创建后无法读取"));
     }
 
     @Override
@@ -35,12 +53,24 @@ public class MyBatisIdentityRepository implements IdentityRepository {
     }
 
     @Override
-    public PasswordCredential save(PasswordCredential credential) {
+    public PasswordCredential create(PasswordCredential credential) {
         if (credential.type() == CredentialType.PASSWORD
                 && mapper.hasValidRegularPassword(credential.identityId()) != 0) {
             throw new IllegalStateException("Identity 已有有效的常规密码凭据");
         }
         return toDomain(mapper.insertCredential(toRow(credential)));
+    }
+
+    @Override
+    @Transactional
+    public PasswordCredential replaceInitialPassword(
+            PasswordCredential initialCredential, PasswordCredential passwordCredential) {
+        requireInitialPasswordReplacement(initialCredential, passwordCredential);
+        CredentialRow replacement = mapper.replaceInitialPassword(initialCredential.id(), toRow(passwordCredential));
+        if (replacement == null) {
+            throw new IllegalStateException("初始密码凭据不存在或已失效");
+        }
+        return toDomain(replacement);
     }
 
     @Override
@@ -72,6 +102,19 @@ public class MyBatisIdentityRepository implements IdentityRepository {
         row.setExpiresAt(IamTime.asOffsetDateTime(credential.expiresAt()));
         row.setInvalidatedAt(IamTime.asOffsetDateTime(credential.invalidatedAt()));
         return row;
+    }
+
+    private static void requireInitialPasswordReplacement(
+            PasswordCredential initialCredential, PasswordCredential passwordCredential) {
+        if (initialCredential.id() == null
+                || initialCredential.type() != CredentialType.INITIAL_PLATFORM_PASSWORD
+                || initialCredential.invalidatedAt() != null
+                || passwordCredential.type() != CredentialType.PASSWORD
+                || passwordCredential.id() != null
+                || !initialCredential.identityId().equals(passwordCredential.identityId())
+                || passwordCredential.issuedAt().isBefore(initialCredential.issuedAt())) {
+            throw new IllegalArgumentException("初始密码凭据替换状态不合法");
+        }
     }
 
     private static Identity toDomain(IdentityRow row) {

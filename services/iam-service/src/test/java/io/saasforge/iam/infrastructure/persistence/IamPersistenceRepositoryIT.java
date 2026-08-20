@@ -3,6 +3,7 @@ package io.saasforge.iam.infrastructure.persistence;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -10,6 +11,8 @@ import io.saasforge.iam.domain.client.OAuthClient;
 import io.saasforge.iam.domain.client.OAuthClientRepository;
 import io.saasforge.iam.domain.client.OAuthScope;
 import io.saasforge.iam.domain.identity.Argon2idPasswordHash;
+import io.saasforge.iam.domain.identity.CredentialType;
+import io.saasforge.iam.domain.identity.DuplicateIdentityEmailException;
 import io.saasforge.iam.domain.identity.Identity;
 import io.saasforge.iam.domain.identity.IdentityRepository;
 import io.saasforge.iam.domain.identity.PasswordCredential;
@@ -109,33 +112,48 @@ class IamPersistenceRepositoryIT {
     @Test
     void persistsIdentityAndCredentialInvariantsWithDatabaseGeneratedUuidV7() throws SQLException {
         Instant now = Instant.parse("2026-08-20T00:00:00Z");
-        Identity identity = identities.save(Identity.register(" Admin@Example.Test ", "管理员", now));
+        Identity identity = identities.create(Identity.register(" Admin@Example.Test ", "管理员", now));
 
         assertNotNull(identity.id());
         assertEquals(7, uuidVersion(identity.id()));
         assertEquals("admin@example.test", identities.findByEmail(identity.email()).orElseThrow().email().value());
         assertEquals("管理员", identities.findByEmail(identity.email()).orElseThrow().displayName());
-        assertThrows(RuntimeException.class,
-                () -> identities.save(Identity.register("admin@example.test", "不会覆盖", now.plusSeconds(1))));
+        assertThrows(DuplicateIdentityEmailException.class,
+                () -> identities.create(Identity.register("admin@example.test", "不会覆盖", now.plusSeconds(1))));
 
-        PasswordCredential initial = identities.save(PasswordCredential.initial(
+        Identity reused = identities.findOrCreate(Identity.register(" ADMIN@EXAMPLE.TEST ", "不会覆盖", now.plusSeconds(2)));
+        assertEquals(identity.id(), reused.id());
+        assertEquals("管理员", reused.displayName());
+
+        Identity withoutDisplayName = identities.create(Identity.register("empty-name@example.test", null, now));
+        Identity sameDisplayName = identities.create(Identity.register("same-name@example.test", "管理员", now));
+        assertNull(withoutDisplayName.displayName());
+        assertEquals("管理员", sameDisplayName.displayName());
+
+        PasswordCredential initial = identities.create(PasswordCredential.initial(
                 identity.id(), Argon2idPasswordHash.of(ARGON2ID_HASH), now));
-        identities.invalidate(initial.id(), now.plusSeconds(1));
-        PasswordCredential regular = identities.save(PasswordCredential.regular(
+        PasswordCredential regular = identities.replaceInitialPassword(initial, PasswordCredential.regular(
                 identity.id(), Argon2idPasswordHash.of(ARGON2ID_HASH), now.plusSeconds(2)));
 
         assertNotNull(initial.id());
         assertNotNull(regular.id());
-        assertThrows(RuntimeException.class, () -> identities.save(PasswordCredential.regular(
+        assertThrows(IllegalStateException.class, () -> identities.create(PasswordCredential.regular(
                 identity.id(), Argon2idPasswordHash.of(ARGON2ID_HASH), now.plusSeconds(3))));
+        assertThrows(IllegalStateException.class, () -> identities.replaceInitialPassword(initial, PasswordCredential.regular(
+                identity.id(), Argon2idPasswordHash.of(ARGON2ID_HASH), now.plusSeconds(4))));
 
-        assertEquals(now.plusSeconds(1), identities.findCredentials(identity.id()).get(0).invalidatedAt());
+        var credentials = identities.findCredentials(identity.id());
+        assertEquals(2, credentials.size());
+        assertEquals(CredentialType.INITIAL_PLATFORM_PASSWORD, credentials.get(0).type());
+        assertEquals(now.plusSeconds(2), credentials.get(0).invalidatedAt());
+        assertEquals(CredentialType.PASSWORD, credentials.get(1).type());
+        assertEquals(regular.id(), credentials.get(1).id());
     }
 
     @Test
     void atomicallyConsumesRefreshTokensCarriesContextAndRevokesReplayFamily() {
         Instant loginAt = Instant.parse("2026-08-20T01:00:00Z");
-        Identity identity = identities.save(Identity.register("session-" + UUID.randomUUID() + "@example.test", null, loginAt));
+        Identity identity = identities.create(Identity.register("session-" + UUID.randomUUID() + "@example.test", null, loginAt));
         Sha256Digest first = digest(1);
         RefreshTokenFamily family = refreshTokenFamilies.create(
                 RefreshTokenFamily.start(identity.id(), null, null, loginAt), first, loginAt);
