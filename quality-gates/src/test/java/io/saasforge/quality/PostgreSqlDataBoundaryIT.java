@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -92,7 +94,7 @@ class PostgreSqlDataBoundaryIT {
     }
 
     @Test
-    void bootstrapCreatesIsolatedDatabaseAccountsAndMigrationChains() throws SQLException {
+    void bootstrapCreatesIsolatedDatabaseAccountsAndMigrationChains() throws SQLException, IOException {
         try (Connection admin = adminConnection()) {
             for (DatabaseAccount database : DATABASES) {
                 assertTrue(databaseExists(admin, database.databaseName()));
@@ -391,12 +393,15 @@ class PostgreSqlDataBoundaryIT {
                 "SELECT count(*) FROM flyway_schema_history WHERE success");
     }
 
-    private static long expectedMigrationCount(DatabaseAccount database) {
-        return switch (database.serviceModule()) {
-            case "iam-service" -> 4;
-            case "tenant-access-service" -> 2;
-            default -> 1;
-        };
+    private static long expectedMigrationCount(DatabaseAccount database) throws IOException {
+        Path migrations = REPOSITORY.resolve("services")
+                .resolve(database.serviceModule())
+                .resolve("src/main/resources/db/migration");
+        try (var files = Files.list(migrations)) {
+            return files.filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().matches("V\\d+__.+\\.sql"))
+                    .count();
+        }
     }
 
     private static String tableOwner(DatabaseAccount database, String tableName) throws SQLException {

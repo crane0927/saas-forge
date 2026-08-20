@@ -67,7 +67,7 @@ public class AuthenticationController implements AuthenticationApi {
 
     @Override
     public ResponseEntity<AuthenticationResult> login(
-            UUID idempotencyKey, String csrfHeader, LoginRequest loginRequest) {
+            String csrfHeader, LoginRequest loginRequest, UUID ignoredIdempotencyKey) {
         LoginResult result = loginService.login(
                 loginRequest.getEmail(),
                 loginRequest.getPassword(),

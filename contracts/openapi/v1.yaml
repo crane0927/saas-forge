@@ -27,9 +27,15 @@ paths:
         The request never accepts a Tenant or Membership identifier. A user with one
         accessible Membership receives an Access Token; a user with multiple
         Memberships receives the server-verified selection candidates without an
-        Access Token. A Refresh Token is set only as an HttpOnly cookie.
+        Access Token. A Refresh Token is set only as an HttpOnly cookie. The deprecated
+        Idempotency-Key parameter remains optional for v1 compatibility and is ignored.
       parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: Idempotency-Key
+          in: header
+          required: false
+          deprecated: true
+          description: Retained only for v1 compatibility; login does not use it.
+          schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
         - $ref: '#/components/parameters/CsrfHeader'
       requestBody:
         required: true
@@ -175,7 +181,8 @@ paths:
         - name: Idempotency-Key
           in: header
           required: false
-          description: Retained as an optional v1 compatibility parameter; logout does not use it.
+          deprecated: true
+          description: Retained only for v1 compatibility; logout does not use it.
           schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
         - $ref: '#/components/parameters/CsrfHeader'
         - name: __Host-sf_refresh

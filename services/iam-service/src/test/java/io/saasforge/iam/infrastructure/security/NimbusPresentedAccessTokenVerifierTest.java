@@ -17,6 +17,7 @@ import io.saasforge.iam.support.StubSigningKeyRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Base64;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
@@ -57,9 +58,8 @@ class NimbusPresentedAccessTokenVerifierTest {
     void ignoresInvalidIssuerAndTamperedSignature() throws Exception {
         assertTrue(verifier.verify("Bearer " + token("https://attacker.invalid", false)).isEmpty());
 
-        String tampered = token("https://iam.test.saasforge.invalid", false);
-        tampered = tampered.substring(0, tampered.length() - 1) + (tampered.endsWith("A") ? "B" : "A");
-        assertTrue(verifier.verify("Bearer " + tampered).isEmpty());
+        assertTrue(verifier.verify("Bearer " + tamperSignature(
+                token("https://iam.test.saasforge.invalid", false))).isEmpty());
     }
 
     private String token(String issuer, boolean tenant) throws Exception {
@@ -79,5 +79,13 @@ class NimbusPresentedAccessTokenVerifierTest {
                 claims.build());
         jwt.sign(new RSASSASigner(rsaKey));
         return jwt.serialize();
+    }
+
+    private static String tamperSignature(String token) {
+        String[] segments = token.split("\\.");
+        byte[] signature = Base64.getUrlDecoder().decode(segments[2]);
+        signature[0] ^= 1;
+        segments[2] = Base64.getUrlEncoder().withoutPadding().encodeToString(signature);
+        return String.join(".", segments);
     }
 }

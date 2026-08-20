@@ -333,11 +333,15 @@ public class MyBatisRefreshTokenFamilyRepository implements RefreshTokenFamilyRe
         if (sameKey && withinWindow && token.getRecoveredAt() == null && family.revokedAt() == null) {
             RefreshTokenRow successor = mapper.lockTokenById(token.getSuccessorTokenId());
             if (successor.getConsumedAt() == null) {
-                consumeToken(successor.getId(), at);
-                RefreshTokenFamily used = family.recordUse(family.membershipId(), family.tenantId(), at);
+                Instant recoveryAt = at.isBefore(family.lastUsedAt()) ? family.lastUsedAt() : at;
+                if (recoveryAt.isBefore(successor.getIssuedAt().toInstant())) {
+                    recoveryAt = successor.getIssuedAt().toInstant();
+                }
+                consumeToken(successor.getId(), recoveryAt);
+                RefreshTokenFamily used = family.recordUse(family.membershipId(), family.tenantId(), recoveryAt);
                 mapper.updateFamily(toRow(used));
-                mapper.insertToken(tokenRow(used.id(), nextDigest, at));
-                if (mapper.markRecovered(token.getId(), IamTime.asOffsetDateTime(at)) != 1) {
+                mapper.insertToken(tokenRow(used.id(), nextDigest, recoveryAt));
+                if (mapper.markRecovered(token.getId(), IamTime.asOffsetDateTime(recoveryAt)) != 1) {
                     throw new IllegalStateException("Refresh Token 恢复状态保存失败");
                 }
                 return new RefreshRotation(

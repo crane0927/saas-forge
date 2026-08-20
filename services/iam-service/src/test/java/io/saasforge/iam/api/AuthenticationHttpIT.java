@@ -351,7 +351,6 @@ class AuthenticationHttpIT {
         }
 
         MvcResult tenantResponse = mockMvc.perform(post("/api/v1/auth/login")
-                        .header("Idempotency-Key", IDEMPOTENCY_KEY)
                         .header("X-SF-CSRF", "csrf-test")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -483,7 +482,6 @@ class AuthenticationHttpIT {
     void loginRequestRejectsCallerSuppliedTenantOrMembershipIdentifiers() throws Exception {
         TestUser user = createUser("forged-context@example.test", "correct-password", false, Credential.REGULAR);
         mockMvc.perform(post("/api/v1/auth/login")
-                        .header("Idempotency-Key", IDEMPOTENCY_KEY)
                         .header("X-SF-CSRF", "csrf-test")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -493,7 +491,6 @@ class AuthenticationHttpIT {
                 .andExpect(status().isBadRequest())
                 .andExpect(header().doesNotExist("Set-Cookie"));
         mockMvc.perform(post("/api/v1/auth/login")
-                        .header("Idempotency-Key", IDEMPOTENCY_KEY)
                         .header("X-SF-CSRF", "csrf-test")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -1287,7 +1284,6 @@ class AuthenticationHttpIT {
         assertEquals(null, jdbc.queryForObject(
                 "SELECT revoked_at FROM iam_access_token_issuances WHERE jti = ?", Object.class, jti));
         mockMvc.perform(post("/api/v1/auth/login")
-                        .header("Idempotency-Key", IDEMPOTENCY_KEY)
                         .header("X-SF-CSRF", "csrf-test")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -1375,7 +1371,6 @@ class AuthenticationHttpIT {
     private org.springframework.test.web.servlet.ResultActions login(String email, String password, String contextType)
             throws Exception {
         return mockMvc.perform(post("/api/v1/auth/login")
-                .header("Idempotency-Key", IDEMPOTENCY_KEY)
                 .header("X-SF-CSRF", "csrf-test")
                 .header("traceparent", "00-" + TRACE_ID + "-0123456789abcdef-01")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -1386,7 +1381,6 @@ class AuthenticationHttpIT {
     private org.springframework.test.web.servlet.ResultActions loginWithoutContext(String email, String password)
             throws Exception {
         return mockMvc.perform(post("/api/v1/auth/login")
-                .header("Idempotency-Key", IDEMPOTENCY_KEY)
                 .header("X-SF-CSRF", "csrf-test")
                 .header("traceparent", "00-" + TRACE_ID + "-0123456789abcdef-01")
                 .contentType(MediaType.APPLICATION_JSON)
