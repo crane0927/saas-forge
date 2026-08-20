@@ -18,7 +18,7 @@
         <result property="revokedAt" column="revoked_at"/>
     </resultMap>
 
-    <select id="insertKey" resultMap="keyRow">
+    <select id="insertKey" resultMap="keyRow" affectData="true" flushCache="true">
         INSERT INTO iam_signing_keys
             (kid, key_version_reference, public_jwk_modulus, public_jwk_exponent, key_status,
              published_at, activated_at, retire_after, retired_at, revoked_at)

@@ -18,7 +18,7 @@
             (#{row.eventId}, #{row.occurredAt}, #{row.topic}, #{row.orderingKey}, #{row.traceId},
              CAST(#{row.eventSnapshot} AS JSONB), #{row.occurredAt})
     </insert>
-    <select id="claimNext" resultMap="outboxRow">
+    <select id="claimNext" resultMap="outboxRow" affectData="true" flushCache="true">
         WITH candidate AS (
             SELECT current.event_id
             FROM iam_outbox_events current

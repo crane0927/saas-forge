@@ -74,6 +74,14 @@ class RepositoryStandardsTest {
             "<mapper\\s+[^>]*namespace=\"([^\"]+)\"", Pattern.CASE_INSENSITIVE);
     private static final Pattern MAPPER_STATEMENT = Pattern.compile(
             "<(?:select|insert|update|delete)\\b[^>]*\\bid=\"([^\"]+)\"", Pattern.CASE_INSENSITIVE);
+    private static final Pattern MAPPER_SELECT = Pattern.compile(
+            "(?is)<select\\b([^>]*)>(.*?)</select>");
+    private static final Pattern DML_RETURNING = Pattern.compile(
+            "(?is)\\b(?:insert|update|delete)\\b.*\\breturning\\b");
+    private static final Pattern AFFECT_DATA_TRUE = Pattern.compile(
+            "\\baffectData\\s*=\\s*\"true\"");
+    private static final Pattern FLUSH_CACHE_TRUE = Pattern.compile(
+            "\\bflushCache\\s*=\\s*\"true\"");
     private static final Pattern MAPPER_METHOD = Pattern.compile(
             "(?m)^\\s*(?:[A-Za-z0-9_$.<>?, \\[\\]]+\\s+)([A-Za-z][A-Za-z0-9_]*)\\s*\\([^;{}]*\\)\\s*;");
     private static final Pattern OPENAPI_PATH = Pattern.compile("^  (/[^:]+):$");
@@ -322,6 +330,31 @@ class RepositoryStandardsTest {
                 String source = Files.readString(javaFile, StandardCharsets.UTF_8);
                 assertFalse(ANNOTATED_SQL.matcher(source).find(),
                         javaFile + " 使用了注解或 Provider SQL；运行时 SQL 必须维护在 Mapper XML");
+            }
+        }
+    }
+
+    @Test
+    void returningDmlSelectsDeclareMutationSemantics() throws Exception {
+        for (Path xmlFile : filesUnder(REPOSITORY, "Mapper.xml")) {
+            Path relative = REPOSITORY.relativize(xmlFile);
+            if (owningPersistenceModule(relative) == null) {
+                continue;
+            }
+            String xml = Files.readString(xmlFile, StandardCharsets.UTF_8);
+            Matcher selectMatcher = MAPPER_SELECT.matcher(xml);
+            while (selectMatcher.find()) {
+                String attributes = selectMatcher.group(1);
+                String sql = selectMatcher.group(2);
+                if (!DML_RETURNING.matcher(sql).find()) {
+                    continue;
+                }
+                String statementId = matchRequired(attributes, Pattern.compile("\\bid=\"([^\"]+)\""), xmlFile,
+                        "RETURNING DML 的 select 必须声明 statement id");
+                assertTrue(AFFECT_DATA_TRUE.matcher(attributes).find(),
+                        xmlFile + " 的 " + statementId + " 必须声明 affectData=\"true\"");
+                assertTrue(FLUSH_CACHE_TRUE.matcher(attributes).find(),
+                        xmlFile + " 的 " + statementId + " 必须声明 flushCache=\"true\"");
             }
         }
     }

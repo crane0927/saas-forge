@@ -8,7 +8,7 @@
         <result property="assignedAt" column="assigned_at"/>
         <result property="revokedAt" column="revoked_at"/>
     </resultMap>
-    <select id="insert" resultMap="assignmentRow">
+    <select id="insert" resultMap="assignmentRow" affectData="true" flushCache="true">
         INSERT INTO iam_platform_role_assignments (identity_id, role_key, assigned_at, revoked_at)
         VALUES (#{row.identityId}, #{row.roleKey}, #{row.assignedAt}, #{row.revokedAt})
         RETURNING id, identity_id, role_key, assigned_at, revoked_at

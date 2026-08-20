@@ -105,9 +105,10 @@ Tenant 范围内的唯一约束、主要索引和相互引用按 `tenant_id` 限
 - 表结构和数据迁移 SQL 只存在于所属服务的 Flyway 文件。
 - 运行时查询与写入 SQL 只存在于所属服务的 Mapper XML；Mapper 接口只声明方法和类型契约。
 - 禁止使用 `@Select`、`@Insert`、`@Update`、`@Delete` 以及 Provider 注解定义 SQL。
+- 通过 `RETURNING` 返回结果集的 `INSERT`、`UPDATE` 或 `DELETE` 必须映射为 `<select affectData="true" flushCache="true">`，确保 MyBatis 按数据变更控制事务并使查询缓存失效。
 - SDK、契约模块和跨服务公共模块不得包含 Mapper、Mapper XML、持久化 Entity 或迁移脚本。
 - 用户可在自己拥有的单个服务和数据库边界内选择是否定义、继承本地持久化基类；SaaS Forge SDK 不发布持久化实体基类。
 
 ## 自动校验
 
-当前仓库的 `./mvnw verify` 校验 Flyway 文件位置与命名、Repeatable Migration 的用途、MyBatis 注解 SQL 禁令、Mapper 接口/XML 映射一致性、公共模块持久化类型禁令以及服务依赖边界。首个持久化实现必须同步加入真实 PostgreSQL 18 / Flyway / RLS Testcontainers 测试：集群引导创建四个逻辑数据库、八个账号与最小授权；四条迁移链只能由各自迁移账号执行；运行时账号不能跨库连接、创建对象或绕过 RLS；独立实体默认生成 UUIDv7；`audit_app` 不能更新或删除审计记录；并覆盖 Tenant A 无法读写改删 Tenant B 与无上下文默认拒绝。
+当前仓库的 `./mvnw verify` 校验 Flyway 文件位置与命名、Repeatable Migration 的用途、MyBatis 注解 SQL 禁令、`RETURNING` 型 DML 的数据变更属性、Mapper 接口/XML 映射一致性、公共模块持久化类型禁令以及服务依赖边界。首个持久化实现必须同步加入真实 PostgreSQL 18 / Flyway / RLS Testcontainers 测试：集群引导创建四个逻辑数据库、八个账号与最小授权；四条迁移链只能由各自迁移账号执行；运行时账号不能跨库连接、创建对象或绕过 RLS；独立实体默认生成 UUIDv7；`audit_app` 不能更新或删除审计记录；并覆盖 Tenant A 无法读写改删 Tenant B 与无上下文默认拒绝。

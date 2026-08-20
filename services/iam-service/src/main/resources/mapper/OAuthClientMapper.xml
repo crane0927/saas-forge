@@ -23,7 +23,7 @@
         <result property="revokedAt" column="revoked_at"/>
     </resultMap>
 
-    <select id="insertClient" resultMap="clientRow">
+    <select id="insertClient" resultMap="clientRow" affectData="true" flushCache="true">
         INSERT INTO iam_oauth_clients (display_name, allowed_scopes, client_status, created_at, revoked_at)
         VALUES (#{row.displayName},
                 #{row.allowedScopes, typeHandler=io.saasforge.iam.infrastructure.persistence.type.StringArrayTypeHandler},
@@ -31,7 +31,7 @@
         RETURNING id, display_name, allowed_scopes, client_status, created_at, revoked_at
     </select>
 
-    <select id="insertSecret" resultMap="secretRow">
+    <select id="insertSecret" resultMap="secretRow" affectData="true" flushCache="true">
         INSERT INTO iam_oauth_client_secrets (client_id, secret_digest, created_at, valid_until, revoked_at)
         VALUES (#{row.clientId}, #{row.secretDigest}, #{row.createdAt}, #{row.validUntil}, #{row.revokedAt})
         RETURNING id, client_id, secret_digest, created_at, valid_until, revoked_at
