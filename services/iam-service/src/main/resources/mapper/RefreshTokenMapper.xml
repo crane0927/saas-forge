@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.saasforge.iam.infrastructure.persistence.mapper.RefreshTokenMapper">
+
+    <resultMap id="familyRow" type="io.saasforge.iam.infrastructure.persistence.record.RefreshTokenFamilyRow">
+        <id property="id" column="id"/>
+        <result property="identityId" column="identity_id"/>
+        <result property="membershipId" column="membership_id"/>
+        <result property="tenantId" column="tenant_id"/>
+        <result property="lastUsedAt" column="last_used_at"/>
+        <result property="absoluteExpiresAt" column="absolute_expires_at"/>
+        <result property="revokedAt" column="revoked_at"/>
+    </resultMap>
+
+    <resultMap id="tokenRow" type="io.saasforge.iam.infrastructure.persistence.record.RefreshTokenRow">
+        <id property="id" column="id"/>
+        <result property="familyId" column="family_id"/>
+        <result property="tokenDigest" column="token_digest"/>
+        <result property="issuedAt" column="issued_at"/>
+        <result property="consumedAt" column="consumed_at"/>
+    </resultMap>
+
+    <select id="insertFamily" resultMap="familyRow">
+        INSERT INTO iam_refresh_token_families
+            (identity_id, membership_id, tenant_id, last_used_at, absolute_expires_at, revoked_at)
+        VALUES
+            (#{row.identityId}, #{row.membershipId}, #{row.tenantId}, #{row.lastUsedAt},
+             #{row.absoluteExpiresAt}, #{row.revokedAt})
+        RETURNING id, identity_id, membership_id, tenant_id, last_used_at, absolute_expires_at, revoked_at
+    </select>
+
+    <select id="insertToken" resultMap="tokenRow">
+        INSERT INTO iam_refresh_tokens (family_id, token_digest, issued_at, consumed_at)
+        VALUES (#{row.familyId}, #{row.tokenDigest}, #{row.issuedAt}, #{row.consumedAt})
+        RETURNING id, family_id, token_digest, issued_at, consumed_at
+    </select>
+
+    <select id="findFamilyById" resultMap="familyRow">
+        SELECT id, identity_id, membership_id, tenant_id, last_used_at, absolute_expires_at, revoked_at
+        FROM iam_refresh_token_families
+        WHERE id = #{familyId}
+    </select>
+
+    <select id="lockTokenByDigest" resultMap="tokenRow">
+        SELECT id, family_id, token_digest, issued_at, consumed_at
+        FROM iam_refresh_tokens
+        WHERE token_digest = #{tokenDigest}
+        FOR UPDATE
+    </select>
+
+    <select id="lockFamilyById" resultMap="familyRow">
+        SELECT id, identity_id, membership_id, tenant_id, last_used_at, absolute_expires_at, revoked_at
+        FROM iam_refresh_token_families
+        WHERE id = #{familyId}
+        FOR UPDATE
+    </select>
+
+    <update id="markTokenConsumed">
+        UPDATE iam_refresh_tokens
+        SET consumed_at = #{consumedAt}
+        WHERE id = #{tokenId} AND consumed_at IS NULL
+    </update>
+
+    <update id="updateFamily">
+        UPDATE iam_refresh_token_families
+        SET membership_id = #{row.membershipId},
+            tenant_id = #{row.tenantId},
+            last_used_at = #{row.lastUsedAt},
+            absolute_expires_at = #{row.absoluteExpiresAt},
+            revoked_at = #{row.revokedAt}
+        WHERE id = #{row.id}
+    </update>
+</mapper>

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.saasforge.iam.infrastructure.persistence.mapper.SigningKeyMapper">
+
+    <resultMap id="keyRow" type="io.saasforge.iam.infrastructure.persistence.record.SigningKeyRow">
+        <id property="id" column="id"/>
+        <result property="kid" column="kid"/>
+        <result property="keyVersionReference" column="key_version_reference"/>
+        <result property="publicJwkModulus" column="public_jwk_modulus"/>
+        <result property="publicJwkExponent" column="public_jwk_exponent"/>
+        <result property="keyStatus" column="key_status"/>
+        <result property="publishedAt" column="published_at"/>
+        <result property="activatedAt" column="activated_at"/>
+        <result property="retireAfter" column="retire_after"/>
+        <result property="retiredAt" column="retired_at"/>
+        <result property="revokedAt" column="revoked_at"/>
+    </resultMap>
+
+    <select id="insertKey" resultMap="keyRow">
+        INSERT INTO iam_signing_keys
+            (kid, key_version_reference, public_jwk_modulus, public_jwk_exponent, key_status,
+             published_at, activated_at, retire_after, retired_at, revoked_at)
+        VALUES
+            (#{row.kid}, #{row.keyVersionReference}, #{row.publicJwkModulus}, #{row.publicJwkExponent}, #{row.keyStatus},
+             #{row.publishedAt}, #{row.activatedAt}, #{row.retireAfter}, #{row.retiredAt}, #{row.revokedAt})
+        RETURNING id, kid, key_version_reference, public_jwk_modulus, public_jwk_exponent, key_status,
+                  published_at, activated_at, retire_after, retired_at, revoked_at
+    </select>
+
+    <select id="findActiveKey" resultMap="keyRow">
+        SELECT id, kid, key_version_reference, public_jwk_modulus, public_jwk_exponent, key_status,
+               published_at, activated_at, retire_after, retired_at, revoked_at
+        FROM iam_signing_keys
+        WHERE key_status = 'ACTIVE'
+    </select>
+
+    <select id="lockKeyById" resultMap="keyRow">
+        SELECT id, kid, key_version_reference, public_jwk_modulus, public_jwk_exponent, key_status,
+               published_at, activated_at, retire_after, retired_at, revoked_at
+        FROM iam_signing_keys
+        WHERE id = #{keyId}
+        FOR UPDATE
+    </select>
+
+    <select id="lockActiveKey" resultMap="keyRow">
+        SELECT id, kid, key_version_reference, public_jwk_modulus, public_jwk_exponent, key_status,
+               published_at, activated_at, retire_after, retired_at, revoked_at
+        FROM iam_signing_keys
+        WHERE key_status = 'ACTIVE'
+        FOR UPDATE
+    </select>
+
+    <update id="updateKey">
+        UPDATE iam_signing_keys
+        SET key_status = #{row.keyStatus},
+            published_at = #{row.publishedAt},
+            activated_at = #{row.activatedAt},
+            retire_after = #{row.retireAfter},
+            retired_at = #{row.retiredAt},
+            revoked_at = #{row.revokedAt}
+        WHERE id = #{row.id}
+    </update>
+</mapper>

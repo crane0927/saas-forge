@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.saasforge.iam.infrastructure.persistence.mapper.OAuthClientMapper">
+
+    <resultMap id="clientRow" type="io.saasforge.iam.infrastructure.persistence.record.OAuthClientRow">
+        <id property="id" column="id"/>
+        <result property="displayName" column="display_name"/>
+        <result property="allowedScopes" column="allowed_scopes"
+                typeHandler="io.saasforge.iam.infrastructure.persistence.type.StringArrayTypeHandler"/>
+        <result property="clientStatus" column="client_status"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="revokedAt" column="revoked_at"/>
+    </resultMap>
+
+    <resultMap id="secretRow" type="io.saasforge.iam.infrastructure.persistence.record.OAuthClientSecretRow">
+        <id property="id" column="id"/>
+        <result property="clientId" column="client_id"/>
+        <result property="secretDigest" column="secret_digest"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="validUntil" column="valid_until"/>
+        <result property="revokedAt" column="revoked_at"/>
+    </resultMap>
+
+    <select id="insertClient" resultMap="clientRow">
+        INSERT INTO iam_oauth_clients (display_name, allowed_scopes, client_status, created_at, revoked_at)
+        VALUES (#{row.displayName},
+                #{row.allowedScopes, typeHandler=io.saasforge.iam.infrastructure.persistence.type.StringArrayTypeHandler},
+                #{row.clientStatus}, #{row.createdAt}, #{row.revokedAt})
+        RETURNING id, display_name, allowed_scopes, client_status, created_at, revoked_at
+    </select>
+
+    <select id="insertSecret" resultMap="secretRow">
+        INSERT INTO iam_oauth_client_secrets (client_id, secret_digest, created_at, valid_until, revoked_at)
+        VALUES (#{row.clientId}, #{row.secretDigest}, #{row.createdAt}, #{row.validUntil}, #{row.revokedAt})
+        RETURNING id, client_id, secret_digest, created_at, valid_until, revoked_at
+    </select>
+
+    <select id="findActiveClientBySecretDigest" resultMap="clientRow">
+        SELECT client.id, client.display_name, client.allowed_scopes, client.client_status, client.created_at, client.revoked_at
+        FROM iam_oauth_clients client
+        JOIN iam_oauth_client_secrets secret ON secret.client_id = client.id
+        WHERE secret.secret_digest = #{secretDigest}
+          AND client.client_status = 'ACTIVE'
+          AND secret.revoked_at IS NULL
+          AND (secret.valid_until IS NULL OR secret.valid_until > #{at})
+    </select>
+
+    <select id="lockClientById" resultMap="clientRow">
+        SELECT id, display_name, allowed_scopes, client_status, created_at, revoked_at
+        FROM iam_oauth_clients
+        WHERE id = #{clientId}
+        FOR UPDATE
+    </select>
+
+    <select id="hasOverlappingSecret" resultType="int">
+        SELECT CASE WHEN EXISTS (
+            SELECT 1
+            FROM iam_oauth_client_secrets
+            WHERE client_id = #{clientId}
+              AND revoked_at IS NULL
+              AND valid_until > #{at}
+        ) THEN 1 ELSE 0 END
+    </select>
+
+    <update id="expirePrimarySecret">
+        UPDATE iam_oauth_client_secrets
+        SET valid_until = #{validUntil}
+        WHERE client_id = #{clientId} AND revoked_at IS NULL AND valid_until IS NULL
+    </update>
+
+    <update id="revokeClient">
+        UPDATE iam_oauth_clients
+        SET client_status = 'REVOKED', revoked_at = #{revokedAt}
+        WHERE id = #{clientId} AND client_status = 'ACTIVE'
+    </update>
+
+    <update id="revokeSecrets">
+        UPDATE iam_oauth_client_secrets
+        SET revoked_at = #{revokedAt}
+        WHERE client_id = #{clientId} AND revoked_at IS NULL
+    </update>
+</mapper>

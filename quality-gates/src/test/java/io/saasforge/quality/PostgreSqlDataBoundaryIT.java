@@ -101,7 +101,7 @@ class PostgreSqlDataBoundaryIT {
                 assertFalse(roleCanBypassRls(admin, database.migratorRole()));
                 assertFalse(roleHasMembership(admin, database.appRole(), database.migratorRole()));
                 assertEquals(database.migratorRole(), tableOwner(database, "flyway_schema_history"));
-                assertEquals(1, migrationCount(database));
+                assertEquals(expectedMigrationCount(database), migrationCount(database));
             }
         }
 
@@ -389,6 +389,10 @@ class PostgreSqlDataBoundaryIT {
     private static long migrationCount(DatabaseAccount database) throws SQLException {
         return queryLong(database, database.migratorRole(), database.migratorPassword(),
                 "SELECT count(*) FROM flyway_schema_history WHERE success");
+    }
+
+    private static long expectedMigrationCount(DatabaseAccount database) {
+        return database.serviceModule().equals("iam-service") ? 2 : 1;
     }
 
     private static String tableOwner(DatabaseAccount database, String tableName) throws SQLException {

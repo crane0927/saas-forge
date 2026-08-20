@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.saasforge.iam.infrastructure.persistence.mapper.IdentityMapper">
+
+    <resultMap id="identityRow" type="io.saasforge.iam.infrastructure.persistence.record.IdentityRow">
+        <id property="id" column="id"/>
+        <result property="normalizedEmail" column="normalized_email"/>
+        <result property="displayName" column="display_name"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <resultMap id="credentialRow" type="io.saasforge.iam.infrastructure.persistence.record.CredentialRow">
+        <id property="id" column="id"/>
+        <result property="identityId" column="identity_id"/>
+        <result property="credentialType" column="credential_type"/>
+        <result property="passwordHash" column="password_hash"/>
+        <result property="issuedAt" column="issued_at"/>
+        <result property="expiresAt" column="expires_at"/>
+        <result property="invalidatedAt" column="invalidated_at"/>
+    </resultMap>
+
+    <select id="insertIdentity" resultMap="identityRow">
+        INSERT INTO iam_identities (normalized_email, display_name, created_at)
+        VALUES (#{row.normalizedEmail}, #{row.displayName}, #{row.createdAt})
+        RETURNING id, normalized_email, display_name, created_at
+    </select>
+
+    <select id="findIdentityByEmail" resultMap="identityRow">
+        SELECT id, normalized_email, display_name, created_at
+        FROM iam_identities
+        WHERE normalized_email = #{normalizedEmail}
+    </select>
+
+    <select id="insertCredential" resultMap="credentialRow">
+        INSERT INTO iam_credentials (identity_id, credential_type, password_hash, issued_at, expires_at, invalidated_at)
+        VALUES (#{row.identityId}, #{row.credentialType}, #{row.passwordHash}, #{row.issuedAt},
+                #{row.expiresAt}, #{row.invalidatedAt})
+        RETURNING id, identity_id, credential_type, password_hash, issued_at, expires_at, invalidated_at
+    </select>
+
+    <select id="hasValidRegularPassword" resultType="int">
+        SELECT CASE WHEN EXISTS (
+            SELECT 1
+            FROM iam_credentials
+            WHERE identity_id = #{identityId}
+              AND credential_type = 'PASSWORD'
+              AND invalidated_at IS NULL
+        ) THEN 1 ELSE 0 END
+    </select>
+
+    <update id="invalidateCredential">
+        UPDATE iam_credentials
+        SET invalidated_at = #{invalidatedAt}
+        WHERE id = #{credentialId} AND invalidated_at IS NULL
+    </update>
+
+    <select id="findCredentialsByIdentityId" resultMap="credentialRow">
+        SELECT id, identity_id, credential_type, password_hash, issued_at, expires_at, invalidated_at
+        FROM iam_credentials
+        WHERE identity_id = #{identityId}
+        ORDER BY issued_at, id
+    </select>
+</mapper>
