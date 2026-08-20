@@ -112,7 +112,7 @@ flowchart TD
 ### 2. 身份与租户最小闭环
 
 - [x] 实现 Identity、Credential、Refresh Token、OAuth Client/Secret、Signing Key Metadata 的迁移、领域规则与仓储；密码使用 Argon2id，Refresh Token 和 Client Secret 仅保存哈希。
-- [ ] 实现邮箱密码登录、约 15 分钟的 JWT Access Token、HttpOnly Refresh Token Cookie、登出、刷新轮换和 JWKS 发布；Token 仅携带 `identityId`、`membershipId`、`tenantId`、`jti`。
+- [x] 实现邮箱密码登录、约 15 分钟的 JWT Access Token、HttpOnly Refresh Token Cookie、登出、刷新轮换和 JWKS 发布；Token 仅携带 `identityId`、`membershipId`、`tenantId`、`jti`。
 - [ ] 实现 Tenant 最小生命周期、Membership 和平台侧 Tenant 创建；按已冻结的跨服务流程安全初始化 Platform Admin 与 Tenant Admin。
 - [ ] IAM 通过同步契约调用 Tenant Access 验证 Membership，实现 Tenant 切换并让旧 Token 失效。
 - [ ] 实现登出、成员禁用和 Tenant 冻结的 `jti` 黑名单；Redis 不可用时用户 Token 验证必须 fail-closed。邀请激活和密码重置在第 4 阶段随成员闭环完成。
