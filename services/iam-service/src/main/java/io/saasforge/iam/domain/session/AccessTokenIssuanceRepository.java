@@ -13,4 +13,6 @@ public interface AccessTokenIssuanceRepository {
     boolean revoke(UUID jti, Instant revokedAt, String reason);
 
     List<DurableRevocation> findUnexpiredRevocations(Instant at);
+
+    List<AccessTokenIssuance> findUnexpiredByFamilyId(UUID familyId, Instant at);
 }

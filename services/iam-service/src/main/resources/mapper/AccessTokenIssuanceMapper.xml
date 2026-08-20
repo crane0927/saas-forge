@@ -56,4 +56,12 @@
           AND (issuance.revoked_at IS NOT NULL OR signing_key.key_status = 'REVOKED')
         ORDER BY issuance.expires_at, issuance.jti
     </select>
+
+    <select id="findUnexpiredByFamilyId" resultMap="issuanceRow">
+        SELECT jti, family_id, identity_id, membership_id, tenant_id, kid,
+               issued_at, expires_at, revoked_at, revocation_reason
+        FROM iam_access_token_issuances
+        WHERE family_id = #{familyId} AND expires_at + INTERVAL '30 seconds' &gt; #{at}
+        ORDER BY expires_at, jti
+    </select>
 </mapper>

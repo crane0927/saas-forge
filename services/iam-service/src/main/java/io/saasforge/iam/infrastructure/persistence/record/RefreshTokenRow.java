@@ -9,6 +9,11 @@ public class RefreshTokenRow {
     private byte[] tokenDigest;
     private OffsetDateTime issuedAt;
     private OffsetDateTime consumedAt;
+    private byte[] rotationKeyDigest;
+    private OffsetDateTime recoveryExpiresAt;
+    private OffsetDateTime recoveredAt;
+    private UUID successorTokenId;
+    private UUID successorAccessJti;
 
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
@@ -20,4 +25,14 @@ public class RefreshTokenRow {
     public void setIssuedAt(OffsetDateTime issuedAt) { this.issuedAt = issuedAt; }
     public OffsetDateTime getConsumedAt() { return consumedAt; }
     public void setConsumedAt(OffsetDateTime consumedAt) { this.consumedAt = consumedAt; }
+    public byte[] getRotationKeyDigest() { return rotationKeyDigest == null ? null : rotationKeyDigest.clone(); }
+    public void setRotationKeyDigest(byte[] value) { rotationKeyDigest = value == null ? null : value.clone(); }
+    public OffsetDateTime getRecoveryExpiresAt() { return recoveryExpiresAt; }
+    public void setRecoveryExpiresAt(OffsetDateTime recoveryExpiresAt) { this.recoveryExpiresAt = recoveryExpiresAt; }
+    public OffsetDateTime getRecoveredAt() { return recoveredAt; }
+    public void setRecoveredAt(OffsetDateTime recoveredAt) { this.recoveredAt = recoveredAt; }
+    public UUID getSuccessorTokenId() { return successorTokenId; }
+    public void setSuccessorTokenId(UUID successorTokenId) { this.successorTokenId = successorTokenId; }
+    public UUID getSuccessorAccessJti() { return successorAccessJti; }
+    public void setSuccessorAccessJti(UUID successorAccessJti) { this.successorAccessJti = successorAccessJti; }
 }

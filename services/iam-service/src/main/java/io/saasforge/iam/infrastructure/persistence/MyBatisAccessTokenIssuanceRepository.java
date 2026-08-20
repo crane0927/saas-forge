@@ -54,6 +54,13 @@ public class MyBatisAccessTokenIssuanceRepository implements AccessTokenIssuance
                 .toList();
     }
 
+    @Override
+    public List<AccessTokenIssuance> findUnexpiredByFamilyId(UUID familyId, Instant at) {
+        return mapper.findUnexpiredByFamilyId(familyId, IamTime.asOffsetDateTime(at)).stream()
+                .map(MyBatisAccessTokenIssuanceRepository::toDomain)
+                .toList();
+    }
+
     private static AccessTokenIssuance toDomain(AccessTokenIssuanceRow row) {
         return new AccessTokenIssuance(
                 row.getJti(), row.getFamilyId(), row.getIdentityId(), row.getMembershipId(), row.getTenantId(),

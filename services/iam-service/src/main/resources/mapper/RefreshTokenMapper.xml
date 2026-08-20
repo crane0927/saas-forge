@@ -22,6 +22,11 @@
         <result property="tokenDigest" column="token_digest"/>
         <result property="issuedAt" column="issued_at"/>
         <result property="consumedAt" column="consumed_at"/>
+        <result property="rotationKeyDigest" column="rotation_key_digest"/>
+        <result property="recoveryExpiresAt" column="recovery_expires_at"/>
+        <result property="recoveredAt" column="recovered_at"/>
+        <result property="successorTokenId" column="successor_token_id"/>
+        <result property="successorAccessJti" column="successor_access_jti"/>
     </resultMap>
 
     <select id="insertFamily" resultMap="familyRow" affectData="true" flushCache="true">
@@ -39,7 +44,9 @@
     <select id="insertToken" resultMap="tokenRow" affectData="true" flushCache="true">
         INSERT INTO iam_refresh_tokens (family_id, token_digest, issued_at, consumed_at)
         VALUES (#{row.familyId}, #{row.tokenDigest}, #{row.issuedAt}, #{row.consumedAt})
-        RETURNING id, family_id, token_digest, issued_at, consumed_at
+        RETURNING id, family_id, token_digest, issued_at, consumed_at,
+                  rotation_key_digest, recovery_expires_at, recovered_at,
+                  successor_token_id, successor_access_jti
     </select>
 
     <select id="findFamilyById" resultMap="familyRow">
@@ -50,15 +57,28 @@
     </select>
 
     <select id="findTokenByDigest" resultMap="tokenRow">
-        SELECT id, family_id, token_digest, issued_at, consumed_at
+        SELECT id, family_id, token_digest, issued_at, consumed_at,
+               rotation_key_digest, recovery_expires_at, recovered_at,
+               successor_token_id, successor_access_jti
         FROM iam_refresh_tokens
         WHERE token_digest = #{tokenDigest}
     </select>
 
     <select id="lockTokenByDigest" resultMap="tokenRow">
-        SELECT id, family_id, token_digest, issued_at, consumed_at
+        SELECT id, family_id, token_digest, issued_at, consumed_at,
+               rotation_key_digest, recovery_expires_at, recovered_at,
+               successor_token_id, successor_access_jti
         FROM iam_refresh_tokens
         WHERE token_digest = #{tokenDigest}
+        FOR UPDATE
+    </select>
+
+    <select id="lockTokenById" resultMap="tokenRow">
+        SELECT id, family_id, token_digest, issued_at, consumed_at,
+               rotation_key_digest, recovery_expires_at, recovered_at,
+               successor_token_id, successor_access_jti
+        FROM iam_refresh_tokens
+        WHERE id = #{tokenId}
         FOR UPDATE
     </select>
 
@@ -85,5 +105,20 @@
             absolute_expires_at = #{row.absoluteExpiresAt},
             revoked_at = #{row.revokedAt}
         WHERE id = #{row.id}
+    </update>
+
+    <update id="recordRotation">
+        UPDATE iam_refresh_tokens
+        SET rotation_key_digest = #{rotationKeyDigest},
+            recovery_expires_at = #{recoveryExpiresAt},
+            successor_token_id = #{successorTokenId},
+            successor_access_jti = #{successorAccessJti}
+        WHERE id = #{tokenId} AND consumed_at IS NOT NULL AND rotation_key_digest IS NULL
+    </update>
+
+    <update id="markRecovered">
+        UPDATE iam_refresh_tokens
+        SET recovered_at = #{recoveredAt}
+        WHERE id = #{tokenId} AND recovered_at IS NULL
     </update>
 </mapper>

@@ -4,10 +4,13 @@ import io.saasforge.iam.domain.session.RefreshTokenConsumption;
 import io.saasforge.iam.domain.session.RefreshTokenFamily;
 import io.saasforge.iam.domain.session.RefreshTokenFamilyPurpose;
 import io.saasforge.iam.domain.session.RefreshTokenFamilyRepository;
+import io.saasforge.iam.domain.session.RefreshRotation;
 import io.saasforge.iam.domain.shared.Sha256Digest;
 import io.saasforge.iam.infrastructure.persistence.mapper.RefreshTokenMapper;
 import io.saasforge.iam.infrastructure.persistence.record.RefreshTokenFamilyRow;
 import io.saasforge.iam.infrastructure.persistence.record.RefreshTokenRow;
+import java.security.MessageDigest;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
@@ -50,6 +53,56 @@ public class MyBatisRefreshTokenFamilyRepository implements RefreshTokenFamilyRe
         }
         return findById(token.getFamilyId())
                 .filter(family -> family.isUsableAt(at));
+    }
+
+    @Override
+    public Optional<RefreshTokenFamily> findByTokenDigest(Sha256Digest tokenDigest) {
+        RefreshTokenRow token = mapper.findTokenByDigest(tokenDigest.value());
+        return token == null ? Optional.empty() : findById(token.getFamilyId());
+    }
+
+    @Override
+    @Transactional
+    public RefreshRotation rotateForRefresh(
+            Sha256Digest presentedDigest,
+            Sha256Digest nextDigest,
+            Sha256Digest idempotencyKeyDigest,
+            UUID membershipId,
+            UUID tenantId,
+            UUID nextAccessJti,
+            Duration recoveryWindow,
+            Instant at) {
+        RefreshTokenRow token = mapper.lockTokenByDigest(presentedDigest.value());
+        if (token == null) {
+            return new RefreshRotation(RefreshRotation.Status.NOT_FOUND, null, null);
+        }
+        RefreshTokenFamily family = toDomain(mapper.lockFamilyById(token.getFamilyId()));
+        if (token.getConsumedAt() != null) {
+            return recoverOrReplay(token, family, nextDigest, idempotencyKeyDigest, nextAccessJti, at);
+        }
+        if (family.revokedAt() != null) {
+            return new RefreshRotation(RefreshRotation.Status.REVOKED, family, null);
+        }
+        if (!family.isUsableAt(at)) {
+            return new RefreshRotation(RefreshRotation.Status.EXPIRED, family, null);
+        }
+        if (family.purpose() != RefreshTokenFamilyPurpose.USER_PLATFORM
+                && family.purpose() != RefreshTokenFamilyPurpose.USER_TENANT
+                && family.purpose() != RefreshTokenFamilyPurpose.USER_TENANT_SELECTION) {
+            return new RefreshRotation(RefreshRotation.Status.PURPOSE_MISMATCH, family, null);
+        }
+        consumeToken(token.getId(), at);
+        RefreshTokenFamily used = family.purpose() == RefreshTokenFamilyPurpose.USER_TENANT_SELECTION
+                        && membershipId != null
+                ? family.selectTenant(membershipId, tenantId, at)
+                : family.recordUse(membershipId, tenantId, at);
+        mapper.updateFamily(toRow(used));
+        RefreshTokenRow successor = mapper.insertToken(tokenRow(used.id(), nextDigest, at));
+        if (mapper.recordRotation(token.getId(), idempotencyKeyDigest.value(),
+                IamTime.asOffsetDateTime(at.plus(recoveryWindow)), successor.getId(), nextAccessJti) != 1) {
+            throw new IllegalStateException("Refresh Token 轮换恢复元数据保存失败");
+        }
+        return new RefreshRotation(RefreshRotation.Status.ROTATED, used, null);
     }
 
     @Override
@@ -264,6 +317,43 @@ public class MyBatisRefreshTokenFamilyRepository implements RefreshTokenFamilyRe
             mapper.insertToken(tokenRow(used.id(), nextDigest, at));
         }
         return new RefreshTokenConsumption(RefreshTokenConsumption.Status.CONSUMED, used);
+    }
+
+    private RefreshRotation recoverOrReplay(
+            RefreshTokenRow token,
+            RefreshTokenFamily family,
+            Sha256Digest nextDigest,
+            Sha256Digest idempotencyKeyDigest,
+            UUID nextAccessJti,
+            Instant at) {
+        boolean sameKey = token.getRotationKeyDigest() != null
+                && MessageDigest.isEqual(token.getRotationKeyDigest(), idempotencyKeyDigest.value());
+        boolean withinWindow = token.getRecoveryExpiresAt() != null
+                && !at.isAfter(token.getRecoveryExpiresAt().toInstant());
+        if (sameKey && withinWindow && token.getRecoveredAt() == null && family.revokedAt() == null) {
+            RefreshTokenRow successor = mapper.lockTokenById(token.getSuccessorTokenId());
+            if (successor.getConsumedAt() == null) {
+                consumeToken(successor.getId(), at);
+                RefreshTokenFamily used = family.recordUse(family.membershipId(), family.tenantId(), at);
+                mapper.updateFamily(toRow(used));
+                mapper.insertToken(tokenRow(used.id(), nextDigest, at));
+                if (mapper.markRecovered(token.getId(), IamTime.asOffsetDateTime(at)) != 1) {
+                    throw new IllegalStateException("Refresh Token 恢复状态保存失败");
+                }
+                return new RefreshRotation(
+                        RefreshRotation.Status.RECOVERED, used, token.getSuccessorAccessJti());
+            }
+        }
+        Instant revokedAt = at.isBefore(family.lastUsedAt()) ? family.lastUsedAt() : at;
+        RefreshTokenFamily revoked = family.revoke(revokedAt);
+        mapper.updateFamily(toRow(revoked));
+        return new RefreshRotation(RefreshRotation.Status.REPLAYED, revoked, null);
+    }
+
+    private void consumeToken(UUID tokenId, Instant at) {
+        if (mapper.markTokenConsumed(tokenId, IamTime.asOffsetDateTime(at)) != 1) {
+            throw new IllegalStateException("Refresh Token 消费并发冲突");
+        }
     }
 
     private static RefreshTokenFamilyRow toRow(RefreshTokenFamily family) {

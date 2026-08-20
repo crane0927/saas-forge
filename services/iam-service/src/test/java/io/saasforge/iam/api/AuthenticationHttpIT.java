@@ -59,6 +59,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.sql.DataSource;
@@ -1070,6 +1072,126 @@ class AuthenticationHttpIT {
     }
 
     @Test
+    @Order(23)
+    void refreshRecoversSameKeyOnceThenTreatsSecondRetryAsFamilyReplay() throws Exception {
+        TestUser user = createUser("refresh-recovery@example.test", "correct-password", true, Credential.REGULAR);
+        MvcResult login = login("refresh-recovery@example.test", "correct-password", "PLATFORM").andReturn();
+        String oldRefreshToken = refreshToken(login);
+        UUID originalJti = UUID.fromString(tokenClaims(login).get("jti").asString());
+        UUID key = uuidV7(50_001);
+
+        MvcResult first = refresh(oldRefreshToken, key)
+                .andExpect(status().isOk())
+                .andReturn();
+        String firstSuccessor = refreshToken(first);
+        UUID firstJti = UUID.fromString(tokenClaims(first).get("jti").asString());
+
+        MvcResult recovered = refresh(oldRefreshToken, key)
+                .andExpect(status().isOk())
+                .andReturn();
+        String replacement = refreshToken(recovered);
+        UUID replacementJti = UUID.fromString(tokenClaims(recovered).get("jti").asString());
+        assertFalse(firstSuccessor.equals(replacement));
+        assertFalse(firstJti.equals(replacementJti));
+        assertNotNull(jdbc.queryForObject(
+                "SELECT revoked_at FROM iam_access_token_issuances WHERE jti = ?", Object.class, firstJti));
+        assertEquals("1", redis.opsForValue().get(jtiRevocationKey(firstJti)));
+        assertEquals(2, consumedRefreshTokenCount(user.identity().id()));
+        assertEquals(1, activeRefreshTokenCount(user.identity().id()));
+
+        refresh(oldRefreshToken, key)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("REFRESH_SESSION_INVALID"));
+
+        assertNotNull(jdbc.queryForObject(
+                "SELECT revoked_at FROM iam_refresh_token_families WHERE identity_id = ?",
+                Object.class, user.identity().id()));
+        for (UUID jti : List.of(originalJti, firstJti, replacementJti)) {
+            assertNotNull(jdbc.queryForObject(
+                    "SELECT revoked_at FROM iam_access_token_issuances WHERE jti = ?", Object.class, jti));
+            assertEquals("1", redis.opsForValue().get(jtiRevocationKey(jti)));
+        }
+        assertEquals(1, jdbc.queryForObject("""
+                SELECT count(*) FROM iam_outbox_events
+                WHERE event_snapshot::jsonb ->> 'type' = 'com.saasforge.iam.refresh-replay-detected.v1'
+                  AND ordering_key = ?
+                """, Integer.class, user.identity().id().toString()));
+        assertEquals(1, jdbc.queryForObject("""
+                SELECT count(*) FROM iam_outbox_events
+                WHERE event_snapshot::jsonb ->> 'type' = 'com.saasforge.iam.session.revoked.v1'
+                  AND event_snapshot::jsonb #>> '{data,result}' = 'CURRENT_SESSION_REVOKED'
+                  AND ordering_key = ?
+                """, Integer.class, user.identity().id().toString()));
+    }
+
+    @Test
+    @Order(24)
+    void differentKeyConflictsDuringLeaseAndBecomesReplayAfterLeaseEnds() throws Exception {
+        TestUser user = createUser("refresh-lease@example.test", "correct-password", true, Credential.REGULAR);
+        MvcResult login = login("refresh-lease@example.test", "correct-password", "PLATFORM").andReturn();
+        String oldRefreshToken = refreshToken(login);
+        UUID firstKey = uuidV7(51_001);
+        UUID secondKey = uuidV7(51_002);
+        refresh(oldRefreshToken, firstKey).andExpect(status().isOk());
+        int issuanceCount = accessTokenIssuanceCount(user.identity().id());
+
+        refresh(oldRefreshToken, secondKey)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("REFRESH_ROTATION_IN_PROGRESS"))
+                .andExpect(header().exists("Retry-After"));
+        assertEquals(null, jdbc.queryForObject(
+                "SELECT revoked_at FROM iam_refresh_token_families WHERE identity_id = ?",
+                Object.class, user.identity().id()));
+        assertEquals(issuanceCount, accessTokenIssuanceCount(user.identity().id()));
+
+        redis.delete(refreshRotationLeaseKey(oldRefreshToken));
+        refresh(oldRefreshToken, secondKey)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("REFRESH_SESSION_INVALID"));
+        assertNotNull(jdbc.queryForObject(
+                "SELECT revoked_at FROM iam_refresh_token_families WHERE identity_id = ?",
+                Object.class, user.identity().id()));
+    }
+
+    @Test
+    @Order(25)
+    void concurrentRefreshesRecoverSameKeyAndRejectDifferentKeyWithoutPartialState() throws Exception {
+        TestUser sameKeyUser = createUser(
+                "refresh-concurrent-same@example.test", "correct-password", true, Credential.REGULAR);
+        String sameKeyToken = refreshToken(
+                login("refresh-concurrent-same@example.test", "correct-password", "PLATFORM").andReturn());
+        UUID sameKey = uuidV7(53_001);
+        List<MvcResult> sameKeyResults = concurrentRefreshes(
+                sameKeyToken, sameKey, sameKey);
+        assertEquals(List.of(200, 200), sameKeyResults.stream()
+                .map(result -> result.getResponse().getStatus()).sorted().toList());
+        assertEquals(2, consumedRefreshTokenCount(sameKeyUser.identity().id()));
+        assertEquals(1, activeRefreshTokenCount(sameKeyUser.identity().id()));
+        assertEquals(3, accessTokenIssuanceCount(sameKeyUser.identity().id()));
+
+        TestUser differentKeyUser = createUser(
+                "refresh-concurrent-different@example.test", "correct-password", true, Credential.REGULAR);
+        String differentKeyToken = refreshToken(
+                login("refresh-concurrent-different@example.test", "correct-password", "PLATFORM").andReturn());
+        List<MvcResult> differentKeyResults = concurrentRefreshes(
+                differentKeyToken, uuidV7(53_002), uuidV7(53_003));
+        assertEquals(List.of(200, 409), differentKeyResults.stream()
+                .map(result -> result.getResponse().getStatus()).sorted().toList());
+        MvcResult conflict = differentKeyResults.stream()
+                .filter(result -> result.getResponse().getStatus() == 409)
+                .findFirst().orElseThrow();
+        assertEquals("REFRESH_ROTATION_IN_PROGRESS",
+                json(conflict.getResponse().getContentAsByteArray()).get("code").asString());
+        assertNotNull(conflict.getResponse().getHeader("Retry-After"));
+        assertEquals(1, consumedRefreshTokenCount(differentKeyUser.identity().id()));
+        assertEquals(1, activeRefreshTokenCount(differentKeyUser.identity().id()));
+        assertEquals(2, accessTokenIssuanceCount(differentKeyUser.identity().id()));
+        assertEquals(null, jdbc.queryForObject(
+                "SELECT revoked_at FROM iam_refresh_token_families WHERE identity_id = ?",
+                Object.class, differentKeyUser.identity().id()));
+    }
+
+    @Test
     @Order(29)
     void recoveryFailsClosedUntilDurableJtiAndKidRevocationsAreRebuilt() throws Exception {
         TestUser user = createUser("revocation-recovery@example.test", "correct-password", true, Credential.REGULAR);
@@ -1115,8 +1237,17 @@ class AuthenticationHttpIT {
     void redisUnavailabilityFailsClosedThroughPublicContract() throws Exception {
         TestUser user = createUser("logout-redis-down@example.test", "correct-password", true, Credential.REGULAR);
         MvcResult session = login("logout-redis-down@example.test", "correct-password", "PLATFORM").andReturn();
+        TestUser refreshUser = createUser(
+                "refresh-redis-down@example.test", "correct-password", true, Credential.REGULAR);
+        MvcResult refreshSession = login(
+                "refresh-redis-down@example.test", "correct-password", "PLATFORM").andReturn();
         UUID jti = UUID.fromString(tokenClaims(session).get("jti").asString());
         REDIS.stop();
+        refresh(refreshToken(refreshSession), uuidV7(52_001))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("REFRESH_ROTATION_UNAVAILABLE"))
+                .andExpect(header().doesNotExist("Set-Cookie"));
+        assertSessionUnchanged(refreshUser.identity().id(), 1);
         logout(refreshToken(session), accessToken(session))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value("REVOCATION_INDEX_UNAVAILABLE"));
@@ -1147,12 +1278,39 @@ class AuthenticationHttpIT {
     }
 
     private org.springframework.test.web.servlet.ResultActions refresh(String refreshToken) throws Exception {
+        return refresh(refreshToken, UUID.fromString(IDEMPOTENCY_KEY));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions refresh(String refreshToken, UUID idempotencyKey)
+            throws Exception {
         return mockMvc.perform(post("/api/v1/auth/refresh")
-                .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                .header("Idempotency-Key", idempotencyKey.toString())
                 .header("X-SF-CSRF", "csrf-test")
                 .cookie(new Cookie("__Host-sf_refresh", refreshToken))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{}"));
+    }
+
+    private List<MvcResult> concurrentRefreshes(String refreshToken, UUID firstKey, UUID secondKey) throws Exception {
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var first = executor.submit(() -> concurrentRefresh(refreshToken, firstKey, ready, start));
+            var second = executor.submit(() -> concurrentRefresh(refreshToken, secondKey, ready, start));
+            ready.await();
+            start.countDown();
+            return List.of(first.get(), second.get());
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    private MvcResult concurrentRefresh(
+            String refreshToken, UUID idempotencyKey, CountDownLatch ready, CountDownLatch start) throws Exception {
+        ready.countDown();
+        start.await();
+        return refresh(refreshToken, idempotencyKey).andReturn();
     }
 
     private org.springframework.test.web.servlet.ResultActions logout(String refreshToken, String accessToken)
@@ -1217,6 +1375,12 @@ class AuthenticationHttpIT {
         String digest = java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
                 .digest(jti.toString().getBytes(StandardCharsets.UTF_8)));
         return "sf:test:iam-service:jwt-jti-revocation:v1:" + digest;
+    }
+
+    private static String refreshRotationLeaseKey(String refreshToken) throws Exception {
+        String digest = java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                .digest(refreshToken.getBytes(StandardCharsets.UTF_8)));
+        return "sf:test:iam-service:refresh-rotation-lease:v1:" + digest;
     }
 
     private static void setIamAppIssuanceUpdatePrivilege(boolean granted) throws Exception {

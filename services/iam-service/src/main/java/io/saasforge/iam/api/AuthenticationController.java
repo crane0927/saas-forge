@@ -90,7 +90,7 @@ public class AuthenticationController implements AuthenticationApi {
     @Override
     public ResponseEntity<AuthenticationResult> refreshAccessToken(
             UUID idempotencyKey, String csrfHeader, String refreshToken, Object request) {
-        LoginResult result = refreshSessionService.refresh(refreshToken);
+        LoginResult result = refreshSessionService.refresh(idempotencyKey, refreshToken, traceId());
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, refreshCookie(result).toString())
                 .body(responseBody(result));

@@ -18,4 +18,7 @@ public interface AccessTokenIssuanceMapper {
             @Param("reason") String reason);
 
     List<DurableRevocationRow> findUnexpiredRevocations(@Param("at") OffsetDateTime at);
+
+    List<AccessTokenIssuanceRow> findUnexpiredByFamilyId(
+            @Param("familyId") UUID familyId, @Param("at") OffsetDateTime at);
 }

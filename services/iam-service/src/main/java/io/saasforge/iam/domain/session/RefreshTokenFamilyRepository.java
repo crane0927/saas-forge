@@ -2,6 +2,7 @@ package io.saasforge.iam.domain.session;
 
 import io.saasforge.iam.domain.shared.Sha256Digest;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -15,6 +16,18 @@ public interface RefreshTokenFamilyRepository {
     Optional<RefreshTokenFamily> findUsableSelectionByTokenDigest(Sha256Digest tokenDigest, Instant at);
 
     Optional<RefreshTokenFamily> findUsableByTokenDigest(Sha256Digest tokenDigest, Instant at);
+
+    Optional<RefreshTokenFamily> findByTokenDigest(Sha256Digest tokenDigest);
+
+    RefreshRotation rotateForRefresh(
+            Sha256Digest presentedDigest,
+            Sha256Digest nextDigest,
+            Sha256Digest idempotencyKeyDigest,
+            UUID membershipId,
+            UUID tenantId,
+            UUID nextAccessJti,
+            Duration recoveryWindow,
+            Instant at);
 
     RefreshTokenConsumption consume(Sha256Digest tokenDigest, Instant at);
 

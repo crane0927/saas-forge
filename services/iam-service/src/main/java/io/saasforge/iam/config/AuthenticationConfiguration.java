@@ -18,6 +18,9 @@ import io.saasforge.iam.application.authentication.RevocationIndex;
 import io.saasforge.iam.application.authentication.RevocationIndexRecovery;
 import io.saasforge.iam.application.authentication.PresentedAccessTokenVerifier;
 import io.saasforge.iam.application.authentication.RefreshSessionService;
+import io.saasforge.iam.application.authentication.RefreshRotationLease;
+import io.saasforge.iam.application.authentication.RefreshRotationTransaction;
+import io.saasforge.iam.application.authentication.RefreshReplayDetectedEventFactory;
 import io.saasforge.iam.application.authentication.SessionStartedEventFactory;
 import io.saasforge.iam.application.authentication.SessionRevokedEventFactory;
 import io.saasforge.iam.application.authentication.UserAccessTokenIssuer;
@@ -32,6 +35,7 @@ import io.saasforge.iam.domain.signing.SigningKeyRepository;
 import io.saasforge.iam.infrastructure.grpc.GrpcAccessibleMemberships;
 import io.saasforge.iam.infrastructure.security.RedisLoginProtection;
 import io.saasforge.iam.infrastructure.security.RedisRevocationIndex;
+import io.saasforge.iam.infrastructure.security.RedisRefreshRotationLease;
 import io.saasforge.iam.infrastructure.security.NimbusPresentedAccessTokenVerifier;
 import io.saasforge.iam.infrastructure.security.ClasspathCompromisedPasswordChecker;
 import java.security.SecureRandom;
@@ -127,6 +131,36 @@ public class AuthenticationConfiguration {
             UuidV7Generator uuidV7Generator,
             @Value("${saasforge.environment:dev}") String environment) {
         return new SessionRevokedEventFactory(objectMapper, uuidV7Generator, environment);
+    }
+
+    @Bean
+    RefreshReplayDetectedEventFactory refreshReplayDetectedEventFactory(
+            ObjectMapper objectMapper,
+            UuidV7Generator uuidV7Generator,
+            @Value("${saasforge.environment:dev}") String environment) {
+        return new RefreshReplayDetectedEventFactory(objectMapper, uuidV7Generator, environment);
+    }
+
+    @Bean
+    RefreshRotationLease refreshRotationLease(
+            StringRedisTemplate redis,
+            @Value("${saasforge.environment:dev}") String environment,
+            @Value("${security.refresh.rotation-lease:PT5S}") Duration leaseDuration) {
+        return new RedisRefreshRotationLease(redis, environment, leaseDuration);
+    }
+
+    @Bean
+    RefreshRotationTransaction refreshRotationTransaction(
+            RefreshTokenFamilyRepository families,
+            AccessTokenIssuanceRepository issuances,
+            RevocationIndex revocationIndex,
+            OutboxEventRepository outboxEvents,
+            RefreshReplayDetectedEventFactory replayEventFactory,
+            SessionRevokedEventFactory revokedEventFactory,
+            @Value("${security.refresh.recovery-window:PT10S}") Duration recoveryWindow) {
+        return new RefreshRotationTransaction(
+                families, issuances, revocationIndex, outboxEvents,
+                replayEventFactory, revokedEventFactory, recoveryWindow);
     }
 
     @Bean
@@ -227,10 +261,12 @@ public class AuthenticationConfiguration {
             UserAccessTokenIssuer accessTokenIssuer,
             RefreshTokenIssuer refreshTokenIssuer,
             LoginSessionService sessionService,
+            RefreshRotationLease rotationLease,
+            RefreshRotationTransaction rotationTransaction,
             Clock clock) {
         return new RefreshSessionService(
                 platformRoles, accessibleMemberships, refreshTokenFamilies, accessTokenIssuer,
-                refreshTokenIssuer, sessionService, clock);
+                refreshTokenIssuer, sessionService, rotationLease, rotationTransaction, clock);
     }
 
     @Bean

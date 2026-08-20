@@ -14,6 +14,8 @@ import io.saasforge.iam.application.authentication.PasswordCompromisedException;
 import io.saasforge.iam.application.authentication.PasswordPolicyException;
 import io.saasforge.iam.application.authentication.RefreshAuthorizationRejectedException;
 import io.saasforge.iam.application.authentication.RefreshSessionInvalidException;
+import io.saasforge.iam.application.authentication.RefreshRotationInProgressException;
+import io.saasforge.iam.application.authentication.RefreshRotationUnavailableException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
 import java.security.SecureRandom;
@@ -131,6 +133,24 @@ public class AuthenticationExceptionHandler {
                 "Refresh session invalid", exception.getMessage(), request);
     }
 
+    @ExceptionHandler(RefreshRotationInProgressException.class)
+    ResponseEntity<Problem> refreshRotationInProgress(
+            RefreshRotationInProgressException exception, HttpServletRequest request) {
+        Problem body = problemBody(HttpStatus.CONFLICT, RefreshRotationInProgressException.CODE,
+                "Refresh rotation in progress", exception.getMessage(), request);
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .header(HttpHeaders.RETRY_AFTER, Long.toString(exception.retryAfterSeconds()))
+                .body(body);
+    }
+
+    @ExceptionHandler(RefreshRotationUnavailableException.class)
+    ResponseEntity<Problem> refreshRotationUnavailable(
+            RefreshRotationUnavailableException exception, HttpServletRequest request) {
+        return problem(HttpStatus.SERVICE_UNAVAILABLE, RefreshRotationUnavailableException.CODE,
+                "Refresh rotation unavailable", exception.getMessage(), request);
+    }
+
     @ExceptionHandler(RefreshAuthorizationRejectedException.class)
     ResponseEntity<Problem> refreshAuthorizationRejected(
             RefreshAuthorizationRejectedException exception, HttpServletRequest request) {
@@ -161,9 +181,14 @@ public class AuthenticationExceptionHandler {
 
     private ResponseEntity<Problem> problem(
             HttpStatus status, String code, String title, String detail, HttpServletRequest request) {
-        Problem body = new Problem(URI.create("urn:saasforge:problem:" + code.toLowerCase().replace('_', '-')),
-                title, status.value(), code, detail, traceId(request));
+        Problem body = problemBody(status, code, title, detail, request);
         return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(body);
+    }
+
+    private Problem problemBody(
+            HttpStatus status, String code, String title, String detail, HttpServletRequest request) {
+        return new Problem(URI.create("urn:saasforge:problem:" + code.toLowerCase().replace('_', '-')),
+                title, status.value(), code, detail, traceId(request));
     }
 
     private ResponseEntity<Problem> problemWithClearedRefreshCookie(

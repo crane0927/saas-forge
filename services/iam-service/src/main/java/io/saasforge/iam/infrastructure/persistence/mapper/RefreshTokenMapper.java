@@ -16,6 +16,8 @@ public interface RefreshTokenMapper {
 
     RefreshTokenRow findTokenByDigest(@Param("tokenDigest") byte[] tokenDigest);
 
+    RefreshTokenRow lockTokenById(@Param("tokenId") UUID tokenId);
+
     RefreshTokenRow lockTokenByDigest(@Param("tokenDigest") byte[] tokenDigest);
 
     RefreshTokenFamilyRow lockFamilyById(@Param("familyId") UUID familyId);
@@ -23,4 +25,13 @@ public interface RefreshTokenMapper {
     int markTokenConsumed(@Param("tokenId") UUID tokenId, @Param("consumedAt") OffsetDateTime consumedAt);
 
     int updateFamily(@Param("row") RefreshTokenFamilyRow row);
+
+    int recordRotation(
+            @Param("tokenId") UUID tokenId,
+            @Param("rotationKeyDigest") byte[] rotationKeyDigest,
+            @Param("recoveryExpiresAt") OffsetDateTime recoveryExpiresAt,
+            @Param("successorTokenId") UUID successorTokenId,
+            @Param("successorAccessJti") UUID successorAccessJti);
+
+    int markRecovered(@Param("tokenId") UUID tokenId, @Param("recoveredAt") OffsetDateTime recoveredAt);
 }

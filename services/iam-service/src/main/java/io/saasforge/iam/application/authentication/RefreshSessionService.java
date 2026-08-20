@@ -4,9 +4,15 @@ import io.saasforge.iam.domain.authorization.PlatformRoleAssignmentRepository;
 import io.saasforge.iam.domain.session.RefreshTokenFamily;
 import io.saasforge.iam.domain.session.RefreshTokenFamilyPurpose;
 import io.saasforge.iam.domain.session.RefreshTokenFamilyRepository;
+import io.saasforge.iam.domain.session.RefreshRotation;
+import io.saasforge.iam.domain.shared.Sha256Digest;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 public final class RefreshSessionService {
     private final PlatformRoleAssignmentRepository platformRoles;
@@ -15,6 +21,8 @@ public final class RefreshSessionService {
     private final UserAccessTokenIssuer accessTokenIssuer;
     private final RefreshTokenIssuer refreshTokenIssuer;
     private final LoginSessionService sessionService;
+    private final RefreshRotationLease rotationLease;
+    private final RefreshRotationTransaction rotationTransaction;
     private final Clock clock;
 
     public RefreshSessionService(
@@ -24,6 +32,8 @@ public final class RefreshSessionService {
             UserAccessTokenIssuer accessTokenIssuer,
             RefreshTokenIssuer refreshTokenIssuer,
             LoginSessionService sessionService,
+            RefreshRotationLease rotationLease,
+            RefreshRotationTransaction rotationTransaction,
             Clock clock) {
         this.platformRoles = platformRoles;
         this.accessibleMemberships = accessibleMemberships;
@@ -31,33 +41,55 @@ public final class RefreshSessionService {
         this.accessTokenIssuer = accessTokenIssuer;
         this.refreshTokenIssuer = refreshTokenIssuer;
         this.sessionService = sessionService;
+        this.rotationLease = rotationLease;
+        this.rotationTransaction = rotationTransaction;
         this.clock = clock;
     }
 
-    public LoginResult refresh(String refreshTokenValue) {
+    public LoginResult refresh(UUID idempotencyKey, String refreshTokenValue, String traceId) {
         Instant inspectedAt = clock.instant();
         RefreshTokenMaterial presentedToken = new RefreshTokenMaterial(
                 refreshTokenValue, refreshTokenIssuer.digest(refreshTokenValue));
+        Sha256Digest idempotencyKeyDigest = digest(idempotencyKey.toString());
+        RefreshRotationLease.Acquisition lease = rotationLease.acquire(
+                presentedToken.digest(), idempotencyKeyDigest);
+        if (!lease.acquired()) {
+            throw new RefreshRotationInProgressException(lease.retryAfterSeconds());
+        }
         RefreshTokenFamily family = refreshTokenFamilies
-                .findUsableByTokenDigest(presentedToken.digest(), inspectedAt)
+                .findByTokenDigest(presentedToken.digest())
                 .orElseThrow(RefreshSessionInvalidException::new);
+        if (!family.isUsableAt(inspectedAt)) {
+            throw new RefreshSessionInvalidException();
+        }
         return switch (family.purpose()) {
-            case USER_PLATFORM -> refreshPlatform(family, presentedToken, inspectedAt);
-            case USER_TENANT -> refreshTenant(family, presentedToken);
-            case USER_TENANT_SELECTION -> refreshSelection(family, presentedToken);
+            case USER_PLATFORM -> refreshPlatform(
+                    family, presentedToken, idempotencyKeyDigest, inspectedAt, traceId);
+            case USER_TENANT -> refreshTenant(family, presentedToken, idempotencyKeyDigest, traceId);
+            case USER_TENANT_SELECTION -> refreshSelection(
+                    family, presentedToken, idempotencyKeyDigest, traceId);
             case INITIAL_PASSWORD_CHANGE -> throw new RefreshSessionInvalidException();
         };
     }
 
     private LoginResult refreshPlatform(
-            RefreshTokenFamily family, RefreshTokenMaterial presentedToken, Instant inspectedAt) {
+            RefreshTokenFamily family,
+            RefreshTokenMaterial presentedToken,
+            Sha256Digest idempotencyKeyDigest,
+            Instant inspectedAt,
+            String traceId) {
         if (!platformRoles.hasActiveAssignment(family.identityId(), inspectedAt)) {
             rejectAuthorization(presentedToken);
         }
-        return rotateWithAccessToken(family, presentedToken, null, null);
+        return rotateWithAccessToken(
+                family, presentedToken, idempotencyKeyDigest, null, null, traceId);
     }
 
-    private LoginResult refreshTenant(RefreshTokenFamily family, RefreshTokenMaterial presentedToken) {
+    private LoginResult refreshTenant(
+            RefreshTokenFamily family,
+            RefreshTokenMaterial presentedToken,
+            Sha256Digest idempotencyKeyDigest,
+            String traceId) {
         AccessibleMembership membership = accessibleMemberships.findByIdentityId(family.identityId()).stream()
                 .filter(candidate -> candidate.membershipId().equals(family.membershipId()))
                 .filter(candidate -> candidate.tenantId().equals(family.tenantId()))
@@ -67,10 +99,15 @@ public final class RefreshSessionService {
             rejectAuthorization(presentedToken);
         }
         return rotateWithAccessToken(
-                family, presentedToken, membership.membershipId(), membership.tenantId());
+                family, presentedToken, idempotencyKeyDigest,
+                membership.membershipId(), membership.tenantId(), traceId);
     }
 
-    private LoginResult refreshSelection(RefreshTokenFamily family, RefreshTokenMaterial presentedToken) {
+    private LoginResult refreshSelection(
+            RefreshTokenFamily family,
+            RefreshTokenMaterial presentedToken,
+            Sha256Digest idempotencyKeyDigest,
+            String traceId) {
         List<AccessibleMembership> memberships = accessibleMemberships.findByIdentityId(family.identityId());
         if (memberships.isEmpty()) {
             rejectAuthorization(presentedToken);
@@ -83,35 +120,63 @@ public final class RefreshSessionService {
             IssuedAccessToken accessToken = accessTokenIssuer.issueUserToken(
                     family.identityId(), membership.membershipId(), membership.tenantId());
             RefreshTokenMaterial nextToken = refreshTokenIssuer.issue();
-            long cookieMaxAge = sessionService.completeSelection(
-                            presentedToken, nextToken, membership.membershipId(), membership.tenantId(),
-                            accessToken, clock.instant())
-                    .orElseThrow(RefreshSessionInvalidException::new);
+            long cookieMaxAge = commitRotation(
+                    presentedToken, nextToken, idempotencyKeyDigest,
+                    membership.membershipId(), membership.tenantId(), accessToken, traceId);
             return new AccessTokenLoginResult(accessToken, nextToken.value(), cookieMaxAge);
         }
         RefreshTokenMaterial nextToken = refreshTokenIssuer.issue();
-        long cookieMaxAge = sessionService.rotateSelectionSession(presentedToken, nextToken, clock.instant())
-                .orElseThrow(RefreshSessionInvalidException::new);
+        long cookieMaxAge = commitRotation(
+                presentedToken, nextToken, idempotencyKeyDigest, null, null, null, traceId);
         return new ContextSelectionLoginResult(memberships, nextToken.value(), cookieMaxAge);
     }
 
     private LoginResult rotateWithAccessToken(
             RefreshTokenFamily family,
             RefreshTokenMaterial presentedToken,
+            Sha256Digest idempotencyKeyDigest,
             java.util.UUID membershipId,
-            java.util.UUID tenantId) {
+            java.util.UUID tenantId,
+            String traceId) {
         // 签名失败必须发生在旧 Refresh Token 被消费之前，确保同一 Cookie 可以安全重试。
         IssuedAccessToken accessToken = accessTokenIssuer.issueUserToken(
                 family.identityId(), membershipId, tenantId);
         RefreshTokenMaterial nextToken = refreshTokenIssuer.issue();
-        long cookieMaxAge = sessionService.rotateAccessTokenSession(
-                        presentedToken, nextToken, membershipId, tenantId, accessToken, clock.instant())
-                .orElseThrow(RefreshSessionInvalidException::new);
+        long cookieMaxAge = commitRotation(
+                presentedToken, nextToken, idempotencyKeyDigest,
+                membershipId, tenantId, accessToken, traceId);
         return new AccessTokenLoginResult(accessToken, nextToken.value(), cookieMaxAge);
+    }
+
+    private long commitRotation(
+            RefreshTokenMaterial presentedToken,
+            RefreshTokenMaterial nextToken,
+            Sha256Digest idempotencyKeyDigest,
+            UUID membershipId,
+            UUID tenantId,
+            IssuedAccessToken accessToken,
+            String traceId) {
+        RefreshRotationTransaction.Result result = rotationTransaction.commit(
+                presentedToken, nextToken, idempotencyKeyDigest, membershipId, tenantId,
+                accessToken, clock.instant(), traceId);
+        if (result.status() != RefreshRotation.Status.ROTATED
+                && result.status() != RefreshRotation.Status.RECOVERED) {
+            throw new RefreshSessionInvalidException();
+        }
+        return result.cookieMaxAgeSeconds().orElseThrow();
     }
 
     private void rejectAuthorization(RefreshTokenMaterial presentedToken) {
         sessionService.revokeForAuthorizationLoss(presentedToken, clock.instant());
         throw new RefreshAuthorizationRejectedException();
+    }
+
+    private static Sha256Digest digest(String value) {
+        try {
+            return Sha256Digest.of(MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("缺少 SHA-256 算法支持", exception);
+        }
     }
 }
