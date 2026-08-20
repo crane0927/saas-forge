@@ -10,11 +10,18 @@
 
 ### 用户令牌
 
-- Access Token 是约 15 分钟有效、以 `RS256` 签名的 JWT，包含 `identityId`、`membershipId`、`tenantId`、`jti`；Gateway 与 SDK 以 IAM JWKS 本地验签，且只接受 `RS256`。
+- Access Token 默认有效期为 15 分钟，可由环境配置覆盖且生产不设置硬上限；`iat` 到 `exp` 精确等于配置值。它是以 `RS256` 签名的 JWT，除 `iss`、`aud`、`iat`、`exp` 等验证所需标准 Claim 外，只包含 `identityId`、`jti`，以及成对出现的可选 `membershipId`、`tenantId`；Gateway 与 SDK 以 IAM JWKS 本地验签，且只接受 `RS256`。验证端允许 30 秒时钟偏差，JWT `jti` 黑名单 TTL 必须覆盖 Token 剩余有效期及该偏差。
+- `jti` 使用规范小写、连字符形式的 UUIDv7，每次实际签发新的 Access Token 都生成新值，不在登录、正常刷新或恢复刷新之间复用，也不由数据库自增值、Family ID 或 Membership ID 派生。Redis 只使用 `SHA-256(jti)` 构造撤销 Key。恢复刷新必须撤销前一次响应的 `jti` 至其 `exp` 加 30 秒，并为替代 Access Token 生成新 `jti`。
+- IAM 为每个 User Access Token 持久化最小 Access Token Issuance，包含 `jti`、`familyId`、`identityId`、可选 `membershipId`/`tenantId`、`kid`、`issuedAt`、`expiresAt`、`revokedAt` 和撤销原因，不保存 JWT、签名、邮箱、角色或权限。Family 创建或轮换与对应 Issuance 在同一数据库事务提交；常规请求不查询该表。Family 重放或安全事件据此撤销全部匹配且未过期的 `jti`，记录至少保留至 `expiresAt + 30 秒`；普通登出仍只撤销请求携带的当前 Access Token。
+- PostgreSQL 中的撤销时间是持久化事实，Redis Revocation Index 是 Gateway 与 Starter 的同步拒绝投影。撤销操作先以 Spring Data Redis 和 Lua 原子写入全部目标 `jti`/`kid` Key，再提交 PostgreSQL 事务，二者完成后才返回成功；Redis 失败时不提交，数据库提交失败时允许 Redis 产生安全优先的额外拒绝。IAM 启动、Redis 重连或数据恢复时先将 `revocation-index-ready` 标为未就绪，从 PostgreSQL 重建全部未过期撤销项，完成后才标为就绪；验证方每次同时检查 Ready 状态和目标 Key，Ready 缺失时 fail-closed。安全 Key 使用 AOF 与 `noeviction`，写入和重建均须幂等。
+- `iss` 由每个环境显式配置为该环境的 API Origin，例如本地环境为 `https://api.saasforge.test`；`aud` 固定为单值 `saasforge-api`。IAM、Gateway、SDK 和业务服务必须精确校验两者，不接受多 Audience、通配值或缺失值，也不得从 `Host`、`Forwarded` 或 `X-Forwarded-Host` 等请求头动态推导签发方。
 - Refresh Token 是由 CSPRNG 生成的 256 位随机不透明字符串，浏览器仅以 HttpOnly Cookie 发送；PostgreSQL 只保存其 SHA-256 摘要并作为权威记录，Redis 可缓存会话状态。每个 Token 归属一个稳定的 Refresh Token Family，自首次登录起最长有效 8 小时、空闲最长 30 分钟；轮换不延长绝对期限。IAM 仅在成功登录或刷新时更新 Family 的 `lastUsedAt`。已轮换 Token 的摘要必须保留至所属 Family 的绝对到期，此前不得物理清理；轮换后再次提交旧 Token 时，IAM 必须撤销整个 Family。
+- 刷新开始前，IAM 按旧 Token 摘要在 Redis 原子取得默认 5 秒的 Refresh Rotation Lease，并将 Lease 绑定本次 `Idempotency-Key`。同一旧 Token 以不同幂等键在 Lease 存续期间到达时返回 `409 / REFRESH_ROTATION_IN_PROGRESS` 与 `Retry-After`，不签发 Token、也不撤销 Family；Lease 到期后，旧 Token 的同键重试按 10 秒单次恢复语义处理，不同键重放撤销整个 Family。Lease 只抑制在途并发，不是会话或撤销权威状态，Redis 不可用时 fail-closed。
+- 普通会话每次设置 Refresh Token Cookie 时，`Max-Age` 等于 30 分钟与 Family 绝对剩余时间中的较小值；成功刷新可重置空闲期限，但不能延长 8 小时绝对期限。Initial Credential Session 的 Cookie 最多有效 10 分钟且不得超过 Initial Platform Credential 的剩余有效期，改密不延长它。PostgreSQL Family 状态始终是权威；登出或失效时以相同名称、Path 和安全属性设置 `Max-Age=0` 清除 Cookie。
 - Tenant 切换必须调用 IAM；IAM 同步校验目标 Membership 有效后，先使旧 Access Token 失效，再原子更新当前 Refresh Token Family 的 `membershipId`、`tenantId` 并返回 `204`。后续轮换继承该上下文。客户端不得覆写 Tenant，Tenant Console Shell 必须随后通过既有刷新接口取得绑定新上下文的 Access Token。
+- Refresh Token Family 的 Purpose 只能为 `USER_PLATFORM`、`USER_TENANT`、`USER_TENANT_SELECTION` 或 `INITIAL_PASSWORD_CHANGE`。普通刷新必须重新校验 Purpose 对应的权威上下文：Platform 会话确认 Identity 仍持有 Platform Role，Tenant 会话同步验证 Membership 仍可访问，待选择会话重新取得候选列表；Initial Credential Session 不允许刷新。权威服务不可用时不得消费或轮换 Token，并返回可重试的基础设施错误；权威结果明确拒绝时撤销 Family、清除 Cookie，且不得签发 Access Token。
 - 用户请求不得通过请求头、查询参数、请求体或任何语义等价别名传入或覆盖 Tenant；这类输入必须以 `400` 拒绝，不能静默忽略。用户 Tenant Context 只能由已验证 Access Token 的 `membershipId` 解析。
-- 普通登出只撤销 Refresh Token。密码重置、成员禁用、Tenant 冻结、强制下线等安全事件将 JWT `jti` 写入 Redis 黑名单，TTL 为 Token 剩余有效期。
+- 普通登出撤销当前 Refresh Token Family 并清除 Cookie；请求携带当前 Bearer Access Token 时，还必须将其 `jti` 写入 Redis 黑名单，TTL 为 Token 剩余有效期加 30 秒时钟偏差。没有 Access Token 的 Membership 待选择会话或 Initial Credential Session 仍可登出。普通登出不影响该 Identity 的其他 Family；密码重置、成员禁用、Tenant 冻结、强制下线等安全事件按各自范围撤销匹配会话及尚未到期的 `jti`。
 - Gateway 与 SDK 每次用户请求检查黑名单；Redis 不可用时 fail-closed，避免已失效 Token 被继续接受。
 
 Refresh Token 只能由 `https://api.<root>` 以 `__Host-sf_refresh; Secure; HttpOnly; SameSite=Strict; Path=/` 签发和接收，且不设置 `Domain`；不得把 Access Token 或 Refresh Token 写入 `localStorage`。Platform Console 与 Tenant Console Shell 可在受控跨 Origin 请求中携带该 Cookie，但不能读取它。
@@ -30,15 +37,24 @@ Refresh Token 只能由 `https://api.<root>` 以 `__Host-sf_refresh; Secure; Htt
 ### 密码、邀请与服务身份
 
 - 用户以全局唯一、规范化的 ASCII 邮箱地址登录；Identity 的显示名可重复且可为空。输入先去除首尾空白，再以 `Locale.ROOT` 小写形式持久化并用于登录查找。Tenant 管理员初始化可选传入 1–200 字符的显示名，IAM 仅在新建 Identity 时写入，复用既有 Identity 时不得覆盖。MVP 不支持 EAI/国际化邮箱、公共注册、手机号登录、外部身份源、OIDC、SSO、LDAP 或第三方登录。
-- 密码使用 Argon2id 哈希（`m=19456 KiB`、`t=2`、`p=1`），至少 12 个字符，不强制字符类别组合，并拒绝已知泄露密码。
+- 登录请求以可选 `contextType` 明确 Login Context Intent，枚举仅为 `PLATFORM`、`TENANT`，缺省为 `TENANT`，且不得携带 Tenant 或 Membership ID。`PLATFORM` 要求 Identity 持有 Platform Role 并建立 `USER_PLATFORM` 会话；`TENANT` 只按 Accessible Membership 建立 Tenant 或待选择会话，Platform Role 不改变该分支。Initial Platform Credential 始终进入首次改密流程。IAM 不得从 `Origin`、Host 或控制台类型推断 Login Context Intent；Platform Console 必须显式发送 `PLATFORM`。
+- 常规密码验证成功后，IAM 从 Tenant Access 取得 Accessible Membership：恰有一个时直接建立对应 Tenant Context，多个时只建立待选择的 Refresh Token Family 并返回候选列表。没有 Accessible Membership 时，只有持有 Platform Role 的 Identity 可以建立无 Tenant Context 的会话；其他 Identity 以 `403 / ACCESS_CONTEXT_UNAVAILABLE` 拒绝，且不创建 Refresh Token Family 或设置 Cookie。Platform Role Assignment 由 IAM 权威查询，不写入 Access Token，也不能用 Credential 类型代替。
+- Membership 候选按 `tenantDisplayName`、`membershipId` 稳定排序，登录响应最多返回 100 条；Tenant Access 可多取第 101 条只用于判断超限。超过 100 条时返回 `409 / ACCESSIBLE_MEMBERSHIP_LIMIT_EXCEEDED`，不创建 Family 或设置 Cookie；该限制只约束无分页的登录候选响应，不限制 Identity 实际拥有的 Membership 数量，未来确有需求时另行设计受会话保护的分页选择 API。
+- 邮箱不存在、密码错误、没有有效 Credential、Initial Platform Credential 已过期或认证主体被临时锁定时，对外统一返回 `401 / AUTHENTICATION_FAILED`，且账户锁定不返回 `Retry-After`；邮箱不存在或没有 Credential 时仍执行固定 Dummy Argon2id 校验，避免快速失败形成可枚举的时间差。只有密码已验证后，缺少请求上下文所需的 Platform Role 或 Accessible Membership 才返回 `403 / ACCESS_CONTEXT_UNAVAILABLE`。Redis 登录保护不可用时 fail-closed，返回 `503 / AUTHENTICATION_PROTECTION_UNAVAILABLE`。内部日志和审计可记录稳定失败原因，但不得记录原始邮箱、密码或 Token。
+- 登录保护按规范化邮箱的 SHA-256 摘要计数，不存在的邮箱使用相同路径。默认在 15 分钟窗口内累计 5 次凭据失败后锁定 15 分钟；第 5 次及锁定期间仍返回统一 `401`，锁定期间不继续累计或延长锁定。一次成功密码验证立即清除失败计数，即使后续因上下文或依赖服务未建立会话；`403` 上下文拒绝、字段校验和基础设施错误不计入。阈值、窗口和锁定时间可由环境以正值覆盖且生产不设置硬上限；MVP 不引入 CAPTCHA、指数锁定或永久锁定。
+- 密码在设置、修改和登录验证前统一执行 Unicode NFC 规范化；不修剪、不折叠、不静默截断，并拒绝普通空格、制表符、换行、全角空格、不换行空格等全部 Unicode 空白字符。规范化后的长度按 Unicode Code Point 计算，范围为 12–128，UTF-8 最多 512 字节；不强制大小写、数字或特殊字符类别组合。Blocklist 比较与 Argon2id 哈希（`m=19456 KiB`、`t=2`、`p=1`）使用同一规范化结果。边界失败使用 `PASSWORD_TOO_SHORT`、`PASSWORD_TOO_LONG` 或 `PASSWORD_WHITESPACE_NOT_ALLOWED` 字段错误，不得记录或回显密码。
+- 设置或修改密码时使用应用制品内置的版本化 Blocklist，首版覆盖最常见的 100,000 个泄露或弱密码以及 SaaS Forge 相关预期值；不在请求路径调用外部在线密码检查服务。Blocklist 只保存完整密码的 SHA-256，不保存明文、不做子串或字典词拆分，并携带版本与校验和；生产环境发现文件缺失或损坏时拒绝启动。命中时返回字段错误 `400 / PASSWORD_COMPROMISED`，不得回显密码；列表随正式版本更新，不要求运行时联网热更新。
+- 首版 Blocklist 固定取 SecLists 正式 Release `2026.1` 的 `Passwords/Common-Credentials/100k-most-used-passwords-NCSC.txt`，不得跟随 `master`。生成流程校验上游 SHA-256，对每行执行与密码相同的 NFC 规范化，合并仓库自有 SaaS Forge 弱密码后去重，并只把 SHA-256 结果打入运行时制品；制品保留来源版本、原始校验和与 MIT 许可证归属，不携带上游明文名单。常规构建不联网，升级必须显式提交来源版本、校验和与生成结果。
 - Credential 仅有 `INITIAL_PLATFORM_PASSWORD` 与 `PASSWORD` 两种类型。一个 Identity 任意时刻最多有一个有效密码凭据；首次成功改密时，初始凭据永久失效但保留其失效记录，并新建常规密码凭据，不得覆盖或删除初始凭据。
+- 有效 `INITIAL_PLATFORM_PASSWORD` 只能建立 Purpose 为 `INITIAL_PASSWORD_CHANGE` 的 Initial Credential Session：登录响应设置 `__Host-sf_refresh` Cookie 并返回 `PASSWORD_CHANGE_REQUIRED`，但不签发 Access Token、不查询 Membership，刷新接口也不得把它升级为普通会话。该 Cookie 只允许调用登出和 `POST /api/v1/auth/password-changes`；改密事务永久失效 Initial Platform Credential、创建常规 Password Credential 并撤销该受限 Family，响应清除 Cookie、返回 `204`，用户必须用新密码重新登录。
 - 首个 Platform Admin 由系统在首次部署时直接创建为全局 `Identity` 并授予 Platform 角色，不关联 Tenant `Membership`。其邮箱和随机初始密码仅由外部密钥管理系统注入；IAM 只保存密码的 Argon2id 哈希。初始密码自创建起有效 24 小时，期间只能建立完成改密所需的受限会话，不能调用 Platform 管理接口。首次成功改密后，初始密码永久失效并撤销关联会话；过期或疑似泄露时，只能由部署侧受限凭据执行可审计的重置并生成新的随机初始密码。不得通过公网首注、代码、镜像或普通配置创建或重置该管理员。
 - 无风险事件下不强制周期性改密；发生泄露、高风险登录或管理员强制重置时，要求改密并撤销相关会话。
 - Tenant 管理员创建用户只发送一次性、限时激活链接，由用户自行设置密码；管理员不能设置或查看初始密码。
 - 服务间采用 OAuth 2.0 Client Credentials。服务 Token 的身份与授权语义只限 `client_id` 与显式 `scope`，不得伪造用户、Membership、Tenant 或用户 RBAC 上下文；缺少所需 scope 时必须以 `403` 拒绝。服务可在契约明确的内部调用或可信消息元数据中携带 Tenant Operation Target，但下游必须按 `client_id` 与 `scope` 授权并校验其与目标资源的关系，它不建立 Tenant Context。OAuth Client 的 `allowedScopes` 使用受限 `text[]` 存储，MVP 仅允许 `runtime:read`、`runtime:quota:write`。Client Secret 由 CSPRNG 生成 256 位随机值，仅在创建或轮换时明文展示一次；平台仅保存其 SHA-256 摘要。轮换时新 Secret 立即可用，旧 Secret 最多重叠 24 小时后自动失效，并支持立即吊销；重叠窗口内拒绝同一 Client 的再次轮换，因此最多同时接受一把新 Secret 与一把即将失效的旧 Secret。
 - IAM 经版本化 JWKS 发布公钥。生产环境的 JWT 私钥使用 KMS/HSM 托管的不可导出 `RS256` Signing Key；IAM 仅以工作负载身份调用签名接口，每个 KMS 密钥版本映射唯一 `kid`，不得将私钥挂载到应用进程。Gateway、SDK 和业务服务的验签算法白名单只能包含 `RS256`。
-- Signing Key Metadata 必须持久化唯一 `kid`、KMS/HSM Key Version 引用、JWKS 所需的公开 `n`/`e` 与生命周期时间，私钥绝不入库。其状态只能为 `PUBLISHED`、`ACTIVE`、`RETIRING`、`RETIRED` 或不可逆的 `REVOKED`；全局恰有一个 `ACTIVE` Key。JWT Signing Key 的常规轮换由生产部署的合规策略触发，不在代码中写死周期：新 `kid` 先以 `PUBLISHED` 与旧公钥共同发布于 JWKS，等待 5 分钟缓存窗口后才转为 `ACTIVE`；原 Active Key 转为 `RETIRING` 并至少保留 30 分钟，随后转为 `RETIRED` 并从 JWKS 移除。疑似私钥泄露时，立即转为 `REVOKED`，停止签名、将其 `kid` 写入 Redis 撤销集合并从 JWKS 移除；Gateway、SDK 和业务服务每个请求都检查该集合，Redis 不可用时 fail-closed，即使本地 JWKS 缓存仍有该公钥也必须拒绝。开发环境采用相同 `kid`/JWKS 切换语义，但仅允许显式本地轮换。
+- Signing Key Metadata 必须持久化唯一 `kid`、KMS/HSM Key Version 引用、JWKS 所需的公开 `n`/`e`、`maxIssuedTokenTtl` 与生命周期时间，私钥绝不入库。其状态只能为 `PUBLISHED`、`ACTIVE`、`RETIRING`、`RETIRED` 或不可逆的 `REVOKED`；全局恰有一个 `ACTIVE` Key。JWT Signing Key 的常规轮换由生产部署的合规策略触发，不在代码中写死周期：新 `kid` 先以 `PUBLISHED` 与旧公钥共同发布于 JWKS，等待 5 分钟缓存窗口后才转为 `ACTIVE`；TTL 配置增大时必须先原子提高 Active Key 的 `maxIssuedTokenTtl` 才能按新值签发，配置降低不回减。原 Active Key 转为 `RETIRING` 后，公钥至少保留到 `retiringAt + max(30 分钟, maxIssuedTokenTtl + 30 秒)`，随后才可转为 `RETIRED` 并移出 JWKS。疑似私钥泄露时，立即转为 `REVOKED`，停止签名、将其 `kid` 写入 Redis 撤销集合并从 JWKS 移除；Gateway、SDK 和业务服务每个请求都检查该集合，Redis 不可用时 fail-closed，即使本地 JWKS 缓存仍有该公钥也必须拒绝。开发环境采用相同 `kid`/JWKS 切换语义，但仅允许显式本地轮换。
 - 仅开发 profile 可使用显式本地初始化生成的开发专用非对称密钥对；密钥位于 `.gitignore` 的本地密钥目录，并以只读方式提供给 IAM。Compose 不得自动生成、删除或在生产 profile 回退使用该密钥；开发密钥轮换必须显式触发。
+- IAM 启动时必须确认数据库中恰有一个元数据完整且合法的 `ACTIVE` Key，否则拒绝启动；启动检查不调用 KMS 试签。运行中 KMS 签名失败时，登录或刷新返回 `503 / TOKEN_SIGNING_UNAVAILABLE`，且签名成功前不得创建登录 Family、消费或轮换现有 Refresh Token。KMS 故障不影响 IAM 从持久化公开材料发布 JWKS；Signing 健康状态单独暴露并告警，不自动降级到本地私钥或其他非 Active Key。
 
 ## 授权、租户与数据隔离
 
@@ -52,6 +68,7 @@ RBAC 以 `Membership → Role → Permission` 实施。平台角色与租户角�
 - 生产环境所有通信采用 TLS；服务间 gRPC 使用 mTLS。
 - PostgreSQL、Redis、Kafka 与对象存储使用加密连接和各自凭据认证。
 - JWT 私钥、数据库密码、Client Secret、Kafka 凭据等由外部密钥管理服务权威托管。生产 JWT 私钥只驻留 KMS/HSM；Kubernetes 中 IAM 以受限工作负载身份调用签名接口，虚拟机仅以受限系统凭据文件取得该调用权限。其他密钥可通过受控同步挂载或受限系统凭据文件注入。密钥禁止进入源码、镜像或普通配置文件。
+- IAM 通过最小 `JwtSigningPort` 请求签名，输入不透明 `kmsKeyVersionRef`、固定 `RS256` 与 JWS Signing Input，输出签名字节；领域模型不包含厂商字段。`dev`/`test` 仅提供只读本地 PEM 的 JCA 实现和内存测试 Fake。本仓库在生产部署目标确定前不引入厂商 KMS SDK 或自创通用 KMS HTTP 协议；`prod` 缺少外部适配器 Bean 时拒绝启动，绝不回退本地私钥。当前 Compose 验收只覆盖开发签名，实际生产目标须以独立适配器接入对应 KMS/HSM。
 - Redis 作为 Token `jti` 黑名单、Signing Key `kid` 撤销集合和会话等安全依赖，生产环境必须高可用并具备自动故障转移。
 
 ## API、前端与运行时防护
@@ -65,6 +82,8 @@ RBAC 以 `Membership → Role → Permission` 实施。平台角色与租户角�
 ## 数据、日志与审计
 
 平台数据分为公开、内部、机密、敏感个人信息四级；业务模块注册其数据分类并映射到该分级。日志、Trace、审计和 Kafka 事件默认不得包含密码、Access / Refresh Token、Client Secret、完整证件或其他原始敏感个人信息，统一通过字段白名单和脱敏处理。
+
+IAM 首个认证切片同步落地服务自有 Transactional Outbox，并可靠发布 `com.saasforge.iam.session.started.v1`、`com.saasforge.iam.session.revoked.v1`、`com.saasforge.iam.refresh-replay-detected.v1` 与 `com.saasforge.iam.password.changed.v1`；现有批量 `com.saasforge.iam.sessions-revoked.v1` 仍只用于成员禁用、Tenant 冻结等跨服务撤销。事件与对应数据库事实在同一事务提交，且只含内部 ID、Purpose、上下文类型、结果、时间和 `traceId`。正常刷新成功只记录指标；密码错误、未知邮箱和锁定拒绝只写白名单结构化安全日志与指标，不伪称可靠 Outbox 事实。事件、日志均不得包含邮箱、密码、JWT、Refresh Token、Cookie、IP 原文或完整 User-Agent。
 
 Audit 服务只追加审计记录，平台或租户管理员不得修改或物理删除。审计保留期由平台级合规配置确定。导出保留任务元数据与审计记录；临时导出文件通过短期签名 URL 获取，并按可配置留存期从对象存储物理删除。
 

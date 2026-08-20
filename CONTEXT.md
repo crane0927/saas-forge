@@ -16,6 +16,10 @@ _Avoid_: Default tenant administrator, superuser, tenant administrator
 仅用于首次设置 Default Platform Admin 密码的随机初始密码，在创建后 24 小时失效且不能执行 Platform 管理操作。成功改密后该凭据永久失效并保留失效记录；失效或疑似泄露时只能通过受限、可审计的部署侧重置替换。
 _Avoid_: Platform access credential, default password
 
+**Initial Credential Session**:
+Initial Platform Credential 验证成功后建立的受限浏览器会话，只证明该 Identity 可以完成首次改密，不建立 Tenant Context，也不是 User Access Token 会话。
+_Avoid_: Platform admin session, user access token
+
 **Credential**:
 由 IAM 管理、供一个 Identity 证明其认证能力的凭据。MVP 仅有 `INITIAL_PLATFORM_PASSWORD` 与 `PASSWORD` 两种类型。
 _Avoid_: API key, external identity
@@ -23,6 +27,22 @@ _Avoid_: API key, external identity
 **Password Credential**:
 一个 Identity 用于常规密码认证的 `PASSWORD` Credential；首次改密时新建该记录，原 Initial Platform Credential 永久失效。一个 Identity 任意时刻最多有一个有效 Password Credential，IAM 仅持久化其 Argon2id 哈希，绝不保存原始密码。
 _Avoid_: Password, shared secret
+
+**User Access Token**:
+IAM 为已认证 Identity 签发的短期用户访问凭证；它可以表示 Platform 全局身份，或成对绑定一个已验证的 Membership 与 Tenant 上下文。
+_Avoid_: Refresh Token, service token, role token
+
+**Access Token Issuance**:
+IAM 对一个已签发 User Access Token 保存的非敏感生命周期索引，使安全事件可以定位并撤销尚未到期的 `jti`；它不是 Token 本身，也不参与常规请求验签。
+_Avoid_: Access token store, session token
+
+**Revocation Index**:
+IAM 将尚未到期的 Access Token 与 Signing Key 撤销事实投影到 Redis 后形成的即时拒绝索引；只有索引已与持久化事实完成同步时，验证方才可依赖它作出放行决定。
+_Avoid_: Authorization database, token introspection
+
+**Login Context Intent**:
+浏览器登录时对 Platform 或 Tenant 工作上下文的显式选择；它只决定 IAM 校验哪类权威访问关系，不携带或证明任何 Role、Membership 或 Tenant 身份。
+_Avoid_: Tenant selection, inferred login origin
 
 **Platform Role**:
 在一个 Platform 全局范围内授予权限的角色，与只在单个 Tenant 内生效的 Tenant Role 相互独立。
@@ -41,8 +61,12 @@ _Avoid_: Private key, JWT secret
 _Avoid_: Retired signing key, expired signing key
 
 **Refresh Token Family**:
-为同一浏览器会话连续签发并轮换的 Refresh Token 谱系，持有该会话的 `identityId` 及可为空的 Membership/Tenant 上下文。它自首次登录起最长有效 8 小时、空闲最长 30 分钟，轮换不延长期限；已轮换 Token 的摘要保留至 Family 到期，任一被重放时整个 Family 均被撤销。
+为同一浏览器会话连续签发并轮换的 Refresh Token 谱系，持有该会话的 Identity、Purpose 及相应的 Platform、Membership/Tenant、待选择或首次改密上下文。它自首次登录起最长有效 8 小时、空闲最长 30 分钟，轮换不延长期限；已轮换 Token 的摘要保留至 Family 到期，任一不属于短时恢复语义的重放都会撤销整个 Family。
 _Avoid_: Access token, browser cookie
+
+**Refresh Rotation Lease**:
+IAM 为同一旧 Refresh Token 的一次在途轮换建立的短期并发边界，用于拒绝重复执行而不把重叠请求立即判为重放攻击；它不是会话状态，也不延长 Token 或 Family 生命周期。
+_Avoid_: Refresh token lock, session lease
 
 **OAuth Client**:
 由 IAM 注册、以 `client_id` 和显式 scope 表示的服务认证主体。它不代表用户、Membership 或 Tenant Context。
@@ -147,6 +171,10 @@ _Avoid_: Usage, quota definition
 **Membership**:
 一个 Identity 加入某一 Tenant 的成员关系；它决定该 Identity 能否在该 Tenant 建立 Tenant Context，并可被启用或禁用。
 _Avoid_: Tenant account, user-tenant mapping
+
+**Accessible Membership**:
+在当前时刻处于启用状态、且所属 Tenant 可访问的 Membership；只有它可以成为 User Access Token 的 Tenant 上下文候选。
+_Avoid_: Existing membership, active user
 
 **Invitation**:
 邀请指定邮箱加入 Tenant 的一次性、限时凭据。Invitation 到期由 `expiresAt` 在激活时派生，而非持久化为 `EXPIRED` 状态。
