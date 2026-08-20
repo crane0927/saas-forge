@@ -52,7 +52,7 @@ class AuthenticationSecurityTest {
                 "https://iam.example.test", Duration.ofMinutes(15));
 
         UUID identityId = UUID.randomUUID();
-        IssuedAccessToken token = issuer.issuePlatformToken(identityId);
+        IssuedAccessToken token = issuer.issueUserToken(identityId, null, null);
         String[] segments = token.value().split("\\.");
         JsonNode header = json(segments[0]);
         JsonNode claims = json(segments[1]);
@@ -68,6 +68,31 @@ class AuthenticationSecurityTest {
         assertEquals(identityId.toString(), claims.get("identityId").asString());
         assertEquals(7, UUID.fromString(claims.get("jti").asString()).version());
         assertEquals(claims.get("jti").asString(), claims.get("jti").asString().toLowerCase());
+    }
+
+    @Test
+    void tenantAccessTokenAddsOnlyPairedMembershipAndTenantClaims() {
+        StubSigningKeyRepository keys = new StubSigningKeyRepository();
+        keys.activeKeys(List.of(SigningKey.restore(
+                UUID.randomUUID(), "active-kid", "kms/key/1", "modulus", "AQAB", SigningKeyStatus.ACTIVE,
+                NOW.minusSeconds(600), NOW.minusSeconds(300), null, null, null)));
+        JwtSigningService signing = new JwtSigningService(new ActiveSigningKeyResolver(keys),
+                (keyReference, algorithm, input) -> new byte[32]);
+        Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
+        UserAccessTokenIssuer issuer = new UserAccessTokenIssuer(
+                signing, new ObjectMapper(), new UuidV7Generator(clock, new SecureRandom()), clock,
+                "https://iam.example.test", Duration.ofMinutes(15));
+
+        UUID identityId = UUID.randomUUID();
+        UUID membershipId = UUID.randomUUID();
+        UUID tenantId = UUID.randomUUID();
+        IssuedAccessToken token = issuer.issueUserToken(identityId, membershipId, tenantId);
+        JsonNode claims = json(token.value().split("\\.")[1]);
+
+        assertEquals(Set.of("iss", "aud", "iat", "exp", "identityId", "membershipId", "tenantId", "jti"),
+                claims.propertyNames());
+        assertEquals(membershipId.toString(), claims.get("membershipId").asString());
+        assertEquals(tenantId.toString(), claims.get("tenantId").asString());
     }
 
     private static JsonNode json(String encoded) {

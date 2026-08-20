@@ -8,10 +8,11 @@ import io.saasforge.iam.domain.session.RefreshTokenFamily;
 import io.saasforge.iam.domain.session.RefreshTokenFamilyPurpose;
 import io.saasforge.iam.domain.session.RefreshTokenFamilyRepository;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.UUID;
 import org.springframework.transaction.annotation.Transactional;
 
-public class PlatformLoginSessionService {
+public class LoginSessionService {
     private static final Duration REFRESH_IDLE_LIFETIME = Duration.ofMinutes(30);
 
     private final PlatformRoleAssignmentRepository platformRoles;
@@ -20,7 +21,7 @@ public class PlatformLoginSessionService {
     private final OutboxEventRepository outboxEvents;
     private final SessionStartedEventFactory eventFactory;
 
-    public PlatformLoginSessionService(
+    public LoginSessionService(
             PlatformRoleAssignmentRepository platformRoles,
             RefreshTokenFamilyRepository refreshTokenFamilies,
             AccessTokenIssuanceRepository accessTokenIssuances,
@@ -33,25 +34,53 @@ public class PlatformLoginSessionService {
         this.eventFactory = eventFactory;
     }
 
-    /** Role 复核、Family、Issuance 与 Outbox 必须共享这一事务边界。 */
+    /** Platform Role 复核以及 Family、Issuance、Outbox 写入必须共享这一事务边界。 */
     @Transactional
-    public long start(
+    public long startAccessTokenSession(
             UUID identityId,
+            RefreshTokenFamilyPurpose purpose,
+            UUID membershipId,
+            UUID tenantId,
             IssuedAccessToken accessToken,
             RefreshTokenMaterial refreshToken,
             String traceId) {
-        if (!platformRoles.hasActiveAssignment(identityId, accessToken.issuedAt())) {
+        if (purpose != RefreshTokenFamilyPurpose.USER_PLATFORM
+                && purpose != RefreshTokenFamilyPurpose.USER_TENANT) {
+            throw new IllegalArgumentException("Access Token 会话 Purpose 不合法");
+        }
+        if ((purpose == RefreshTokenFamilyPurpose.USER_PLATFORM) != (membershipId == null)) {
+            throw new IllegalArgumentException("会话 Purpose 与 Tenant 上下文不匹配");
+        }
+        if (purpose == RefreshTokenFamilyPurpose.USER_PLATFORM
+                && !platformRoles.hasActiveAssignment(identityId, accessToken.issuedAt())) {
             throw new AccessContextUnavailableException();
         }
         RefreshTokenFamily family = refreshTokenFamilies.create(
-                RefreshTokenFamily.start(identityId, RefreshTokenFamilyPurpose.USER_PLATFORM,
-                        null, null, accessToken.issuedAt()),
+                RefreshTokenFamily.start(identityId, purpose, membershipId, tenantId, accessToken.issuedAt()),
                 refreshToken.digest(), accessToken.issuedAt());
         accessTokenIssuances.create(new AccessTokenIssuance(
-                accessToken.jti(), family.id(), identityId, null, null, accessToken.kid(),
+                accessToken.jti(), family.id(), identityId, membershipId, tenantId, accessToken.kid(),
                 accessToken.issuedAt(), accessToken.expiresAt()));
         outboxEvents.append(eventFactory.create(family, accessToken.issuedAt(), traceId));
-        long absoluteRemaining = Duration.between(accessToken.issuedAt(), family.absoluteExpiresAt()).getSeconds();
+        return cookieMaxAge(accessToken.issuedAt(), family);
+    }
+
+    @Transactional
+    public long startSelectionSession(
+            UUID identityId,
+            RefreshTokenMaterial refreshToken,
+            Instant startedAt,
+            String traceId) {
+        RefreshTokenFamily family = refreshTokenFamilies.create(
+                RefreshTokenFamily.start(identityId, RefreshTokenFamilyPurpose.USER_TENANT_SELECTION,
+                        null, null, startedAt),
+                refreshToken.digest(), startedAt);
+        outboxEvents.append(eventFactory.create(family, startedAt, traceId));
+        return cookieMaxAge(startedAt, family);
+    }
+
+    private long cookieMaxAge(Instant startedAt, RefreshTokenFamily family) {
+        long absoluteRemaining = Duration.between(startedAt, family.absoluteExpiresAt()).getSeconds();
         return Math.min(REFRESH_IDLE_LIFETIME.getSeconds(), absoluteRemaining);
     }
 }

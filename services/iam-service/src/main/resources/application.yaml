@@ -1,6 +1,9 @@
 spring:
   application:
     name: iam-service
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
   config:
     import: nacos:iam-service.yaml?group=SAAS_FORGE&refreshEnabled=false
   cloud:
@@ -25,6 +28,12 @@ spring:
       acks: all
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
+  grpc:
+    client:
+      channels:
+        tenant-access:
+          address: ${TENANT_ACCESS_GRPC_ADDRESS:static://tenant-access-service:9090}
+          default-deadline: PT3S
 
 security:
   jwt:
@@ -38,6 +47,7 @@ security:
 saasforge:
   environment: ${SAASFORGE_ENVIRONMENT:dev}
   iam:
+    tenant-access-grpc-target: tenant-access
     outbox:
       publish-delay: PT1S
       lease-duration: PT30S

@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.UUID;
 import tools.jackson.databind.ObjectMapper;
 
-/** 签发声明白名单固定的 PLATFORM User Access Token。 */
+/** 签发声明白名单固定的 User Access Token。 */
 public final class UserAccessTokenIssuer {
     private static final String AUDIENCE = "saasforge-api";
 
@@ -46,11 +46,14 @@ public final class UserAccessTokenIssuer {
         this.ttl = ttl;
     }
 
-    public IssuedAccessToken issuePlatformToken(UUID identityId) {
+    public IssuedAccessToken issueUserToken(UUID identityId, UUID membershipId, UUID tenantId) {
+        if ((membershipId == null) != (tenantId == null)) {
+            throw new IllegalArgumentException("Membership 与 Tenant 声明必须成对出现");
+        }
         Instant issuedAt = clock.instant().truncatedTo(ChronoUnit.SECONDS);
         Instant expiresAt = issuedAt.plus(ttl);
         UUID jti = uuidV7Generator.next();
-        String encodedClaims = encodeJson(claims(identityId, jti, issuedAt, expiresAt));
+        String encodedClaims = encodeJson(claims(identityId, membershipId, tenantId, jti, issuedAt, expiresAt));
         JwtSignature signature = signingService.sign(kid -> signingInput(kid, encodedClaims));
         String encodedSigningInput = new String(signingInput(signature.kid(), encodedClaims).bytes(), StandardCharsets.US_ASCII);
         String token = encodedSigningInput + "." + Base64.getUrlEncoder().withoutPadding().encodeToString(signature.bytes());
@@ -66,13 +69,18 @@ public final class UserAccessTokenIssuer {
         return JwsSigningInput.of(value.getBytes(StandardCharsets.US_ASCII));
     }
 
-    private Map<String, Object> claims(UUID identityId, UUID jti, Instant issuedAt, Instant expiresAt) {
+    private Map<String, Object> claims(
+            UUID identityId, UUID membershipId, UUID tenantId, UUID jti, Instant issuedAt, Instant expiresAt) {
         Map<String, Object> claims = new LinkedHashMap<>();
         claims.put("iss", issuer);
         claims.put("aud", AUDIENCE);
         claims.put("iat", issuedAt.getEpochSecond());
         claims.put("exp", expiresAt.getEpochSecond());
         claims.put("identityId", identityId.toString());
+        if (membershipId != null) {
+            claims.put("membershipId", membershipId.toString());
+            claims.put("tenantId", tenantId.toString());
+        }
         claims.put("jti", jti.toString());
         return claims;
     }

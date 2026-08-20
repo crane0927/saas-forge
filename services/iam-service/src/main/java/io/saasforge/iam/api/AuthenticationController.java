@@ -1,12 +1,16 @@
 package io.saasforge.iam.api;
 
+import io.saasforge.iam.application.authentication.AccessTokenLoginResult;
+import io.saasforge.iam.application.authentication.ContextSelectionLoginResult;
 import io.saasforge.iam.application.authentication.LoginContextType;
-import io.saasforge.iam.application.authentication.PlatformLoginResult;
-import io.saasforge.iam.application.authentication.PlatformLoginService;
+import io.saasforge.iam.application.authentication.LoginResult;
+import io.saasforge.iam.application.authentication.PasswordLoginService;
 import io.saasforge.iam.contract.api.AuthenticationApi;
 import io.saasforge.iam.contract.model.AccessTokenResult;
 import io.saasforge.iam.contract.model.AuthenticationResult;
+import io.saasforge.iam.contract.model.ContextSelectionRequiredResult;
 import io.saasforge.iam.contract.model.LoginRequest;
+import io.saasforge.iam.contract.model.MembershipCandidate;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Duration;
 import java.util.UUID;
@@ -25,31 +29,45 @@ public class AuthenticationController implements AuthenticationApi {
     private static final Pattern TRACE_PARENT = Pattern.compile(
             "^[0-9a-f]{2}-((?!0{32})[0-9a-f]{32})-(?!0{16})[0-9a-f]{16}-[0-9a-f]{2}$");
 
-    private final PlatformLoginService loginService;
+    private final PasswordLoginService loginService;
 
-    public AuthenticationController(PlatformLoginService loginService) {
+    public AuthenticationController(PasswordLoginService loginService) {
         this.loginService = loginService;
     }
 
     @Override
     public ResponseEntity<AuthenticationResult> login(
             UUID idempotencyKey, String csrfHeader, LoginRequest loginRequest) {
-        PlatformLoginResult result = loginService.login(
+        LoginResult result = loginService.login(
                 loginRequest.getEmail(),
                 loginRequest.getPassword(),
                 LoginContextType.valueOf(loginRequest.getContextType().getValue()),
                 traceId());
-        AccessTokenResult body = new AccessTokenResult()
-                .contextState("ACCESS_TOKEN_ISSUED")
-                .accessToken(result.accessToken().value())
-                .tokenType(AccessTokenResult.TokenTypeEnum.BEARER)
-                .expiresIn(result.accessToken().expiresInSeconds());
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, refreshCookie(result).toString())
-                .body(body);
+                .body(responseBody(result));
     }
 
-    private ResponseCookie refreshCookie(PlatformLoginResult result) {
+    private AuthenticationResult responseBody(LoginResult result) {
+        if (result instanceof AccessTokenLoginResult accessTokenResult) {
+            return new AccessTokenResult()
+                    .contextState("ACCESS_TOKEN_ISSUED")
+                    .accessToken(accessTokenResult.accessToken().value())
+                    .tokenType(AccessTokenResult.TokenTypeEnum.BEARER)
+                    .expiresIn(accessTokenResult.accessToken().expiresInSeconds());
+        }
+        ContextSelectionLoginResult selectionResult = (ContextSelectionLoginResult) result;
+        return new ContextSelectionRequiredResult()
+                .contextState("CONTEXT_SELECTION_REQUIRED")
+                .memberships(selectionResult.memberships().stream()
+                        .map(membership -> new MembershipCandidate()
+                                .membershipId(membership.membershipId())
+                                .tenantId(membership.tenantId())
+                                .tenantDisplayName(membership.tenantDisplayName()))
+                        .toList());
+    }
+
+    private ResponseCookie refreshCookie(LoginResult result) {
         return ResponseCookie.from(REFRESH_COOKIE, result.refreshToken())
                 .secure(true)
                 .httpOnly(true)

@@ -1,8 +1,10 @@
 package io.saasforge.iam.api;
 
 import io.saasforge.iam.application.authentication.AccessContextUnavailableException;
+import io.saasforge.iam.application.authentication.AccessibleMembershipLimitExceededException;
 import io.saasforge.iam.application.authentication.AuthenticationFailedException;
 import io.saasforge.iam.application.authentication.AuthenticationProtectionUnavailableException;
+import io.saasforge.iam.application.authentication.TenantAccessUnavailableException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
 import java.security.SecureRandom;
@@ -39,6 +41,20 @@ public class AuthenticationExceptionHandler {
             AuthenticationProtectionUnavailableException exception, HttpServletRequest request) {
         return problem(HttpStatus.SERVICE_UNAVAILABLE, AuthenticationProtectionUnavailableException.CODE,
                 "Authentication protection unavailable", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(AccessibleMembershipLimitExceededException.class)
+    ResponseEntity<Problem> accessibleMembershipLimitExceeded(
+            AccessibleMembershipLimitExceededException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, AccessibleMembershipLimitExceededException.CODE,
+                "Accessible membership limit exceeded", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(TenantAccessUnavailableException.class)
+    ResponseEntity<Problem> tenantAccessUnavailable(
+            TenantAccessUnavailableException exception, HttpServletRequest request) {
+        return problem(HttpStatus.SERVICE_UNAVAILABLE, TenantAccessUnavailableException.CODE,
+                "Tenant Access unavailable", exception.getMessage(), request);
     }
 
     private ResponseEntity<Problem> problem(

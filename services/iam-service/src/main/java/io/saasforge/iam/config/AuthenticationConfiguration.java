@@ -1,9 +1,11 @@
 package io.saasforge.iam.config;
 
+import io.saasforge.contracts.tenantaccess.membership.v1.AccessibleMembershipQueryServiceGrpc;
+import io.saasforge.iam.application.authentication.AccessibleMemberships;
 import io.saasforge.iam.application.authentication.LoginProtection;
+import io.saasforge.iam.application.authentication.LoginSessionService;
 import io.saasforge.iam.application.authentication.PasswordVerifier;
-import io.saasforge.iam.application.authentication.PlatformLoginService;
-import io.saasforge.iam.application.authentication.PlatformLoginSessionService;
+import io.saasforge.iam.application.authentication.PasswordLoginService;
 import io.saasforge.iam.application.authentication.RefreshTokenIssuer;
 import io.saasforge.iam.application.authentication.SessionStartedEventFactory;
 import io.saasforge.iam.application.authentication.UserAccessTokenIssuer;
@@ -14,6 +16,7 @@ import io.saasforge.iam.domain.identity.IdentityRepository;
 import io.saasforge.iam.domain.outbox.OutboxEventRepository;
 import io.saasforge.iam.domain.session.AccessTokenIssuanceRepository;
 import io.saasforge.iam.domain.session.RefreshTokenFamilyRepository;
+import io.saasforge.iam.infrastructure.grpc.GrpcAccessibleMemberships;
 import io.saasforge.iam.infrastructure.security.RedisLoginProtection;
 import java.security.SecureRandom;
 import java.time.Clock;
@@ -23,6 +26,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.grpc.client.GrpcChannelFactory;
 import tools.jackson.databind.ObjectMapper;
 
 @Configuration(proxyBeanMethods = false)
@@ -83,27 +87,37 @@ public class AuthenticationConfiguration {
     }
 
     @Bean
-    PlatformLoginSessionService platformLoginSessionService(
+    LoginSessionService loginSessionService(
             PlatformRoleAssignmentRepository platformRoles,
             RefreshTokenFamilyRepository refreshTokenFamilies,
             AccessTokenIssuanceRepository accessTokenIssuances,
             OutboxEventRepository outboxEvents,
             SessionStartedEventFactory eventFactory) {
-        return new PlatformLoginSessionService(
+        return new LoginSessionService(
                 platformRoles, refreshTokenFamilies, accessTokenIssuances, outboxEvents, eventFactory);
     }
 
     @Bean
-    PlatformLoginService platformLoginService(
+    @ConditionalOnMissingBean(AccessibleMemberships.class)
+    AccessibleMemberships accessibleMemberships(
+            GrpcChannelFactory channels,
+            @Value("${saasforge.iam.tenant-access-grpc-target:tenant-access}") String target) {
+        return new GrpcAccessibleMemberships(
+                AccessibleMembershipQueryServiceGrpc.newBlockingStub(channels.createChannel(target)));
+    }
+
+    @Bean
+    PasswordLoginService passwordLoginService(
             IdentityRepository identities,
             PlatformRoleAssignmentRepository platformRoles,
+            AccessibleMemberships accessibleMemberships,
             LoginProtection loginProtection,
             PasswordVerifier passwordVerifier,
             UserAccessTokenIssuer accessTokenIssuer,
             RefreshTokenIssuer refreshTokenIssuer,
-            PlatformLoginSessionService sessionService,
+            LoginSessionService sessionService,
             Clock clock) {
-        return new PlatformLoginService(identities, platformRoles, loginProtection, passwordVerifier,
+        return new PasswordLoginService(identities, platformRoles, accessibleMemberships, loginProtection, passwordVerifier,
                 accessTokenIssuer, refreshTokenIssuer, sessionService, clock);
     }
 }

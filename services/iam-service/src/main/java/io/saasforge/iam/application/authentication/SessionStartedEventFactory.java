@@ -2,6 +2,7 @@ package io.saasforge.iam.application.authentication;
 
 import io.saasforge.iam.domain.outbox.OutboxEvent;
 import io.saasforge.iam.domain.session.RefreshTokenFamily;
+import io.saasforge.iam.domain.session.RefreshTokenFamilyPurpose;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
@@ -29,8 +30,15 @@ public final class SessionStartedEventFactory {
         data.put("familyId", family.id().toString());
         data.put("identityId", family.identityId().toString());
         data.put("purpose", family.purpose().name());
-        data.put("contextType", "PLATFORM");
-        data.put("result", "ACCESS_TOKEN_ISSUED");
+        data.put("contextType", switch (family.purpose()) {
+            case USER_PLATFORM, INITIAL_PASSWORD_CHANGE -> "PLATFORM";
+            case USER_TENANT, USER_TENANT_SELECTION -> "TENANT";
+        });
+        data.put("result", switch (family.purpose()) {
+            case USER_TENANT_SELECTION -> "CONTEXT_SELECTION_REQUIRED";
+            case INITIAL_PASSWORD_CHANGE -> "PASSWORD_CHANGE_REQUIRED";
+            case USER_PLATFORM, USER_TENANT -> "ACCESS_TOKEN_ISSUED";
+        });
         data.put("occurredAt", eventTime.toString());
 
         Map<String, Object> snapshot = new LinkedHashMap<>();

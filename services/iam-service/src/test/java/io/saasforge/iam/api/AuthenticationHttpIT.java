@@ -11,6 +11,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import io.saasforge.iam.application.signing.ActiveSigningKeyResolver;
+import io.grpc.ManagedChannel;
+import io.grpc.Server;
+import io.grpc.Status;
+import io.grpc.inprocess.InProcessChannelBuilder;
+import io.grpc.inprocess.InProcessServerBuilder;
+import io.grpc.stub.StreamObserver;
+import io.saasforge.contracts.tenantaccess.membership.v1.AccessibleMembershipQueryServiceGrpc;
+import io.saasforge.contracts.tenantaccess.membership.v1.ListAccessibleMembershipsRequest;
+import io.saasforge.contracts.tenantaccess.membership.v1.ListAccessibleMembershipsResponse;
+import io.saasforge.iam.application.authentication.AccessibleMemberships;
 import io.saasforge.iam.application.signing.JwtSigningPort;
 import io.saasforge.iam.application.signing.JwtSigningService;
 import io.saasforge.iam.config.AuthenticationConfiguration;
@@ -23,6 +33,7 @@ import io.saasforge.iam.domain.identity.PasswordCredential;
 import io.saasforge.iam.domain.signing.SigningKeyRepository;
 import io.saasforge.iam.infrastructure.messaging.OutboxPublisher;
 import io.saasforge.iam.infrastructure.persistence.MyBatisIdentityRepository;
+import io.saasforge.iam.infrastructure.grpc.GrpcAccessibleMemberships;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -37,6 +48,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.sql.DataSource;
@@ -68,6 +80,8 @@ import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
+import org.springframework.http.converter.HttpMessageConverter;
+import org.springframework.http.converter.json.JacksonJsonHttpMessageConverter;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -85,6 +99,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -93,7 +108,9 @@ import org.testcontainers.kafka.KafkaContainer;
 import org.testcontainers.utility.DockerImageName;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 @Testcontainers
 @SpringJUnitConfig(AuthenticationHttpIT.TestConfiguration.class)
@@ -115,6 +132,10 @@ class AuthenticationHttpIT {
     private static final String TRACE_ID = "0123456789abcdef0123456789abcdef";
     private static final Pattern COOKIE_VALUE = Pattern.compile("^__Host-sf_refresh=([^;]+)");
     private static final Path REPOSITORY_ROOT = repositoryRoot();
+    private static final Map<UUID, List<io.saasforge.contracts.tenantaccess.membership.v1.AccessibleMembership>>
+            ACCESSIBLE_MEMBERSHIPS = new ConcurrentHashMap<>();
+    private static final Set<UUID> TENANT_ACCESS_FAILURES = ConcurrentHashMap.newKeySet();
+    private static final ManagedChannel TENANT_ACCESS_CHANNEL;
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(DockerImageName.parse("postgres:18"))
@@ -147,6 +168,17 @@ class AuthenticationHttpIT {
         REDIS.start();
         KAFKA.start();
         migrateAndSeedSigningKey();
+        try {
+            String serverName = InProcessServerBuilder.generateName();
+            Server ignored = InProcessServerBuilder.forName(serverName)
+                    .directExecutor()
+                    .addService(new TenantAccessAuthority())
+                    .build()
+                    .start();
+            TENANT_ACCESS_CHANNEL = InProcessChannelBuilder.forName(serverName).directExecutor().build();
+        } catch (Exception exception) {
+            throw new ExceptionInInitializerError(exception);
+        }
     }
 
     @Autowired
@@ -175,6 +207,8 @@ class AuthenticationHttpIT {
         if (keys != null && !keys.isEmpty()) {
             redis.delete(keys);
         }
+        ACCESSIBLE_MEMBERSHIPS.clear();
+        TENANT_ACCESS_FAILURES.clear();
     }
 
     @Test
@@ -315,6 +349,133 @@ class AuthenticationHttpIT {
 
     @Test
     @Order(5)
+    void defaultTenantLoginWithOneMembershipIssuesPairedClaimsAndTenantSession() throws Exception {
+        TestUser user = createUser("single-tenant@example.test", "correct-password", false, Credential.REGULAR);
+        UUID membershipId = UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4c90");
+        UUID tenantId = UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4c91");
+        accessibleMemberships(user.identity().id(), membership(membershipId, tenantId, "唯一租户"));
+
+        MvcResult response = loginWithoutContext("single-tenant@example.test", "correct-password")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.contextState").value("ACCESS_TOKEN_ISSUED"))
+                .andExpect(header().exists("Set-Cookie"))
+                .andReturn();
+
+        JsonNode claims = tokenClaims(response);
+        assertEquals(Set.of("iss", "aud", "iat", "exp", "identityId", "membershipId", "tenantId", "jti"),
+                claims.propertyNames());
+        assertEquals(membershipId.toString(), claims.get("membershipId").asString());
+        assertEquals(tenantId.toString(), claims.get("tenantId").asString());
+        Map<String, Object> facts = jdbc.queryForMap("""
+                SELECT family.family_purpose, family.membership_id, family.tenant_id,
+                       issuance.membership_id AS issuance_membership_id,
+                       issuance.tenant_id AS issuance_tenant_id
+                FROM iam_refresh_token_families family
+                JOIN iam_access_token_issuances issuance ON issuance.family_id = family.id
+                WHERE family.identity_id = ?
+                """, user.identity().id());
+        assertEquals("USER_TENANT", facts.get("family_purpose"));
+        assertEquals(membershipId, facts.get("membership_id"));
+        assertEquals(tenantId, facts.get("tenant_id"));
+        assertEquals(membershipId, facts.get("issuance_membership_id"));
+        assertEquals(tenantId, facts.get("issuance_tenant_id"));
+    }
+
+    @Test
+    @Order(6)
+    void multipleMembershipsCreateOnlySelectionSessionAndReturnStableCandidates() throws Exception {
+        TestUser user = createUser("multi-tenant@example.test", "correct-password", true, Credential.REGULAR);
+        UUID alphaMembership = UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4ca0");
+        UUID betaMembership = UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4ca1");
+        accessibleMemberships(user.identity().id(),
+                membership(betaMembership, UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4cb1"), "Beta"),
+                membership(alphaMembership, UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4cb0"), "Alpha"));
+
+        login("multi-tenant@example.test", "correct-password", "TENANT")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.contextState").value("CONTEXT_SELECTION_REQUIRED"))
+                .andExpect(jsonPath("$.memberships.length()").value(2))
+                .andExpect(jsonPath("$.memberships[0].membershipId").value(alphaMembership.toString()))
+                .andExpect(jsonPath("$.memberships[1].membershipId").value(betaMembership.toString()))
+                .andExpect(jsonPath("$.accessToken").doesNotExist())
+                .andExpect(header().exists("Set-Cookie"));
+
+        assertEquals("USER_TENANT_SELECTION", jdbc.queryForObject(
+                "SELECT family_purpose FROM iam_refresh_token_families WHERE identity_id = ?",
+                String.class, user.identity().id()));
+        assertEquals(0, jdbc.queryForObject("""
+                SELECT count(*) FROM iam_access_token_issuances issuance
+                JOIN iam_refresh_token_families family ON family.id = issuance.family_id
+                WHERE family.identity_id = ?
+                """, Integer.class, user.identity().id()));
+        String event = jdbc.queryForObject(
+                "SELECT event_snapshot::TEXT FROM iam_outbox_events WHERE ordering_key = ?",
+                String.class, user.identity().id().toString());
+        assertTrue(event.contains("\"purpose\": \"USER_TENANT_SELECTION\""));
+        assertTrue(event.contains("\"contextType\": \"TENANT\""));
+        assertTrue(event.contains("\"result\": \"CONTEXT_SELECTION_REQUIRED\""));
+    }
+
+    @Test
+    @Order(7)
+    void overOneHundredMembershipsRejectWithoutAuthenticationState() throws Exception {
+        TestUser user = createUser("membership-overflow@example.test", "correct-password", false, Credential.REGULAR);
+        List<io.saasforge.contracts.tenantaccess.membership.v1.AccessibleMembership> memberships =
+                java.util.stream.IntStream.range(0, 101)
+                        .mapToObj(index -> membership(
+                                uuidV7(10_000 + index), uuidV7(20_000 + index), "Tenant " + index))
+                        .toList();
+        ACCESSIBLE_MEMBERSHIPS.put(user.identity().id(), memberships);
+
+        login("membership-overflow@example.test", "correct-password", "TENANT")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("ACCESSIBLE_MEMBERSHIP_LIMIT_EXCEEDED"))
+                .andExpect(header().doesNotExist("Set-Cookie"));
+        assertEquals(0, sessionFactCount(user.identity().id()));
+    }
+
+    @Test
+    @Order(8)
+    void tenantAccessFailureIsRetryableAndCreatesNoAuthenticationState() throws Exception {
+        TestUser user = createUser("tenant-access-down@example.test", "correct-password", false, Credential.REGULAR);
+        TENANT_ACCESS_FAILURES.add(user.identity().id());
+
+        login("tenant-access-down@example.test", "correct-password", "TENANT")
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("TENANT_ACCESS_UNAVAILABLE"))
+                .andExpect(header().doesNotExist("Set-Cookie"));
+        assertEquals(0, sessionFactCount(user.identity().id()));
+    }
+
+    @Test
+    @Order(9)
+    void loginRequestRejectsCallerSuppliedTenantOrMembershipIdentifiers() throws Exception {
+        TestUser user = createUser("forged-context@example.test", "correct-password", false, Credential.REGULAR);
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                        .header("X-SF-CSRF", "csrf-test")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"forged-context@example.test","password":"correct-password",
+                                 "tenantId":"0198c9d5-0f25-7b21-8d67-31c8652d4cc0"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(header().doesNotExist("Set-Cookie"));
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                        .header("X-SF-CSRF", "csrf-test")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"forged-context@example.test","password":"correct-password",
+                                 "membershipId":"0198c9d5-0f25-7b21-8d67-31c8652d4cc1"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(header().doesNotExist("Set-Cookie"));
+        assertEquals(0, sessionFactCount(user.identity().id()));
+    }
+
+    @Test
+    @Order(10)
     void redisUnavailabilityFailsClosedThroughPublicContract() throws Exception {
         REDIS.stop();
         mockMvc.perform(post("/api/v1/auth/login")
@@ -338,6 +499,40 @@ class AuthenticationHttpIT {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(new ObjectMapper().writeValueAsBytes(Map.of(
                         "email", email, "password", password, "contextType", contextType))));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions loginWithoutContext(String email, String password)
+            throws Exception {
+        return mockMvc.perform(post("/api/v1/auth/login")
+                .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                .header("X-SF-CSRF", "csrf-test")
+                .header("traceparent", "00-" + TRACE_ID + "-0123456789abcdef-01")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(new ObjectMapper().writeValueAsBytes(Map.of("email", email, "password", password))));
+    }
+
+    private static JsonNode tokenClaims(MvcResult response) {
+        String token = json(response.getResponse().getContentAsByteArray()).get("accessToken").asString();
+        return json(Base64.getUrlDecoder().decode(token.split("\\.")[1]));
+    }
+
+    private static void accessibleMemberships(
+            UUID identityId,
+            io.saasforge.contracts.tenantaccess.membership.v1.AccessibleMembership... memberships) {
+        ACCESSIBLE_MEMBERSHIPS.put(identityId, List.of(memberships));
+    }
+
+    private static io.saasforge.contracts.tenantaccess.membership.v1.AccessibleMembership membership(
+            UUID membershipId, UUID tenantId, String displayName) {
+        return io.saasforge.contracts.tenantaccess.membership.v1.AccessibleMembership.newBuilder()
+                .setMembershipId(membershipId.toString())
+                .setTenantId(tenantId.toString())
+                .setTenantDisplayName(displayName)
+                .build();
+    }
+
+    private static UUID uuidV7(long suffix) {
+        return UUID.fromString(String.format("0198c9d5-0f25-7000-8000-%012x", suffix));
     }
 
     private void assertAuthenticationFailed(MvcResult result) {
@@ -435,6 +630,23 @@ class AuthenticationHttpIT {
 
     record TestUser(Identity identity) { }
 
+    static final class TenantAccessAuthority extends AccessibleMembershipQueryServiceGrpc.AccessibleMembershipQueryServiceImplBase {
+        @Override
+        public void listAccessibleMemberships(
+                ListAccessibleMembershipsRequest request,
+                StreamObserver<ListAccessibleMembershipsResponse> responseObserver) {
+            UUID identityId = UUID.fromString(request.getIdentityId());
+            if (TENANT_ACCESS_FAILURES.contains(identityId)) {
+                responseObserver.onError(Status.UNAVAILABLE.asRuntimeException());
+                return;
+            }
+            responseObserver.onNext(ListAccessibleMembershipsResponse.newBuilder()
+                    .addAllMemberships(ACCESSIBLE_MEMBERSHIPS.getOrDefault(identityId, List.of()))
+                    .build());
+            responseObserver.onCompleted();
+        }
+    }
+
     @Configuration(proxyBeanMethods = false)
     @EnableWebMvc
     @EnableScheduling
@@ -501,8 +713,27 @@ class AuthenticationHttpIT {
         }
 
         @Bean
-        ObjectMapper objectMapper() {
-            return new ObjectMapper();
+        JsonMapper objectMapper() {
+            return JsonMapper.builder()
+                    .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                    .build();
+        }
+
+        @Bean
+        WebMvcConfigurer strictJsonWebMvc(JsonMapper objectMapper) {
+            return new WebMvcConfigurer() {
+                @Override
+                public void extendMessageConverters(List<HttpMessageConverter<?>> converters) {
+                    converters.removeIf(JacksonJsonHttpMessageConverter.class::isInstance);
+                    converters.add(0, new JacksonJsonHttpMessageConverter(objectMapper));
+                }
+            };
+        }
+
+        @Bean
+        AccessibleMemberships accessibleMemberships() {
+            return new GrpcAccessibleMemberships(
+                    AccessibleMembershipQueryServiceGrpc.newBlockingStub(TENANT_ACCESS_CHANNEL));
         }
 
         @Bean
