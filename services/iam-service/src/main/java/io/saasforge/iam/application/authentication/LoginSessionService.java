@@ -7,8 +7,10 @@ import io.saasforge.iam.domain.session.AccessTokenIssuanceRepository;
 import io.saasforge.iam.domain.session.RefreshTokenFamily;
 import io.saasforge.iam.domain.session.RefreshTokenFamilyPurpose;
 import io.saasforge.iam.domain.session.RefreshTokenFamilyRepository;
+import io.saasforge.iam.domain.session.RefreshTokenConsumption;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.OptionalLong;
 import java.util.UUID;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -77,6 +79,32 @@ public class LoginSessionService {
                 refreshToken.digest(), startedAt);
         outboxEvents.append(eventFactory.create(family, startedAt, traceId));
         return cookieMaxAge(startedAt, family);
+    }
+
+    /** 旧选择 Token 的消费、Family purpose 转换和 Access Token 签发事实必须原子提交。 */
+    @Transactional
+    public OptionalLong completeSelection(
+            RefreshTokenMaterial presentedToken,
+            RefreshTokenMaterial nextToken,
+            UUID membershipId,
+            UUID tenantId,
+            IssuedAccessToken accessToken,
+            Instant selectedAt) {
+        var selection = refreshTokenFamilies.selectTenantContext(
+                presentedToken.digest(), nextToken.digest(), membershipId, tenantId, selectedAt);
+        if (selection.status() != RefreshTokenConsumption.Status.CONSUMED) {
+            return OptionalLong.empty();
+        }
+        RefreshTokenFamily family = selection.family();
+        accessTokenIssuances.create(new AccessTokenIssuance(
+                accessToken.jti(), family.id(), family.identityId(), membershipId, tenantId, accessToken.kid(),
+                accessToken.issuedAt(), accessToken.expiresAt()));
+        return OptionalLong.of(cookieMaxAge(selectedAt, family));
+    }
+
+    @Transactional
+    public void rejectSelection(RefreshTokenMaterial presentedToken, Instant rejectedAt) {
+        refreshTokenFamilies.rejectSelection(presentedToken.digest(), rejectedAt);
     }
 
     private long cookieMaxAge(Instant startedAt, RefreshTokenFamily family) {

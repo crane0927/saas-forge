@@ -7,6 +7,7 @@ public record RefreshTokenConsumption(Status status, RefreshTokenFamily family) 
         REPLAYED,
         EXPIRED,
         REVOKED,
+        PURPOSE_MISMATCH,
         NOT_FOUND
     }
 }

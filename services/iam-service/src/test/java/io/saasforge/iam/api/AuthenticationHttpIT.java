@@ -34,6 +34,7 @@ import io.saasforge.iam.domain.signing.SigningKeyRepository;
 import io.saasforge.iam.infrastructure.messaging.OutboxPublisher;
 import io.saasforge.iam.infrastructure.persistence.MyBatisIdentityRepository;
 import io.saasforge.iam.infrastructure.grpc.GrpcAccessibleMemberships;
+import jakarta.servlet.http.Cookie;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -476,6 +477,170 @@ class AuthenticationHttpIT {
 
     @Test
     @Order(10)
+    void contextSelectionRevalidatesMembershipThenAtomicallyRotatesIntoTenantSession() throws Exception {
+        TestUser user = createUser("selection-success@example.test", "correct-password", false, Credential.REGULAR);
+        UUID selectedMembership = uuidV7(30_001);
+        UUID selectedTenant = uuidV7(30_002);
+        UUID otherMembership = uuidV7(30_003);
+        accessibleMemberships(user.identity().id(),
+                membership(selectedMembership, selectedTenant, "Alpha"),
+                membership(otherMembership, uuidV7(30_004), "Beta"));
+        MvcResult pending = login("selection-success@example.test", "correct-password", "TENANT").andReturn();
+        String selectionToken = refreshToken(pending);
+
+        MvcResult selected = selectContext(selectionToken, selectedMembership)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.contextState").value("ACCESS_TOKEN_ISSUED"))
+                .andExpect(jsonPath("$.tokenType").value("Bearer"))
+                .andExpect(header().exists("Set-Cookie"))
+                .andReturn();
+
+        JsonNode claims = tokenClaims(selected);
+        assertEquals(selectedMembership.toString(), claims.get("membershipId").asString());
+        assertEquals(selectedTenant.toString(), claims.get("tenantId").asString());
+        String rotatedToken = refreshToken(selected);
+        assertFalse(selectionToken.equals(rotatedToken));
+        Map<String, Object> family = jdbc.queryForMap("""
+                SELECT family_purpose, membership_id, tenant_id, revoked_at
+                FROM iam_refresh_token_families WHERE identity_id = ?
+                """, user.identity().id());
+        assertEquals("USER_TENANT", family.get("family_purpose"));
+        assertEquals(selectedMembership, family.get("membership_id"));
+        assertEquals(selectedTenant, family.get("tenant_id"));
+        assertEquals(null, family.get("revoked_at"));
+        assertEquals(1, jdbc.queryForObject("""
+                SELECT count(*) FROM iam_refresh_tokens token
+                JOIN iam_refresh_token_families family ON family.id = token.family_id
+                WHERE family.identity_id = ? AND token.consumed_at IS NOT NULL
+                """, Integer.class, user.identity().id()));
+        assertEquals(1, jdbc.queryForObject("""
+                SELECT count(*) FROM iam_refresh_tokens token
+                JOIN iam_refresh_token_families family ON family.id = token.family_id
+                WHERE family.identity_id = ? AND token.consumed_at IS NULL
+                """, Integer.class, user.identity().id()));
+        assertEquals(1, jdbc.queryForObject("""
+                SELECT count(*) FROM iam_access_token_issuances issuance
+                JOIN iam_refresh_token_families family ON family.id = issuance.family_id
+                WHERE family.identity_id = ?
+                """, Integer.class, user.identity().id()));
+
+        selectContext(selectionToken, selectedMembership)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("CONTEXT_SELECTION_SESSION_INVALID"));
+        assertEquals(1, jdbc.queryForObject("""
+                SELECT count(*) FROM iam_access_token_issuances issuance
+                JOIN iam_refresh_token_families family ON family.id = issuance.family_id
+                WHERE family.identity_id = ?
+                """, Integer.class, user.identity().id()));
+    }
+
+    @Test
+    @Order(11)
+    void inaccessibleSelectionIsRejectedAndConsumesTheSelectionSession() throws Exception {
+        TestUser user = createUser("selection-rejected@example.test", "correct-password", false, Credential.REGULAR);
+        UUID staleMembership = uuidV7(31_001);
+        UUID currentMembership = uuidV7(31_002);
+        accessibleMemberships(user.identity().id(),
+                membership(staleMembership, uuidV7(31_003), "Alpha"),
+                membership(currentMembership, uuidV7(31_004), "Beta"));
+        String selectionToken = refreshToken(
+                login("selection-rejected@example.test", "correct-password", "TENANT").andReturn());
+        accessibleMemberships(user.identity().id(), membership(currentMembership, uuidV7(31_004), "Beta"));
+
+        selectContext(selectionToken, staleMembership)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("CONTEXT_SELECTION_REJECTED"))
+                .andExpect(header().string("Set-Cookie", org.hamcrest.Matchers.containsString("Max-Age=0")));
+        Map<String, Object> facts = jdbc.queryForMap("""
+                SELECT family.revoked_at, token.consumed_at
+                FROM iam_refresh_token_families family
+                JOIN iam_refresh_tokens token ON token.family_id = family.id
+                WHERE family.identity_id = ?
+                """, user.identity().id());
+        assertNotNull(facts.get("revoked_at"));
+        assertNotNull(facts.get("consumed_at"));
+        assertEquals(0, jdbc.queryForObject("""
+                SELECT count(*) FROM iam_access_token_issuances issuance
+                JOIN iam_refresh_token_families family ON family.id = issuance.family_id
+                WHERE family.identity_id = ?
+                """, Integer.class, user.identity().id()));
+    }
+
+    @Test
+    @Order(12)
+    void tenantAccessFailureDoesNotConsumeSelectionAndTheSameCookieCanRetry() throws Exception {
+        TestUser user = createUser("selection-retry@example.test", "correct-password", false, Credential.REGULAR);
+        UUID selectedMembership = uuidV7(32_001);
+        UUID selectedTenant = uuidV7(32_002);
+        accessibleMemberships(user.identity().id(),
+                membership(selectedMembership, selectedTenant, "Alpha"),
+                membership(uuidV7(32_003), uuidV7(32_004), "Beta"));
+        String selectionToken = refreshToken(
+                login("selection-retry@example.test", "correct-password", "TENANT").andReturn());
+        TENANT_ACCESS_FAILURES.add(user.identity().id());
+
+        selectContext(selectionToken, selectedMembership)
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("TENANT_ACCESS_UNAVAILABLE"))
+                .andExpect(header().doesNotExist("Set-Cookie"));
+        Map<String, Object> pendingFacts = jdbc.queryForMap("""
+                SELECT family.family_purpose, family.revoked_at, token.consumed_at
+                FROM iam_refresh_token_families family
+                JOIN iam_refresh_tokens token ON token.family_id = family.id
+                WHERE family.identity_id = ?
+                """, user.identity().id());
+        assertEquals("USER_TENANT_SELECTION", pendingFacts.get("family_purpose"));
+        assertEquals(null, pendingFacts.get("revoked_at"));
+        assertEquals(null, pendingFacts.get("consumed_at"));
+
+        TENANT_ACCESS_FAILURES.remove(user.identity().id());
+        selectContext(selectionToken, selectedMembership).andExpect(status().isOk());
+    }
+
+    @Test
+    @Order(13)
+    void expiredOrWrongPurposeCookieCannotCreateTenantSession() throws Exception {
+        TestUser expired = createUser("selection-expired@example.test", "correct-password", false, Credential.REGULAR);
+        UUID membershipId = uuidV7(33_001);
+        accessibleMemberships(expired.identity().id(),
+                membership(membershipId, uuidV7(33_002), "Alpha"),
+                membership(uuidV7(33_003), uuidV7(33_004), "Beta"));
+        String expiredToken = refreshToken(
+                login("selection-expired@example.test", "correct-password", "TENANT").andReturn());
+        jdbc.update("UPDATE iam_refresh_token_families SET last_used_at = now() - interval '31 minutes' WHERE identity_id = ?",
+                expired.identity().id());
+        selectContext(expiredToken, membershipId)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("CONTEXT_SELECTION_SESSION_INVALID"));
+
+        TestUser tenant = createUser("selection-purpose@example.test", "correct-password", false, Credential.REGULAR);
+        accessibleMemberships(tenant.identity().id(), membership(membershipId, uuidV7(33_002), "Alpha"));
+        String tenantToken = refreshToken(
+                login("selection-purpose@example.test", "correct-password", "TENANT").andReturn());
+        selectContext(tenantToken, membershipId)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("CONTEXT_SELECTION_SESSION_INVALID"));
+        assertEquals("USER_TENANT", jdbc.queryForObject(
+                "SELECT family_purpose FROM iam_refresh_token_families WHERE identity_id = ?",
+                String.class, tenant.identity().id()));
+    }
+
+    @Test
+    @Order(14)
+    void contextSelectionBodyRejectsFieldsOtherThanMembershipId() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/context-selections")
+                        .header("X-SF-CSRF", "csrf-test")
+                        .cookie(new Cookie("__Host-sf_refresh", "not-a-token"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"membershipId":"0198c9d5-0f25-7b21-8d67-31c8652d4cc1",
+                                 "tenantId":"0198c9d5-0f25-7b21-8d67-31c8652d4cc2"}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @Order(20)
     void redisUnavailabilityFailsClosedThroughPublicContract() throws Exception {
         REDIS.stop();
         mockMvc.perform(post("/api/v1/auth/login")
@@ -488,6 +653,23 @@ class AuthenticationHttpIT {
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value("AUTHENTICATION_PROTECTION_UNAVAILABLE"))
                 .andExpect(header().doesNotExist("Set-Cookie"));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions selectContext(String refreshToken, UUID membershipId)
+            throws Exception {
+        return mockMvc.perform(post("/api/v1/auth/context-selections")
+                .header("X-SF-CSRF", "csrf-test")
+                .cookie(new Cookie("__Host-sf_refresh", refreshToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(new ObjectMapper().writeValueAsBytes(Map.of("membershipId", membershipId))));
+    }
+
+    private static String refreshToken(MvcResult response) {
+        String setCookie = response.getResponse().getHeader("Set-Cookie");
+        assertNotNull(setCookie);
+        Matcher matcher = COOKIE_VALUE.matcher(setCookie);
+        assertTrue(matcher.find());
+        return matcher.group(1);
     }
 
     private org.springframework.test.web.servlet.ResultActions login(String email, String password, String contextType)

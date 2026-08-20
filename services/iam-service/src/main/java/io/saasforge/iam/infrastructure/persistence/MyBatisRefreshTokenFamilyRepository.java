@@ -37,6 +37,17 @@ public class MyBatisRefreshTokenFamilyRepository implements RefreshTokenFamilyRe
     }
 
     @Override
+    public Optional<RefreshTokenFamily> findUsableSelectionByTokenDigest(Sha256Digest tokenDigest, Instant at) {
+        RefreshTokenRow token = mapper.findTokenByDigest(tokenDigest.value());
+        if (token == null || token.getConsumedAt() != null) {
+            return Optional.empty();
+        }
+        return findById(token.getFamilyId())
+                .filter(family -> family.purpose() == RefreshTokenFamilyPurpose.USER_TENANT_SELECTION)
+                .filter(family -> family.isUsableAt(at));
+    }
+
+    @Override
     @Transactional
     public RefreshTokenConsumption consume(Sha256Digest tokenDigest, Instant at) {
         return consumeLocked(tokenDigest, null, null, null, at);
@@ -51,6 +62,72 @@ public class MyBatisRefreshTokenFamilyRepository implements RefreshTokenFamilyRe
             UUID tenantId,
             Instant at) {
         return consumeLocked(presentedDigest, nextDigest, membershipId, tenantId, at);
+    }
+
+    @Override
+    @Transactional
+    public RefreshTokenConsumption selectTenantContext(
+            Sha256Digest presentedDigest,
+            Sha256Digest nextDigest,
+            UUID membershipId,
+            UUID tenantId,
+            Instant at) {
+        RefreshTokenRow token = mapper.lockTokenByDigest(presentedDigest.value());
+        if (token == null) {
+            return new RefreshTokenConsumption(RefreshTokenConsumption.Status.NOT_FOUND, null);
+        }
+        RefreshTokenFamily family = toDomain(mapper.lockFamilyById(token.getFamilyId()));
+        RefreshTokenConsumption terminal = terminalSelectionState(token, family, at);
+        if (terminal != null) {
+            return terminal;
+        }
+        if (mapper.markTokenConsumed(token.getId(), IamTime.asOffsetDateTime(at)) != 1) {
+            throw new IllegalStateException("Refresh Token 消费并发冲突");
+        }
+        RefreshTokenFamily selected = family.selectTenant(membershipId, tenantId, at);
+        mapper.updateFamily(toRow(selected));
+        mapper.insertToken(tokenRow(selected.id(), nextDigest, at));
+        return new RefreshTokenConsumption(RefreshTokenConsumption.Status.CONSUMED, selected);
+    }
+
+    @Override
+    @Transactional
+    public RefreshTokenConsumption rejectSelection(Sha256Digest presentedDigest, Instant at) {
+        RefreshTokenRow token = mapper.lockTokenByDigest(presentedDigest.value());
+        if (token == null) {
+            return new RefreshTokenConsumption(RefreshTokenConsumption.Status.NOT_FOUND, null);
+        }
+        RefreshTokenFamily family = toDomain(mapper.lockFamilyById(token.getFamilyId()));
+        RefreshTokenConsumption terminal = terminalSelectionState(token, family, at);
+        if (terminal != null) {
+            return terminal;
+        }
+        if (mapper.markTokenConsumed(token.getId(), IamTime.asOffsetDateTime(at)) != 1) {
+            throw new IllegalStateException("Refresh Token 消费并发冲突");
+        }
+        RefreshTokenFamily revoked = family.revoke(at);
+        mapper.updateFamily(toRow(revoked));
+        return new RefreshTokenConsumption(RefreshTokenConsumption.Status.CONSUMED, revoked);
+    }
+
+    private RefreshTokenConsumption terminalSelectionState(
+            RefreshTokenRow token, RefreshTokenFamily family, Instant at) {
+        if (token.getConsumedAt() != null) {
+            Instant revokedAt = at.isBefore(family.lastUsedAt()) ? family.lastUsedAt() : at;
+            RefreshTokenFamily revoked = family.revoke(revokedAt);
+            mapper.updateFamily(toRow(revoked));
+            return new RefreshTokenConsumption(RefreshTokenConsumption.Status.REPLAYED, revoked);
+        }
+        if (family.revokedAt() != null) {
+            return new RefreshTokenConsumption(RefreshTokenConsumption.Status.REVOKED, family);
+        }
+        if (!family.isUsableAt(at)) {
+            return new RefreshTokenConsumption(RefreshTokenConsumption.Status.EXPIRED, family);
+        }
+        if (family.purpose() != RefreshTokenFamilyPurpose.USER_TENANT_SELECTION) {
+            return new RefreshTokenConsumption(RefreshTokenConsumption.Status.PURPOSE_MISMATCH, family);
+        }
+        return null;
     }
 
     private RefreshTokenConsumption consumeLocked(

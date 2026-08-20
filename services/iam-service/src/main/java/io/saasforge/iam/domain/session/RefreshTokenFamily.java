@@ -97,6 +97,16 @@ public final class RefreshTokenFamily {
                 id, identityId, purpose, nextMembershipId, nextTenantId, usedAt, absoluteExpiresAt, revokedAt);
     }
 
+    public RefreshTokenFamily selectTenant(UUID selectedMembershipId, UUID selectedTenantId, Instant selectedAt) {
+        if (purpose != RefreshTokenFamilyPurpose.USER_TENANT_SELECTION) {
+            throw new IllegalStateException("只有 Tenant 选择会话可以完成上下文选择");
+        }
+        requireUsableAt(selectedAt);
+        return new RefreshTokenFamily(
+                id, identityId, RefreshTokenFamilyPurpose.USER_TENANT,
+                selectedMembershipId, selectedTenantId, selectedAt, absoluteExpiresAt, revokedAt);
+    }
+
     public RefreshTokenFamily revoke(Instant at) {
         if (at == null) {
             throw new IllegalArgumentException("撤销时间不能为空");

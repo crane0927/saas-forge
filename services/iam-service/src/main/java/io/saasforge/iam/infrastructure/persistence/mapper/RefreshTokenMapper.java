@@ -14,6 +14,8 @@ public interface RefreshTokenMapper {
 
     RefreshTokenFamilyRow findFamilyById(@Param("familyId") UUID familyId);
 
+    RefreshTokenRow findTokenByDigest(@Param("tokenDigest") byte[] tokenDigest);
+
     RefreshTokenRow lockTokenByDigest(@Param("tokenDigest") byte[] tokenDigest);
 
     RefreshTokenFamilyRow lockFamilyById(@Param("familyId") UUID familyId);

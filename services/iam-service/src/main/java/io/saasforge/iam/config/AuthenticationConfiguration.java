@@ -2,6 +2,7 @@ package io.saasforge.iam.config;
 
 import io.saasforge.contracts.tenantaccess.membership.v1.AccessibleMembershipQueryServiceGrpc;
 import io.saasforge.iam.application.authentication.AccessibleMemberships;
+import io.saasforge.iam.application.authentication.ContextSelectionService;
 import io.saasforge.iam.application.authentication.LoginProtection;
 import io.saasforge.iam.application.authentication.LoginSessionService;
 import io.saasforge.iam.application.authentication.PasswordVerifier;
@@ -119,5 +120,18 @@ public class AuthenticationConfiguration {
             Clock clock) {
         return new PasswordLoginService(identities, platformRoles, accessibleMemberships, loginProtection, passwordVerifier,
                 accessTokenIssuer, refreshTokenIssuer, sessionService, clock);
+    }
+
+    @Bean
+    ContextSelectionService contextSelectionService(
+            AccessibleMemberships accessibleMemberships,
+            RefreshTokenFamilyRepository refreshTokenFamilies,
+            UserAccessTokenIssuer accessTokenIssuer,
+            RefreshTokenIssuer refreshTokenIssuer,
+            LoginSessionService sessionService,
+            Clock clock) {
+        return new ContextSelectionService(
+                accessibleMemberships, refreshTokenFamilies, accessTokenIssuer,
+                refreshTokenIssuer, sessionService, clock);
     }
 }

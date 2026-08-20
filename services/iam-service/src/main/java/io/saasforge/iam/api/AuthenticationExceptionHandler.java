@@ -4,6 +4,8 @@ import io.saasforge.iam.application.authentication.AccessContextUnavailableExcep
 import io.saasforge.iam.application.authentication.AccessibleMembershipLimitExceededException;
 import io.saasforge.iam.application.authentication.AuthenticationFailedException;
 import io.saasforge.iam.application.authentication.AuthenticationProtectionUnavailableException;
+import io.saasforge.iam.application.authentication.ContextSelectionRejectedException;
+import io.saasforge.iam.application.authentication.ContextSelectionSessionInvalidException;
 import io.saasforge.iam.application.authentication.TenantAccessUnavailableException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
@@ -11,14 +13,18 @@ import java.security.SecureRandom;
 import java.util.HexFormat;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MissingRequestCookieException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
 public class AuthenticationExceptionHandler {
+    private static final String REFRESH_COOKIE = "__Host-sf_refresh";
     private static final Pattern TRACE_PARENT = Pattern.compile(
             "^[0-9a-f]{2}-((?!0{32})[0-9a-f]{32})-(?!0{16})[0-9a-f]{16}-[0-9a-f]{2}$");
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -57,11 +63,54 @@ public class AuthenticationExceptionHandler {
                 "Tenant Access unavailable", exception.getMessage(), request);
     }
 
+    @ExceptionHandler(ContextSelectionSessionInvalidException.class)
+    ResponseEntity<Problem> contextSelectionSessionInvalid(
+            ContextSelectionSessionInvalidException exception, HttpServletRequest request) {
+        return problemWithClearedRefreshCookie(
+                HttpStatus.UNAUTHORIZED, ContextSelectionSessionInvalidException.CODE,
+                "Context selection session invalid", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(ContextSelectionRejectedException.class)
+    ResponseEntity<Problem> contextSelectionRejected(
+            ContextSelectionRejectedException exception, HttpServletRequest request) {
+        return problemWithClearedRefreshCookie(
+                HttpStatus.FORBIDDEN, ContextSelectionRejectedException.CODE,
+                "Context selection rejected", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(MissingRequestCookieException.class)
+    ResponseEntity<Problem> missingRefreshCookie(
+            MissingRequestCookieException exception, HttpServletRequest request) throws MissingRequestCookieException {
+        if (!REFRESH_COOKIE.equals(exception.getCookieName())) {
+            throw exception;
+        }
+        return problemWithClearedRefreshCookie(
+                HttpStatus.UNAUTHORIZED, ContextSelectionSessionInvalidException.CODE,
+                "Context selection session invalid", "Tenant 上下文选择会话无效或已失效", request);
+    }
+
     private ResponseEntity<Problem> problem(
             HttpStatus status, String code, String title, String detail, HttpServletRequest request) {
         Problem body = new Problem(URI.create("urn:saasforge:problem:" + code.toLowerCase().replace('_', '-')),
                 title, status.value(), code, detail, traceId(request));
         return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(body);
+    }
+
+    private ResponseEntity<Problem> problemWithClearedRefreshCookie(
+            HttpStatus status, String code, String title, String detail, HttpServletRequest request) {
+        Problem body = new Problem(URI.create("urn:saasforge:problem:" + code.toLowerCase().replace('_', '-')),
+                title, status.value(), code, detail, traceId(request));
+        return ResponseEntity.status(status)
+                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .header(HttpHeaders.SET_COOKIE, ResponseCookie.from(REFRESH_COOKIE, "")
+                        .secure(true)
+                        .httpOnly(true)
+                        .sameSite("Strict")
+                        .path("/")
+                        .maxAge(0)
+                        .build().toString())
+                .body(body);
     }
 
     private static String traceId(HttpServletRequest request) {

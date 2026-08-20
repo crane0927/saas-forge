@@ -44,6 +44,12 @@
         WHERE id = #{familyId}
     </select>
 
+    <select id="findTokenByDigest" resultMap="tokenRow">
+        SELECT id, family_id, token_digest, issued_at, consumed_at
+        FROM iam_refresh_tokens
+        WHERE token_digest = #{tokenDigest}
+    </select>
+
     <select id="lockTokenByDigest" resultMap="tokenRow">
         SELECT id, family_id, token_digest, issued_at, consumed_at
         FROM iam_refresh_tokens
