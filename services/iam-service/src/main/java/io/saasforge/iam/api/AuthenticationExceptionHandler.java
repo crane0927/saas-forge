@@ -7,6 +7,9 @@ import io.saasforge.iam.application.authentication.AuthenticationProtectionUnava
 import io.saasforge.iam.application.authentication.ContextSelectionRejectedException;
 import io.saasforge.iam.application.authentication.ContextSelectionSessionInvalidException;
 import io.saasforge.iam.application.authentication.TenantAccessUnavailableException;
+import io.saasforge.iam.application.authentication.PasswordChangeSessionInvalidException;
+import io.saasforge.iam.application.authentication.PasswordCompromisedException;
+import io.saasforge.iam.application.authentication.PasswordPolicyException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
 import java.security.SecureRandom;
@@ -79,14 +82,39 @@ public class AuthenticationExceptionHandler {
                 "Context selection rejected", exception.getMessage(), request);
     }
 
+    @ExceptionHandler(PasswordPolicyException.class)
+    ResponseEntity<Problem> passwordPolicy(PasswordPolicyException exception, HttpServletRequest request) {
+        return problem(HttpStatus.BAD_REQUEST, exception.code(),
+                "Password policy violation", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(PasswordCompromisedException.class)
+    ResponseEntity<Problem> passwordCompromised(
+            PasswordCompromisedException exception, HttpServletRequest request) {
+        return problem(HttpStatus.BAD_REQUEST, PasswordCompromisedException.CODE,
+                "Password compromised", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(PasswordChangeSessionInvalidException.class)
+    ResponseEntity<Problem> passwordChangeSessionInvalid(
+            PasswordChangeSessionInvalidException exception, HttpServletRequest request) {
+        return problemWithClearedRefreshCookie(
+                HttpStatus.UNAUTHORIZED, PasswordChangeSessionInvalidException.CODE,
+                "Password change session invalid", exception.getMessage(), request);
+    }
+
     @ExceptionHandler(MissingRequestCookieException.class)
     ResponseEntity<Problem> missingRefreshCookie(
             MissingRequestCookieException exception, HttpServletRequest request) throws MissingRequestCookieException {
         if (!REFRESH_COOKIE.equals(exception.getCookieName())) {
             throw exception;
         }
-        return problemWithClearedRefreshCookie(
-                HttpStatus.UNAUTHORIZED, ContextSelectionSessionInvalidException.CODE,
+        if (request.getRequestURI().endsWith("/password-changes")) {
+            return problemWithClearedRefreshCookie(
+                    HttpStatus.UNAUTHORIZED, PasswordChangeSessionInvalidException.CODE,
+                    "Password change session invalid", "首次改密会话无效或已失效", request);
+        }
+        return problemWithClearedRefreshCookie(HttpStatus.UNAUTHORIZED, ContextSelectionSessionInvalidException.CODE,
                 "Context selection session invalid", "Tenant 上下文选择会话无效或已失效", request);
     }
 

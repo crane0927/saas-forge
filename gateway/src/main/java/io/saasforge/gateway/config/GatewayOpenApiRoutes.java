@@ -15,6 +15,7 @@ final class GatewayOpenApiRoutes {
 
     private static final List<Route> ROUTES = List.of(
             route("login", HttpMethod.POST, "/api/v1/auth/login", Target.IAM),
+            route("password-change", HttpMethod.POST, "/api/v1/auth/password-changes", Target.IAM),
             route("refreshAccessToken", HttpMethod.POST, "/api/v1/auth/refresh", Target.IAM),
             route("logout", HttpMethod.POST, "/api/v1/auth/logout", Target.IAM),
             route("switchTenantContext", HttpMethod.POST, "/api/v1/auth/tenant-switches", Target.IAM),

@@ -85,6 +85,11 @@ public class MyBatisIdentityRepository implements IdentityRepository {
         return mapper.findCredentialsByIdentityId(identityId).stream().map(MyBatisIdentityRepository::toDomain).toList();
     }
 
+    @Override
+    public Optional<PasswordCredential> findCredential(UUID credentialId) {
+        return Optional.ofNullable(mapper.findCredentialById(credentialId)).map(MyBatisIdentityRepository::toDomain);
+    }
+
     private static IdentityRow toRow(Identity identity) {
         IdentityRow row = new IdentityRow();
         row.setNormalizedEmail(identity.email().value());

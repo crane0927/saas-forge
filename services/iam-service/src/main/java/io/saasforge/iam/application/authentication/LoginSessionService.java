@@ -81,6 +81,22 @@ public class LoginSessionService {
         return cookieMaxAge(startedAt, family);
     }
 
+    @Transactional
+    public long startInitialPasswordChangeSession(
+            UUID identityId,
+            UUID initialCredentialId,
+            Instant credentialExpiresAt,
+            RefreshTokenMaterial refreshToken,
+            Instant startedAt,
+            String traceId) {
+        RefreshTokenFamily family = refreshTokenFamilies.create(
+                RefreshTokenFamily.startInitialPasswordChange(
+                        identityId, initialCredentialId, startedAt, credentialExpiresAt),
+                refreshToken.digest(), startedAt);
+        outboxEvents.append(eventFactory.create(family, startedAt, traceId));
+        return cookieMaxAge(startedAt, family);
+    }
+
     /** 旧选择 Token 的消费、Family purpose 转换和 Access Token 签发事实必须原子提交。 */
     @Transactional
     public OptionalLong completeSelection(

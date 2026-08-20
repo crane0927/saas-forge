@@ -14,6 +14,20 @@
           "consumerName": "audit-service.iam-session-events"
         }
       ]
+    },
+    {
+      "type": "com.saasforge.iam.password.changed.v1",
+      "producerService": "iam-service",
+      "source": "urn:saasforge:iam-service",
+      "schema": "contracts/events/iam-password-changed.v1.schema.json",
+      "topic": "saasforge.<environment>.iam-service.events",
+      "orderingKey": "identityId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.iam-password-events"
+        }
+      ]
     }
   ]
 }

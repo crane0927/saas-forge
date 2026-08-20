@@ -91,6 +91,36 @@ paths:
         '502': { $ref: './common.yaml#/components/responses/Problem' }
         '504': { $ref: './common.yaml#/components/responses/Problem' }
 
+  /api/v1/auth/password-changes:
+    post:
+      tags: [Authentication]
+      operationId: changeInitialPassword
+      x-saasforge-service: iam-service
+      summary: Replace an initial password and end the restricted session
+      description: |
+        Accepts only an INITIAL_PASSWORD_CHANGE Refresh Token cookie. A successful
+        change revokes the restricted session and requires a new login.
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+        - $ref: '#/components/parameters/RefreshTokenCookie'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordChangeRequest'
+      responses:
+        '204':
+          description: The password was changed and the restricted session ended.
+          headers:
+            Set-Cookie:
+              $ref: '#/components/headers/ClearedRefreshCookie'
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+
   /api/v1/auth/context-selections:
     post:
       tags: [Authentication]
@@ -673,6 +703,16 @@ components:
           enum: [PLATFORM, TENANT]
           default: TENANT
       additionalProperties: false
+    PasswordChangeRequest:
+      type: object
+      required: [newPassword]
+      properties:
+        newPassword:
+          type: string
+          format: password
+          minLength: 1
+          writeOnly: true
+      additionalProperties: false
     AccessTokenResult:
       type: object
       required: [contextState, accessToken, tokenType, expiresIn]
@@ -700,6 +740,12 @@ components:
           minItems: 2
           items: { $ref: '#/components/schemas/MembershipCandidate' }
       additionalProperties: false
+    InitialPasswordChangeRequiredResult:
+      type: object
+      required: [contextState]
+      properties:
+        contextState: { const: PASSWORD_CHANGE_REQUIRED }
+      additionalProperties: false
     ContextSelectionRequest:
       type: object
       required: [membershipId]
@@ -710,6 +756,7 @@ components:
       oneOf:
         - $ref: '#/components/schemas/AccessTokenResult'
         - $ref: '#/components/schemas/ContextSelectionRequiredResult'
+        - $ref: '#/components/schemas/InitialPasswordChangeRequiredResult'
     TenantSwitchRequest:
       type: object
       required: [membershipId]

@@ -27,4 +27,6 @@ public interface IdentityRepository {
     void invalidate(UUID credentialId, Instant invalidatedAt);
 
     List<PasswordCredential> findCredentials(UUID identityId);
+
+    Optional<PasswordCredential> findCredential(UUID credentialId);
 }

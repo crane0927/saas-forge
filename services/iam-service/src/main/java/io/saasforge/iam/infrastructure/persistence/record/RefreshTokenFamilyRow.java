@@ -7,6 +7,7 @@ public class RefreshTokenFamilyRow {
     private UUID id;
     private UUID identityId;
     private String familyPurpose;
+    private UUID initialCredentialId;
     private UUID membershipId;
     private UUID tenantId;
     private OffsetDateTime lastUsedAt;
@@ -19,6 +20,8 @@ public class RefreshTokenFamilyRow {
     public void setIdentityId(UUID identityId) { this.identityId = identityId; }
     public String getFamilyPurpose() { return familyPurpose; }
     public void setFamilyPurpose(String familyPurpose) { this.familyPurpose = familyPurpose; }
+    public UUID getInitialCredentialId() { return initialCredentialId; }
+    public void setInitialCredentialId(UUID initialCredentialId) { this.initialCredentialId = initialCredentialId; }
     public UUID getMembershipId() { return membershipId; }
     public void setMembershipId(UUID membershipId) { this.membershipId = membershipId; }
     public UUID getTenantId() { return tenantId; }

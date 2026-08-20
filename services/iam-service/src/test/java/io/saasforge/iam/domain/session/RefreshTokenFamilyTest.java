@@ -40,6 +40,20 @@ class RefreshTokenFamilyTest {
     }
 
     @Test
+    void initialPasswordChangeExpiresAtEarlierOfTenMinutesAndCredentialExpiry() {
+        Instant loginAt = Instant.parse("2026-08-20T00:00:00Z");
+        RefreshTokenFamily tenMinutes = RefreshTokenFamily.startInitialPasswordChange(
+                UUID.randomUUID(), UUID.randomUUID(), loginAt, loginAt.plusSeconds(3_600));
+        RefreshTokenFamily credentialBound = RefreshTokenFamily.startInitialPasswordChange(
+                UUID.randomUUID(), UUID.randomUUID(), loginAt, loginAt.plusSeconds(300));
+
+        assertEquals(loginAt.plusSeconds(600), tenMinutes.absoluteExpiresAt());
+        assertEquals(loginAt.plusSeconds(300), credentialBound.absoluteExpiresAt());
+        assertEquals(RefreshTokenFamilyPurpose.INITIAL_PASSWORD_CHANGE, credentialBound.purpose());
+        assertFalse(credentialBound.isUsableAt(loginAt.plusSeconds(300)));
+    }
+
+    @Test
     void rejectsIncompleteContextAndRevocationCanOnlyMoveForward() {
         Instant loginAt = Instant.parse("2026-08-20T00:00:00Z");
         UUID identityId = UUID.randomUUID();
@@ -48,10 +62,10 @@ class RefreshTokenFamilyTest {
                 () -> RefreshTokenFamily.start(identityId, UUID.randomUUID(), null, loginAt));
         assertThrows(IllegalArgumentException.class,
                 () -> RefreshTokenFamily.restore(null, identityId, RefreshTokenFamilyPurpose.USER_PLATFORM,
-                        null, null, loginAt, loginAt.plusSeconds(1), null));
+                        null, null, null, loginAt, loginAt.plusSeconds(1), null));
         assertThrows(IllegalArgumentException.class,
                 () -> RefreshTokenFamily.restore(UUID.randomUUID(), identityId, RefreshTokenFamilyPurpose.USER_PLATFORM,
-                        null, null, loginAt, loginAt, null));
+                        null, null, null, loginAt, loginAt, null));
 
         RefreshTokenFamily pending = RefreshTokenFamily.start(identityId, null, null, loginAt);
         assertThrows(IllegalStateException.class, () -> pending.identifiedBy(null));

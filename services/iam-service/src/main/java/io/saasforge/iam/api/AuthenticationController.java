@@ -5,6 +5,8 @@ import io.saasforge.iam.application.authentication.ContextSelectionLoginResult;
 import io.saasforge.iam.application.authentication.ContextSelectionService;
 import io.saasforge.iam.application.authentication.LoginContextType;
 import io.saasforge.iam.application.authentication.LoginResult;
+import io.saasforge.iam.application.authentication.InitialPasswordChangeLoginResult;
+import io.saasforge.iam.application.authentication.InitialPasswordChangeService;
 import io.saasforge.iam.application.authentication.PasswordLoginService;
 import io.saasforge.iam.contract.api.AuthenticationApi;
 import io.saasforge.iam.contract.model.AccessTokenResult;
@@ -12,6 +14,8 @@ import io.saasforge.iam.contract.model.AuthenticationResult;
 import io.saasforge.iam.contract.model.ContextSelectionRequiredResult;
 import io.saasforge.iam.contract.model.ContextSelectionRequest;
 import io.saasforge.iam.contract.model.LoginRequest;
+import io.saasforge.iam.contract.model.InitialPasswordChangeRequiredResult;
+import io.saasforge.iam.contract.model.PasswordChangeRequest;
 import io.saasforge.iam.contract.model.MembershipCandidate;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Duration;
@@ -33,12 +37,15 @@ public class AuthenticationController implements AuthenticationApi {
 
     private final PasswordLoginService loginService;
     private final ContextSelectionService contextSelectionService;
+    private final InitialPasswordChangeService passwordChangeService;
 
     public AuthenticationController(
             PasswordLoginService loginService,
-            ContextSelectionService contextSelectionService) {
+            ContextSelectionService contextSelectionService,
+            InitialPasswordChangeService passwordChangeService) {
         this.loginService = loginService;
         this.contextSelectionService = contextSelectionService;
+        this.passwordChangeService = passwordChangeService;
     }
 
     @Override
@@ -63,9 +70,21 @@ public class AuthenticationController implements AuthenticationApi {
                 .body(responseBody(result));
     }
 
+    @Override
+    public ResponseEntity<Void> changeInitialPassword(
+            String csrfHeader, String refreshToken, PasswordChangeRequest request) {
+        passwordChangeService.change(refreshToken, request.getNewPassword(), traceId());
+        return ResponseEntity.noContent()
+                .header(HttpHeaders.SET_COOKIE, clearedRefreshCookie().toString())
+                .build();
+    }
+
     private AuthenticationResult responseBody(LoginResult result) {
         if (result instanceof AccessTokenLoginResult accessTokenResult) {
             return accessTokenBody(accessTokenResult);
+        }
+        if (result instanceof InitialPasswordChangeLoginResult) {
+            return new InitialPasswordChangeRequiredResult().contextState("PASSWORD_CHANGE_REQUIRED");
         }
         ContextSelectionLoginResult selectionResult = (ContextSelectionLoginResult) result;
         return new ContextSelectionRequiredResult()
@@ -93,6 +112,16 @@ public class AuthenticationController implements AuthenticationApi {
                 .sameSite("Strict")
                 .path("/")
                 .maxAge(Duration.ofSeconds(result.refreshCookieMaxAgeSeconds()))
+                .build();
+    }
+
+    private ResponseCookie clearedRefreshCookie() {
+        return ResponseCookie.from(REFRESH_COOKIE, "")
+                .secure(true)
+                .httpOnly(true)
+                .sameSite("Strict")
+                .path("/")
+                .maxAge(0)
                 .build();
     }
 

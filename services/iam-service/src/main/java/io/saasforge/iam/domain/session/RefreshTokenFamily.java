@@ -13,6 +13,7 @@ public final class RefreshTokenFamily {
     private final UUID id;
     private final UUID identityId;
     private final RefreshTokenFamilyPurpose purpose;
+    private final UUID initialCredentialId;
     private final UUID membershipId;
     private final UUID tenantId;
     private final Instant lastUsedAt;
@@ -23,6 +24,7 @@ public final class RefreshTokenFamily {
             UUID id,
             UUID identityId,
             RefreshTokenFamilyPurpose purpose,
+            UUID initialCredentialId,
             UUID membershipId,
             UUID tenantId,
             Instant lastUsedAt,
@@ -34,6 +36,9 @@ public final class RefreshTokenFamily {
         if ((membershipId == null) != (tenantId == null)) {
             throw new IllegalArgumentException("Membership 与 Tenant 上下文必须同时存在或同时为空");
         }
+        if ((purpose == RefreshTokenFamilyPurpose.INITIAL_PASSWORD_CHANGE) != (initialCredentialId != null)) {
+            throw new IllegalArgumentException("首次改密会话必须且只能绑定初始凭证");
+        }
         if (!absoluteExpiresAt.isAfter(lastUsedAt)) {
             throw new IllegalArgumentException("绝对到期时间必须晚于最后使用时间");
         }
@@ -43,6 +48,7 @@ public final class RefreshTokenFamily {
         this.id = id;
         this.identityId = identityId;
         this.purpose = purpose;
+        this.initialCredentialId = initialCredentialId;
         this.membershipId = membershipId;
         this.tenantId = tenantId;
         this.lastUsedAt = lastUsedAt;
@@ -64,13 +70,25 @@ public final class RefreshTokenFamily {
             UUID tenantId,
             Instant loginAt) {
         return new RefreshTokenFamily(
-                null, identityId, purpose, membershipId, tenantId, loginAt, loginAt.plus(ABSOLUTE_LIFETIME), null);
+                null, identityId, purpose, null, membershipId, tenantId,
+                loginAt, loginAt.plus(ABSOLUTE_LIFETIME), null);
+    }
+
+    public static RefreshTokenFamily startInitialPasswordChange(
+            UUID identityId, UUID initialCredentialId, Instant loginAt, Instant credentialExpiresAt) {
+        Instant sessionExpiresAt = loginAt.plus(Duration.ofMinutes(10));
+        if (credentialExpiresAt.isBefore(sessionExpiresAt)) {
+            sessionExpiresAt = credentialExpiresAt;
+        }
+        return new RefreshTokenFamily(null, identityId, RefreshTokenFamilyPurpose.INITIAL_PASSWORD_CHANGE,
+                initialCredentialId, null, null, loginAt, sessionExpiresAt, null);
     }
 
     public static RefreshTokenFamily restore(
             UUID id,
             UUID identityId,
             RefreshTokenFamilyPurpose purpose,
+            UUID initialCredentialId,
             UUID membershipId,
             UUID tenantId,
             Instant lastUsedAt,
@@ -80,7 +98,8 @@ public final class RefreshTokenFamily {
             throw new IllegalArgumentException("Refresh Token Family ID 不能为空");
         }
         return new RefreshTokenFamily(
-                id, identityId, purpose, membershipId, tenantId, lastUsedAt, absoluteExpiresAt, revokedAt);
+                id, identityId, purpose, initialCredentialId, membershipId, tenantId,
+                lastUsedAt, absoluteExpiresAt, revokedAt);
     }
 
     public RefreshTokenFamily identifiedBy(UUID generatedId) {
@@ -88,13 +107,15 @@ public final class RefreshTokenFamily {
             throw new IllegalStateException("Refresh Token Family ID 状态不合法");
         }
         return new RefreshTokenFamily(
-                generatedId, identityId, purpose, membershipId, tenantId, lastUsedAt, absoluteExpiresAt, revokedAt);
+                generatedId, identityId, purpose, initialCredentialId, membershipId, tenantId,
+                lastUsedAt, absoluteExpiresAt, revokedAt);
     }
 
     public RefreshTokenFamily recordUse(UUID nextMembershipId, UUID nextTenantId, Instant usedAt) {
         requireUsableAt(usedAt);
         return new RefreshTokenFamily(
-                id, identityId, purpose, nextMembershipId, nextTenantId, usedAt, absoluteExpiresAt, revokedAt);
+                id, identityId, purpose, initialCredentialId, nextMembershipId, nextTenantId,
+                usedAt, absoluteExpiresAt, revokedAt);
     }
 
     public RefreshTokenFamily selectTenant(UUID selectedMembershipId, UUID selectedTenantId, Instant selectedAt) {
@@ -103,7 +124,7 @@ public final class RefreshTokenFamily {
         }
         requireUsableAt(selectedAt);
         return new RefreshTokenFamily(
-                id, identityId, RefreshTokenFamilyPurpose.USER_TENANT,
+                id, identityId, RefreshTokenFamilyPurpose.USER_TENANT, null,
                 selectedMembershipId, selectedTenantId, selectedAt, absoluteExpiresAt, revokedAt);
     }
 
@@ -115,7 +136,8 @@ public final class RefreshTokenFamily {
             return this;
         }
         return new RefreshTokenFamily(
-                id, identityId, purpose, membershipId, tenantId, lastUsedAt, absoluteExpiresAt, at);
+                id, identityId, purpose, initialCredentialId, membershipId, tenantId,
+                lastUsedAt, absoluteExpiresAt, at);
     }
 
     public boolean isUsableAt(Instant at) {
@@ -131,6 +153,7 @@ public final class RefreshTokenFamily {
     public UUID id() { return id; }
     public UUID identityId() { return identityId; }
     public RefreshTokenFamilyPurpose purpose() { return purpose; }
+    public UUID initialCredentialId() { return initialCredentialId; }
     public UUID membershipId() { return membershipId; }
     public UUID tenantId() { return tenantId; }
     public Instant lastUsedAt() { return lastUsedAt; }

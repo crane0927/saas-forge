@@ -180,6 +180,18 @@ class IamPersistenceRepositoryIT {
         assertEquals(tenantId, rotated.family().tenantId());
         assertEquals(loginAt.plus(8, ChronoUnit.HOURS), rotating.absoluteExpiresAt());
         assertEquals(loginAt.plus(8, ChronoUnit.HOURS), rotated.family().absoluteExpiresAt());
+
+        PasswordCredential initial = identities.create(PasswordCredential.initial(
+                identity.id(), Argon2idPasswordHash.of(ARGON2ID_HASH), loginAt));
+        Sha256Digest restrictedToken = digest(7);
+        refreshTokenFamilies.create(RefreshTokenFamily.startInitialPasswordChange(
+                identity.id(), initial.id(), loginAt, initial.expiresAt()), restrictedToken, loginAt);
+        assertEquals(RefreshTokenConsumption.Status.PURPOSE_MISMATCH,
+                refreshTokenFamilies.rotate(
+                        restrictedToken, digest(8), null, null, loginAt.plusSeconds(1)).status());
+        assertEquals(RefreshTokenConsumption.Status.CONSUMED,
+                refreshTokenFamilies.consumeInitialPasswordChange(
+                        restrictedToken, loginAt.plusSeconds(2)).status());
     }
 
     @Test

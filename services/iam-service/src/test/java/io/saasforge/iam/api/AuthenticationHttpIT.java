@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -21,6 +22,7 @@ import io.saasforge.contracts.tenantaccess.membership.v1.AccessibleMembershipQue
 import io.saasforge.contracts.tenantaccess.membership.v1.ListAccessibleMembershipsRequest;
 import io.saasforge.contracts.tenantaccess.membership.v1.ListAccessibleMembershipsResponse;
 import io.saasforge.iam.application.authentication.AccessibleMemberships;
+import io.saasforge.iam.application.authentication.InitialPasswordChangeService;
 import io.saasforge.iam.application.signing.JwtSigningPort;
 import io.saasforge.iam.application.signing.JwtSigningService;
 import io.saasforge.iam.config.AuthenticationConfiguration;
@@ -190,6 +192,9 @@ class AuthenticationHttpIT {
 
     @Autowired
     PlatformRoleAssignmentRepository platformRoles;
+
+    @Autowired
+    InitialPasswordChangeService passwordChangeService;
 
     @Autowired
     StringRedisTemplate redis;
@@ -640,6 +645,140 @@ class AuthenticationHttpIT {
     }
 
     @Test
+    @Order(15)
+    void initialCredentialTakesPriorityAndPasswordChangeCommitsAllFactsAtomically() throws Exception {
+        TestUser user = createUser(
+                "initial-change@example.test", "Initial-Credential-2026!", true, Credential.ACTIVE_INITIAL);
+        TENANT_ACCESS_FAILURES.add(user.identity().id());
+
+        MvcResult login = login("initial-change@example.test", "Initial-Credential-2026!", "TENANT")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.contextState").value("PASSWORD_CHANGE_REQUIRED"))
+                .andExpect(jsonPath("$.accessToken").doesNotExist())
+                .andExpect(jsonPath("$.memberships").doesNotExist())
+                .andReturn();
+        String setCookie = login.getResponse().getHeader("Set-Cookie");
+        assertNotNull(setCookie);
+        assertTrue(setCookie.contains("Max-Age=600"));
+        String refreshToken = refreshToken(login);
+
+        Map<String, Object> initialFacts = jdbc.queryForMap("""
+                SELECT family.family_purpose, family.initial_credential_id, family.absolute_expires_at,
+                       token.consumed_at, family.revoked_at
+                FROM iam_refresh_token_families family
+                JOIN iam_refresh_tokens token ON token.family_id = family.id
+                WHERE family.identity_id = ?
+                """, user.identity().id());
+        assertEquals("INITIAL_PASSWORD_CHANGE", initialFacts.get("family_purpose"));
+        assertNotNull(initialFacts.get("initial_credential_id"));
+        assertEquals(null, initialFacts.get("consumed_at"));
+        assertEquals(null, initialFacts.get("revoked_at"));
+        assertEquals(0, jdbc.queryForObject(
+                "SELECT count(*) FROM iam_access_token_issuances WHERE identity_id = ?",
+                Integer.class, user.identity().id()));
+
+        changePassword(refreshToken, "saasforge2026")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PASSWORD_COMPROMISED"));
+        assertEquals(0, jdbc.queryForObject(
+                "SELECT count(*) FROM iam_credentials WHERE identity_id = ? AND credential_type = 'PASSWORD'",
+                Integer.class, user.identity().id()));
+        assertEquals(0, jdbc.queryForObject("""
+                SELECT count(*) FROM iam_refresh_tokens token
+                JOIN iam_refresh_token_families family ON family.id = token.family_id
+                WHERE family.identity_id = ? AND token.consumed_at IS NOT NULL
+                """, Integer.class, user.identity().id()));
+
+        changePassword(refreshToken, "Unique-Credential-2026!")
+                .andExpect(status().isNoContent())
+                .andExpect(header().string("Set-Cookie", org.hamcrest.Matchers.containsString("Max-Age=0")));
+
+        Map<String, Object> completed = jdbc.queryForMap("""
+                SELECT family.revoked_at, token.consumed_at,
+                       (SELECT count(*) FROM iam_credentials credential
+                        WHERE credential.identity_id = family.identity_id
+                          AND credential.credential_type = 'PASSWORD' AND credential.invalidated_at IS NULL) AS regular_count,
+                       (SELECT count(*) FROM iam_credentials credential
+                        WHERE credential.id = family.initial_credential_id
+                          AND credential.invalidated_at IS NOT NULL) AS invalidated_initial_count
+                FROM iam_refresh_token_families family
+                JOIN iam_refresh_tokens token ON token.family_id = family.id
+                WHERE family.identity_id = ?
+                """, user.identity().id());
+        assertNotNull(completed.get("revoked_at"));
+        assertNotNull(completed.get("consumed_at"));
+        assertEquals(1L, completed.get("regular_count"));
+        assertEquals(1L, completed.get("invalidated_initial_count"));
+
+        JsonNode event = json(jdbc.queryForObject("""
+                SELECT event_snapshot::TEXT FROM iam_outbox_events
+                WHERE ordering_key = ? AND event_snapshot ->> 'type' = 'com.saasforge.iam.password.changed.v1'
+                """, String.class, user.identity().id().toString()).getBytes(StandardCharsets.UTF_8));
+        assertEquals("com.saasforge.iam.password.changed.v1", event.get("type").asString());
+        assertFalse(event.toString().contains("Unique-Credential-2026!"));
+
+        assertAuthenticationFailed(login("initial-change@example.test", "Initial-Credential-2026!", "PLATFORM")
+                .andReturn());
+        login("initial-change@example.test", "Unique-Credential-2026!", "PLATFORM")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.contextState").value("ACCESS_TOKEN_ISSUED"));
+    }
+
+    @Test
+    @Order(16)
+    void passwordChangePublicContractCoversPasswordBoundariesWithoutConsumingSession() throws Exception {
+        TestUser user = createUser(
+                "password-boundaries@example.test", "Initial-Boundaries-2026!", false, Credential.ACTIVE_INITIAL);
+        String refreshToken = refreshToken(login(
+                "password-boundaries@example.test", "Initial-Boundaries-2026!", "TENANT").andReturn());
+
+        changePassword(refreshToken, "12345678901")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PASSWORD_TOO_SHORT"));
+        changePassword(refreshToken, "12345678901\u00a0x")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PASSWORD_WHITESPACE_NOT_ALLOWED"));
+        changePassword(refreshToken, "x".repeat(129))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PASSWORD_TOO_LONG"));
+
+        assertEquals(0, jdbc.queryForObject("""
+                SELECT count(*) FROM iam_refresh_tokens token
+                JOIN iam_refresh_token_families family ON family.id = token.family_id
+                WHERE family.identity_id = ? AND token.consumed_at IS NOT NULL
+                """, Integer.class, user.identity().id()));
+    }
+
+    @Test
+    @Order(17)
+    void outboxFailureRollsBackCredentialAndRestrictedSessionChanges() throws Exception {
+        TestUser user = createUser(
+                "password-rollback@example.test", "Initial-Rollback-2026!", false, Credential.ACTIVE_INITIAL);
+        String refreshToken = refreshToken(login(
+                "password-rollback@example.test", "Initial-Rollback-2026!", "TENANT").andReturn());
+
+        assertThrows(IllegalArgumentException.class, () -> passwordChangeService.change(
+                refreshToken, "Unique-Rollback-2026!", "invalid-trace-id"));
+
+        Map<String, Object> facts = jdbc.queryForMap("""
+                SELECT family.revoked_at, token.consumed_at,
+                       (SELECT count(*) FROM iam_credentials credential
+                        WHERE credential.identity_id = family.identity_id
+                          AND credential.credential_type = 'PASSWORD') AS regular_count,
+                       (SELECT count(*) FROM iam_credentials credential
+                        WHERE credential.id = family.initial_credential_id
+                          AND credential.invalidated_at IS NOT NULL) AS invalidated_initial_count
+                FROM iam_refresh_token_families family
+                JOIN iam_refresh_tokens token ON token.family_id = family.id
+                WHERE family.identity_id = ?
+                """, user.identity().id());
+        assertEquals(null, facts.get("revoked_at"));
+        assertEquals(null, facts.get("consumed_at"));
+        assertEquals(0L, facts.get("regular_count"));
+        assertEquals(0L, facts.get("invalidated_initial_count"));
+    }
+
+    @Test
     @Order(20)
     void redisUnavailabilityFailsClosedThroughPublicContract() throws Exception {
         REDIS.stop();
@@ -662,6 +801,16 @@ class AuthenticationHttpIT {
                 .cookie(new Cookie("__Host-sf_refresh", refreshToken))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(new ObjectMapper().writeValueAsBytes(Map.of("membershipId", membershipId))));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions changePassword(String refreshToken, String newPassword)
+            throws Exception {
+        return mockMvc.perform(post("/api/v1/auth/password-changes")
+                .header("X-SF-CSRF", "csrf-test")
+                .header("traceparent", "00-" + TRACE_ID + "-0123456789abcdef-01")
+                .cookie(new Cookie("__Host-sf_refresh", refreshToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(new ObjectMapper().writeValueAsBytes(Map.of("newPassword", newPassword))));
     }
 
     private static String refreshToken(MvcResult response) {
@@ -730,6 +879,8 @@ class AuthenticationHttpIT {
         Identity identity = identities.create(Identity.register(email, null, now));
         if (credential == Credential.REGULAR) {
             identities.create(PasswordCredential.regular(identity.id(), passwordHash(password), now));
+        } else if (credential == Credential.ACTIVE_INITIAL) {
+            identities.create(PasswordCredential.initial(identity.id(), passwordHash(password), now));
         } else if (credential == Credential.EXPIRED_INITIAL) {
             identities.create(PasswordCredential.initial(
                     identity.id(), passwordHash(password), now.minus(Duration.ofHours(25))));
@@ -808,7 +959,7 @@ class AuthenticationHttpIT {
         throw new IllegalStateException("无法定位仓库根目录");
     }
 
-    enum Credential { REGULAR, EXPIRED_INITIAL, NONE }
+    enum Credential { REGULAR, ACTIVE_INITIAL, EXPIRED_INITIAL, NONE }
 
     record TestUser(Identity identity) { }
 

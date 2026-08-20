@@ -53,22 +53,37 @@ public final class PasswordLoginService {
         }
         Instant now = clock.instant();
         Optional<Identity> identity = identities.findByEmail(normalizedEmail);
-        Optional<PasswordCredential> credential = identity.flatMap(value -> activePassword(value, now));
-        if (credential.isEmpty()) {
+        List<PasswordCredential> credentials = identity.map(value -> activePasswords(value, now)).orElseGet(List::of);
+        if (credentials.isEmpty()) {
             passwordVerifier.dummyMatches(password);
             failCredential(normalizedEmail);
         }
-        if (!passwordVerifier.matches(password, credential.orElseThrow().passwordHash())) {
+        Optional<PasswordCredential> credential = credentials.stream()
+                .filter(candidate -> passwordVerifier.matches(password, candidate.passwordHash()))
+                .findFirst();
+        if (credential.isEmpty()) {
             failCredential(normalizedEmail);
         }
 
         // 密码已经验证成功；后续访问上下文或基础设施失败不得继续累积锁定次数。
         loginProtection.clearCredentialFailures(normalizedEmail);
         Identity authenticatedIdentity = identity.orElseThrow();
+        PasswordCredential authenticatedCredential = credential.orElseThrow();
+        if (authenticatedCredential.type() == CredentialType.INITIAL_PLATFORM_PASSWORD) {
+            return initialPasswordChangeLogin(authenticatedIdentity, authenticatedCredential, now, traceId);
+        }
         return switch (contextType) {
             case PLATFORM -> platformLogin(authenticatedIdentity, now, traceId);
             case TENANT -> tenantLogin(authenticatedIdentity, traceId);
         };
+    }
+
+    private LoginResult initialPasswordChangeLogin(
+            Identity identity, PasswordCredential credential, Instant now, String traceId) {
+        RefreshTokenMaterial refreshToken = refreshTokenIssuer.issue();
+        long cookieMaxAge = sessionService.startInitialPasswordChangeSession(
+                identity.id(), credential.id(), credential.expiresAt(), refreshToken, now, traceId);
+        return new InitialPasswordChangeLoginResult(refreshToken.value(), cookieMaxAge);
     }
 
     private LoginResult platformLogin(Identity identity, Instant now, String traceId) {
@@ -105,10 +120,15 @@ public final class PasswordLoginService {
         return new ContextSelectionLoginResult(memberships, refreshToken.value(), cookieMaxAge);
     }
 
-    private Optional<PasswordCredential> activePassword(Identity identity, Instant now) {
+    private List<PasswordCredential> activePasswords(Identity identity, Instant now) {
         return identities.findCredentials(identity.id()).stream()
-                .filter(credential -> credential.type() == CredentialType.PASSWORD && credential.isValidAt(now))
-                .findFirst();
+                .filter(credential -> credential.isValidAt(now))
+                .sorted((left, right) -> Integer.compare(priority(left.type()), priority(right.type())))
+                .toList();
+    }
+
+    private static int priority(CredentialType type) {
+        return type == CredentialType.INITIAL_PLATFORM_PASSWORD ? 0 : 1;
     }
 
     private void failCredential(NormalizedEmail email) {

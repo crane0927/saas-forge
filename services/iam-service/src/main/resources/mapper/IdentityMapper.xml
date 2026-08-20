@@ -55,6 +55,7 @@
               AND identity_id = #{password.identityId}
               AND credential_type = 'INITIAL_PLATFORM_PASSWORD'
               AND invalidated_at IS NULL
+              AND expires_at > #{password.issuedAt}
             RETURNING id
         )
         INSERT INTO iam_credentials (identity_id, credential_type, password_hash, issued_at, expires_at, invalidated_at)
@@ -85,5 +86,11 @@
         FROM iam_credentials
         WHERE identity_id = #{identityId}
         ORDER BY issued_at, id
+    </select>
+
+    <select id="findCredentialById" resultMap="credentialRow">
+        SELECT id, identity_id, credential_type, password_hash, issued_at, expires_at, invalidated_at
+        FROM iam_credentials
+        WHERE id = #{credentialId}
     </select>
 </mapper>

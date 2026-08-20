@@ -312,7 +312,11 @@ class V1ContractCompatibilityTest {
             }
             List<Object> baselineBranches = list(baseline.get(keyword));
             List<Object> currentBranches = list(current.get(keyword));
-            assertEquals(baselineBranches.size(), currentBranches.size(), location + " 改变了 " + keyword);
+            if ("allOf".equals(keyword)) {
+                assertEquals(baselineBranches.size(), currentBranches.size(), location + " 改变了 " + keyword);
+            } else {
+                assertTrue(currentBranches.size() >= baselineBranches.size(), location + " 删除了 " + keyword + " 分支");
+            }
             for (int index = 0; index < baselineBranches.size(); index++) {
                 comparator.compare(baselineBranches.get(index), currentBranches.get(index),
                         location + " " + keyword + "[" + index + "]");

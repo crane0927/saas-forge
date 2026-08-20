@@ -19,6 +19,10 @@ public final class PasswordVerifier {
         encoder.matches(normalize(presentedPassword), dummyHash);
     }
 
+    public Argon2idPasswordHash hash(String normalizedPassword) {
+        return Argon2idPasswordHash.of(encoder.encode(normalizedPassword));
+    }
+
     private static String normalize(String password) {
         if (password == null) {
             throw new IllegalArgumentException("密码不能为空");

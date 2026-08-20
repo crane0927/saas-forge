@@ -3,9 +3,13 @@ package io.saasforge.iam.config;
 import io.saasforge.contracts.tenantaccess.membership.v1.AccessibleMembershipQueryServiceGrpc;
 import io.saasforge.iam.application.authentication.AccessibleMemberships;
 import io.saasforge.iam.application.authentication.ContextSelectionService;
+import io.saasforge.iam.application.authentication.CompromisedPasswordChecker;
+import io.saasforge.iam.application.authentication.InitialPasswordChangeService;
 import io.saasforge.iam.application.authentication.LoginProtection;
 import io.saasforge.iam.application.authentication.LoginSessionService;
 import io.saasforge.iam.application.authentication.PasswordVerifier;
+import io.saasforge.iam.application.authentication.PasswordPolicy;
+import io.saasforge.iam.application.authentication.PasswordChangedEventFactory;
 import io.saasforge.iam.application.authentication.PasswordLoginService;
 import io.saasforge.iam.application.authentication.RefreshTokenIssuer;
 import io.saasforge.iam.application.authentication.SessionStartedEventFactory;
@@ -19,6 +23,7 @@ import io.saasforge.iam.domain.session.AccessTokenIssuanceRepository;
 import io.saasforge.iam.domain.session.RefreshTokenFamilyRepository;
 import io.saasforge.iam.infrastructure.grpc.GrpcAccessibleMemberships;
 import io.saasforge.iam.infrastructure.security.RedisLoginProtection;
+import io.saasforge.iam.infrastructure.security.ClasspathCompromisedPasswordChecker;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
@@ -54,6 +59,17 @@ public class AuthenticationConfiguration {
     }
 
     @Bean
+    PasswordPolicy passwordPolicy() {
+        return new PasswordPolicy();
+    }
+
+    @Bean
+    CompromisedPasswordChecker compromisedPasswordChecker(
+            @Value("${saasforge.environment:dev}") String environment) {
+        return new ClasspathCompromisedPasswordChecker(environment);
+    }
+
+    @Bean
     LoginProtection loginProtection(
             StringRedisTemplate redis,
             @Value("${saasforge.environment:dev}") String environment,
@@ -85,6 +101,14 @@ public class AuthenticationConfiguration {
             UuidV7Generator uuidV7Generator,
             @Value("${saasforge.environment:dev}") String environment) {
         return new SessionStartedEventFactory(objectMapper, uuidV7Generator, environment);
+    }
+
+    @Bean
+    PasswordChangedEventFactory passwordChangedEventFactory(
+            ObjectMapper objectMapper,
+            UuidV7Generator uuidV7Generator,
+            @Value("${saasforge.environment:dev}") String environment) {
+        return new PasswordChangedEventFactory(objectMapper, uuidV7Generator, environment);
     }
 
     @Bean
@@ -133,5 +157,21 @@ public class AuthenticationConfiguration {
         return new ContextSelectionService(
                 accessibleMemberships, refreshTokenFamilies, accessTokenIssuer,
                 refreshTokenIssuer, sessionService, clock);
+    }
+
+    @Bean
+    InitialPasswordChangeService initialPasswordChangeService(
+            IdentityRepository identities,
+            RefreshTokenFamilyRepository refreshTokenFamilies,
+            RefreshTokenIssuer refreshTokenIssuer,
+            PasswordPolicy passwordPolicy,
+            CompromisedPasswordChecker compromisedPasswords,
+            PasswordVerifier passwordVerifier,
+            OutboxEventRepository outboxEvents,
+            PasswordChangedEventFactory eventFactory,
+            Clock clock) {
+        return new InitialPasswordChangeService(
+                identities, refreshTokenFamilies, refreshTokenIssuer, passwordPolicy, compromisedPasswords,
+                passwordVerifier, outboxEvents, eventFactory, clock);
     }
 }
