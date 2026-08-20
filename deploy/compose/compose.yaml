@@ -196,6 +196,9 @@ services:
       nacos-init:
         condition: service_completed_successfully
     environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/iam_db
+      SPRING_DATASOURCE_USERNAME: iam_app
+      SPRING_DATASOURCE_PASSWORD: ${IAM_APP_PASSWORD:?IAM_APP_PASSWORD is required}
       NACOS_SERVER_ADDR: nacos:8848
       NACOS_NAMESPACE: dev
       NACOS_TLS_ENABLED: "false"

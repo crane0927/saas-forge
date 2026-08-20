@@ -29,7 +29,9 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
+import java.time.ZoneOffset;
 import java.util.Set;
 import java.util.UUID;
 import javax.sql.DataSource;
@@ -45,6 +47,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
@@ -196,18 +199,32 @@ class IamPersistenceRepositoryIT {
     }
 
     @Test
-    void preservesSigningKeyPublicationAndRetirementWindows() {
+    void persistsSigningKeyMetadataEnforcesUniquenessAndLifecycle() throws SQLException {
         Instant now = Instant.parse("2026-08-20T03:00:00Z");
         SigningKey first = signingKeys.savePublished(SigningKey.publish("kid-" + UUID.randomUUID(), "kms/key/1", "modulus-1", "AQAB", now));
 
         assertThrows(IllegalStateException.class, () -> signingKeys.activate(first.id(), now.plus(4, ChronoUnit.MINUTES)));
         signingKeys.activate(first.id(), now.plus(5, ChronoUnit.MINUTES));
+        SigningKey persistedFirst = signingKeys.findActive().orElseThrow();
+        assertEquals(first.kid(), persistedFirst.kid());
+        assertEquals("kms/key/1", persistedFirst.keyVersionReference());
+        assertEquals("modulus-1", persistedFirst.publicJwkModulus());
+        assertEquals("AQAB", persistedFirst.publicJwkExponent());
+
+        assertThrows(DataIntegrityViolationException.class, () -> signingKeys.savePublished(SigningKey.publish(
+                first.kid(), "kms/key/duplicate", "modulus-duplicate", "AQAB", now.plus(6, ChronoUnit.MINUTES))));
+        assertDatabaseRejectsSecondActiveKey(now.plus(6, ChronoUnit.MINUTES));
 
         SigningKey second = signingKeys.savePublished(SigningKey.publish(
                 "kid-" + UUID.randomUUID(), "kms/key/2", "modulus-2", "AQAB", now.plus(6, ChronoUnit.MINUTES)));
         SigningKey active = signingKeys.activate(second.id(), now.plus(11, ChronoUnit.MINUTES));
         assertEquals(SigningKeyStatus.ACTIVE, active.status());
         assertEquals(second.id(), signingKeys.findActive().orElseThrow().id());
+
+        SigningKey revoked = signingKeys.revoke(second.id(), now.plus(12, ChronoUnit.MINUTES));
+        assertEquals(SigningKeyStatus.REVOKED, revoked.status());
+        assertTrue(signingKeys.findActive().isEmpty());
+
         assertThrows(IllegalStateException.class, () -> signingKeys.retire(first.id(), now.plus(40, ChronoUnit.MINUTES)));
         assertEquals(SigningKeyStatus.RETIRED, signingKeys.retire(first.id(), now.plus(41, ChronoUnit.MINUTES)).status());
     }
@@ -251,6 +268,24 @@ class IamPersistenceRepositoryIT {
                 assertTrue(result.next());
                 return result.getBoolean(1);
             }
+        }
+    }
+
+    private void assertDatabaseRejectsSecondActiveKey(Instant at) throws SQLException {
+        try (Connection connection = dataSource.getConnection();
+                PreparedStatement statement = connection.prepareStatement(
+                        "INSERT INTO iam_signing_keys "
+                                + "(kid, key_version_reference, public_jwk_modulus, public_jwk_exponent, key_status, published_at, activated_at) "
+                                + "VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?)")) {
+            OffsetDateTime timestamp = OffsetDateTime.ofInstant(at, ZoneOffset.UTC);
+            statement.setString(1, "direct-active-" + UUID.randomUUID());
+            statement.setString(2, "kms/key/direct");
+            statement.setString(3, "modulus-direct");
+            statement.setString(4, "AQAB");
+            statement.setObject(5, timestamp);
+            statement.setObject(6, timestamp);
+
+            assertThrows(SQLException.class, statement::executeUpdate);
         }
     }
 
