@@ -17,5 +17,9 @@ public interface SigningKeyMapper {
 
     SigningKeyRow lockActiveKey();
 
+    SigningKeyRow findById(@Param("keyId") UUID keyId);
+
+    SigningKeyRow prepareActiveForIssuance(@Param("tokenTtlSeconds") long tokenTtlSeconds);
+
     int updateKey(@Param("row") SigningKeyRow row);
 }

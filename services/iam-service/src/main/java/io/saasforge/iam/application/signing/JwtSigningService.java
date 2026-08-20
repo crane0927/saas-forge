@@ -1,6 +1,7 @@
 package io.saasforge.iam.application.signing;
 
 import io.saasforge.iam.domain.signing.SigningKey;
+import java.time.Duration;
 
 /** 使用当前唯一 ACTIVE Signing Key 完成 RS256 签名。 */
 public final class JwtSigningService {
@@ -21,6 +22,12 @@ public final class JwtSigningService {
     /** 在选择 ACTIVE Key 后生成含同一 kid 的 Header，避免 Header 与实际签名密钥分离。 */
     public JwtSignature sign(JwsSigningInputFactory signingInputFactory) {
         SigningKey activeKey = activeSigningKeyResolver.current();
+        return sign(activeKey, signingInputFactory.create(activeKey.kid()));
+    }
+
+    /** maxIssuedTokenTtl 必须在 KMS/HSM 签名前完成持久化。 */
+    public JwtSignature sign(Duration tokenTtl, JwsSigningInputFactory signingInputFactory) {
+        SigningKey activeKey = activeSigningKeyResolver.currentForIssuance(tokenTtl);
         return sign(activeKey, signingInputFactory.create(activeKey.kid()));
     }
 

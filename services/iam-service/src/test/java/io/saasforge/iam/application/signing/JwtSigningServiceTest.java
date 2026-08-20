@@ -10,6 +10,7 @@ import io.saasforge.iam.domain.signing.SigningKeyStatus;
 import io.saasforge.iam.support.StubSigningKeyRepository;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -30,6 +31,20 @@ class JwtSigningServiceTest {
         assertEquals(1, signingFake.invocationCount());
         assertEquals("kms/key/7", signingFake.keyVersionRef());
         assertEquals(JwtSigningAlgorithm.RS256, signingFake.algorithm());
+    }
+
+    @Test
+    void recordsRaisedTokenTtlBeforeSigningAndNeverReducesIt() {
+        StubSigningKeyRepository repository = new StubSigningKeyRepository();
+        repository.activeKeys(List.of(activeKey("active-kid", "kms/key/7")));
+        InMemoryJwtSigningFake signingFake = new InMemoryJwtSigningFake();
+        JwtSigningService service = new JwtSigningService(new ActiveSigningKeyResolver(repository), signingFake);
+
+        service.sign(Duration.ofHours(8), kid -> JwsSigningInput.of(new byte[] {1}));
+        service.sign(Duration.ofMinutes(15), kid -> JwsSigningInput.of(new byte[] {2}));
+
+        assertEquals(Duration.ofHours(8), repository.findActiveKeys().get(0).maxIssuedTokenTtl());
+        assertEquals(2, signingFake.invocationCount());
     }
 
     @Test

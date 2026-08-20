@@ -5,6 +5,7 @@ import io.saasforge.iam.domain.signing.SigningKeyRepository;
 import io.saasforge.iam.domain.signing.SigningKeyStatus;
 import io.saasforge.iam.infrastructure.persistence.mapper.SigningKeyMapper;
 import io.saasforge.iam.infrastructure.persistence.record.SigningKeyRow;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -39,6 +40,11 @@ public class MyBatisSigningKeyRepository implements SigningKeyRepository {
     }
 
     @Override
+    public java.util.Optional<SigningKey> findById(UUID keyId) {
+        return java.util.Optional.ofNullable(mapper.findById(keyId)).map(MyBatisSigningKeyRepository::toDomain);
+    }
+
+    @Override
     @Transactional
     public SigningKey activate(UUID keyId, Instant at) {
         SigningKey key = required(mapper.lockKeyById(keyId));
@@ -54,6 +60,19 @@ public class MyBatisSigningKeyRepository implements SigningKeyRepository {
 
     @Override
     @Transactional
+    public SigningKey prepareActiveForIssuance(Duration tokenTtl) {
+        if (tokenTtl == null || tokenTtl.isZero() || tokenTtl.isNegative() || tokenTtl.getNano() != 0) {
+            throw new IllegalArgumentException("Access Token TTL 必须是整秒正数");
+        }
+        SigningKeyRow row = mapper.prepareActiveForIssuance(tokenTtl.getSeconds());
+        if (row == null) {
+            throw new IllegalStateException("签发时必须恰好存在一个 ACTIVE Signing Key");
+        }
+        return toDomain(row);
+    }
+
+    @Override
+    @Transactional
     public SigningKey retire(UUID keyId, Instant at) {
         SigningKey retired = required(mapper.lockKeyById(keyId)).retire(at);
         update(retired);
@@ -63,8 +82,30 @@ public class MyBatisSigningKeyRepository implements SigningKeyRepository {
     @Override
     @Transactional
     public SigningKey revoke(UUID keyId, Instant at) {
-        SigningKey revoked = required(mapper.lockKeyById(keyId)).revoke(at);
+        return revoke(keyId, null, at);
+    }
+
+    @Override
+    @Transactional
+    public SigningKey revoke(UUID keyId, UUID replacementKeyId, Instant at) {
+        SigningKey target = required(mapper.lockKeyById(keyId));
+        if (target.status() == SigningKeyStatus.REVOKED) {
+            return target;
+        }
+        SigningKey replacement = null;
+        if (target.status() == SigningKeyStatus.ACTIVE) {
+            if (replacementKeyId == null || replacementKeyId.equals(keyId)) {
+                throw new IllegalStateException("撤销 ACTIVE Signing Key 必须提供替代 key");
+            }
+            replacement = required(mapper.lockKeyById(replacementKeyId)).activate(at);
+        } else if (replacementKeyId != null) {
+            throw new IllegalArgumentException("只有撤销 ACTIVE Signing Key 才能指定替代 key");
+        }
+        SigningKey revoked = target.revoke(at);
         update(revoked);
+        if (replacement != null) {
+            update(replacement);
+        }
         return revoked;
     }
 
@@ -89,8 +130,10 @@ public class MyBatisSigningKeyRepository implements SigningKeyRepository {
         row.setPublicJwkModulus(key.publicJwkModulus());
         row.setPublicJwkExponent(key.publicJwkExponent());
         row.setKeyStatus(key.status().name());
+        row.setMaxIssuedTokenTtlSeconds(key.maxIssuedTokenTtl().getSeconds());
         row.setPublishedAt(IamTime.asOffsetDateTime(key.publishedAt()));
         row.setActivatedAt(IamTime.asOffsetDateTime(key.activatedAt()));
+        row.setRetiringAt(IamTime.asOffsetDateTime(key.retiringAt()));
         row.setRetireAfter(IamTime.asOffsetDateTime(key.retireAfter()));
         row.setRetiredAt(IamTime.asOffsetDateTime(key.retiredAt()));
         row.setRevokedAt(IamTime.asOffsetDateTime(key.revokedAt()));
@@ -100,7 +143,9 @@ public class MyBatisSigningKeyRepository implements SigningKeyRepository {
     private static SigningKey toDomain(SigningKeyRow row) {
         return SigningKey.restore(row.getId(), row.getKid(), row.getKeyVersionReference(), row.getPublicJwkModulus(),
                 row.getPublicJwkExponent(), SigningKeyStatus.valueOf(row.getKeyStatus()),
+                Duration.ofSeconds(row.getMaxIssuedTokenTtlSeconds()),
                 IamTime.asInstant(row.getPublishedAt()), IamTime.asInstant(row.getActivatedAt()),
+                IamTime.asInstant(row.getRetiringAt()),
                 IamTime.asInstant(row.getRetireAfter()), IamTime.asInstant(row.getRetiredAt()),
                 IamTime.asInstant(row.getRevokedAt()));
     }

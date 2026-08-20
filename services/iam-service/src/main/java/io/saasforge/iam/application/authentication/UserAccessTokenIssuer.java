@@ -54,7 +54,7 @@ public final class UserAccessTokenIssuer {
         Instant expiresAt = issuedAt.plus(ttl);
         UUID jti = uuidV7Generator.next();
         String encodedClaims = encodeJson(claims(identityId, membershipId, tenantId, jti, issuedAt, expiresAt));
-        JwtSignature signature = signingService.sign(kid -> signingInput(kid, encodedClaims));
+        JwtSignature signature = signingService.sign(ttl, kid -> signingInput(kid, encodedClaims));
         String encodedSigningInput = new String(signingInput(signature.kid(), encodedClaims).bytes(), StandardCharsets.US_ASCII);
         String token = encodedSigningInput + "." + Base64.getUrlEncoder().withoutPadding().encodeToString(signature.bytes());
         return new IssuedAccessToken(token, jti, signature.kid(), issuedAt, expiresAt, ttl.getSeconds());

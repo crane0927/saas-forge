@@ -11,8 +11,10 @@
         <result property="publicJwkModulus" column="public_jwk_modulus"/>
         <result property="publicJwkExponent" column="public_jwk_exponent"/>
         <result property="keyStatus" column="key_status"/>
+        <result property="maxIssuedTokenTtlSeconds" column="max_issued_token_ttl_seconds"/>
         <result property="publishedAt" column="published_at"/>
         <result property="activatedAt" column="activated_at"/>
+        <result property="retiringAt" column="retiring_at"/>
         <result property="retireAfter" column="retire_after"/>
         <result property="retiredAt" column="retired_at"/>
         <result property="revokedAt" column="revoked_at"/>
@@ -21,17 +23,21 @@
     <select id="insertKey" resultMap="keyRow" affectData="true" flushCache="true">
         INSERT INTO iam_signing_keys
             (kid, key_version_reference, public_jwk_modulus, public_jwk_exponent, key_status,
-             published_at, activated_at, retire_after, retired_at, revoked_at)
+             max_issued_token_ttl_seconds, published_at, activated_at, retiring_at,
+             retire_after, retired_at, revoked_at)
         VALUES
             (#{row.kid}, #{row.keyVersionReference}, #{row.publicJwkModulus}, #{row.publicJwkExponent}, #{row.keyStatus},
-             #{row.publishedAt}, #{row.activatedAt}, #{row.retireAfter}, #{row.retiredAt}, #{row.revokedAt})
+             #{row.maxIssuedTokenTtlSeconds}, #{row.publishedAt}, #{row.activatedAt}, #{row.retiringAt},
+             #{row.retireAfter}, #{row.retiredAt}, #{row.revokedAt})
         RETURNING id, kid, key_version_reference, public_jwk_modulus, public_jwk_exponent, key_status,
-                  published_at, activated_at, retire_after, retired_at, revoked_at
+                  max_issued_token_ttl_seconds, published_at, activated_at, retiring_at,
+                  retire_after, retired_at, revoked_at
     </select>
 
     <select id="findActiveKeys" resultMap="keyRow">
         SELECT id, kid, key_version_reference, public_jwk_modulus, public_jwk_exponent, key_status,
-               published_at, activated_at, retire_after, retired_at, revoked_at
+               max_issued_token_ttl_seconds, published_at, activated_at, retiring_at,
+               retire_after, retired_at, revoked_at
         FROM iam_signing_keys
         WHERE key_status = 'ACTIVE'
         ORDER BY kid
@@ -39,7 +45,8 @@
 
     <select id="findPublishedVerificationKeys" resultMap="keyRow">
         SELECT id, kid, key_version_reference, public_jwk_modulus, public_jwk_exponent, key_status,
-               published_at, activated_at, retire_after, retired_at, revoked_at
+               max_issued_token_ttl_seconds, published_at, activated_at, retiring_at,
+               retire_after, retired_at, revoked_at
         FROM iam_signing_keys
         WHERE key_status IN ('PUBLISHED', 'ACTIVE', 'RETIRING')
         ORDER BY published_at, kid
@@ -47,7 +54,8 @@
 
     <select id="lockKeyById" resultMap="keyRow">
         SELECT id, kid, key_version_reference, public_jwk_modulus, public_jwk_exponent, key_status,
-               published_at, activated_at, retire_after, retired_at, revoked_at
+               max_issued_token_ttl_seconds, published_at, activated_at, retiring_at,
+               retire_after, retired_at, revoked_at
         FROM iam_signing_keys
         WHERE id = #{keyId}
         FOR UPDATE
@@ -55,17 +63,37 @@
 
     <select id="lockActiveKey" resultMap="keyRow">
         SELECT id, kid, key_version_reference, public_jwk_modulus, public_jwk_exponent, key_status,
-               published_at, activated_at, retire_after, retired_at, revoked_at
+               max_issued_token_ttl_seconds, published_at, activated_at, retiring_at,
+               retire_after, retired_at, revoked_at
         FROM iam_signing_keys
         WHERE key_status = 'ACTIVE'
         FOR UPDATE
     </select>
 
+    <select id="findById" resultMap="keyRow">
+        SELECT id, kid, key_version_reference, public_jwk_modulus, public_jwk_exponent, key_status,
+               max_issued_token_ttl_seconds, published_at, activated_at, retiring_at,
+               retire_after, retired_at, revoked_at
+        FROM iam_signing_keys
+        WHERE id = #{keyId}
+    </select>
+
+    <select id="prepareActiveForIssuance" resultMap="keyRow" affectData="true" flushCache="true">
+        UPDATE iam_signing_keys
+        SET max_issued_token_ttl_seconds = GREATEST(max_issued_token_ttl_seconds, #{tokenTtlSeconds})
+        WHERE key_status = 'ACTIVE'
+        RETURNING id, kid, key_version_reference, public_jwk_modulus, public_jwk_exponent, key_status,
+                  max_issued_token_ttl_seconds, published_at, activated_at, retiring_at,
+                  retire_after, retired_at, revoked_at
+    </select>
+
     <update id="updateKey">
         UPDATE iam_signing_keys
         SET key_status = #{row.keyStatus},
+            max_issued_token_ttl_seconds = #{row.maxIssuedTokenTtlSeconds},
             published_at = #{row.publishedAt},
             activated_at = #{row.activatedAt},
+            retiring_at = #{row.retiringAt},
             retire_after = #{row.retireAfter},
             retired_at = #{row.retiredAt},
             revoked_at = #{row.revokedAt}

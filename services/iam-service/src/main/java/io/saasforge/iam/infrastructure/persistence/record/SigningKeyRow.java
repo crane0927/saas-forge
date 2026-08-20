@@ -10,8 +10,10 @@ public class SigningKeyRow {
     private String publicJwkModulus;
     private String publicJwkExponent;
     private String keyStatus;
+    private long maxIssuedTokenTtlSeconds;
     private OffsetDateTime publishedAt;
     private OffsetDateTime activatedAt;
+    private OffsetDateTime retiringAt;
     private OffsetDateTime retireAfter;
     private OffsetDateTime retiredAt;
     private OffsetDateTime revokedAt;
@@ -28,10 +30,14 @@ public class SigningKeyRow {
     public void setPublicJwkExponent(String publicJwkExponent) { this.publicJwkExponent = publicJwkExponent; }
     public String getKeyStatus() { return keyStatus; }
     public void setKeyStatus(String keyStatus) { this.keyStatus = keyStatus; }
+    public long getMaxIssuedTokenTtlSeconds() { return maxIssuedTokenTtlSeconds; }
+    public void setMaxIssuedTokenTtlSeconds(long value) { this.maxIssuedTokenTtlSeconds = value; }
     public OffsetDateTime getPublishedAt() { return publishedAt; }
     public void setPublishedAt(OffsetDateTime publishedAt) { this.publishedAt = publishedAt; }
     public OffsetDateTime getActivatedAt() { return activatedAt; }
     public void setActivatedAt(OffsetDateTime activatedAt) { this.activatedAt = activatedAt; }
+    public OffsetDateTime getRetiringAt() { return retiringAt; }
+    public void setRetiringAt(OffsetDateTime retiringAt) { this.retiringAt = retiringAt; }
     public OffsetDateTime getRetireAfter() { return retireAfter; }
     public void setRetireAfter(OffsetDateTime retireAfter) { this.retireAfter = retireAfter; }
     public OffsetDateTime getRetiredAt() { return retiredAt; }

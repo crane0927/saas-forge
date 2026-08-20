@@ -28,6 +28,7 @@ import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
@@ -218,6 +219,10 @@ class IamPersistenceRepositoryIT {
 
         assertThrows(IllegalStateException.class, () -> signingKeys.activate(first.id(), now.plus(4, ChronoUnit.MINUTES)));
         signingKeys.activate(first.id(), now.plus(5, ChronoUnit.MINUTES));
+        assertEquals(Duration.ofHours(8),
+                signingKeys.prepareActiveForIssuance(Duration.ofHours(8)).maxIssuedTokenTtl());
+        assertEquals(Duration.ofHours(8),
+                signingKeys.prepareActiveForIssuance(Duration.ofMinutes(15)).maxIssuedTokenTtl());
         SigningKey persistedFirst = signingKeys.findActive().orElseThrow();
         assertEquals(first.kid(), persistedFirst.kid());
         assertEquals("kms/key/1", persistedFirst.keyVersionReference());
@@ -234,13 +239,15 @@ class IamPersistenceRepositoryIT {
         assertEquals(SigningKeyStatus.ACTIVE, active.status());
         assertEquals(second.id(), signingKeys.findActive().orElseThrow().id());
 
-        SigningKey revoked = signingKeys.revoke(second.id(), now.plus(12, ChronoUnit.MINUTES));
+        SigningKey replacement = signingKeys.savePublished(SigningKey.publish(
+                "kid-" + UUID.randomUUID(), "kms/key/3", "modulus-3", "AQAB", now.plus(6, ChronoUnit.MINUTES)));
+        SigningKey revoked = signingKeys.revoke(second.id(), replacement.id(), now.plus(12, ChronoUnit.MINUTES));
         assertEquals(SigningKeyStatus.REVOKED, revoked.status());
-        assertTrue(signingKeys.findActive().isEmpty());
+        assertEquals(replacement.id(), signingKeys.findActive().orElseThrow().id());
         assertFalse(signingKeys.findPublishedVerificationKeys().stream().anyMatch(key -> key.id().equals(second.id())));
 
-        assertThrows(IllegalStateException.class, () -> signingKeys.retire(first.id(), now.plus(40, ChronoUnit.MINUTES)));
-        assertEquals(SigningKeyStatus.RETIRED, signingKeys.retire(first.id(), now.plus(41, ChronoUnit.MINUTES)).status());
+        assertThrows(IllegalStateException.class, () -> signingKeys.retire(first.id(), now.plus(491, ChronoUnit.MINUTES)));
+        assertEquals(SigningKeyStatus.RETIRED, signingKeys.retire(first.id(), now.plus(492, ChronoUnit.MINUTES)).status());
         assertFalse(signingKeys.findPublishedVerificationKeys().stream().anyMatch(key -> key.id().equals(first.id())));
     }
 

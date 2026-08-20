@@ -30,6 +30,8 @@ import io.saasforge.iam.application.authentication.RevocationIndexRecovery;
 import io.saasforge.iam.application.authentication.RevocationIndexUnavailableException;
 import io.saasforge.iam.application.signing.JwtSigningPort;
 import io.saasforge.iam.application.signing.JwtSigningService;
+import io.saasforge.iam.application.signing.SigningKeyLifecycleService;
+import io.saasforge.iam.application.signing.SigningKeyRevocationTransaction;
 import io.saasforge.iam.config.AuthenticationConfiguration;
 import io.saasforge.iam.domain.authorization.PlatformRoleAssignment;
 import io.saasforge.iam.domain.authorization.PlatformRoleAssignmentRepository;
@@ -38,6 +40,7 @@ import io.saasforge.iam.domain.identity.Identity;
 import io.saasforge.iam.domain.identity.IdentityRepository;
 import io.saasforge.iam.domain.identity.PasswordCredential;
 import io.saasforge.iam.domain.signing.SigningKeyRepository;
+import io.saasforge.iam.domain.session.AccessTokenIssuanceRepository;
 import io.saasforge.iam.infrastructure.messaging.OutboxPublisher;
 import io.saasforge.iam.infrastructure.persistence.MyBatisIdentityRepository;
 import io.saasforge.iam.infrastructure.grpc.GrpcAccessibleMemberships;
@@ -219,6 +222,9 @@ class AuthenticationHttpIT {
 
     @Autowired
     RevocationIndexRecovery revocationIndexRecovery;
+
+    @Autowired
+    SigningKeyLifecycleService signingKeyLifecycleService;
 
     MockMvc mockMvc;
     JdbcTemplate jdbc;
@@ -1197,13 +1203,24 @@ class AuthenticationHttpIT {
         TestUser user = createUser("revocation-recovery@example.test", "correct-password", true, Credential.REGULAR);
         MvcResult session = login("revocation-recovery@example.test", "correct-password", "PLATFORM").andReturn();
         UUID jti = UUID.fromString(tokenClaims(session).get("jti").asString());
-        logout(refreshToken(session), accessToken(session)).andExpect(status().isNoContent());
-        jdbc.update("""
-                UPDATE iam_signing_keys
-                SET key_status = 'REVOKED', revoked_at = now()
-                WHERE kid = 'active-login-kid'
-                """);
+        UUID activeKeyId = jdbc.queryForObject(
+                "SELECT id FROM iam_signing_keys WHERE kid = 'active-login-kid'", UUID.class);
+        UUID replacementKeyId = jdbc.queryForObject("""
+                INSERT INTO iam_signing_keys
+                    (kid, key_version_reference, public_jwk_modulus, public_jwk_exponent,
+                     key_status, published_at)
+                VALUES ('emergency-replacement-kid', 'fake/key/emergency', 'replacement-modulus', 'AQAB',
+                        'PUBLISHED', now() - interval '10 minutes')
+                RETURNING id
+                """, UUID.class);
         try {
+            signingKeyLifecycleService.emergencyRevoke(activeKeyId, replacementKeyId);
+            assertEquals("REVOKED", jdbc.queryForObject(
+                    "SELECT key_status FROM iam_signing_keys WHERE id = ?", String.class, activeKeyId));
+            assertEquals("ACTIVE", jdbc.queryForObject(
+                    "SELECT key_status FROM iam_signing_keys WHERE id = ?", String.class, replacementKeyId));
+            assertEquals("SIGNING_KEY_COMPROMISED", jdbc.queryForObject(
+                    "SELECT revocation_reason FROM iam_access_token_issuances WHERE jti = ?", String.class, jti));
             Set<String> revocationKeys = redis.keys("sf:test:iam-service:*revocation*:v1:*");
             if (revocationKeys != null && !revocationKeys.isEmpty()) {
                 redis.delete(revocationKeys);
@@ -1226,9 +1243,22 @@ class AuthenticationHttpIT {
         } finally {
             jdbc.update("""
                     UPDATE iam_signing_keys
+                    SET key_status = 'PUBLISHED', activated_at = NULL
+                    WHERE id = ?
+                    """, replacementKeyId);
+            jdbc.update("""
+                    UPDATE iam_signing_keys
                     SET key_status = 'ACTIVE', revoked_at = NULL
                     WHERE kid = 'active-login-kid'
                     """);
+            try (Connection connection = DriverManager.getConnection(
+                    iamJdbcUrl(), "iam_migrator", "iam-migrator-password")) {
+                try (var statement = connection.prepareStatement(
+                        "DELETE FROM iam_signing_keys WHERE id = ?")) {
+                    statement.setObject(1, replacementKeyId);
+                    statement.executeUpdate();
+                }
+            }
         }
     }
 
@@ -1663,6 +1693,22 @@ class AuthenticationHttpIT {
         @Bean
         JwtSigningService jwtSigningService(SigningKeyRepository repository, JwtSigningPort signingPort) {
             return new JwtSigningService(new ActiveSigningKeyResolver(repository), signingPort);
+        }
+
+        @Bean
+        SigningKeyRevocationTransaction signingKeyRevocationTransaction(
+                SigningKeyRepository signingKeys, AccessTokenIssuanceRepository issuances) {
+            return new SigningKeyRevocationTransaction(signingKeys, issuances);
+        }
+
+        @Bean
+        SigningKeyLifecycleService signingKeyLifecycleService(
+                SigningKeyRepository signingKeys,
+                AccessTokenIssuanceRepository issuances,
+                RevocationIndex revocationIndex,
+                SigningKeyRevocationTransaction transaction,
+                java.time.Clock clock) {
+            return new SigningKeyLifecycleService(signingKeys, issuances, revocationIndex, transaction, clock);
         }
 
         @Bean

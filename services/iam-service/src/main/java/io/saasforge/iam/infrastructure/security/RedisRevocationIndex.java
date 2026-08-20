@@ -3,6 +3,7 @@ package io.saasforge.iam.infrastructure.security;
 import io.saasforge.iam.application.authentication.RevocationIndex;
 import io.saasforge.iam.application.authentication.RevocationIndexUnavailableException;
 import io.saasforge.iam.domain.session.DurableRevocation;
+import io.saasforge.iam.domain.session.AccessTokenIssuance;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -25,6 +26,14 @@ public final class RedisRevocationIndex implements RevocationIndex {
             local requested = tonumber(ARGV[1])
             if current < requested then redis.call('SET', KEYS[1], '1', 'PX', requested) end
             return 1
+            """, Long.class);
+    private static final DefaultRedisScript<Long> UPSERT_MANY = new DefaultRedisScript<>("""
+            for index, key in ipairs(KEYS) do
+                local current = redis.call('PTTL', key)
+                local requested = tonumber(ARGV[index])
+                if current < requested then redis.call('SET', key, '1', 'PX', requested) end
+            end
+            return #KEYS
             """, Long.class);
     private static final DefaultRedisScript<Long> CHECK = new DefaultRedisScript<>("""
             if redis.call('GET', KEYS[1]) ~= '1' then return -1 end
@@ -52,6 +61,30 @@ public final class RedisRevocationIndex implements RevocationIndex {
     public void revokeJti(UUID jti, Instant expiresAt, Instant at) {
         try {
             write(jtiKey(jti), expiresAt.plus(CLOCK_SKEW), at);
+        } catch (DataAccessException exception) {
+            throw unavailable(exception);
+        }
+    }
+
+    @Override
+    public void revokeSigningKey(
+            String kid, Instant rejectUntil, List<AccessTokenIssuance> issuances, Instant at) {
+        if (kid == null || kid.isBlank() || rejectUntil == null || issuances == null || at == null) {
+            throw new IllegalArgumentException("Signing Key 撤销索引参数不完整");
+        }
+        List<String> keys = new java.util.ArrayList<>();
+        List<String> ttlMillis = new java.util.ArrayList<>();
+        keys.add(kidKey(kid));
+        ttlMillis.add(ttlMillis(rejectUntil, at));
+        for (AccessTokenIssuance issuance : issuances) {
+            keys.add(jtiKey(issuance.jti()));
+            ttlMillis.add(ttlMillis(issuance.expiresAt().plus(CLOCK_SKEW), at));
+        }
+        try {
+            Long written = redis.execute(UPSERT_MANY, keys, ttlMillis.toArray());
+            if (written == null || written != keys.size()) {
+                throw new RevocationIndexUnavailableException();
+            }
         } catch (DataAccessException exception) {
             throw unavailable(exception);
         }
@@ -134,8 +167,11 @@ public final class RedisRevocationIndex implements RevocationIndex {
     }
 
     private void write(String key, Instant rejectUntil, Instant at) {
-        long ttlMillis = Math.max(1, Duration.between(at, rejectUntil).toMillis());
-        redis.execute(UPSERT, List.of(key), Long.toString(ttlMillis));
+        redis.execute(UPSERT, List.of(key), ttlMillis(rejectUntil, at));
+    }
+
+    private static String ttlMillis(Instant rejectUntil, Instant at) {
+        return Long.toString(Math.max(1, Duration.between(at, rejectUntil).toMillis()));
     }
 
     private String jtiKey(UUID jti) {

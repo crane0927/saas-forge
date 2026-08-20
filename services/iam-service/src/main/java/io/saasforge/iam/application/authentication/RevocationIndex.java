@@ -1,6 +1,7 @@
 package io.saasforge.iam.application.authentication;
 
 import io.saasforge.iam.domain.session.DurableRevocation;
+import io.saasforge.iam.domain.session.AccessTokenIssuance;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -8,6 +9,9 @@ import java.util.UUID;
 /** Redis 撤销热路径；Ready 缺失或为未就绪时读取必须 fail closed。 */
 public interface RevocationIndex {
     void revokeJti(UUID jti, Instant expiresAt, Instant at);
+
+    /** 原子写入失陷 kid 及其全部未过期 jti，任一写入失败都不得部分报告成功。 */
+    void revokeSigningKey(String kid, Instant rejectUntil, List<AccessTokenIssuance> issuances, Instant at);
 
     void markNotReady();
 

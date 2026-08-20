@@ -21,4 +21,12 @@ public interface AccessTokenIssuanceMapper {
 
     List<AccessTokenIssuanceRow> findUnexpiredByFamilyId(
             @Param("familyId") UUID familyId, @Param("at") OffsetDateTime at);
+
+    List<AccessTokenIssuanceRow> findUnexpiredByKid(
+            @Param("kid") String kid, @Param("at") OffsetDateTime at);
+
+    int revokeUnexpiredByKid(
+            @Param("kid") String kid,
+            @Param("revokedAt") OffsetDateTime revokedAt,
+            @Param("reason") String reason);
 }
