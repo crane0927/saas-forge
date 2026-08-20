@@ -6,7 +6,7 @@ import io.saasforge.iam.domain.signing.SigningKeyStatus;
 import io.saasforge.iam.infrastructure.persistence.mapper.SigningKeyMapper;
 import io.saasforge.iam.infrastructure.persistence.record.SigningKeyRow;
 import java.time.Instant;
-import java.util.Optional;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,8 +29,13 @@ public class MyBatisSigningKeyRepository implements SigningKeyRepository {
     }
 
     @Override
-    public Optional<SigningKey> findActive() {
-        return Optional.ofNullable(mapper.findActiveKey()).map(MyBatisSigningKeyRepository::toDomain);
+    public List<SigningKey> findActiveKeys() {
+        return mapper.findActiveKeys().stream().map(MyBatisSigningKeyRepository::toDomain).toList();
+    }
+
+    @Override
+    public List<SigningKey> findPublishedVerificationKeys() {
+        return mapper.findPublishedVerificationKeys().stream().map(MyBatisSigningKeyRepository::toDomain).toList();
     }
 
     @Override

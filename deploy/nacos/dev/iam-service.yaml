@@ -1,6 +1,14 @@
 saasforge:
   iam:
-    configuration-revision: "1"
+    configuration-revision: "2"
+
+security:
+  jwt:
+    signing:
+      adapter: pem-jca
+      pem:
+        key-version-ref: ${IAM_JWT_PEM_KEY_VERSION_REF:?IAM_JWT_PEM_KEY_VERSION_REF is required}
+        private-key-location: ${IAM_JWT_PEM_PRIVATE_KEY_LOCATION:?IAM_JWT_PEM_PRIVATE_KEY_LOCATION is required}
 
 management:
   endpoint:

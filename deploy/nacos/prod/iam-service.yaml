@@ -1,6 +1,11 @@
 saasforge:
   iam:
-    configuration-revision: "1"
+    configuration-revision: "2"
+
+security:
+  jwt:
+    signing:
+      adapter: external
 
 management:
   endpoint:

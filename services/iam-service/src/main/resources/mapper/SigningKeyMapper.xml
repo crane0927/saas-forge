@@ -29,11 +29,20 @@
                   published_at, activated_at, retire_after, retired_at, revoked_at
     </select>
 
-    <select id="findActiveKey" resultMap="keyRow">
+    <select id="findActiveKeys" resultMap="keyRow">
         SELECT id, kid, key_version_reference, public_jwk_modulus, public_jwk_exponent, key_status,
                published_at, activated_at, retire_after, retired_at, revoked_at
         FROM iam_signing_keys
         WHERE key_status = 'ACTIVE'
+        ORDER BY kid
+    </select>
+
+    <select id="findPublishedVerificationKeys" resultMap="keyRow">
+        SELECT id, kid, key_version_reference, public_jwk_modulus, public_jwk_exponent, key_status,
+               published_at, activated_at, retire_after, retired_at, revoked_at
+        FROM iam_signing_keys
+        WHERE key_status IN ('PUBLISHED', 'ACTIVE', 'RETIRING')
+        ORDER BY published_at, kid
     </select>
 
     <select id="lockKeyById" resultMap="keyRow">

@@ -202,6 +202,7 @@ class IamPersistenceRepositoryIT {
     void persistsSigningKeyMetadataEnforcesUniquenessAndLifecycle() throws SQLException {
         Instant now = Instant.parse("2026-08-20T03:00:00Z");
         SigningKey first = signingKeys.savePublished(SigningKey.publish("kid-" + UUID.randomUUID(), "kms/key/1", "modulus-1", "AQAB", now));
+        assertTrue(signingKeys.findPublishedVerificationKeys().stream().anyMatch(key -> key.id().equals(first.id())));
 
         assertThrows(IllegalStateException.class, () -> signingKeys.activate(first.id(), now.plus(4, ChronoUnit.MINUTES)));
         signingKeys.activate(first.id(), now.plus(5, ChronoUnit.MINUTES));
@@ -224,9 +225,11 @@ class IamPersistenceRepositoryIT {
         SigningKey revoked = signingKeys.revoke(second.id(), now.plus(12, ChronoUnit.MINUTES));
         assertEquals(SigningKeyStatus.REVOKED, revoked.status());
         assertTrue(signingKeys.findActive().isEmpty());
+        assertFalse(signingKeys.findPublishedVerificationKeys().stream().anyMatch(key -> key.id().equals(second.id())));
 
         assertThrows(IllegalStateException.class, () -> signingKeys.retire(first.id(), now.plus(40, ChronoUnit.MINUTES)));
         assertEquals(SigningKeyStatus.RETIRED, signingKeys.retire(first.id(), now.plus(41, ChronoUnit.MINUTES)).status());
+        assertFalse(signingKeys.findPublishedVerificationKeys().stream().anyMatch(key -> key.id().equals(first.id())));
     }
 
     @Test

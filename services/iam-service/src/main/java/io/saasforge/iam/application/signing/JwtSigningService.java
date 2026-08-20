@@ -1,0 +1,27 @@
+package io.saasforge.iam.application.signing;
+
+import io.saasforge.iam.domain.signing.SigningKey;
+
+/** 使用当前唯一 ACTIVE Signing Key 完成 RS256 签名。 */
+public final class JwtSigningService {
+
+    private final ActiveSigningKeyResolver activeSigningKeyResolver;
+    private final JwtSigningPort signingPort;
+
+    public JwtSigningService(ActiveSigningKeyResolver activeSigningKeyResolver, JwtSigningPort signingPort) {
+        this.activeSigningKeyResolver = activeSigningKeyResolver;
+        this.signingPort = signingPort;
+    }
+
+    public JwtSignature sign(JwsSigningInput signingInput) {
+        SigningKey activeKey = activeSigningKeyResolver.current();
+        try {
+            byte[] signature = signingPort.sign(
+                    activeKey.keyVersionReference(), JwtSigningAlgorithm.RS256, signingInput);
+            return new JwtSignature(activeKey.kid(), signature);
+        } catch (RuntimeException ex) {
+            // 密钥选择已经完成；失败时不得尝试其他 key，否则会绕过 ACTIVE 生命周期约束。
+            throw new TokenSigningUnavailableException(ex);
+        }
+    }
+}
