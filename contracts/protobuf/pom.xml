@@ -12,9 +12,51 @@
     </parent>
 
     <artifactId>saas-forge-protobuf-contracts</artifactId>
-    <packaging>pom</packaging>
-
     <properties>
         <maven.deploy.skip>true</maven.deploy.skip>
     </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-protobuf</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-stub</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>io.github.ascopes</groupId>
+                <artifactId>protobuf-maven-plugin</artifactId>
+                <configuration>
+                    <protocVersion>${protobuf-java.version}</protocVersion>
+                    <sourceDirectories>
+                        <sourceDirectory>${project.basedir}</sourceDirectory>
+                    </sourceDirectories>
+                    <includes>
+                        <include>tenant_access/**/*.proto</include>
+                    </includes>
+                    <binaryMavenPlugins>
+                        <binaryMavenPlugin>
+                            <groupId>io.grpc</groupId>
+                            <artifactId>protoc-gen-grpc-java</artifactId>
+                            <version>${grpc.version}</version>
+                            <options>@generated=omit</options>
+                        </binaryMavenPlugin>
+                    </binaryMavenPlugins>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>

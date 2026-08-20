@@ -82,6 +82,11 @@
         <jsr305.version>3.0.2</jsr305.version>
         <httpmime.version>4.5.14</httpmime.version>
         <mybatis-spring-boot.version>4.0.0</mybatis-spring-boot.version>
+        <spring-grpc.version>1.0.3</spring-grpc.version>
+        <protobuf-java.version>4.33.4</protobuf-java.version>
+        <grpc.version>1.77.1</grpc.version>
+        <protobuf-maven-plugin.version>4.0.3</protobuf-maven-plugin.version>
+        <error-prone-annotations.version>2.41.0</error-prone-annotations.version>
         <testcontainers.version>2.0.5</testcontainers.version>
     </properties>
 
@@ -117,6 +122,18 @@
                 <version>${mybatis-spring-boot.version}</version>
             </dependency>
             <dependency>
+                <groupId>org.springframework.grpc</groupId>
+                <artifactId>spring-grpc-dependencies</artifactId>
+                <version>${spring-grpc.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.google.errorprone</groupId>
+                <artifactId>error_prone_annotations</artifactId>
+                <version>${error-prone-annotations.version}</version>
+            </dependency>
+            <dependency>
                 <groupId>org.testcontainers</groupId>
                 <artifactId>testcontainers-junit-jupiter</artifactId>
                 <version>${testcontainers.version}</version>
@@ -144,6 +161,11 @@
             <dependency>
                 <groupId>${project.groupId}</groupId>
                 <artifactId>tenant-access-service</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>${project.groupId}</groupId>
+                <artifactId>saas-forge-protobuf-contracts</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -251,6 +273,11 @@
                     <groupId>org.codehaus.mojo</groupId>
                     <artifactId>exec-maven-plugin</artifactId>
                     <version>${exec-maven-plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>io.github.ascopes</groupId>
+                    <artifactId>protobuf-maven-plugin</artifactId>
+                    <version>${protobuf-maven-plugin.version}</version>
                 </plugin>
             </plugins>
         </pluginManagement>

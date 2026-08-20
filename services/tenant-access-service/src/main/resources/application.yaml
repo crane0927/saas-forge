@@ -17,3 +17,9 @@ spring:
         namespace: ${NACOS_NAMESPACE:dev}
         service: tenant-access-service
         fail-fast: true
+  flyway:
+    enabled: false
+
+mybatis:
+  mapper-locations: classpath*:mapper/**/*Mapper.xml
+  type-handlers-package: io.saasforge.tenantaccess.infrastructure.persistence.type

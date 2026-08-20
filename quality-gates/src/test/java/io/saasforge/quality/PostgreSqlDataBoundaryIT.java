@@ -392,7 +392,10 @@ class PostgreSqlDataBoundaryIT {
     }
 
     private static long expectedMigrationCount(DatabaseAccount database) {
-        return database.serviceModule().equals("iam-service") ? 2 : 1;
+        return switch (database.serviceModule()) {
+            case "iam-service", "tenant-access-service" -> 2;
+            default -> 1;
+        };
     }
 
     private static String tableOwner(DatabaseAccount database, String tableName) throws SQLException {

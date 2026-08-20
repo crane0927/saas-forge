@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.saasforge.tenantaccess.infrastructure.persistence.mapper.AccessibleMembershipMapper">
+
+    <resultMap id="accessibleMembershipRow"
+               type="io.saasforge.tenantaccess.infrastructure.persistence.record.AccessibleMembershipRow">
+        <id property="membershipId" column="membership_id"/>
+        <result property="tenantId" column="tenant_id"/>
+        <result property="tenantDisplayName" column="tenant_display_name"/>
+    </resultMap>
+
+    <select id="findAccessibleByIdentityId" resultMap="accessibleMembershipRow">
+        SELECT membership_id, tenant_id, tenant_display_name
+        FROM list_accessible_memberships(#{identityId})
+    </select>
+</mapper>

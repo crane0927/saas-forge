@@ -15,6 +15,30 @@ service MembershipValidationService {
   rpc ValidateMembership(ValidateMembershipRequest) returns (ValidateMembershipResponse);
 }
 
+// Provides IAM with the current Tenant contexts an Identity may enter.
+// The response intentionally stops at 101 entries so callers can distinguish
+// the supported 0, 1, 2-100, and over-100 result classes without pagination.
+service AccessibleMembershipQueryService {
+  rpc ListAccessibleMemberships(ListAccessibleMembershipsRequest) returns (ListAccessibleMembershipsResponse);
+}
+
+message ListAccessibleMembershipsRequest {
+  // Canonical lowercase, hyphenated UUIDv7 Identity ID.
+  string identity_id = 1;
+}
+
+message ListAccessibleMembershipsResponse {
+  // Sorted by tenant_display_name and then membership_id. Contains at most 101
+  // entries; the 101st entry is only an overflow signal to the caller.
+  repeated AccessibleMembership memberships = 1;
+}
+
+message AccessibleMembership {
+  string membership_id = 1;
+  string tenant_id = 2;
+  string tenant_display_name = 3;
+}
+
 message ValidateMembershipRequest {
   // Canonical lowercase, hyphenated UUIDv7 Identity ID.
   string identity_id = 1;
