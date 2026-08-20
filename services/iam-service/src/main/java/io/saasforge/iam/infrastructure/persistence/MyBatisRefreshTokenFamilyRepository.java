@@ -38,12 +38,17 @@ public class MyBatisRefreshTokenFamilyRepository implements RefreshTokenFamilyRe
 
     @Override
     public Optional<RefreshTokenFamily> findUsableSelectionByTokenDigest(Sha256Digest tokenDigest, Instant at) {
+        return findUsableByTokenDigest(tokenDigest, at)
+                .filter(family -> family.purpose() == RefreshTokenFamilyPurpose.USER_TENANT_SELECTION);
+    }
+
+    @Override
+    public Optional<RefreshTokenFamily> findUsableByTokenDigest(Sha256Digest tokenDigest, Instant at) {
         RefreshTokenRow token = mapper.findTokenByDigest(tokenDigest.value());
         if (token == null || token.getConsumedAt() != null) {
             return Optional.empty();
         }
         return findById(token.getFamilyId())
-                .filter(family -> family.purpose() == RefreshTokenFamilyPurpose.USER_TENANT_SELECTION)
                 .filter(family -> family.isUsableAt(at));
     }
 
@@ -88,6 +93,50 @@ public class MyBatisRefreshTokenFamilyRepository implements RefreshTokenFamilyRe
         mapper.updateFamily(toRow(selected));
         mapper.insertToken(tokenRow(selected.id(), nextDigest, at));
         return new RefreshTokenConsumption(RefreshTokenConsumption.Status.CONSUMED, selected);
+    }
+
+    @Override
+    @Transactional
+    public RefreshTokenConsumption rotateSelection(
+            Sha256Digest presentedDigest, Sha256Digest nextDigest, Instant at) {
+        RefreshTokenRow token = mapper.lockTokenByDigest(presentedDigest.value());
+        if (token == null) {
+            return new RefreshTokenConsumption(RefreshTokenConsumption.Status.NOT_FOUND, null);
+        }
+        RefreshTokenFamily family = toDomain(mapper.lockFamilyById(token.getFamilyId()));
+        RefreshTokenConsumption terminal = terminalSelectionState(token, family, at);
+        if (terminal != null) {
+            return terminal;
+        }
+        if (mapper.markTokenConsumed(token.getId(), IamTime.asOffsetDateTime(at)) != 1) {
+            throw new IllegalStateException("Refresh Token 消费并发冲突");
+        }
+        RefreshTokenFamily used = family.recordUse(null, null, at);
+        mapper.updateFamily(toRow(used));
+        mapper.insertToken(tokenRow(used.id(), nextDigest, at));
+        return new RefreshTokenConsumption(RefreshTokenConsumption.Status.CONSUMED, used);
+    }
+
+    @Override
+    @Transactional
+    public RefreshTokenConsumption revokeForAuthorizationLoss(Sha256Digest presentedDigest, Instant at) {
+        RefreshTokenRow token = mapper.lockTokenByDigest(presentedDigest.value());
+        if (token == null) {
+            return new RefreshTokenConsumption(RefreshTokenConsumption.Status.NOT_FOUND, null);
+        }
+        RefreshTokenFamily family = toDomain(mapper.lockFamilyById(token.getFamilyId()));
+        if (token.getConsumedAt() != null || family.revokedAt() != null) {
+            return new RefreshTokenConsumption(RefreshTokenConsumption.Status.REVOKED, family);
+        }
+        if (!family.isUsableAt(at)) {
+            return new RefreshTokenConsumption(RefreshTokenConsumption.Status.EXPIRED, family);
+        }
+        if (mapper.markTokenConsumed(token.getId(), IamTime.asOffsetDateTime(at)) != 1) {
+            throw new IllegalStateException("Refresh Token 消费并发冲突");
+        }
+        RefreshTokenFamily revoked = family.revoke(at);
+        mapper.updateFamily(toRow(revoked));
+        return new RefreshTokenConsumption(RefreshTokenConsumption.Status.CONSUMED, revoked);
     }
 
     @Override

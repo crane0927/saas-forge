@@ -14,6 +14,8 @@ public interface RefreshTokenFamilyRepository {
 
     Optional<RefreshTokenFamily> findUsableSelectionByTokenDigest(Sha256Digest tokenDigest, Instant at);
 
+    Optional<RefreshTokenFamily> findUsableByTokenDigest(Sha256Digest tokenDigest, Instant at);
+
     RefreshTokenConsumption consume(Sha256Digest tokenDigest, Instant at);
 
     RefreshTokenConsumption rotate(
@@ -29,6 +31,13 @@ public interface RefreshTokenFamilyRepository {
             UUID membershipId,
             UUID tenantId,
             Instant at);
+
+    RefreshTokenConsumption rotateSelection(
+            Sha256Digest presentedDigest,
+            Sha256Digest nextDigest,
+            Instant at);
+
+    RefreshTokenConsumption revokeForAuthorizationLoss(Sha256Digest presentedDigest, Instant at);
 
     RefreshTokenConsumption rejectSelection(Sha256Digest presentedDigest, Instant at);
 

@@ -12,6 +12,7 @@ import io.saasforge.iam.application.authentication.PasswordPolicy;
 import io.saasforge.iam.application.authentication.PasswordChangedEventFactory;
 import io.saasforge.iam.application.authentication.PasswordLoginService;
 import io.saasforge.iam.application.authentication.RefreshTokenIssuer;
+import io.saasforge.iam.application.authentication.RefreshSessionService;
 import io.saasforge.iam.application.authentication.SessionStartedEventFactory;
 import io.saasforge.iam.application.authentication.UserAccessTokenIssuer;
 import io.saasforge.iam.application.authentication.UuidV7Generator;
@@ -156,6 +157,20 @@ public class AuthenticationConfiguration {
             Clock clock) {
         return new ContextSelectionService(
                 accessibleMemberships, refreshTokenFamilies, accessTokenIssuer,
+                refreshTokenIssuer, sessionService, clock);
+    }
+
+    @Bean
+    RefreshSessionService refreshSessionService(
+            PlatformRoleAssignmentRepository platformRoles,
+            AccessibleMemberships accessibleMemberships,
+            RefreshTokenFamilyRepository refreshTokenFamilies,
+            UserAccessTokenIssuer accessTokenIssuer,
+            RefreshTokenIssuer refreshTokenIssuer,
+            LoginSessionService sessionService,
+            Clock clock) {
+        return new RefreshSessionService(
+                platformRoles, accessibleMemberships, refreshTokenFamilies, accessTokenIssuer,
                 refreshTokenIssuer, sessionService, clock);
     }
 

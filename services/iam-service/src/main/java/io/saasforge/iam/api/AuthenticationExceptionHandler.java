@@ -10,6 +10,8 @@ import io.saasforge.iam.application.authentication.TenantAccessUnavailableExcept
 import io.saasforge.iam.application.authentication.PasswordChangeSessionInvalidException;
 import io.saasforge.iam.application.authentication.PasswordCompromisedException;
 import io.saasforge.iam.application.authentication.PasswordPolicyException;
+import io.saasforge.iam.application.authentication.RefreshAuthorizationRejectedException;
+import io.saasforge.iam.application.authentication.RefreshSessionInvalidException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
 import java.security.SecureRandom;
@@ -103,6 +105,22 @@ public class AuthenticationExceptionHandler {
                 "Password change session invalid", exception.getMessage(), request);
     }
 
+    @ExceptionHandler(RefreshSessionInvalidException.class)
+    ResponseEntity<Problem> refreshSessionInvalid(
+            RefreshSessionInvalidException exception, HttpServletRequest request) {
+        return problemWithClearedRefreshCookie(
+                HttpStatus.UNAUTHORIZED, RefreshSessionInvalidException.CODE,
+                "Refresh session invalid", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(RefreshAuthorizationRejectedException.class)
+    ResponseEntity<Problem> refreshAuthorizationRejected(
+            RefreshAuthorizationRejectedException exception, HttpServletRequest request) {
+        return problemWithClearedRefreshCookie(
+                HttpStatus.FORBIDDEN, RefreshAuthorizationRejectedException.CODE,
+                "Access context unavailable", exception.getMessage(), request);
+    }
+
     @ExceptionHandler(MissingRequestCookieException.class)
     ResponseEntity<Problem> missingRefreshCookie(
             MissingRequestCookieException exception, HttpServletRequest request) throws MissingRequestCookieException {
@@ -113,6 +131,11 @@ public class AuthenticationExceptionHandler {
             return problemWithClearedRefreshCookie(
                     HttpStatus.UNAUTHORIZED, PasswordChangeSessionInvalidException.CODE,
                     "Password change session invalid", "首次改密会话无效或已失效", request);
+        }
+        if (request.getRequestURI().endsWith("/refresh")) {
+            return problemWithClearedRefreshCookie(
+                    HttpStatus.UNAUTHORIZED, RefreshSessionInvalidException.CODE,
+                    "Refresh session invalid", "Refresh 会话无效或已失效", request);
         }
         return problemWithClearedRefreshCookie(HttpStatus.UNAUTHORIZED, ContextSelectionSessionInvalidException.CODE,
                 "Context selection session invalid", "Tenant 上下文选择会话无效或已失效", request);

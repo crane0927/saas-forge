@@ -118,6 +118,45 @@ public class LoginSessionService {
         return OptionalLong.of(cookieMaxAge(selectedAt, family));
     }
 
+    /** Refresh Token 轮换和新的 Access Token Issuance 必须在同一事务内提交。 */
+    @Transactional
+    public OptionalLong rotateAccessTokenSession(
+            RefreshTokenMaterial presentedToken,
+            RefreshTokenMaterial nextToken,
+            UUID membershipId,
+            UUID tenantId,
+            IssuedAccessToken accessToken,
+            Instant refreshedAt) {
+        RefreshTokenConsumption rotation = refreshTokenFamilies.rotate(
+                presentedToken.digest(), nextToken.digest(), membershipId, tenantId, refreshedAt);
+        if (rotation.status() != RefreshTokenConsumption.Status.CONSUMED) {
+            return OptionalLong.empty();
+        }
+        RefreshTokenFamily family = rotation.family();
+        accessTokenIssuances.create(new AccessTokenIssuance(
+                accessToken.jti(), family.id(), family.identityId(), membershipId, tenantId, accessToken.kid(),
+                accessToken.issuedAt(), accessToken.expiresAt()));
+        return OptionalLong.of(cookieMaxAge(refreshedAt, family));
+    }
+
+    @Transactional
+    public OptionalLong rotateSelectionSession(
+            RefreshTokenMaterial presentedToken,
+            RefreshTokenMaterial nextToken,
+            Instant refreshedAt) {
+        RefreshTokenConsumption rotation = refreshTokenFamilies.rotateSelection(
+                presentedToken.digest(), nextToken.digest(), refreshedAt);
+        if (rotation.status() != RefreshTokenConsumption.Status.CONSUMED) {
+            return OptionalLong.empty();
+        }
+        return OptionalLong.of(cookieMaxAge(refreshedAt, rotation.family()));
+    }
+
+    @Transactional
+    public void revokeForAuthorizationLoss(RefreshTokenMaterial presentedToken, Instant rejectedAt) {
+        refreshTokenFamilies.revokeForAuthorizationLoss(presentedToken.digest(), rejectedAt);
+    }
+
     @Transactional
     public void rejectSelection(RefreshTokenMaterial presentedToken, Instant rejectedAt) {
         refreshTokenFamilies.rejectSelection(presentedToken.digest(), rejectedAt);

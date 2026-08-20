@@ -393,7 +393,8 @@ class PostgreSqlDataBoundaryIT {
 
     private static long expectedMigrationCount(DatabaseAccount database) {
         return switch (database.serviceModule()) {
-            case "iam-service", "tenant-access-service" -> 2;
+            case "iam-service" -> 4;
+            case "tenant-access-service" -> 2;
             default -> 1;
         };
     }

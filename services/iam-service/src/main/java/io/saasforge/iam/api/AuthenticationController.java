@@ -3,20 +3,21 @@ package io.saasforge.iam.api;
 import io.saasforge.iam.application.authentication.AccessTokenLoginResult;
 import io.saasforge.iam.application.authentication.ContextSelectionLoginResult;
 import io.saasforge.iam.application.authentication.ContextSelectionService;
-import io.saasforge.iam.application.authentication.LoginContextType;
-import io.saasforge.iam.application.authentication.LoginResult;
 import io.saasforge.iam.application.authentication.InitialPasswordChangeLoginResult;
 import io.saasforge.iam.application.authentication.InitialPasswordChangeService;
+import io.saasforge.iam.application.authentication.LoginContextType;
+import io.saasforge.iam.application.authentication.LoginResult;
 import io.saasforge.iam.application.authentication.PasswordLoginService;
+import io.saasforge.iam.application.authentication.RefreshSessionService;
 import io.saasforge.iam.contract.api.AuthenticationApi;
 import io.saasforge.iam.contract.model.AccessTokenResult;
 import io.saasforge.iam.contract.model.AuthenticationResult;
 import io.saasforge.iam.contract.model.ContextSelectionRequiredResult;
 import io.saasforge.iam.contract.model.ContextSelectionRequest;
-import io.saasforge.iam.contract.model.LoginRequest;
 import io.saasforge.iam.contract.model.InitialPasswordChangeRequiredResult;
-import io.saasforge.iam.contract.model.PasswordChangeRequest;
+import io.saasforge.iam.contract.model.LoginRequest;
 import io.saasforge.iam.contract.model.MembershipCandidate;
+import io.saasforge.iam.contract.model.PasswordChangeRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Duration;
 import java.util.UUID;
@@ -38,14 +39,17 @@ public class AuthenticationController implements AuthenticationApi {
     private final PasswordLoginService loginService;
     private final ContextSelectionService contextSelectionService;
     private final InitialPasswordChangeService passwordChangeService;
+    private final RefreshSessionService refreshSessionService;
 
     public AuthenticationController(
             PasswordLoginService loginService,
             ContextSelectionService contextSelectionService,
-            InitialPasswordChangeService passwordChangeService) {
+            InitialPasswordChangeService passwordChangeService,
+            RefreshSessionService refreshSessionService) {
         this.loginService = loginService;
         this.contextSelectionService = contextSelectionService;
         this.passwordChangeService = passwordChangeService;
+        this.refreshSessionService = refreshSessionService;
     }
 
     @Override
@@ -77,6 +81,15 @@ public class AuthenticationController implements AuthenticationApi {
         return ResponseEntity.noContent()
                 .header(HttpHeaders.SET_COOKIE, clearedRefreshCookie().toString())
                 .build();
+    }
+
+    @Override
+    public ResponseEntity<AuthenticationResult> refreshAccessToken(
+            UUID idempotencyKey, String csrfHeader, String refreshToken, Object request) {
+        LoginResult result = refreshSessionService.refresh(refreshToken);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, refreshCookie(result).toString())
+                .body(responseBody(result));
     }
 
     private AuthenticationResult responseBody(LoginResult result) {

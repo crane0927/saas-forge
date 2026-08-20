@@ -51,6 +51,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -138,6 +139,7 @@ class AuthenticationHttpIT {
     private static final Map<UUID, List<io.saasforge.contracts.tenantaccess.membership.v1.AccessibleMembership>>
             ACCESSIBLE_MEMBERSHIPS = new ConcurrentHashMap<>();
     private static final Set<UUID> TENANT_ACCESS_FAILURES = ConcurrentHashMap.newKeySet();
+    private static final AtomicBoolean SIGNING_FAILURE = new AtomicBoolean();
     private static final ManagedChannel TENANT_ACCESS_CHANNEL;
 
     @Container
@@ -215,6 +217,7 @@ class AuthenticationHttpIT {
         }
         ACCESSIBLE_MEMBERSHIPS.clear();
         TENANT_ACCESS_FAILURES.clear();
+        SIGNING_FAILURE.set(false);
     }
 
     @Test
@@ -779,6 +782,188 @@ class AuthenticationHttpIT {
     }
 
     @Test
+    @Order(18)
+    void refreshRevalidatesEveryUserPurposeAndRotatesCurrentSessionFacts() throws Exception {
+        TestUser platform = createUser("refresh-platform@example.test", "correct-password", true, Credential.REGULAR);
+        MvcResult platformLogin = login("refresh-platform@example.test", "correct-password", "PLATFORM").andReturn();
+        String platformToken = refreshToken(platformLogin);
+        String platformJti = tokenClaims(platformLogin).get("jti").asString();
+        jdbc.update("""
+                UPDATE iam_refresh_token_families
+                SET absolute_expires_at = now() + interval '5 minutes'
+                WHERE identity_id = ?
+                """, platform.identity().id());
+
+        MvcResult platformRefresh = refresh(platformToken)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.contextState").value("ACCESS_TOKEN_ISSUED"))
+                .andExpect(header().string("Set-Cookie", org.hamcrest.Matchers.containsString("Max-Age=")))
+                .andReturn();
+        String rotatedPlatformToken = refreshToken(platformRefresh);
+        String refreshedJti = tokenClaims(platformRefresh).get("jti").asString();
+        assertFalse(platformToken.equals(rotatedPlatformToken));
+        assertFalse(platformJti.equals(refreshedJti));
+        assertEquals(7, UUID.fromString(refreshedJti).version());
+        int maxAge = Integer.parseInt(Pattern.compile("Max-Age=(\\d+)")
+                .matcher(platformRefresh.getResponse().getHeader("Set-Cookie")).results()
+                .findFirst().orElseThrow().group(1));
+        assertTrue(maxAge > 0 && maxAge <= 300);
+        assertEquals(1, consumedRefreshTokenCount(platform.identity().id()));
+        assertEquals(1, activeRefreshTokenCount(platform.identity().id()));
+        assertEquals(2, accessTokenIssuanceCount(platform.identity().id()));
+
+        TestUser tenant = createUser("refresh-tenant@example.test", "correct-password", false, Credential.REGULAR);
+        UUID membershipId = uuidV7(40_001);
+        UUID tenantId = uuidV7(40_002);
+        accessibleMemberships(tenant.identity().id(), membership(membershipId, tenantId, "Tenant"));
+        String tenantToken = refreshToken(
+                login("refresh-tenant@example.test", "correct-password", "TENANT").andReturn());
+        MvcResult tenantRefresh = refresh(tenantToken)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.contextState").value("ACCESS_TOKEN_ISSUED"))
+                .andReturn();
+        assertEquals(membershipId.toString(), tokenClaims(tenantRefresh).get("membershipId").asString());
+        assertEquals(tenantId.toString(), tokenClaims(tenantRefresh).get("tenantId").asString());
+        assertEquals(2, accessTokenIssuanceCount(tenant.identity().id()));
+
+        TestUser selection = createUser(
+                "refresh-selection@example.test", "correct-password", false, Credential.REGULAR);
+        UUID firstMembership = uuidV7(41_001);
+        UUID secondMembership = uuidV7(41_002);
+        accessibleMemberships(selection.identity().id(),
+                membership(firstMembership, uuidV7(41_003), "Alpha"),
+                membership(secondMembership, uuidV7(41_004), "Beta"));
+        String selectionToken = refreshToken(
+                login("refresh-selection@example.test", "correct-password", "TENANT").andReturn());
+        UUID replacementMembership = uuidV7(41_005);
+        accessibleMemberships(selection.identity().id(),
+                membership(secondMembership, uuidV7(41_004), "Beta"),
+                membership(replacementMembership, uuidV7(41_006), "Gamma"));
+
+        MvcResult selectionRefresh = refresh(selectionToken)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.contextState").value("CONTEXT_SELECTION_REQUIRED"))
+                .andExpect(jsonPath("$.memberships[0].membershipId").value(secondMembership.toString()))
+                .andExpect(jsonPath("$.memberships[1].membershipId").value(replacementMembership.toString()))
+                .andReturn();
+        assertFalse(selectionToken.equals(refreshToken(selectionRefresh)));
+        assertEquals(1, consumedRefreshTokenCount(selection.identity().id()));
+        assertEquals(1, activeRefreshTokenCount(selection.identity().id()));
+        assertEquals(0, accessTokenIssuanceCount(selection.identity().id()));
+
+        TestUser narrowedSelection = createUser(
+                "refresh-selection-narrowed@example.test", "correct-password", false, Credential.REGULAR);
+        UUID narrowedMembership = uuidV7(41_007);
+        UUID narrowedTenant = uuidV7(41_008);
+        accessibleMemberships(narrowedSelection.identity().id(),
+                membership(narrowedMembership, narrowedTenant, "Alpha"),
+                membership(uuidV7(41_009), uuidV7(41_010), "Beta"));
+        String narrowedToken = refreshToken(
+                login("refresh-selection-narrowed@example.test", "correct-password", "TENANT").andReturn());
+        accessibleMemberships(narrowedSelection.identity().id(),
+                membership(narrowedMembership, narrowedTenant, "Alpha"));
+        MvcResult narrowedRefresh = refresh(narrowedToken)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.contextState").value("ACCESS_TOKEN_ISSUED"))
+                .andReturn();
+        assertEquals(narrowedMembership.toString(), tokenClaims(narrowedRefresh).get("membershipId").asString());
+        assertEquals("USER_TENANT", jdbc.queryForObject(
+                "SELECT family_purpose FROM iam_refresh_token_families WHERE identity_id = ?",
+                String.class, narrowedSelection.identity().id()));
+        assertEquals(1, accessTokenIssuanceCount(narrowedSelection.identity().id()));
+    }
+
+    @Test
+    @Order(19)
+    void refreshFailuresPreserveRetryableSessionsAndRevokeExplicitAuthorizationLoss() throws Exception {
+        TestUser retryable = createUser(
+                "refresh-retryable@example.test", "correct-password", false, Credential.REGULAR);
+        UUID membershipId = uuidV7(42_001);
+        UUID tenantId = uuidV7(42_002);
+        accessibleMemberships(retryable.identity().id(), membership(membershipId, tenantId, "Tenant"));
+        String retryableToken = refreshToken(
+                login("refresh-retryable@example.test", "correct-password", "TENANT").andReturn());
+        TENANT_ACCESS_FAILURES.add(retryable.identity().id());
+        refresh(retryableToken)
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("TENANT_ACCESS_UNAVAILABLE"))
+                .andExpect(header().doesNotExist("Set-Cookie"));
+        assertSessionUnchanged(retryable.identity().id(), 1);
+        TENANT_ACCESS_FAILURES.remove(retryable.identity().id());
+        refresh(retryableToken).andExpect(status().isOk());
+
+        TestUser tenantLoss = createUser(
+                "refresh-tenant-loss@example.test", "correct-password", false, Credential.REGULAR);
+        accessibleMemberships(tenantLoss.identity().id(), membership(membershipId, tenantId, "Tenant"));
+        String tenantLossToken = refreshToken(
+                login("refresh-tenant-loss@example.test", "correct-password", "TENANT").andReturn());
+        accessibleMemberships(tenantLoss.identity().id());
+        refresh(tenantLossToken)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_CONTEXT_UNAVAILABLE"))
+                .andExpect(header().string("Set-Cookie", org.hamcrest.Matchers.containsString("Max-Age=0")));
+        assertEquals(1, consumedRefreshTokenCount(tenantLoss.identity().id()));
+        assertNotNull(jdbc.queryForObject(
+                "SELECT revoked_at FROM iam_refresh_token_families WHERE identity_id = ?",
+                Object.class, tenantLoss.identity().id()));
+        assertEquals(1, accessTokenIssuanceCount(tenantLoss.identity().id()));
+
+        TestUser platformLoss = createUser(
+                "refresh-platform-loss@example.test", "correct-password", true, Credential.REGULAR);
+        String platformLossToken = refreshToken(
+                login("refresh-platform-loss@example.test", "correct-password", "PLATFORM").andReturn());
+        jdbc.update("UPDATE iam_platform_role_assignments SET revoked_at = now() WHERE identity_id = ?",
+                platformLoss.identity().id());
+        refresh(platformLossToken)
+                .andExpect(status().isForbidden())
+                .andExpect(header().string("Set-Cookie", org.hamcrest.Matchers.containsString("Max-Age=0")));
+
+        TestUser selectionLoss = createUser(
+                "refresh-selection-loss@example.test", "correct-password", false, Credential.REGULAR);
+        accessibleMemberships(selectionLoss.identity().id(),
+                membership(uuidV7(43_001), uuidV7(43_002), "Alpha"),
+                membership(uuidV7(43_003), uuidV7(43_004), "Beta"));
+        String selectionLossToken = refreshToken(
+                login("refresh-selection-loss@example.test", "correct-password", "TENANT").andReturn());
+        accessibleMemberships(selectionLoss.identity().id());
+        refresh(selectionLossToken)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_CONTEXT_UNAVAILABLE"))
+                .andExpect(header().string("Set-Cookie", org.hamcrest.Matchers.containsString("Max-Age=0")));
+        assertEquals(1, consumedRefreshTokenCount(selectionLoss.identity().id()));
+        assertEquals(0, accessTokenIssuanceCount(selectionLoss.identity().id()));
+
+        TestUser initial = createUser(
+                "refresh-initial@example.test", "Initial-Refresh-2026!", false, Credential.ACTIVE_INITIAL);
+        String initialToken = refreshToken(
+                login("refresh-initial@example.test", "Initial-Refresh-2026!", "TENANT").andReturn());
+        refresh(initialToken)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("REFRESH_SESSION_INVALID"))
+                .andExpect(header().string("Set-Cookie", org.hamcrest.Matchers.containsString("Max-Age=0")));
+        assertSessionUnchanged(initial.identity().id(), 0);
+
+        TestUser signing = createUser(
+                "refresh-signing@example.test", "correct-password", true, Credential.REGULAR);
+        String signingToken = refreshToken(
+                login("refresh-signing@example.test", "correct-password", "PLATFORM").andReturn());
+        int outboxCount = jdbc.queryForObject(
+                "SELECT count(*) FROM iam_outbox_events WHERE ordering_key = ?",
+                Integer.class, signing.identity().id().toString());
+        SIGNING_FAILURE.set(true);
+        refresh(signingToken)
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("TOKEN_SIGNING_UNAVAILABLE"))
+                .andExpect(header().doesNotExist("Set-Cookie"));
+        assertSessionUnchanged(signing.identity().id(), 1);
+        assertEquals(outboxCount, jdbc.queryForObject(
+                "SELECT count(*) FROM iam_outbox_events WHERE ordering_key = ?",
+                Integer.class, signing.identity().id().toString()));
+        SIGNING_FAILURE.set(false);
+        refresh(signingToken).andExpect(status().isOk());
+    }
+
+    @Test
     @Order(20)
     void redisUnavailabilityFailsClosedThroughPublicContract() throws Exception {
         REDIS.stop();
@@ -801,6 +986,15 @@ class AuthenticationHttpIT {
                 .cookie(new Cookie("__Host-sf_refresh", refreshToken))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(new ObjectMapper().writeValueAsBytes(Map.of("membershipId", membershipId))));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions refresh(String refreshToken) throws Exception {
+        return mockMvc.perform(post("/api/v1/auth/refresh")
+                .header("Idempotency-Key", IDEMPOTENCY_KEY)
+                .header("X-SF-CSRF", "csrf-test")
+                .cookie(new Cookie("__Host-sf_refresh", refreshToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"));
     }
 
     private org.springframework.test.web.servlet.ResultActions changePassword(String refreshToken, String newPassword)
@@ -886,7 +1080,8 @@ class AuthenticationHttpIT {
                     identity.id(), passwordHash(password), now.minus(Duration.ofHours(25))));
         }
         if (withRole) {
-            platformRoles.grant(PlatformRoleAssignment.grant(identity.id(), "PLATFORM_ADMIN", now));
+            platformRoles.grant(PlatformRoleAssignment.grant(
+                    identity.id(), "PLATFORM_ADMIN", now.minusSeconds(1)));
         }
         return new TestUser(identity);
     }
@@ -894,6 +1089,36 @@ class AuthenticationHttpIT {
     private int sessionFactCount(UUID identityId) {
         return jdbc.queryForObject(
                 "SELECT count(*) FROM iam_refresh_token_families WHERE identity_id = ?", Integer.class, identityId);
+    }
+
+    private int consumedRefreshTokenCount(UUID identityId) {
+        return jdbc.queryForObject("""
+                SELECT count(*) FROM iam_refresh_tokens token
+                JOIN iam_refresh_token_families family ON family.id = token.family_id
+                WHERE family.identity_id = ? AND token.consumed_at IS NOT NULL
+                """, Integer.class, identityId);
+    }
+
+    private int activeRefreshTokenCount(UUID identityId) {
+        return jdbc.queryForObject("""
+                SELECT count(*) FROM iam_refresh_tokens token
+                JOIN iam_refresh_token_families family ON family.id = token.family_id
+                WHERE family.identity_id = ? AND token.consumed_at IS NULL
+                """, Integer.class, identityId);
+    }
+
+    private int accessTokenIssuanceCount(UUID identityId) {
+        return jdbc.queryForObject(
+                "SELECT count(*) FROM iam_access_token_issuances WHERE identity_id = ?", Integer.class, identityId);
+    }
+
+    private void assertSessionUnchanged(UUID identityId, int expectedIssuances) {
+        assertEquals(0, consumedRefreshTokenCount(identityId));
+        assertEquals(1, activeRefreshTokenCount(identityId));
+        assertEquals(expectedIssuances, accessTokenIssuanceCount(identityId));
+        assertEquals(null, jdbc.queryForObject(
+                "SELECT revoked_at FROM iam_refresh_token_families WHERE identity_id = ?",
+                Object.class, identityId));
     }
 
     private static Argon2idPasswordHash passwordHash(String password) {
@@ -1073,6 +1298,9 @@ class AuthenticationHttpIT {
         JwtSigningPort jwtSigningPort() {
             return (keyReference, algorithm, signingInput) -> {
                 try {
+                    if (SIGNING_FAILURE.get()) {
+                        throw new IllegalStateException("injected signing failure");
+                    }
                     return MessageDigest.getInstance("SHA-256").digest(signingInput.bytes());
                 } catch (Exception exception) {
                     throw new IllegalStateException(exception);
