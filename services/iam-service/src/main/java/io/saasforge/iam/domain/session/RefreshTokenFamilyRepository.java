@@ -42,4 +42,6 @@ public interface RefreshTokenFamilyRepository {
     RefreshTokenConsumption rejectSelection(Sha256Digest presentedDigest, Instant at);
 
     RefreshTokenConsumption consumeInitialPasswordChange(Sha256Digest presentedDigest, Instant at);
+
+    RefreshTokenConsumption logout(Sha256Digest presentedDigest, Instant at);
 }

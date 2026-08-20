@@ -22,6 +22,25 @@
       "containsRawSensitiveData": false
     },
     {
+      "id": "iam.revocation-index-ready.v1",
+      "schemaVersion": 1,
+      "keyPattern": "sf:<environment>:iam-service:revocation-index-ready:v1:state",
+      "purpose": "声明 Redis Revocation Index 已完成 PostgreSQL 持久撤销事实重建",
+      "writer": "iam-service",
+      "readers": ["gateway", "saas-forge-spring-boot-starter"],
+      "valueFormat": "boolean",
+      "ttl": {
+        "mode": "authority-expiry",
+        "expression": "IAM 启动或 Redis 重连时先写未就绪，重建完成后写就绪"
+      },
+      "maxCardinality": "每个环境固定一个 Ready 状态键",
+      "identifierPolicy": "不包含标识符或敏感数据",
+      "invalidation": "IAM 启动、Redis 重连或恢复开始时同步标记为未就绪",
+      "failurePolicy": "fail-closed",
+      "migrationStrategy": "不兼容变更创建新版本并要求读取者先支持新版本",
+      "containsRawSensitiveData": false
+    },
+    {
       "id": "iam.signing-kid-revocation.v1",
       "schemaVersion": 1,
       "keyPattern": "sf:<environment>:iam-service:signing-kid-revocation:v1:<kid_sha256>",

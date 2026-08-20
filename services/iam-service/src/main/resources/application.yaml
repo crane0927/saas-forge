@@ -43,6 +43,8 @@ security:
     failure-window: PT15M
     maximum-failures: 5
     lock-duration: PT15M
+  revocation-index:
+    recovery-delay: PT5S
 
 saasforge:
   environment: ${SAASFORGE_ENVIRONMENT:dev}

@@ -7,6 +7,7 @@ import io.saasforge.iam.application.authentication.InitialPasswordChangeLoginRes
 import io.saasforge.iam.application.authentication.InitialPasswordChangeService;
 import io.saasforge.iam.application.authentication.LoginContextType;
 import io.saasforge.iam.application.authentication.LoginResult;
+import io.saasforge.iam.application.authentication.LogoutService;
 import io.saasforge.iam.application.authentication.PasswordLoginService;
 import io.saasforge.iam.application.authentication.RefreshSessionService;
 import io.saasforge.iam.contract.api.AuthenticationApi;
@@ -40,16 +41,19 @@ public class AuthenticationController implements AuthenticationApi {
     private final ContextSelectionService contextSelectionService;
     private final InitialPasswordChangeService passwordChangeService;
     private final RefreshSessionService refreshSessionService;
+    private final LogoutService logoutService;
 
     public AuthenticationController(
             PasswordLoginService loginService,
             ContextSelectionService contextSelectionService,
             InitialPasswordChangeService passwordChangeService,
-            RefreshSessionService refreshSessionService) {
+            RefreshSessionService refreshSessionService,
+            LogoutService logoutService) {
         this.loginService = loginService;
         this.contextSelectionService = contextSelectionService;
         this.passwordChangeService = passwordChangeService;
         this.refreshSessionService = refreshSessionService;
+        this.logoutService = logoutService;
     }
 
     @Override
@@ -90,6 +94,15 @@ public class AuthenticationController implements AuthenticationApi {
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, refreshCookie(result).toString())
                 .body(responseBody(result));
+    }
+
+    @Override
+    public ResponseEntity<Void> logout(String csrfHeader, Object request, UUID ignoredIdempotencyKey, String refreshToken) {
+        HttpServletRequest httpRequest = currentRequest();
+        logoutService.logout(refreshToken, httpRequest.getHeader(HttpHeaders.AUTHORIZATION), traceId(httpRequest));
+        return ResponseEntity.noContent()
+                .header(HttpHeaders.SET_COOKIE, clearedRefreshCookie().toString())
+                .build();
     }
 
     private AuthenticationResult responseBody(LoginResult result) {
@@ -139,7 +152,14 @@ public class AuthenticationController implements AuthenticationApi {
     }
 
     private String traceId() {
-        HttpServletRequest request = ((ServletRequestAttributes) RequestContextHolder.currentRequestAttributes()).getRequest();
+        return traceId(currentRequest());
+    }
+
+    private HttpServletRequest currentRequest() {
+        return ((ServletRequestAttributes) RequestContextHolder.currentRequestAttributes()).getRequest();
+    }
+
+    private String traceId(HttpServletRequest request) {
         String traceparent = request.getHeader("traceparent");
         Matcher matcher = TRACE_PARENT.matcher(traceparent == null ? "" : traceparent);
         return matcher.matches() ? matcher.group(1) : null;

@@ -34,7 +34,8 @@ class InfrastructureContainersIT {
 
     @Container
     private static final GenericContainer<?> REDIS = new GenericContainer<>(REDIS_IMAGE)
-            .withCommand("redis-server", "--appendonly", "yes", "--requirepass", REDIS_PASSWORD)
+            .withCommand("redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction",
+                    "--requirepass", REDIS_PASSWORD)
             .withExposedPorts(6379);
 
     @Container

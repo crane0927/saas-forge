@@ -6,6 +6,8 @@ import io.saasforge.iam.application.authentication.AuthenticationFailedException
 import io.saasforge.iam.application.authentication.AuthenticationProtectionUnavailableException;
 import io.saasforge.iam.application.authentication.ContextSelectionRejectedException;
 import io.saasforge.iam.application.authentication.ContextSelectionSessionInvalidException;
+import io.saasforge.iam.application.authentication.LogoutUnavailableException;
+import io.saasforge.iam.application.authentication.RevocationIndexUnavailableException;
 import io.saasforge.iam.application.authentication.TenantAccessUnavailableException;
 import io.saasforge.iam.application.authentication.PasswordChangeSessionInvalidException;
 import io.saasforge.iam.application.authentication.PasswordCompromisedException;
@@ -52,6 +54,22 @@ public class AuthenticationExceptionHandler {
             AuthenticationProtectionUnavailableException exception, HttpServletRequest request) {
         return problem(HttpStatus.SERVICE_UNAVAILABLE, AuthenticationProtectionUnavailableException.CODE,
                 "Authentication protection unavailable", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(RevocationIndexUnavailableException.class)
+    ResponseEntity<Problem> revocationIndexUnavailable(
+            RevocationIndexUnavailableException exception, HttpServletRequest request) {
+        return problemWithClearedRefreshCookie(
+                HttpStatus.SERVICE_UNAVAILABLE, RevocationIndexUnavailableException.CODE,
+                "Revocation index unavailable", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(LogoutUnavailableException.class)
+    ResponseEntity<Problem> logoutUnavailable(
+            LogoutUnavailableException exception, HttpServletRequest request) {
+        return problemWithClearedRefreshCookie(
+                HttpStatus.SERVICE_UNAVAILABLE, LogoutUnavailableException.CODE,
+                "Logout unavailable", exception.getMessage(), request);
     }
 
     @ExceptionHandler(AccessibleMembershipLimitExceededException.class)

@@ -1,6 +1,28 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="io.saasforge.iam.infrastructure.persistence.mapper.AccessTokenIssuanceMapper">
+    <resultMap id="issuanceRow" type="io.saasforge.iam.infrastructure.persistence.record.AccessTokenIssuanceRow">
+        <id property="jti" column="jti"/>
+        <result property="familyId" column="family_id"/>
+        <result property="identityId" column="identity_id"/>
+        <result property="membershipId" column="membership_id"/>
+        <result property="tenantId" column="tenant_id"/>
+        <result property="kid" column="kid"/>
+        <result property="issuedAt" column="issued_at"/>
+        <result property="expiresAt" column="expires_at"/>
+        <result property="revokedAt" column="revoked_at"/>
+        <result property="revocationReason" column="revocation_reason"/>
+    </resultMap>
+
+    <resultMap id="durableRevocationRow"
+               type="io.saasforge.iam.infrastructure.persistence.record.DurableRevocationRow">
+        <id property="jti" column="jti"/>
+        <result property="kid" column="kid"/>
+        <result property="expiresAt" column="expires_at"/>
+        <result property="jtiRevoked" column="jti_revoked"/>
+        <result property="kidRevoked" column="kid_revoked"/>
+    </resultMap>
+
     <insert id="insert">
         INSERT INTO iam_access_token_issuances
             (jti, family_id, identity_id, membership_id, tenant_id, kid, issued_at, expires_at)
@@ -8,4 +30,30 @@
             (#{row.jti}, #{row.familyId}, #{row.identityId}, #{row.membershipId}, #{row.tenantId},
              #{row.kid}, #{row.issuedAt}, #{row.expiresAt})
     </insert>
+
+    <select id="findByJti" resultMap="issuanceRow">
+        SELECT jti, family_id, identity_id, membership_id, tenant_id, kid,
+               issued_at, expires_at, revoked_at, revocation_reason
+        FROM iam_access_token_issuances
+        WHERE jti = #{jti}
+    </select>
+
+    <update id="revoke">
+        UPDATE iam_access_token_issuances
+        SET revoked_at = #{revokedAt}, revocation_reason = #{reason}
+        WHERE jti = #{jti} AND revoked_at IS NULL
+    </update>
+
+    <select id="findUnexpiredRevocations" resultMap="durableRevocationRow">
+        SELECT issuance.jti,
+               issuance.kid,
+               issuance.expires_at,
+               issuance.revoked_at IS NOT NULL AS jti_revoked,
+               signing_key.key_status = 'REVOKED' AS kid_revoked
+        FROM iam_access_token_issuances issuance
+        LEFT JOIN iam_signing_keys signing_key ON signing_key.kid = issuance.kid
+        WHERE issuance.expires_at + INTERVAL '30 seconds' &gt; #{at}
+          AND (issuance.revoked_at IS NOT NULL OR signing_key.key_status = 'REVOKED')
+        ORDER BY issuance.expires_at, issuance.jti
+    </select>
 </mapper>

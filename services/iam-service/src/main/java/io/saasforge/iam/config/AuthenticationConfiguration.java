@@ -7,13 +7,19 @@ import io.saasforge.iam.application.authentication.CompromisedPasswordChecker;
 import io.saasforge.iam.application.authentication.InitialPasswordChangeService;
 import io.saasforge.iam.application.authentication.LoginProtection;
 import io.saasforge.iam.application.authentication.LoginSessionService;
+import io.saasforge.iam.application.authentication.LogoutService;
+import io.saasforge.iam.application.authentication.LogoutTransaction;
 import io.saasforge.iam.application.authentication.PasswordVerifier;
 import io.saasforge.iam.application.authentication.PasswordPolicy;
 import io.saasforge.iam.application.authentication.PasswordChangedEventFactory;
 import io.saasforge.iam.application.authentication.PasswordLoginService;
 import io.saasforge.iam.application.authentication.RefreshTokenIssuer;
+import io.saasforge.iam.application.authentication.RevocationIndex;
+import io.saasforge.iam.application.authentication.RevocationIndexRecovery;
+import io.saasforge.iam.application.authentication.PresentedAccessTokenVerifier;
 import io.saasforge.iam.application.authentication.RefreshSessionService;
 import io.saasforge.iam.application.authentication.SessionStartedEventFactory;
+import io.saasforge.iam.application.authentication.SessionRevokedEventFactory;
 import io.saasforge.iam.application.authentication.UserAccessTokenIssuer;
 import io.saasforge.iam.application.authentication.UuidV7Generator;
 import io.saasforge.iam.application.signing.JwtSigningService;
@@ -22,8 +28,11 @@ import io.saasforge.iam.domain.identity.IdentityRepository;
 import io.saasforge.iam.domain.outbox.OutboxEventRepository;
 import io.saasforge.iam.domain.session.AccessTokenIssuanceRepository;
 import io.saasforge.iam.domain.session.RefreshTokenFamilyRepository;
+import io.saasforge.iam.domain.signing.SigningKeyRepository;
 import io.saasforge.iam.infrastructure.grpc.GrpcAccessibleMemberships;
 import io.saasforge.iam.infrastructure.security.RedisLoginProtection;
+import io.saasforge.iam.infrastructure.security.RedisRevocationIndex;
+import io.saasforge.iam.infrastructure.security.NimbusPresentedAccessTokenVerifier;
 import io.saasforge.iam.infrastructure.security.ClasspathCompromisedPasswordChecker;
 import java.security.SecureRandom;
 import java.time.Clock;
@@ -110,6 +119,56 @@ public class AuthenticationConfiguration {
             UuidV7Generator uuidV7Generator,
             @Value("${saasforge.environment:dev}") String environment) {
         return new PasswordChangedEventFactory(objectMapper, uuidV7Generator, environment);
+    }
+
+    @Bean
+    SessionRevokedEventFactory sessionRevokedEventFactory(
+            ObjectMapper objectMapper,
+            UuidV7Generator uuidV7Generator,
+            @Value("${saasforge.environment:dev}") String environment) {
+        return new SessionRevokedEventFactory(objectMapper, uuidV7Generator, environment);
+    }
+
+    @Bean
+    RevocationIndex revocationIndex(
+            StringRedisTemplate redis,
+            @Value("${saasforge.environment:dev}") String environment) {
+        return new RedisRevocationIndex(redis, environment);
+    }
+
+    @Bean
+    RevocationIndexRecovery revocationIndexRecovery(
+            RevocationIndex index, AccessTokenIssuanceRepository issuances, Clock clock) {
+        return new RevocationIndexRecovery(index, issuances, clock);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(PresentedAccessTokenVerifier.class)
+    PresentedAccessTokenVerifier presentedAccessTokenVerifier(
+            SigningKeyRepository signingKeys,
+            Clock clock,
+            @Value("${security.jwt.issuer}") String issuer) {
+        return new NimbusPresentedAccessTokenVerifier(signingKeys, clock, issuer);
+    }
+
+    @Bean
+    LogoutTransaction logoutTransaction(
+            RefreshTokenFamilyRepository families,
+            AccessTokenIssuanceRepository issuances,
+            OutboxEventRepository outboxEvents,
+            SessionRevokedEventFactory eventFactory) {
+        return new LogoutTransaction(families, issuances, outboxEvents, eventFactory);
+    }
+
+    @Bean
+    LogoutService logoutService(
+            PresentedAccessTokenVerifier accessTokens,
+            AccessTokenIssuanceRepository issuances,
+            RefreshTokenIssuer refreshTokens,
+            RevocationIndex revocationIndex,
+            LogoutTransaction transaction,
+            Clock clock) {
+        return new LogoutService(accessTokens, issuances, refreshTokens, revocationIndex, transaction, clock);
     }
 
     @Bean

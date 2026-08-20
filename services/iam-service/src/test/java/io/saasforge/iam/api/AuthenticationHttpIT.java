@@ -23,6 +23,11 @@ import io.saasforge.contracts.tenantaccess.membership.v1.ListAccessibleMembershi
 import io.saasforge.contracts.tenantaccess.membership.v1.ListAccessibleMembershipsResponse;
 import io.saasforge.iam.application.authentication.AccessibleMemberships;
 import io.saasforge.iam.application.authentication.InitialPasswordChangeService;
+import io.saasforge.iam.application.authentication.PresentedAccessToken;
+import io.saasforge.iam.application.authentication.PresentedAccessTokenVerifier;
+import io.saasforge.iam.application.authentication.RevocationIndex;
+import io.saasforge.iam.application.authentication.RevocationIndexRecovery;
+import io.saasforge.iam.application.authentication.RevocationIndexUnavailableException;
 import io.saasforge.iam.application.signing.JwtSigningPort;
 import io.saasforge.iam.application.signing.JwtSigningService;
 import io.saasforge.iam.config.AuthenticationConfiguration;
@@ -48,6 +53,7 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
@@ -125,6 +131,7 @@ import tools.jackson.databind.json.JsonMapper;
         "security.login-protection.failure-window=PT15M",
         "security.login-protection.maximum-failures=5",
         "security.login-protection.lock-duration=PT15M",
+        "security.revocation-index.recovery-delay=PT1H",
         "saasforge.iam.outbox.publish-delay=PT0.1S"
 })
 @WebAppConfiguration
@@ -162,7 +169,8 @@ class AuthenticationHttpIT {
 
     @Container
     static final GenericContainer<?> REDIS = new GenericContainer<>(DockerImageName.parse("redis:8.8.1"))
-            .withCommand("redis-server", "--appendonly", "yes", "--requirepass", REDIS_PASSWORD)
+            .withCommand("redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction",
+                    "--requirepass", REDIS_PASSWORD)
             .withExposedPorts(6379);
 
     @Container
@@ -203,6 +211,12 @@ class AuthenticationHttpIT {
 
     @Autowired
     DataSource dataSource;
+
+    @Autowired
+    RevocationIndex revocationIndex;
+
+    @Autowired
+    RevocationIndexRecovery revocationIndexRecovery;
 
     MockMvc mockMvc;
     JdbcTemplate jdbc;
@@ -965,8 +979,152 @@ class AuthenticationHttpIT {
 
     @Test
     @Order(20)
+    void logoutWithoutCookieOrIdempotencyKeyIsStillSuccessfulAndClearsCookie() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/logout")
+                        .header("X-SF-CSRF", "csrf-test")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isNoContent())
+                .andExpect(header().string("Set-Cookie", org.hamcrest.Matchers.allOf(
+                        org.hamcrest.Matchers.containsString("__Host-sf_refresh="),
+                        org.hamcrest.Matchers.containsString("Max-Age=0"),
+                        org.hamcrest.Matchers.containsString("Secure"),
+                        org.hamcrest.Matchers.containsString("HttpOnly"),
+                        org.hamcrest.Matchers.containsString("SameSite=Strict"),
+                        org.hamcrest.Matchers.containsString("Path=/"))));
+    }
+
+    @Test
+    @Order(21)
+    void logoutRevokesOnlyPresentedFamilyAndBearerJtiAndIsIdempotent() throws Exception {
+        TestUser user = createUser("logout-isolation@example.test", "correct-password", true, Credential.REGULAR);
+        MvcResult currentSession = login("logout-isolation@example.test", "correct-password", "PLATFORM").andReturn();
+        MvcResult otherSession = login("logout-isolation@example.test", "correct-password", "PLATFORM").andReturn();
+        String currentRefreshToken = refreshToken(currentSession);
+        String currentAccessToken = accessToken(currentSession);
+        UUID currentJti = UUID.fromString(tokenClaims(currentSession).get("jti").asString());
+
+        logout(currentRefreshToken, currentAccessToken)
+                .andExpect(status().isNoContent())
+                .andExpect(header().string("Set-Cookie", org.hamcrest.Matchers.containsString("Max-Age=0")));
+        logout(currentRefreshToken, currentAccessToken).andExpect(status().isNoContent());
+
+        byte[] currentDigest = MessageDigest.getInstance("SHA-256")
+                .digest(currentRefreshToken.getBytes(StandardCharsets.UTF_8));
+        assertNotNull(jdbc.queryForObject("""
+                SELECT family.revoked_at FROM iam_refresh_token_families family
+                JOIN iam_refresh_tokens token ON token.family_id = family.id
+                WHERE token.token_digest = ?
+                """, Object.class, currentDigest));
+        assertEquals(1, jdbc.queryForObject("""
+                SELECT count(*) FROM iam_refresh_token_families
+                WHERE identity_id = ? AND revoked_at IS NULL
+                """, Integer.class, user.identity().id()));
+        assertNotNull(jdbc.queryForObject(
+                "SELECT revoked_at FROM iam_access_token_issuances WHERE jti = ?", Object.class, currentJti));
+
+        String jtiDigest = java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                .digest(currentJti.toString().getBytes(StandardCharsets.UTF_8)));
+        String revocationKey = "sf:test:iam-service:jwt-jti-revocation:v1:" + jtiDigest;
+        assertEquals("1", redis.opsForValue().get(revocationKey));
+        assertTrue(redis.getExpire(revocationKey) > 0);
+        assertEquals(1, jdbc.queryForObject("""
+                SELECT count(*) FROM iam_outbox_events
+                WHERE event_snapshot::jsonb ->> 'type' = 'com.saasforge.iam.session.revoked.v1'
+                  AND ordering_key = ?
+                """, Integer.class, user.identity().id().toString()));
+
+        refresh(refreshToken(otherSession)).andExpect(status().isOk());
+    }
+
+    @Test
+    @Order(22)
+    void postgresFailureAfterRedisWriteRollsBackFamilyAndOutboxButKeepsExtraRejection() throws Exception {
+        TestUser user = createUser("logout-postgres-failure@example.test", "correct-password", true, Credential.REGULAR);
+        MvcResult session = login("logout-postgres-failure@example.test", "correct-password", "PLATFORM").andReturn();
+        String refreshToken = refreshToken(session);
+        String accessToken = accessToken(session);
+        UUID jti = UUID.fromString(tokenClaims(session).get("jti").asString());
+
+        setIamAppIssuanceUpdatePrivilege(false);
+        try {
+            logout(refreshToken, accessToken)
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.code").value("LOGOUT_UNAVAILABLE"))
+                    .andExpect(header().string("Set-Cookie", org.hamcrest.Matchers.containsString("Max-Age=0")));
+        } finally {
+            setIamAppIssuanceUpdatePrivilege(true);
+        }
+
+        assertEquals(null, jdbc.queryForObject(
+                "SELECT revoked_at FROM iam_refresh_token_families WHERE identity_id = ?",
+                Object.class, user.identity().id()));
+        assertEquals(null, jdbc.queryForObject(
+                "SELECT revoked_at FROM iam_access_token_issuances WHERE jti = ?", Object.class, jti));
+        assertEquals(0, jdbc.queryForObject("""
+                SELECT count(*) FROM iam_outbox_events
+                WHERE event_snapshot::jsonb ->> 'type' = 'com.saasforge.iam.session.revoked.v1'
+                  AND ordering_key = ?
+                """, Integer.class, user.identity().id().toString()));
+        assertEquals("1", redis.opsForValue().get(jtiRevocationKey(jti)));
+    }
+
+    @Test
+    @Order(29)
+    void recoveryFailsClosedUntilDurableJtiAndKidRevocationsAreRebuilt() throws Exception {
+        TestUser user = createUser("revocation-recovery@example.test", "correct-password", true, Credential.REGULAR);
+        MvcResult session = login("revocation-recovery@example.test", "correct-password", "PLATFORM").andReturn();
+        UUID jti = UUID.fromString(tokenClaims(session).get("jti").asString());
+        logout(refreshToken(session), accessToken(session)).andExpect(status().isNoContent());
+        jdbc.update("""
+                UPDATE iam_signing_keys
+                SET key_status = 'REVOKED', revoked_at = now()
+                WHERE kid = 'active-login-kid'
+                """);
+        try {
+            Set<String> revocationKeys = redis.keys("sf:test:iam-service:*revocation*:v1:*");
+            if (revocationKeys != null && !revocationKeys.isEmpty()) {
+                redis.delete(revocationKeys);
+            }
+            revocationIndex.markNotReady();
+            assertThrows(RevocationIndexUnavailableException.class,
+                    () -> revocationIndex.isTokenRevoked(jti, "active-login-kid"));
+
+            revocationIndexRecovery.recover();
+
+            assertTrue(revocationIndex.isJtiRevoked(jti));
+            assertTrue(revocationIndex.isKidRevoked("active-login-kid"));
+            assertTrue(revocationIndex.isTokenRevoked(jti, "active-login-kid"));
+            String kidDigest = java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest("active-login-kid".getBytes(StandardCharsets.UTF_8)));
+            assertEquals("1", redis.opsForValue().get(
+                    "sf:test:iam-service:signing-kid-revocation:v1:" + kidDigest));
+            assertEquals("1", redis.opsForValue().get(
+                    "sf:test:iam-service:revocation-index-ready:v1:state"));
+        } finally {
+            jdbc.update("""
+                    UPDATE iam_signing_keys
+                    SET key_status = 'ACTIVE', revoked_at = NULL
+                    WHERE kid = 'active-login-kid'
+                    """);
+        }
+    }
+
+    @Test
+    @Order(30)
     void redisUnavailabilityFailsClosedThroughPublicContract() throws Exception {
+        TestUser user = createUser("logout-redis-down@example.test", "correct-password", true, Credential.REGULAR);
+        MvcResult session = login("logout-redis-down@example.test", "correct-password", "PLATFORM").andReturn();
+        UUID jti = UUID.fromString(tokenClaims(session).get("jti").asString());
         REDIS.stop();
+        logout(refreshToken(session), accessToken(session))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("REVOCATION_INDEX_UNAVAILABLE"));
+        assertEquals(null, jdbc.queryForObject(
+                "SELECT revoked_at FROM iam_refresh_token_families WHERE identity_id = ?",
+                Object.class, user.identity().id()));
+        assertEquals(null, jdbc.queryForObject(
+                "SELECT revoked_at FROM iam_access_token_issuances WHERE jti = ?", Object.class, jti));
         mockMvc.perform(post("/api/v1/auth/login")
                         .header("Idempotency-Key", IDEMPOTENCY_KEY)
                         .header("X-SF-CSRF", "csrf-test")
@@ -992,6 +1150,17 @@ class AuthenticationHttpIT {
         return mockMvc.perform(post("/api/v1/auth/refresh")
                 .header("Idempotency-Key", IDEMPOTENCY_KEY)
                 .header("X-SF-CSRF", "csrf-test")
+                .cookie(new Cookie("__Host-sf_refresh", refreshToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions logout(String refreshToken, String accessToken)
+            throws Exception {
+        return mockMvc.perform(post("/api/v1/auth/logout")
+                .header("X-SF-CSRF", "csrf-test")
+                .header("Authorization", "Bearer " + accessToken)
+                .header("traceparent", "00-" + TRACE_ID + "-0123456789abcdef-01")
                 .cookie(new Cookie("__Host-sf_refresh", refreshToken))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{}"));
@@ -1037,8 +1206,27 @@ class AuthenticationHttpIT {
     }
 
     private static JsonNode tokenClaims(MvcResult response) {
-        String token = json(response.getResponse().getContentAsByteArray()).get("accessToken").asString();
-        return json(Base64.getUrlDecoder().decode(token.split("\\.")[1]));
+        return json(Base64.getUrlDecoder().decode(accessToken(response).split("\\.")[1]));
+    }
+
+    private static String accessToken(MvcResult response) {
+        return json(response.getResponse().getContentAsByteArray()).get("accessToken").asString();
+    }
+
+    private static String jtiRevocationKey(UUID jti) throws Exception {
+        String digest = java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                .digest(jti.toString().getBytes(StandardCharsets.UTF_8)));
+        return "sf:test:iam-service:jwt-jti-revocation:v1:" + digest;
+    }
+
+    private static void setIamAppIssuanceUpdatePrivilege(boolean granted) throws Exception {
+        String sql = (granted ? "GRANT" : "REVOKE")
+                + " UPDATE ON TABLE iam_access_token_issuances "
+                + (granted ? "TO" : "FROM") + " iam_app";
+        try (Connection connection = DriverManager.getConnection(
+                iamJdbcUrl(), "iam_migrator", "iam-migrator-password")) {
+            connection.createStatement().execute(sql);
+        }
     }
 
     private static void accessibleMemberships(
@@ -1311,6 +1499,26 @@ class AuthenticationHttpIT {
         @Bean
         JwtSigningService jwtSigningService(SigningKeyRepository repository, JwtSigningPort signingPort) {
             return new JwtSigningService(new ActiveSigningKeyResolver(repository), signingPort);
+        }
+
+        @Bean
+        PresentedAccessTokenVerifier presentedAccessTokenVerifier() {
+            return authorization -> {
+                if (authorization == null || !authorization.startsWith("Bearer ")) {
+                    return Optional.empty();
+                }
+                try {
+                    String[] segments = authorization.substring(7).split("\\.");
+                    JsonNode header = json(Base64.getUrlDecoder().decode(segments[0]));
+                    JsonNode claims = json(Base64.getUrlDecoder().decode(segments[1]));
+                    return Optional.of(new PresentedAccessToken(
+                            UUID.fromString(claims.get("jti").asString()),
+                            header.get("kid").asString(),
+                            Instant.ofEpochSecond(claims.get("exp").asLong())));
+                } catch (RuntimeException invalidToken) {
+                    return Optional.empty();
+                }
+            };
         }
 
     }

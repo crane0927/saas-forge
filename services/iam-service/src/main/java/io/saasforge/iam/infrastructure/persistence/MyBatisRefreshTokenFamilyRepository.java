@@ -184,6 +184,27 @@ public class MyBatisRefreshTokenFamilyRepository implements RefreshTokenFamilyRe
         return new RefreshTokenConsumption(RefreshTokenConsumption.Status.CONSUMED, revoked);
     }
 
+    @Override
+    @Transactional
+    public RefreshTokenConsumption logout(Sha256Digest presentedDigest, Instant at) {
+        RefreshTokenRow token = mapper.lockTokenByDigest(presentedDigest.value());
+        if (token == null) {
+            return new RefreshTokenConsumption(RefreshTokenConsumption.Status.NOT_FOUND, null);
+        }
+        RefreshTokenFamily family = toDomain(mapper.lockFamilyById(token.getFamilyId()));
+        if (family.revokedAt() != null) {
+            return new RefreshTokenConsumption(RefreshTokenConsumption.Status.REVOKED, family);
+        }
+        if (token.getConsumedAt() == null
+                && mapper.markTokenConsumed(token.getId(), IamTime.asOffsetDateTime(at)) != 1) {
+            throw new IllegalStateException("Refresh Token 消费并发冲突");
+        }
+        Instant revokedAt = at.isBefore(family.lastUsedAt()) ? family.lastUsedAt() : at;
+        RefreshTokenFamily revoked = family.revoke(revokedAt);
+        mapper.updateFamily(toRow(revoked));
+        return new RefreshTokenConsumption(RefreshTokenConsumption.Status.CONSUMED, revoked);
+    }
+
     private RefreshTokenConsumption terminalSelectionState(
             RefreshTokenRow token, RefreshTokenFamily family, Instant at) {
         if (token.getConsumedAt() != null) {

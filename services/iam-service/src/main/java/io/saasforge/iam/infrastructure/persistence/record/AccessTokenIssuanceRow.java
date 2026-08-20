@@ -12,6 +12,8 @@ public class AccessTokenIssuanceRow {
     private String kid;
     private OffsetDateTime issuedAt;
     private OffsetDateTime expiresAt;
+    private OffsetDateTime revokedAt;
+    private String revocationReason;
 
     public UUID getJti() { return jti; }
     public void setJti(UUID jti) { this.jti = jti; }
@@ -29,4 +31,8 @@ public class AccessTokenIssuanceRow {
     public void setIssuedAt(OffsetDateTime issuedAt) { this.issuedAt = issuedAt; }
     public OffsetDateTime getExpiresAt() { return expiresAt; }
     public void setExpiresAt(OffsetDateTime expiresAt) { this.expiresAt = expiresAt; }
+    public OffsetDateTime getRevokedAt() { return revokedAt; }
+    public void setRevokedAt(OffsetDateTime revokedAt) { this.revokedAt = revokedAt; }
+    public String getRevocationReason() { return revocationReason; }
+    public void setRevocationReason(String revocationReason) { this.revocationReason = revocationReason; }
 }
