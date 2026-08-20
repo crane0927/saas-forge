@@ -19,6 +19,28 @@ spring:
         fail-fast: true
   flyway:
     enabled: false
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+security:
+  jwt:
+    issuer: ${IAM_JWT_ISSUER:?IAM_JWT_ISSUER is required}
+    access-token-ttl: PT15M
+  login-protection:
+    failure-window: PT15M
+    maximum-failures: 5
+    lock-duration: PT15M
+
+saasforge:
+  environment: ${SAASFORGE_ENVIRONMENT:dev}
+  iam:
+    outbox:
+      publish-delay: PT1S
+      lease-duration: PT30S
 
 mybatis:
   mapper-locations: classpath*:mapper/**/*Mapper.xml

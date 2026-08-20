@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.saasforge.iam.infrastructure.persistence.mapper.OutboxEventMapper">
+    <resultMap id="outboxRow" type="io.saasforge.iam.infrastructure.persistence.record.OutboxEventRow">
+        <id property="eventId" column="event_id"/>
+        <result property="occurredAt" column="occurred_at"/>
+        <result property="topic" column="topic"/>
+        <result property="orderingKey" column="ordering_key"/>
+        <result property="traceId" column="trace_id"/>
+        <result property="eventSnapshot" column="event_snapshot"/>
+        <result property="claimedBy" column="claimed_by"/>
+        <result property="attemptCount" column="attempt_count"/>
+    </resultMap>
+    <insert id="insert">
+        INSERT INTO iam_outbox_events
+            (event_id, occurred_at, topic, ordering_key, trace_id, event_snapshot, next_attempt_at)
+        VALUES
+            (#{row.eventId}, #{row.occurredAt}, #{row.topic}, #{row.orderingKey}, #{row.traceId},
+             CAST(#{row.eventSnapshot} AS JSONB), #{row.occurredAt})
+    </insert>
+    <select id="claimNext" resultMap="outboxRow">
+        WITH candidate AS (
+            SELECT current.event_id
+            FROM iam_outbox_events current
+            WHERE current.published_at IS NULL
+              AND current.next_attempt_at &lt;= #{at}
+              AND (current.claimed_until IS NULL OR current.claimed_until &lt;= #{at})
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM iam_outbox_events earlier
+                  WHERE earlier.ordering_key = current.ordering_key
+                    AND earlier.published_at IS NULL
+                    AND (earlier.occurred_at, earlier.event_id) &lt; (current.occurred_at, current.event_id)
+              )
+            ORDER BY current.occurred_at, current.event_id
+            FOR UPDATE SKIP LOCKED
+            LIMIT 1
+        )
+        UPDATE iam_outbox_events event
+        SET claimed_by = #{claimant},
+            claimed_until = #{claimedUntil},
+            attempt_count = attempt_count + 1
+        FROM candidate
+        WHERE event.event_id = candidate.event_id
+        RETURNING event.event_id, event.occurred_at, event.topic, event.ordering_key, event.trace_id,
+                  event.event_snapshot::TEXT AS event_snapshot, event.claimed_by, event.attempt_count
+    </select>
+    <update id="markPublished">
+        UPDATE iam_outbox_events
+        SET published_at = #{publishedAt}, claimed_by = NULL, claimed_until = NULL, last_failure = NULL
+        WHERE event_id = #{eventId} AND claimed_by = #{claimant} AND published_at IS NULL
+    </update>
+    <update id="releaseAfterFailure">
+        UPDATE iam_outbox_events
+        SET claimed_by = NULL, claimed_until = NULL, next_attempt_at = #{retryAt}, last_failure = #{failureSummary}
+        WHERE event_id = #{eventId} AND claimed_by = #{claimant} AND published_at IS NULL
+    </update>
+</mapper>

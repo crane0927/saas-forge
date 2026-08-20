@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.saasforge.iam.infrastructure.persistence.mapper.AccessTokenIssuanceMapper">
+    <insert id="insert">
+        INSERT INTO iam_access_token_issuances
+            (jti, family_id, identity_id, membership_id, tenant_id, kid, issued_at, expires_at)
+        VALUES
+            (#{row.jti}, #{row.familyId}, #{row.identityId}, #{row.membershipId}, #{row.tenantId},
+             #{row.kid}, #{row.issuedAt}, #{row.expiresAt})
+    </insert>
+</mapper>

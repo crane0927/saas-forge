@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.saasforge.iam.infrastructure.persistence.mapper.PlatformRoleAssignmentMapper">
+    <resultMap id="assignmentRow" type="io.saasforge.iam.infrastructure.persistence.record.PlatformRoleAssignmentRow">
+        <id property="id" column="id"/>
+        <result property="identityId" column="identity_id"/>
+        <result property="roleKey" column="role_key"/>
+        <result property="assignedAt" column="assigned_at"/>
+        <result property="revokedAt" column="revoked_at"/>
+    </resultMap>
+    <select id="insert" resultMap="assignmentRow">
+        INSERT INTO iam_platform_role_assignments (identity_id, role_key, assigned_at, revoked_at)
+        VALUES (#{row.identityId}, #{row.roleKey}, #{row.assignedAt}, #{row.revokedAt})
+        RETURNING id, identity_id, role_key, assigned_at, revoked_at
+    </select>
+    <select id="countActive" resultType="int">
+        SELECT count(*)
+        FROM iam_platform_role_assignments
+        WHERE identity_id = #{identityId}
+          AND assigned_at &lt;= #{at}
+          AND (revoked_at IS NULL OR revoked_at &gt; #{at})
+    </select>
+</mapper>

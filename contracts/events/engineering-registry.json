@@ -1,4 +1,19 @@
 {
   "registryVersion": 1,
-  "entries": []
+  "entries": [
+    {
+      "type": "com.saasforge.iam.session.started.v1",
+      "producerService": "iam-service",
+      "source": "urn:saasforge:iam-service",
+      "schema": "contracts/events/iam-session-started.v1.schema.json",
+      "topic": "saasforge.<environment>.iam-service.events",
+      "orderingKey": "identityId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.iam-session-events"
+        }
+      ]
+    }
+  ]
 }

@@ -4,11 +4,17 @@ saasforge:
 
 security:
   jwt:
+    issuer: ${IAM_JWT_ISSUER:?IAM_JWT_ISSUER is required}
+    access-token-ttl: PT15M
     signing:
       adapter: pem-jca
       pem:
         key-version-ref: ${IAM_JWT_PEM_KEY_VERSION_REF:?IAM_JWT_PEM_KEY_VERSION_REF is required}
         private-key-location: ${IAM_JWT_PEM_PRIVATE_KEY_LOCATION:?IAM_JWT_PEM_PRIVATE_KEY_LOCATION is required}
+  login-protection:
+    failure-window: PT15M
+    maximum-failures: 5
+    lock-duration: PT15M
 
 management:
   endpoint:

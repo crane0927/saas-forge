@@ -2,6 +2,7 @@ package io.saasforge.iam.infrastructure.persistence;
 
 import io.saasforge.iam.domain.session.RefreshTokenConsumption;
 import io.saasforge.iam.domain.session.RefreshTokenFamily;
+import io.saasforge.iam.domain.session.RefreshTokenFamilyPurpose;
 import io.saasforge.iam.domain.session.RefreshTokenFamilyRepository;
 import io.saasforge.iam.domain.shared.Sha256Digest;
 import io.saasforge.iam.infrastructure.persistence.mapper.RefreshTokenMapper;
@@ -92,6 +93,7 @@ public class MyBatisRefreshTokenFamilyRepository implements RefreshTokenFamilyRe
         RefreshTokenFamilyRow row = new RefreshTokenFamilyRow();
         row.setId(family.id());
         row.setIdentityId(family.identityId());
+        row.setFamilyPurpose(family.purpose().name());
         row.setMembershipId(family.membershipId());
         row.setTenantId(family.tenantId());
         row.setLastUsedAt(IamTime.asOffsetDateTime(family.lastUsedAt()));
@@ -109,7 +111,8 @@ public class MyBatisRefreshTokenFamilyRepository implements RefreshTokenFamilyRe
     }
 
     private static RefreshTokenFamily toDomain(RefreshTokenFamilyRow row) {
-        return RefreshTokenFamily.restore(row.getId(), row.getIdentityId(), row.getMembershipId(), row.getTenantId(),
+        return RefreshTokenFamily.restore(row.getId(), row.getIdentityId(),
+                RefreshTokenFamilyPurpose.valueOf(row.getFamilyPurpose()), row.getMembershipId(), row.getTenantId(),
                 IamTime.asInstant(row.getLastUsedAt()), IamTime.asInstant(row.getAbsoluteExpiresAt()),
                 IamTime.asInstant(row.getRevokedAt()));
     }

@@ -15,6 +15,16 @@ public final class JwtSigningService {
 
     public JwtSignature sign(JwsSigningInput signingInput) {
         SigningKey activeKey = activeSigningKeyResolver.current();
+        return sign(activeKey, signingInput);
+    }
+
+    /** 在选择 ACTIVE Key 后生成含同一 kid 的 Header，避免 Header 与实际签名密钥分离。 */
+    public JwtSignature sign(JwsSigningInputFactory signingInputFactory) {
+        SigningKey activeKey = activeSigningKeyResolver.current();
+        return sign(activeKey, signingInputFactory.create(activeKey.kid()));
+    }
+
+    private JwtSignature sign(SigningKey activeKey, JwsSigningInput signingInput) {
         try {
             byte[] signature = signingPort.sign(
                     activeKey.keyVersionReference(), JwtSigningAlgorithm.RS256, signingInput);

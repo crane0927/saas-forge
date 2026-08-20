@@ -47,9 +47,11 @@ class RefreshTokenFamilyTest {
         assertThrows(IllegalArgumentException.class,
                 () -> RefreshTokenFamily.start(identityId, UUID.randomUUID(), null, loginAt));
         assertThrows(IllegalArgumentException.class,
-                () -> RefreshTokenFamily.restore(null, identityId, null, null, loginAt, loginAt.plusSeconds(1), null));
+                () -> RefreshTokenFamily.restore(null, identityId, RefreshTokenFamilyPurpose.USER_PLATFORM,
+                        null, null, loginAt, loginAt.plusSeconds(1), null));
         assertThrows(IllegalArgumentException.class,
-                () -> RefreshTokenFamily.restore(UUID.randomUUID(), identityId, null, null, loginAt, loginAt, null));
+                () -> RefreshTokenFamily.restore(UUID.randomUUID(), identityId, RefreshTokenFamilyPurpose.USER_PLATFORM,
+                        null, null, loginAt, loginAt, null));
 
         RefreshTokenFamily pending = RefreshTokenFamily.start(identityId, null, null, loginAt);
         assertThrows(IllegalStateException.class, () -> pending.identifiedBy(null));
