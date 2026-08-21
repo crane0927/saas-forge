@@ -37,13 +37,162 @@ An `Exited (0)` status for a `*-migrate` job means its migration succeeded. The 
 
 ## Explicit Platform Admin bootstrap
 
-Normal IAM startup never creates the Platform Admin. Write the unique administrator email and a random initial password to the two external Secret files referenced by `.env`, then run the one-shot task explicitly:
+Normal IAM startup never creates the Platform Admin. The account must be created by the explicit one-shot bootstrap task. Its random initial password is valid only for the first login and must be replaced within 24 hours of creation.
+
+### 1. Configure the Secret file paths
+
+`.env` contains only the external Secret file paths, never the email or password values:
+
+```dotenv
+IAM_PLATFORM_ADMIN_EMAIL_FILE=.secrets/platform-admin-email
+IAM_PLATFORM_ADMIN_PASSWORD_FILE=.secrets/platform-admin-password
+```
+
+Create the email and random initial-password files from this directory:
+
+```bash
+mkdir -p .secrets
+printf '%s\n' 'your-administrator-email' > .secrets/platform-admin-email
+openssl rand -base64 32 > .secrets/platform-admin-password
+chmod 600 .secrets/platform-admin-email .secrets/platform-admin-password
+```
+
+Both files must contain non-empty, single-line UTF-8 text and may have one trailing line ending. On macOS, copy the initial password to the clipboard without displaying it in the terminal:
+
+```bash
+pbcopy < .secrets/platform-admin-password
+```
+
+### 2. Rebuild and start IAM
+
+The normal IAM service and the bootstrap task share `saasforge/iam-service:local`, so code changes require only one image build:
+
+```bash
+docker compose build iam-service
+docker compose up -d iam-service gateway
+```
+
+If the entire stack has not been started yet, run:
+
+```bash
+docker compose up --build -d
+```
+
+### 3. Run the one-shot bootstrap
+
+Run the bootstrap profile explicitly:
 
 ```bash
 docker compose --profile bootstrap run --rm iam-platform-admin-bootstrap
 ```
 
 The task waits for `iam-migrate` to succeed, then creates the Identity, 24-hour Initial Platform Credential, `PLATFORM_ADMIN` role, idempotency fact, and Outbox event in one IAM database transaction. An identical still-valid state can be replayed safely; any email, credential, or role drift fails without overwriting existing data. Secret files must contain single-line UTF-8 text and may have one trailing line ending. Logs contain only non-sensitive identifiers, expiry, outcome, and Trace ID. Normal `docker compose up` does not enable the `bootstrap` profile and neither mounts nor reads these Secrets.
+
+If Docker reports `bind source path does not exist`, the host Secret files have not been created or their `.env` paths are incorrect. Check the files from this directory without printing their contents:
+
+```bash
+test -s .secrets/platform-admin-email &&
+test -s .secrets/platform-admin-password &&
+echo "Platform Admin Secret files are ready"
+```
+
+The bootstrap state intentionally changes after the initial password is replaced. Do not rerun the bootstrap task after a successful password change.
+
+### 4. Log in with the initial password
+
+The following commands require `jq` and call the public endpoint through the local Gateway on port `8080`. Complete the initial login and password change in the same terminal because `COOKIE_JAR` holds the restricted session cookie:
+
+```bash
+API_BASE=http://localhost:8080
+COOKIE_JAR="$(mktemp)"
+ADMIN_EMAIL="$(<.secrets/platform-admin-email)"
+INITIAL_PASSWORD="$(<.secrets/platform-admin-password)"
+
+jq -n \
+  --arg email "$ADMIN_EMAIL" \
+  --arg password "$INITIAL_PASSWORD" \
+  '{email:$email,password:$password,contextType:"PLATFORM"}' |
+curl --fail-with-body -sS \
+  -c "$COOKIE_JAR" \
+  -H 'Content-Type: application/json' \
+  -H 'X-SF-CSRF: 1' \
+  --data-binary @- \
+  "$API_BASE/api/v1/auth/login" |
+jq .
+```
+
+A successful initial-password login returns `PASSWORD_CHANGE_REQUIRED` and does not issue an Access Token:
+
+```json
+{
+  "contextState": "PASSWORD_CHANGE_REQUIRED"
+}
+```
+
+### 5. Replace the initial password
+
+Enter the permanent password in the same terminal. No characters are echoed while typing; press Enter when finished:
+
+```bash
+read -r -s "NEW_PASSWORD?Enter the new password: "
+echo
+
+jq -n \
+  --arg password "$NEW_PASSWORD" \
+  '{newPassword:$password}' |
+curl --fail-with-body -i \
+  -b "$COOKIE_JAR" \
+  -c "$COOKIE_JAR" \
+  -H 'Content-Type: application/json' \
+  -H 'X-SF-CSRF: 1' \
+  --data-binary @- \
+  "$API_BASE/api/v1/auth/password-changes"
+```
+
+`HTTP/1.1 204` means the permanent password is active and both the initial password and restricted session are permanently invalid. The permanent password must satisfy all of these rules:
+
+- At least 12 Unicode code points;
+- At most 128 Unicode code points and at most 512 UTF-8 bytes;
+- No spaces, line endings, tabs, or other Unicode whitespace;
+- Must not match the system's compromised-password blocklist.
+
+After success, clear the shell variables and remove the initial-password file:
+
+```bash
+unset INITIAL_PASSWORD NEW_PASSWORD
+rm .secrets/platform-admin-password
+```
+
+### 6. Log in again with the permanent password
+
+Enter the permanent password again and call the login endpoint:
+
+```bash
+read -r -s "ADMIN_PASSWORD?Enter the permanent password: "
+echo
+
+jq -n \
+  --arg email "$ADMIN_EMAIL" \
+  --arg password "$ADMIN_PASSWORD" \
+  '{email:$email,password:$password,contextType:"PLATFORM"}' |
+curl --fail-with-body -sS \
+  -b "$COOKIE_JAR" \
+  -c "$COOKIE_JAR" \
+  -H 'Content-Type: application/json' \
+  -H 'X-SF-CSRF: 1' \
+  --data-binary @- \
+  "$API_BASE/api/v1/auth/login" |
+jq .
+
+unset ADMIN_PASSWORD
+```
+
+Success returns `ACCESS_TOKEN_ISSUED`, a Bearer Access Token, and its lifetime. Access Tokens, Refresh Token cookies, and passwords are sensitive and must never be written to `.env`, Git, logs, or chat messages. Remove the temporary cookie file when finished:
+
+```bash
+rm -f "$COOKIE_JAR"
+unset COOKIE_JAR
+```
 
 > [!IMPORTANT]
 > `.env` is for local use only and is ignored by Git. Set one PostgreSQL administrator user and every required variable. Do not commit `.env` or use its local short codes outside local development.

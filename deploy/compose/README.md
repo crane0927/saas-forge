@@ -37,13 +37,162 @@ docker compose ps --all
 
 ## 显式引导 Platform Admin
 
-Platform Admin 不随 IAM 正常启动自动创建。先把唯一管理员邮箱和随机初始密码分别写入 `.env` 指定的两个外部 Secret 文件，再显式运行一次性任务：
+Platform Admin 不随 IAM 正常启动自动创建。它必须通过一次性 bootstrap 任务显式创建，随机初始密码只能用于首次登录，并须在创建后的 24 小时内修改为正式密码。
+
+### 1. 配置 Secret 文件路径
+
+`.env` 只配置外部 Secret 文件路径，不保存邮箱或密码明文：
+
+```dotenv
+IAM_PLATFORM_ADMIN_EMAIL_FILE=.secrets/platform-admin-email
+IAM_PLATFORM_ADMIN_PASSWORD_FILE=.secrets/platform-admin-password
+```
+
+在本目录创建邮箱文件和随机初始密码文件：
+
+```bash
+mkdir -p .secrets
+printf '%s\n' '你的管理员邮箱' > .secrets/platform-admin-email
+openssl rand -base64 32 > .secrets/platform-admin-password
+chmod 600 .secrets/platform-admin-email .secrets/platform-admin-password
+```
+
+两个文件必须是非空的单行 UTF-8 文本，可以带一个末尾换行。需要使用初始密码登录时，macOS 可将其复制到剪贴板而不在终端显示：
+
+```bash
+pbcopy < .secrets/platform-admin-password
+```
+
+### 2. 重新构建并启动 IAM
+
+IAM 正常服务与 bootstrap 任务共用 `saasforge/iam-service:local`，代码更新后只需构建一次镜像：
+
+```bash
+docker compose build iam-service
+docker compose up -d iam-service gateway
+```
+
+如果整套环境尚未启动，也可执行：
+
+```bash
+docker compose up --build -d
+```
+
+### 3. 执行一次性引导
+
+显式运行 bootstrap profile：
 
 ```bash
 docker compose --profile bootstrap run --rm iam-platform-admin-bootstrap
 ```
 
 该任务会等待 `iam-migrate` 成功后再执行，并在一个 IAM 数据库事务中创建 Identity、24 小时 Initial Platform Credential、`PLATFORM_ADMIN` 角色、幂等事实与 Outbox 事件。相同且仍有效的状态可安全重放；邮箱、密码、凭据或角色状态不一致时任务失败且不会覆盖已有数据。Secret 文件内容必须是单行 UTF-8 文本，可以带一个末尾换行；任务日志只输出非敏感标识、到期时间、结果和 Trace ID。正常 `docker compose up` 不启用 `bootstrap` profile，也不挂载或读取这两个 Secret。
+
+如果 Docker 报错 `bind source path does not exist`，说明宿主机 Secret 文件尚未创建或 `.env` 路径不正确。可在本目录检查文件，不输出其内容：
+
+```bash
+test -s .secrets/platform-admin-email &&
+test -s .secrets/platform-admin-password &&
+echo "Platform Admin Secret 文件已准备"
+```
+
+完成首次改密后，引导状态会有意发生变化，不应再次运行 bootstrap 任务。
+
+### 4. 使用初始密码登录
+
+以下命令需要 `jq`，并通过本地 Gateway 的 `8080` 端口调用公开接口。必须在同一个终端窗口内完成初始登录和改密，因为 `COOKIE_JAR` 保存了受限会话 Cookie：
+
+```bash
+API_BASE=http://localhost:8080
+COOKIE_JAR="$(mktemp)"
+ADMIN_EMAIL="$(<.secrets/platform-admin-email)"
+INITIAL_PASSWORD="$(<.secrets/platform-admin-password)"
+
+jq -n \
+  --arg email "$ADMIN_EMAIL" \
+  --arg password "$INITIAL_PASSWORD" \
+  '{email:$email,password:$password,contextType:"PLATFORM"}' |
+curl --fail-with-body -sS \
+  -c "$COOKIE_JAR" \
+  -H 'Content-Type: application/json' \
+  -H 'X-SF-CSRF: 1' \
+  --data-binary @- \
+  "$API_BASE/api/v1/auth/login" |
+jq .
+```
+
+初始密码认证成功时返回 `PASSWORD_CHANGE_REQUIRED`，不会签发 Access Token：
+
+```json
+{
+  "contextState": "PASSWORD_CHANGE_REQUIRED"
+}
+```
+
+### 5. 修改为正式密码
+
+在同一个终端中输入正式密码。输入过程不会回显字符，输入完成后按回车：
+
+```bash
+read -r -s "NEW_PASSWORD?请输入新密码: "
+echo
+
+jq -n \
+  --arg password "$NEW_PASSWORD" \
+  '{newPassword:$password}' |
+curl --fail-with-body -i \
+  -b "$COOKIE_JAR" \
+  -c "$COOKIE_JAR" \
+  -H 'Content-Type: application/json' \
+  -H 'X-SF-CSRF: 1' \
+  --data-binary @- \
+  "$API_BASE/api/v1/auth/password-changes"
+```
+
+返回 `HTTP/1.1 204` 表示正式密码已经生效，初始密码和受限会话均已永久失效。正式密码必须满足以下规则：
+
+- 至少 12 个 Unicode 字符；
+- 最多 128 个 Unicode 字符，且 UTF-8 编码后不超过 512 字节；
+- 不得包含空格、换行、制表符等 Unicode 空白字符；
+- 不得命中系统弱密码库。
+
+成功后清除终端变量和初始密码文件：
+
+```bash
+unset INITIAL_PASSWORD NEW_PASSWORD
+rm .secrets/platform-admin-password
+```
+
+### 6. 使用正式密码重新登录
+
+重新输入正式密码并调用登录接口：
+
+```bash
+read -r -s "ADMIN_PASSWORD?请输入正式密码: "
+echo
+
+jq -n \
+  --arg email "$ADMIN_EMAIL" \
+  --arg password "$ADMIN_PASSWORD" \
+  '{email:$email,password:$password,contextType:"PLATFORM"}' |
+curl --fail-with-body -sS \
+  -b "$COOKIE_JAR" \
+  -c "$COOKIE_JAR" \
+  -H 'Content-Type: application/json' \
+  -H 'X-SF-CSRF: 1' \
+  --data-binary @- \
+  "$API_BASE/api/v1/auth/login" |
+jq .
+
+unset ADMIN_PASSWORD
+```
+
+成功时返回 `ACCESS_TOKEN_ISSUED`、Bearer Access Token 及有效期。Access Token、Refresh Token Cookie 和密码均为敏感信息，不得写入 `.env`、Git、日志或聊天记录。使用完毕后可删除临时 Cookie 文件：
+
+```bash
+rm -f "$COOKIE_JAR"
+unset COOKIE_JAR
+```
 
 > [!IMPORTANT]
 > `.env` 仅限本地使用，已被 Git 忽略。必须填写一个 PostgreSQL 管理员用户名及全部必填变量；不要提交 `.env`，也不要将本地短码用于任何非本地环境。
