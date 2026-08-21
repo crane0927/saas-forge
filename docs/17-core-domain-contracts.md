@@ -30,6 +30,8 @@
 
 外部 `Idempotency-Key` 不跨服务透传。IAM 与 Entitlement 分别按调用服务和稳定子操作 ID 去重、重放结果或继续执行；Quota 仍以既有 `operationId` 契约为准。流程根必须将本地领域变更、稳定 HTTP 结果、Outbox 和尚未完成的补偿/重试工作项置于同一事务。工作流及其子操作 ID 必须保留至所有必需的前向操作或补偿完成；事件消费者再以 CloudEvents `id` 幂等消费。四条流程的根服务和恢复顺序见[跨服务工作流契约](18-tenant-access-cross-service-workflows.md)。
 
+跨服务根工作流使用同步快路径与持久化后台恢复：HTTP 请求可立即推进，但必须在首次远程调用前持久化根状态、稳定子操作 ID 与下一步动作。请求超时、进程重启或依赖暂时不可用后，拥有该工作流的服务必须由后台 Worker 通过数据库租约继续同一流程；客户端同 Key 重试只查询、协助推进或重放结果，不是恢复前提。每个业务串行化键同时最多一个执行者，Worker 必须复用原子操作 ID；补偿和已提交业务后的投递即使客户端不再请求也持续执行。退避由环境配置，达到重试次数不得伪造业务成功。
+
 ## Subscription
 
 Subscription 的到期由 `endsAt` 在权益判断时派生；`EXPIRED` 不属于其持久状态。实现不得依赖定时任务将 Subscription 改写为 `EXPIRED`，也不得在已到期但状态尚未刷新的窗口继续授予权益。
@@ -192,6 +194,8 @@ PostgreSQL 是额度唯一真相。`consume` 对 `(tenantId, quotaDefinitionId)`
 
 动作、Tenant 与 Quota Definition 均相同的重复 `operationId` 必须原样重放首次结果，不重复调整用量；任一项不同则返回 `409 Conflict` 和 `QUOTA_OPERATION_ID_REUSED`，且不调整用量。
 
+管理员初始化使用的内部 Quota Command 必须额外携带 `purpose = TENANT_ADMIN_INITIALIZATION`，并将 purpose 纳入 Quota Operation 的不可变幂等指纹。只有 `tenant-access-service` 的 Service Access Token、`entitlement:quota:write`、`quotaCode = max_users` 与 `amount = 1` 同时满足时，Entitlement 才允许在 Tenant 仍为 `PENDING` 时执行该 provisioning `consume`；对应 `release` 必须保持相同 purpose。普通 `runtime:quota:write` 不能使用该例外，仍须先满足 Tenant 可访问性。Entitlement 不为此回调 Tenant Access，避免形成 Tenant Access → Entitlement → Tenant Access 的同步环。
+
 `quota_operations` 是不可变计量审计记录，不采用 HTTP 幂等记录的 24 小时过期。其保留期遵循平台审计保留策略；保留期间 `operationId` 不可重新使用。
 
 携带有效 `operationId` 的 `consume` 或 `release` 即使得到业务 `4xx`，也必须写入 Quota Operation。相同动作、Tenant 与 Quota Definition 的后续重试原样重放首次结果，即使额度、权益或 Tenant 状态已经变化；不得把原先的失败改为成功。
@@ -270,6 +274,8 @@ Tenant Access 拥有 Invitation 状态迁移，并在激活时同步编排 IAM �
 
 `expiresAt` 为可空有效期。到期由访问时刻派生，不依赖定时任务将 Tenant 改写为 `EXPIRED`。
 
+Tenant `expiresAt` 是平台级绝对访问截止时间，不表示从激活时开始计算的相对有效时长，也不替代 Subscription `endsAt`。创建 Tenant 时，非空 `expiresAt` 必须严格晚于服务端当前时间；管理员初始化必须在调用 IAM 或扣减 Quota 前再次检查，若已经达到该时间则返回 `409 Conflict` / `TENANT_EXPIRY_REACHED`，Tenant 保持 `PENDING` 且不产生 Identity、Membership 或 Quota 副作用。`TENANT_EXPIRED` 仍只表示 `ACTIVE` Tenant 的派生访问结果。
+
 ### 唯一允许的状态迁移
 
 | 起始状态 | 目标状态 | 条件与语义 |
@@ -299,3 +305,11 @@ Tenant 不存在时，服务返回 `404 Not Found` 和 `TENANT_NOT_FOUND`。
 `PENDING → ACTIVE` 的管理员初始化前置条件尚未满足时，服务返回 `409 Conflict` 和 `TENANT_ADMIN_INITIALIZATION_REQUIRED`。
 
 Tenant Administrator Initialization 由 Tenant Access 串行化。它必须先由 IAM 确认初始管理员 Identity，再以稳定 `operationId` 占用一个 `max_users` 名额；随后在 Tenant Access 的同一事务中建立启用 Membership、创建或确保 Tenant Administrator Role 并完成其分配、将 Tenant 转为 `ACTIVE`、写入稳定 HTTP 结果和 Outbox。任何本地提交前的后续失败都必须以稳定 `release operationId` 补偿已占用的额度，Tenant 保持 `PENDING`；Identity 不回滚。若 Identity 尚无可用密码凭据，Tenant Access 在提交后通过持久化工作项请求 IAM 发送一次性、限时的密码设置链接，该投递不回滚激活。
+
+Quota 已扣减而 Tenant Access 本地激活事务未提交时，根工作流进入 `COMPENSATING` 并持续使用原 `releaseOperationId`；补偿未完成期间，同一外部 Key 返回 `503 Service Unavailable` / `TENANT_ADMIN_INITIALIZATION_COMPENSATING` 与 `Retry-After`。补偿成功后，原根工作流稳定结束为 `409 Conflict` / `TENANT_ADMIN_INITIALIZATION_RETRY_REQUIRED`；客户端必须使用新的 `Idempotency-Key` 创建新根工作流及新的 Identity、consume、release 子操作 ID。Identity 保留并复用，Tenant 保持 `PENDING`；不得复用已被 release 抵消的 `consumeOperationId`，也不得在同一根工作流内无限产生新尝试。Password Setup 投递发生在本地激活提交后，失败只重试投递工作项，不触发 Quota 补偿。
+
+每个 Tenant 恰有一个系统管理的 Tenant Administrator Role，固定 `roleKey = TENANT_ADMINISTRATOR` 且 `systemManaged = true`，不得重命名、删除或转为自定义角色。初始化事务必须幂等创建该角色并建立唯一 Membership–Role Assignment；管理员身份只由该 Assignment 表达，不增加 `is_admin` 字段或绕过 RBAC。当前切片不提前创建 Permission 或 Role–Permission 数据；第 4 阶段只能为该既有角色绑定冻结的 `system:*` Permission，不得创建第二个管理员角色。
+
+Initial Tenant Administrator 是独立、不可变的 Tenant–Membership 关系，每个 Tenant 最多一条且 Membership 必须属于该 Tenant。它必须与 Membership、Tenant Administrator Role Assignment 和 `PENDING → ACTIVE` 在同一事务写入；后续授予或撤销管理员角色不改变该历史关系。Password Setup 重发只能通过它定位 Identity，不得在 Membership 冗余邮箱、密码状态或 `is_initial_admin`。已 `ACTIVE` 的 Tenant 使用新幂等键再次初始化时返回 `409 Conflict` / `TENANT_ALREADY_INITIALIZED`，不能替换 Initial Tenant Administrator。
+
+Password Setup Challenge 只允许从未拥有任何 Credential 的 Identity 首次建立密码凭据。IAM 使用 CSPRNG 生成 256 位 Token 并仅保存 SHA-256 摘要；Challenge 自创建起有效 24 小时，每个 Identity 同时最多一个有效 Challenge，重发原子作废旧 Challenge。成功兑换必须携带 UUIDv7 `Idempotency-Key`，并在同一事务中创建 Password Credential、消费 Challenge 与记录稳定 `204` 结果；相同 Token 与相同 Key 可重放成功，其他 Key 不得复用已消费 Token。已有有效 Password Credential 的 Identity 直接复用；存在有效或过期 Initial Platform Credential，或存在已失效 Password Credential 时，管理员初始化在 Quota 扣减前返回 `409 Conflict` / `IDENTITY_CREDENTIAL_RECOVERY_REQUIRED`。因先前失败工作流创建但始终没有 Credential 的 Identity 仍允许 Setup。无效、过期、已使用或已被替换的 Token 统一返回 `400 Bad Request` / `PASSWORD_SETUP_TOKEN_INVALID`；不得借此重置或替换密码，幂等指纹也不得保存或快速哈希新密码。

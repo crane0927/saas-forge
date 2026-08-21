@@ -28,6 +28,10 @@ _Avoid_: API key, external identity
 一个 Identity 用于常规密码认证的 `PASSWORD` Credential；首次改密时新建该记录，原 Initial Platform Credential 永久失效。一个 Identity 任意时刻最多有一个有效 Password Credential，IAM 仅持久化其 Argon2id 哈希，绝不保存原始密码。
 _Avoid_: Password, shared secret
 
+**Password Setup Challenge**:
+IAM 为从未拥有任何 Credential 的 Identity 签发的一次性、限时密码建立凭据；它只能用于首次建立 Password Credential，不能用于重置、替换或绕过既有凭据的恢复流程。
+_Avoid_: Password reset token, invitation token, initial password
+
 **User Access Token**:
 IAM 为已认证 Identity 签发的短期用户访问凭证；它可以表示 Platform 全局身份，或成对绑定一个已验证的 Membership 与 Tenant 上下文。
 _Avoid_: Refresh Token, service token, role token
@@ -71,6 +75,10 @@ _Avoid_: Refresh token lock, session lease
 **OAuth Client**:
 由 IAM 注册、以 `client_id` 和显式 scope 表示的服务认证主体。它不代表用户、Membership 或 Tenant Context。
 _Avoid_: User, service tenant identity
+
+**Service Access Token**:
+IAM 通过 Client Credentials 为 OAuth Client 签发的短期访问凭证，只表示 `client_id` 与显式 scope，不建立 Identity、Membership 或 Tenant Context。
+_Avoid_: User Access Token, tenant token, service tenant identity
 
 **Client Secret**:
 OAuth Client 的机器生成认证机密，仅在创建或轮换时明文展示一次。IAM 仅保存其 SHA-256 摘要；轮换后的旧 Secret 最多与新 Secret 重叠 24 小时，重叠期内不允许再次轮换。
@@ -119,6 +127,10 @@ _Avoid_: Tenant status, expired Tenant state
 **Tenant Administrator Initialization**:
 为新 Tenant 建立初始管理员 Membership 并授予 Tenant Administrator Role 的过程。只有该过程成功后，`PENDING` Tenant 才可变为 `ACTIVE`。
 _Avoid_: Early activation
+
+**Initial Tenant Administrator**:
+Tenant 首次激活时确定的初始管理员 Membership，是不会随后续角色授予或撤销而改变的历史关系；它用于定位首次 Password Setup 的恢复目标，不表示永久拥有管理员权限。
+_Avoid_: Current tenant administrator, administrator flag, tenant owner
 
 **Tenant Administrator Role**:
 某一 Tenant 专属、由系统管理的 Tenant Role，授予该 Tenant 的核心 `system` 管理权限。它不授予任何业务模块 Permission，也不是绕过 RBAC 的管理员标记。

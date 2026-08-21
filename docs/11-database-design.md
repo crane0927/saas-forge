@@ -75,6 +75,10 @@ Tenant 范围内的唯一约束、主要索引和相互引用按 `tenant_id` 限
 
 平台跨 Tenant 管理只能经显式、可审计的平台服务操作完成，并使用受限的事务级平台上下文；该路径不得被常规业务请求或数据库账号调用。应用层可信 Tenant Context 与 RLS 同时生效，不能以任何一方替代另一方。
 
+平台服务操作必须先验证 Platform 形态的 User Access Token，并通过 IAM 权威复核所需 Platform Role；只有复核成功后，服务才能把服务器生成或规范路径定位的 Tenant ID 作为 Tenant Operation Target，使用事务级 `set_config('app.tenant_id', ..., true)`。创建 Tenant 时由服务先生成 UUIDv7，再设置同一目标并插入；后台 Worker 只能从已持久化的权威工作流记录恢复目标。请求 Header、Body 或查询参数不得直接设置数据库 Tenant 上下文，`*_app` 仍不得获得 `BYPASSRLS`、迁移角色或通用跨 Tenant SQL 权限。
+
+IAM 查询一个 Identity 的 Accessible Membership 可使用仅返回固定白名单字段、按 Identity 限定且只授予 `tenant_access_app` 执行权的 `SECURITY DEFINER` 函数；调用进入 Tenant Access 前必须验证 IAM 的 Service Access Token 与 `tenant-access:membership:read`。该函数不构成通用跨 Tenant 查询能力，其所有者、固定 `search_path`、PUBLIC 撤权、输入约束和最大返回数量必须由迁移与集成测试验证。
+
 首期仅实现共享数据库、共享 Schema、`tenant_id` 隔离。Schema Per Tenant 与 Database Per Tenant 是后续演进方向，但当前核心模型不把 `tenant_id` 作为唯一永久隔离策略。
 
 ## 索引与一致性规则
