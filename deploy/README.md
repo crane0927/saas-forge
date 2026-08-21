@@ -18,9 +18,12 @@
 ```bash
 cd deploy/compose
 test -f .env || cp .env.example .env
+bash ../../scripts/initialize-local-iam-signing-key.sh
 docker compose config
 docker compose up --build
 ```
+
+初始化脚本显式生成 Git 忽略的本地 JWT 私钥，并在 IAM 数据库没有 ACTIVE Signing Key 时初始化匹配的公开元数据；它不会覆盖已有的不匹配密钥。
 
 `docker compose up --build` 会构建五个应用镜像，并按依赖顺序启动 Nacos 初始化、PostgreSQL 初始化、Flyway 迁移和应用服务。状态与日志可用以下命令查看：
 

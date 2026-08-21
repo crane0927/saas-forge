@@ -76,6 +76,9 @@ jobs:
       POSTGRES_ADMIN_PASSWORD: postgres-test-password
       IAM_MIGRATOR_PASSWORD: iam-migrator-test-password
       IAM_APP_PASSWORD: iam-app-test-password
+      IAM_JWT_ISSUER: https://api.saasforge.test
+      IAM_JWT_PEM_KEY_VERSION_REF: local/ci/pem/1
+      IAM_JWT_PEM_PRIVATE_KEY_FILE: .secrets/ci-jwt-private-key.pem
       TENANT_ACCESS_MIGRATOR_PASSWORD: tenant-access-migrator-test-password
       TENANT_ACCESS_APP_PASSWORD: tenant-access-app-test-password
       ENTITLEMENT_MIGRATOR_PASSWORD: entitlement-migrator-test-password
@@ -103,6 +106,8 @@ jobs:
       - uses: actions/checkout@v6
       - name: Validate every Git-managed Nacos configuration
         run: bash scripts/validate-nacos-config.sh
+      - name: Validate local Compose JWT configuration
+        run: bash scripts/validate-local-compose-jwt.sh
       - name: Validate the production Nacos deployment contract
         run: bash scripts/validate-nacos-production-contract.sh
       - name: Publish dev manifest with the constrained publisher identity

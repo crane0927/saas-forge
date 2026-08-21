@@ -20,9 +20,12 @@ S3 兼容对象存储不属于当前拓扑，将在第 6 阶段加入。当前 C
 ```bash
 test -f .env || cp .env.example .env
 # 为 .env 中的全部变量填写仅用于本地开发的值
+bash ../../scripts/initialize-local-iam-signing-key.sh
 docker compose config
 docker compose up --build
 ```
+
+初始化脚本会在 `.secrets/` 中生成 Git 忽略的 PKCS#8 RSA 私钥，执行 IAM Flyway 迁移，并在数据库尚无 ACTIVE Signing Key 时写入与该私钥公钥一致的本地元数据。脚本可重复执行；若数据库已有不匹配的 ACTIVE Key，则拒绝覆盖并要求显式轮换。
 
 首次启动时，Nacos 会用 `.env` 中的显式管理员密码完成首次初始化，并由 `nacos-init` 创建非默认的 IAM、Tenant Access、Entitlement、Audit、Gateway 开发身份、配置发布身份、`dev` namespace，以及 `SAAS_FORGE` group 中各自的配置资源；PostgreSQL healthy 后四个 `*-migrate` 任务会完成各自数据库迁移；对应领域服务随后启动，Gateway 最后启动。Compose 明确向所有应用传入 `NACOS_TLS_ENABLED=false`，因为它只提供隔离网络内的单节点开发 Nacos；不得将此拓扑、地址或凭据复制到生产。五个应用均以 `refreshEnabled=false` 导入自身配置资源，常规配置变更由受控发布流程配合滚动发布生效；当前没有可在本地热更新的策略。任一服务的 Nacos 配置不存在、Nacos 不可达或注册失败时不会 Ready；Gateway 仅通过 Nacos 的健康实例代理当前公开路由所属服务，Audit 注册不会开放新入口。Nacos 本地控制台访问 <http://127.0.0.1:8849/>。可用以下命令查看状态：
 
@@ -54,7 +57,7 @@ docker compose ps --all
 
 ## 环境变量
 
-`.env.example` 包含所需变量名，不提供默认密码。`POSTGRES_ADMIN_USER` 是 PostgreSQL 初始化管理员账号；其余变量均为密码或 Nacos 认证材料：
+`.env.example` 包含所需变量名，不提供默认密码。`POSTGRES_ADMIN_USER` 是 PostgreSQL 初始化管理员账号；JWT issuer、Key Version 引用和本地私钥路径提供安全边界内的开发默认值，其余变量均为密码或 Nacos 认证材料：
 
 | 服务 | migrator 密码 | app 密码 |
 | --- | --- | --- |

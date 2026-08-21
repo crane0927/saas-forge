@@ -57,6 +57,10 @@ wait_for_gateway_unavailable() {
 trap cleanup EXIT
 trap on_interrupt INT TERM
 
+COMPOSE_PROJECT_NAME="$project_name" \
+LOCAL_COMPOSE_OVERRIDE_FILE="$compose_directory/failure-recovery.override.yaml" \
+  bash "$repository_root/scripts/initialize-local-iam-signing-key.sh"
+
 if [[ "${NACOS_RECOVERY_BUILD_IMAGES:-true}" == "true" ]]; then
   compose up --detach --build gateway
 else
