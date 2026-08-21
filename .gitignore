@@ -13,6 +13,7 @@ node_modules/
 *.key
 *.p12
 *.pfx
+deploy/compose/.secrets/
 
 # 日志、进程与 JVM 诊断
 *.log

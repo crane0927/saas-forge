@@ -138,6 +138,44 @@ services:
     volumes:
       - ../../services/iam-service/src/main/resources/db/migration:/flyway/sql:ro
 
+  iam-platform-admin-bootstrap:
+    profiles: ["bootstrap"]
+    image: saasforge/iam-service:local
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile
+      args:
+        MODULE: services/iam-service
+    depends_on:
+      iam-migrate:
+        condition: service_completed_successfully
+    entrypoint:
+      - java
+      - -Dloader.main=io.saasforge.iambootstrap.PlatformAdminBootstrapApplication
+      - -jar
+      - /app/application.jar
+    command:
+      - --saasforge.iam.bootstrap.platform-admin.email-file=/run/secrets/platform-admin-email
+      - --saasforge.iam.bootstrap.platform-admin.password-file=/run/secrets/platform-admin-password
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/iam_db
+      SPRING_DATASOURCE_USERNAME: iam_app
+      SPRING_DATASOURCE_PASSWORD: ${IAM_APP_PASSWORD:?IAM_APP_PASSWORD is required}
+      SAASFORGE_ENVIRONMENT: dev
+    volumes:
+      - type: bind
+        source: ${IAM_PLATFORM_ADMIN_EMAIL_FILE:-.secrets/platform-admin-email}
+        target: /run/secrets/platform-admin-email
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${IAM_PLATFORM_ADMIN_PASSWORD_FILE:-.secrets/platform-admin-password}
+        target: /run/secrets/platform-admin-password
+        read_only: true
+        bind:
+          create_host_path: false
+
   tenant-access-migrate:
     image: flyway/flyway:12
     depends_on:

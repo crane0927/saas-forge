@@ -9,7 +9,7 @@ IAM 管理的全局认证主体，以唯一的规范化邮箱地址识别，并�
 _Avoid_: User, account, tenant user
 
 **Default Platform Admin**:
-首次部署时由系统直接创建的全局 `Identity`，绑定 Platform 角色而非任何 Tenant `Membership`。其初始密码仅由外部密钥管理系统注入，IAM 只保存 Argon2id 哈希，并要求首次登录时修改。
+首次部署时由 IAM 显式部署引导任务创建的全局 `Identity`，绑定 Platform 角色而非任何 Tenant `Membership`。其初始密码仅由外部密钥管理系统注入，IAM 只保存 Argon2id 哈希，并要求首次登录时修改。
 _Avoid_: Default tenant administrator, superuser, tenant administrator
 
 **Initial Platform Credential**:

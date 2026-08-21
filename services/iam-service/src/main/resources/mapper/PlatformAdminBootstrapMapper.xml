@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.saasforge.iam.infrastructure.persistence.mapper.PlatformAdminBootstrapMapper">
+    <resultMap id="bootstrapStateRow"
+               type="io.saasforge.iam.infrastructure.persistence.record.PlatformAdminBootstrapStateRow">
+        <id property="factIdentityId" column="fact_identity_id"/>
+        <result property="factCredentialId" column="fact_credential_id"/>
+        <result property="factRoleAssignmentId" column="fact_role_assignment_id"/>
+        <result property="factEventId" column="fact_event_id"/>
+        <result property="initializedAt" column="initialized_at"/>
+        <result property="normalizedEmail" column="normalized_email"/>
+        <result property="displayName" column="display_name"/>
+        <result property="identityCreatedAt" column="identity_created_at"/>
+        <result property="credentialType" column="credential_type"/>
+        <result property="passwordHash" column="password_hash"/>
+        <result property="credentialIssuedAt" column="credential_issued_at"/>
+        <result property="credentialExpiresAt" column="credential_expires_at"/>
+        <result property="credentialInvalidatedAt" column="credential_invalidated_at"/>
+        <result property="roleKey" column="role_key"/>
+        <result property="roleAssignedAt" column="role_assigned_at"/>
+        <result property="roleRevokedAt" column="role_revoked_at"/>
+        <result property="identityCredentialCount" column="identity_credential_count"/>
+        <result property="identityRoleAssignmentCount" column="identity_role_assignment_count"/>
+    </resultMap>
+
+    <select id="lockInitialization" resultType="int">
+        SELECT 1
+        FROM pg_advisory_xact_lock(1935762249, 1)
+    </select>
+
+    <select id="findState" resultMap="bootstrapStateRow">
+        SELECT fact.identity_id AS fact_identity_id,
+               fact.credential_id AS fact_credential_id,
+               fact.role_assignment_id AS fact_role_assignment_id,
+               fact.event_id AS fact_event_id,
+               fact.initialized_at,
+               identity.normalized_email,
+               identity.display_name,
+               identity.created_at AS identity_created_at,
+               credential.credential_type,
+               credential.password_hash,
+               credential.issued_at AS credential_issued_at,
+               credential.expires_at AS credential_expires_at,
+               credential.invalidated_at AS credential_invalidated_at,
+               role.role_key,
+               role.assigned_at AS role_assigned_at,
+               role.revoked_at AS role_revoked_at,
+               (SELECT count(*) FROM iam_credentials current
+                WHERE current.identity_id = fact.identity_id) AS identity_credential_count,
+               (SELECT count(*) FROM iam_platform_role_assignments current
+                WHERE current.identity_id = fact.identity_id) AS identity_role_assignment_count
+        FROM iam_platform_admin_bootstrap_facts fact
+        JOIN iam_identities identity ON identity.id = fact.identity_id
+        JOIN iam_credentials credential ON credential.id = fact.credential_id
+        JOIN iam_platform_role_assignments role ON role.id = fact.role_assignment_id
+        JOIN iam_outbox_events event ON event.event_id = fact.event_id
+        WHERE fact.bootstrap_key = 'DEFAULT_PLATFORM_ADMIN'
+    </select>
+
+    <select id="countUntrackedBootstrapState" resultType="int">
+        SELECT CASE WHEN EXISTS (
+            SELECT 1 FROM iam_credentials WHERE credential_type = 'INITIAL_PLATFORM_PASSWORD'
+            UNION ALL
+            SELECT 1 FROM iam_platform_role_assignments WHERE role_key = 'PLATFORM_ADMIN'
+        ) THEN 1 ELSE 0 END
+    </select>
+
+    <insert id="insert">
+        INSERT INTO iam_platform_admin_bootstrap_facts
+            (bootstrap_key, identity_id, credential_id, role_assignment_id, event_id, initialized_at)
+        VALUES
+            ('DEFAULT_PLATFORM_ADMIN', #{identityId}, #{credentialId}, #{roleAssignmentId}, #{eventId}, #{initializedAt})
+    </insert>
+</mapper>

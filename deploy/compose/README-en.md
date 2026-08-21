@@ -35,6 +35,16 @@ docker compose ps --all
 
 An `Exited (0)` status for a `*-migrate` job means its migration succeeded. The services do not yet expose business routes, so a `404` from a service root path is expected.
 
+## Explicit Platform Admin bootstrap
+
+Normal IAM startup never creates the Platform Admin. Write the unique administrator email and a random initial password to the two external Secret files referenced by `.env`, then run the one-shot task explicitly:
+
+```bash
+docker compose --profile bootstrap run --rm iam-platform-admin-bootstrap
+```
+
+The task waits for `iam-migrate` to succeed, then creates the Identity, 24-hour Initial Platform Credential, `PLATFORM_ADMIN` role, idempotency fact, and Outbox event in one IAM database transaction. An identical still-valid state can be replayed safely; any email, credential, or role drift fails without overwriting existing data. Secret files must contain single-line UTF-8 text and may have one trailing line ending. Logs contain only non-sensitive identifiers, expiry, outcome, and Trace ID. Normal `docker compose up` does not enable the `bootstrap` profile and neither mounts nor reads these Secrets.
+
 > [!IMPORTANT]
 > `.env` is for local use only and is ignored by Git. Set one PostgreSQL administrator user and every required variable. Do not commit `.env` or use its local short codes outside local development.
 

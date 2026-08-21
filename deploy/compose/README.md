@@ -35,6 +35,16 @@ docker compose ps --all
 
 `*-migrate` 显示 `Exited (0)` 表示迁移成功。当前服务尚未提供业务路由，因此直接请求服务根路径返回 `404` 是预期行为。
 
+## 显式引导 Platform Admin
+
+Platform Admin 不随 IAM 正常启动自动创建。先把唯一管理员邮箱和随机初始密码分别写入 `.env` 指定的两个外部 Secret 文件，再显式运行一次性任务：
+
+```bash
+docker compose --profile bootstrap run --rm iam-platform-admin-bootstrap
+```
+
+该任务会等待 `iam-migrate` 成功后再执行，并在一个 IAM 数据库事务中创建 Identity、24 小时 Initial Platform Credential、`PLATFORM_ADMIN` 角色、幂等事实与 Outbox 事件。相同且仍有效的状态可安全重放；邮箱、密码、凭据或角色状态不一致时任务失败且不会覆盖已有数据。Secret 文件内容必须是单行 UTF-8 文本，可以带一个末尾换行；任务日志只输出非敏感标识、到期时间、结果和 Trace ID。正常 `docker compose up` 不启用 `bootstrap` profile，也不挂载或读取这两个 Secret。
+
 > [!IMPORTANT]
 > `.env` 仅限本地使用，已被 Git 忽略。必须填写一个 PostgreSQL 管理员用户名及全部必填变量；不要提交 `.env`，也不要将本地短码用于任何非本地环境。
 

@@ -2,17 +2,38 @@ package io.saasforge.iam;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.saasforge.iam.config.NacosRegistrationReadinessHealthIndicator;
 import io.saasforge.iam.config.RequiredNacosConfiguration;
+import io.saasforge.iambootstrap.PlatformAdminBootstrapApplication;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.health.contributor.Status;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.cloud.client.discovery.event.InstanceRegisteredEvent;
 
 class NacosRegistrationReadinessHealthIndicatorTest {
+
+    @Test
+    void normalStartupDoesNotScanOrConfigurePlatformAdminBootstrapSecrets() throws Exception {
+        SpringBootApplication application = IamServiceApplication.class.getAnnotation(SpringBootApplication.class);
+        assertEquals(0, application.scanBasePackages().length);
+        assertFalse(PlatformAdminBootstrapApplication.class.getPackageName()
+                .startsWith(IamServiceApplication.class.getPackageName() + "."));
+
+        try (InputStream input = IamServiceApplication.class.getResourceAsStream("/application.yaml")) {
+            assertNotNull(input);
+            String runtimeConfiguration = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+            assertFalse(runtimeConfiguration.contains("platform-admin"));
+            assertFalse(runtimeConfiguration.contains("bootstrap.platform-admin"));
+        }
+    }
 
     @Test
     void createsRequiredNacosConfigurationWhenTheMarkerIsProvided() {
