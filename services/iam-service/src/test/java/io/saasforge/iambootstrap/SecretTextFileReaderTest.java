@@ -24,6 +24,26 @@ class SecretTextFileReaderTest {
     }
 
     @Test
+    void terminalLineEndingDoesNotCountTowardContentByteLimit() throws Exception {
+        Path secret = directory.resolve("request-id");
+        String uuidV7 = "00000000-0000-7000-8000-000000000000";
+
+        Files.writeString(secret, uuidV7 + "\n");
+        assertEquals(uuidV7, reader.read(secret, 36));
+
+        Files.writeString(secret, uuidV7 + "\r\n");
+        assertEquals(uuidV7, reader.read(secret, 36));
+    }
+
+    @Test
+    void rejectsContentOverByteLimitEvenWithTerminalLineEnding() throws Exception {
+        Path secret = directory.resolve("oversized-secret");
+        Files.writeString(secret, "12345\n");
+
+        assertThrows(IllegalArgumentException.class, () -> reader.read(secret, 4));
+    }
+
+    @Test
     void rejectsMultilineSecretWithoutIncludingPathOrContentInMessage() throws Exception {
         Path secret = directory.resolve("sensitive-name");
         Files.writeString(secret, "first-line\nsecond-line");

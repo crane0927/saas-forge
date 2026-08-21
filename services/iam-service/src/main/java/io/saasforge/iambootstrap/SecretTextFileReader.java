@@ -12,18 +12,25 @@ import java.util.Arrays;
 /** 读取外部挂载的单行 UTF-8 Secret，不在失败信息中暴露路径或内容。 */
 public final class SecretTextFileReader {
 
+    /** maximumBytes 限制 Secret 内容本身；一个终止 LF 或 CRLF 不计入长度。 */
     public String read(Path path, int maximumBytes) {
         byte[] bytes = null;
         try {
             bytes = Files.readAllBytes(path);
-            if (bytes.length == 0 || bytes.length > maximumBytes) {
+            if (bytes.length == 0 || bytes.length > (long) maximumBytes + 2) {
                 throw new IllegalArgumentException("IAM 受限任务 Secret 长度不合法");
             }
             String value = decode(bytes);
+            int terminalLineEndingBytes = 0;
             if (value.endsWith("\r\n")) {
                 value = value.substring(0, value.length() - 2);
+                terminalLineEndingBytes = 2;
             } else if (value.endsWith("\n")) {
                 value = value.substring(0, value.length() - 1);
+                terminalLineEndingBytes = 1;
+            }
+            if (bytes.length - terminalLineEndingBytes > maximumBytes) {
+                throw new IllegalArgumentException("IAM 受限任务 Secret 长度不合法");
             }
             if (value.isEmpty() || value.indexOf('\r') >= 0 || value.indexOf('\n') >= 0 || value.indexOf('\0') >= 0) {
                 throw new IllegalArgumentException("IAM 受限任务 Secret 必须是单行文本");
