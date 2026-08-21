@@ -17,7 +17,7 @@ public final class SecretTextFileReader {
         try {
             bytes = Files.readAllBytes(path);
             if (bytes.length == 0 || bytes.length > maximumBytes) {
-                throw new IllegalArgumentException("Platform Admin 引导 Secret 长度不合法");
+                throw new IllegalArgumentException("IAM 受限任务 Secret 长度不合法");
             }
             String value = decode(bytes);
             if (value.endsWith("\r\n")) {
@@ -26,11 +26,11 @@ public final class SecretTextFileReader {
                 value = value.substring(0, value.length() - 1);
             }
             if (value.isEmpty() || value.indexOf('\r') >= 0 || value.indexOf('\n') >= 0 || value.indexOf('\0') >= 0) {
-                throw new IllegalArgumentException("Platform Admin 引导 Secret 必须是单行文本");
+                throw new IllegalArgumentException("IAM 受限任务 Secret 必须是单行文本");
             }
             return value;
         } catch (IOException exception) {
-            throw new IllegalStateException("无法读取 Platform Admin 引导 Secret", exception);
+            throw new IllegalStateException("无法读取 IAM 受限任务 Secret", exception);
         } finally {
             if (bytes != null) {
                 Arrays.fill(bytes, (byte) 0);
@@ -46,7 +46,7 @@ public final class SecretTextFileReader {
                     .decode(ByteBuffer.wrap(bytes))
                     .toString();
         } catch (CharacterCodingException exception) {
-            throw new IllegalArgumentException("Platform Admin 引导 Secret 必须使用 UTF-8", exception);
+            throw new IllegalArgumentException("IAM 受限任务 Secret 必须使用 UTF-8", exception);
         }
     }
 }

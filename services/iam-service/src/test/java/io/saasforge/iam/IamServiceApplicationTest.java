@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import io.saasforge.iam.config.NacosRegistrationReadinessHealthIndicator;
 import io.saasforge.iam.config.RequiredNacosConfiguration;
 import io.saasforge.iambootstrap.PlatformAdminBootstrapApplication;
+import io.saasforge.iambootstrap.PlatformAdminCredentialResetApplication;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
@@ -25,6 +26,8 @@ class NacosRegistrationReadinessHealthIndicatorTest {
         SpringBootApplication application = IamServiceApplication.class.getAnnotation(SpringBootApplication.class);
         assertEquals(0, application.scanBasePackages().length);
         assertFalse(PlatformAdminBootstrapApplication.class.getPackageName()
+                .startsWith(IamServiceApplication.class.getPackageName() + "."));
+        assertFalse(PlatformAdminCredentialResetApplication.class.getPackageName()
                 .startsWith(IamServiceApplication.class.getPackageName() + "."));
 
         try (InputStream input = IamServiceApplication.class.getResourceAsStream("/application.yaml")) {

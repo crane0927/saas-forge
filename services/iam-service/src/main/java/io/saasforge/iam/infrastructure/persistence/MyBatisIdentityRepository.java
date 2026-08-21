@@ -81,6 +81,13 @@ public class MyBatisIdentityRepository implements IdentityRepository {
     }
 
     @Override
+    public List<PasswordCredential> lockCredentials(UUID identityId) {
+        return mapper.lockCredentialsByIdentityId(identityId).stream()
+                .map(MyBatisIdentityRepository::toDomain)
+                .toList();
+    }
+
+    @Override
     public List<PasswordCredential> findCredentials(UUID identityId) {
         return mapper.findCredentialsByIdentityId(identityId).stream().map(MyBatisIdentityRepository::toDomain).toList();
     }

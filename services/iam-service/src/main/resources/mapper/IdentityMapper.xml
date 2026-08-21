@@ -81,6 +81,14 @@
         WHERE id = #{credentialId} AND invalidated_at IS NULL
     </update>
 
+    <select id="lockCredentialsByIdentityId" resultMap="credentialRow">
+        SELECT id, identity_id, credential_type, password_hash, issued_at, expires_at, invalidated_at
+        FROM iam_credentials
+        WHERE identity_id = #{identityId}
+        ORDER BY issued_at, id
+        FOR UPDATE
+    </select>
+
     <select id="findCredentialsByIdentityId" resultMap="credentialRow">
         SELECT id, identity_id, credential_type, password_hash, issued_at, expires_at, invalidated_at
         FROM iam_credentials

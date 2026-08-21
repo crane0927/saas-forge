@@ -176,6 +176,44 @@ services:
         bind:
           create_host_path: false
 
+  iam-platform-admin-credential-reset:
+    profiles: ["credential-reset"]
+    image: saasforge/iam-service:local
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile
+      args:
+        MODULE: services/iam-service
+    depends_on:
+      iam-migrate:
+        condition: service_completed_successfully
+    entrypoint:
+      - java
+      - -Dloader.main=io.saasforge.iambootstrap.PlatformAdminCredentialResetApplication
+      - -jar
+      - /app/application.jar
+    command:
+      - --saasforge.iam.bootstrap.platform-admin-reset.request-id-file=/run/secrets/platform-admin-reset-request-id
+      - --saasforge.iam.bootstrap.platform-admin-reset.password-file=/run/secrets/platform-admin-reset-password
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/iam_db
+      SPRING_DATASOURCE_USERNAME: iam_app
+      SPRING_DATASOURCE_PASSWORD: ${IAM_APP_PASSWORD:?IAM_APP_PASSWORD is required}
+      SAASFORGE_ENVIRONMENT: dev
+    volumes:
+      - type: bind
+        source: ${IAM_PLATFORM_ADMIN_RESET_REQUEST_ID_FILE:-.secrets/platform-admin-reset-request-id}
+        target: /run/secrets/platform-admin-reset-request-id
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${IAM_PLATFORM_ADMIN_RESET_PASSWORD_FILE:-.secrets/platform-admin-reset-password}
+        target: /run/secrets/platform-admin-reset-password
+        read_only: true
+        bind:
+          create_host_path: false
+
   tenant-access-migrate:
     image: flyway/flyway:12
     depends_on:

@@ -194,6 +194,28 @@ rm -f "$COOKIE_JAR"
 unset COOKIE_JAR
 ```
 
+## Restricted Platform Admin initial-credential reset
+
+Only the Default Platform Admin that has not established a regular password can use this restricted reset task. Prepare a new UUIDv7 `resetRequestId` and a new random-password file for each new reset. Reuse the same `resetRequestId` only to replay the same operation:
+
+```dotenv
+IAM_PLATFORM_ADMIN_RESET_REQUEST_ID_FILE=.secrets/platform-admin-reset-request-id
+IAM_PLATFORM_ADMIN_RESET_PASSWORD_FILE=.secrets/platform-admin-reset-password
+```
+
+```bash
+docker compose exec -T postgres sh -c \
+  'psql -U "$POSTGRES_USER" -d iam_db -Atc "SELECT uuidv7()"' \
+  > .secrets/platform-admin-reset-request-id
+openssl rand -base64 32 > .secrets/platform-admin-reset-password
+chmod 600 \
+  .secrets/platform-admin-reset-request-id \
+  .secrets/platform-admin-reset-password
+docker compose --profile credential-reset run --rm iam-platform-admin-credential-reset
+```
+
+The task starts no HTTP server and mounts only these two read-only Secrets. In one IAM database transaction it permanently invalidates all old initial credentials, revokes every `INITIAL_PASSWORD_CHANGE` family, and creates a new 24-hour initial credential, idempotency fact, and Outbox event. An active regular password, inconsistent Default Platform Admin state, or a non-canonical UUIDv7 request ID fails and rolls back the entire operation. Logs contain no password, hash, or Secret content. Delete the obsolete password file after success; a later reset requires both a new request ID and a new password.
+
 > [!IMPORTANT]
 > `.env` is for local use only and is ignored by Git. Set one PostgreSQL administrator user and every required variable. Do not commit `.env` or use its local short codes outside local development.
 

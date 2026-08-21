@@ -25,6 +25,8 @@ public interface IdentityMapper {
 
     int invalidateCredential(@Param("credentialId") UUID credentialId, @Param("invalidatedAt") OffsetDateTime invalidatedAt);
 
+    List<CredentialRow> lockCredentialsByIdentityId(@Param("identityId") UUID identityId);
+
     List<CredentialRow> findCredentialsByIdentityId(@Param("identityId") UUID identityId);
 
     CredentialRow findCredentialById(@Param("credentialId") UUID credentialId);

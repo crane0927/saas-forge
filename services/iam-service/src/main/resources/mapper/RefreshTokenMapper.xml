@@ -121,4 +121,12 @@
         SET recovered_at = #{recoveredAt}
         WHERE id = #{tokenId} AND recovered_at IS NULL
     </update>
+
+    <update id="revokeInitialPasswordChangeFamilies">
+        UPDATE iam_refresh_token_families
+        SET revoked_at = GREATEST(#{revokedAt}, last_used_at)
+        WHERE identity_id = #{identityId}
+          AND family_purpose = 'INITIAL_PASSWORD_CHANGE'
+          AND revoked_at IS NULL
+    </update>
 </mapper>

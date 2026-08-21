@@ -194,6 +194,28 @@ rm -f "$COOKIE_JAR"
 unset COOKIE_JAR
 ```
 
+## 受限重置 Platform Admin 初始凭证
+
+只有尚未建立正式密码的 Default Platform Admin 可以使用受限重置任务。为每次新重置准备新的 UUIDv7 `resetRequestId` 和新的随机密码文件；相同 `resetRequestId` 仅用于重放同一次操作：
+
+```dotenv
+IAM_PLATFORM_ADMIN_RESET_REQUEST_ID_FILE=.secrets/platform-admin-reset-request-id
+IAM_PLATFORM_ADMIN_RESET_PASSWORD_FILE=.secrets/platform-admin-reset-password
+```
+
+```bash
+docker compose exec -T postgres sh -c \
+  'psql -U "$POSTGRES_USER" -d iam_db -Atc "SELECT uuidv7()"' \
+  > .secrets/platform-admin-reset-request-id
+openssl rand -base64 32 > .secrets/platform-admin-reset-password
+chmod 600 \
+  .secrets/platform-admin-reset-request-id \
+  .secrets/platform-admin-reset-password
+docker compose --profile credential-reset run --rm iam-platform-admin-credential-reset
+```
+
+任务不启动 HTTP 服务，只挂载上述两个只读 Secret，并在一个 IAM 数据库事务中永久失效全部旧初始凭证、撤销全部 `INITIAL_PASSWORD_CHANGE` 会话族、创建新的 24 小时初始凭证、幂等事实与 Outbox 事件。已有有效正式密码、Default Platform Admin 状态不一致或 requestId 不是规范 UUIDv7 时任务失败且全部回滚。日志不包含密码、Hash 或 Secret 内容。成功后应删除旧密码文件；若要发起另一次重置，必须同时生成新的 requestId 和密码。
+
 > [!IMPORTANT]
 > `.env` 仅限本地使用，已被 Git 忽略。必须填写一个 PostgreSQL 管理员用户名及全部必填变量；不要提交 `.env`，也不要将本地短码用于任何非本地环境。
 

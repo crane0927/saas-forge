@@ -34,4 +34,8 @@ public interface RefreshTokenMapper {
             @Param("successorAccessJti") UUID successorAccessJti);
 
     int markRecovered(@Param("tokenId") UUID tokenId, @Param("recoveredAt") OffsetDateTime recoveredAt);
+
+    int revokeInitialPasswordChangeFamilies(
+            @Param("identityId") UUID identityId,
+            @Param("revokedAt") OffsetDateTime revokedAt);
 }

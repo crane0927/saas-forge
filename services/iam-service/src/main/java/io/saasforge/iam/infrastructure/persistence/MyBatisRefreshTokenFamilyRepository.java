@@ -238,6 +238,11 @@ public class MyBatisRefreshTokenFamilyRepository implements RefreshTokenFamilyRe
     }
 
     @Override
+    public int revokeInitialPasswordChangeFamilies(UUID identityId, Instant at) {
+        return mapper.revokeInitialPasswordChangeFamilies(identityId, IamTime.asOffsetDateTime(at));
+    }
+
+    @Override
     @Transactional
     public RefreshTokenConsumption logout(Sha256Digest presentedDigest, Instant at) {
         RefreshTokenRow token = mapper.lockTokenByDigest(presentedDigest.value());

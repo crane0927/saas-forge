@@ -56,5 +56,8 @@ public interface RefreshTokenFamilyRepository {
 
     RefreshTokenConsumption consumeInitialPasswordChange(Sha256Digest presentedDigest, Instant at);
 
+    /** 撤销 Identity 的全部 INITIAL_PASSWORD_CHANGE Family，并锁住并发初始改密流程。 */
+    int revokeInitialPasswordChangeFamilies(UUID identityId, Instant at);
+
     RefreshTokenConsumption logout(Sha256Digest presentedDigest, Instant at);
 }

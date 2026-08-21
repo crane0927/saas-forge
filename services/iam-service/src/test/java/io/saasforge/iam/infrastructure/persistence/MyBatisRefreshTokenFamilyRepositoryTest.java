@@ -385,5 +385,10 @@ class MyBatisRefreshTokenFamilyRepositoryTest {
         public int markRecovered(UUID tokenId, OffsetDateTime recoveredAt) {
             return 1;
         }
+
+        @Override
+        public int revokeInitialPasswordChangeFamilies(UUID identityId, OffsetDateTime revokedAt) {
+            return 0;
+        }
     }
 }

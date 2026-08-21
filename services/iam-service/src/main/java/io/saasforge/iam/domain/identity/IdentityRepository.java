@@ -26,6 +26,9 @@ public interface IdentityRepository {
 
     void invalidate(UUID credentialId, Instant invalidatedAt);
 
+    /** 锁定该 Identity 的全部凭据，供凭据替换事务重新检查正式密码状态。 */
+    List<PasswordCredential> lockCredentials(UUID identityId);
+
     List<PasswordCredential> findCredentials(UUID identityId);
 
     Optional<PasswordCredential> findCredential(UUID credentialId);
