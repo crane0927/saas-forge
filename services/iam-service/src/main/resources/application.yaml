@@ -39,6 +39,7 @@ security:
   jwt:
     issuer: ${IAM_JWT_ISSUER:?IAM_JWT_ISSUER is required}
     access-token-ttl: PT15M
+    service-access-token-ttl: PT5M
   login-protection:
     failure-window: PT15M
     maximum-failures: 5

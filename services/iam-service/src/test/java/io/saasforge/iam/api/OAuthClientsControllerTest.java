@@ -10,6 +10,7 @@ import io.saasforge.iam.contract.model.CreateOAuthClientRequest;
 import io.saasforge.iam.contract.model.RuntimeScope;
 import io.saasforge.iam.domain.client.ClientSecret;
 import io.saasforge.iam.domain.client.OAuthClient;
+import io.saasforge.iam.domain.client.OAuthClientBootstrapState;
 import io.saasforge.iam.domain.client.OAuthClientRepository;
 import io.saasforge.iam.domain.shared.Sha256Digest;
 import java.time.Instant;
@@ -73,6 +74,13 @@ class OAuthClientsControllerTest {
         assertEquals(HttpStatus.CONFLICT, conflict.getStatusCode());
     }
 
+    @Test
+    void publicClientContractCannotExpressReservedInternalScopes() {
+        assertThrows(IllegalArgumentException.class, () -> RuntimeScope.fromValue("iam:identity:write"));
+        assertThrows(IllegalArgumentException.class, () -> RuntimeScope.fromValue("tenant-access:tenant:read"));
+        assertThrows(IllegalArgumentException.class, () -> RuntimeScope.fromValue("entitlement:quota:write"));
+    }
+
     private static final class InMemoryOAuthClientRepository implements OAuthClientRepository {
 
         private OAuthClient client;
@@ -86,6 +94,20 @@ class OAuthClientsControllerTest {
             this.initialDigest = initialSecretDigest;
             this.currentDigest = initialSecretDigest;
             return this.client;
+        }
+
+        @Override
+        public OAuthClient createWithId(OAuthClient client, Sha256Digest initialSecretDigest, Instant issuedAt) {
+            return create(client, initialSecretDigest, issuedAt);
+        }
+
+        @Override
+        public void lockReservedClientBootstrap() {
+        }
+
+        @Override
+        public Optional<OAuthClientBootstrapState> findBootstrapState(UUID clientId) {
+            return Optional.empty();
         }
 
         @Override
@@ -110,6 +132,21 @@ class OAuthClientsControllerTest {
         @Override
         public OAuthClient create(OAuthClient client, Sha256Digest initialSecretDigest, Instant issuedAt) {
             throw new IllegalStateException("duplicate");
+        }
+
+        @Override
+        public OAuthClient createWithId(OAuthClient client, Sha256Digest initialSecretDigest, Instant issuedAt) {
+            throw new IllegalStateException("duplicate");
+        }
+
+        @Override
+        public void lockReservedClientBootstrap() {
+            throw new IllegalStateException("conflict");
+        }
+
+        @Override
+        public Optional<OAuthClientBootstrapState> findBootstrapState(UUID clientId) {
+            return Optional.empty();
         }
 
         @Override

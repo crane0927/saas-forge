@@ -98,6 +98,22 @@ echo "Platform Admin Secret 文件已准备"
 
 完成首次改密后，引导状态会有意发生变化，不应再次运行 bootstrap 任务。
 
+## 显式引导保留服务 OAuth Client
+
+先在 Compose 目录生成三组仅用于本地部署的固定 Client ID 与 Secret：
+
+```bash
+./generate-service-client-secrets.sh
+```
+
+脚本使用 `openssl` 生成 UUIDv7 Client ID 与 256 位随机 Secret，文件权限受 `umask 077` 保护，且不会覆盖已有文件。随后显式执行一次性引导任务：
+
+```bash
+docker compose --profile service-client-bootstrap run --rm iam-reserved-service-client-bootstrap
+```
+
+任务只在三个 Client 的 ID、Secret 摘要、ACTIVE 状态和固定内部 Scope 完全一致时允许幂等重放；配置漂移会失败且不会自动修正。正常服务启动不会执行引导任务，三个运行时服务分别只挂载自己的 Client ID 和 Secret。Secret 不写入源码、镜像、Compose 值或 Nacos 配置。
+
 ### 4. 使用初始密码登录
 
 以下命令需要 `jq`，并通过本地 Gateway 的 `8080` 端口调用公开接口。必须在同一个终端窗口内完成初始登录和改密，因为 `COOKIE_JAR` 保存了受限会话 Cookie：

@@ -3,6 +3,10 @@ package io.saasforge.iam.api;
 import io.saasforge.iam.application.authentication.AccessTokenLoginResult;
 import io.saasforge.iam.application.authentication.ContextSelectionLoginResult;
 import io.saasforge.iam.application.authentication.ContextSelectionService;
+import io.saasforge.iam.application.authentication.ClientCredentialsGrantInvalidException;
+import io.saasforge.iam.application.authentication.ClientCredentialsInvalidException;
+import io.saasforge.iam.application.authentication.ClientCredentialsScopeRejectedException;
+import io.saasforge.iam.application.authentication.ClientCredentialsTokenService;
 import io.saasforge.iam.application.authentication.InitialPasswordChangeLoginResult;
 import io.saasforge.iam.application.authentication.InitialPasswordChangeService;
 import io.saasforge.iam.application.authentication.LoginContextType;
@@ -14,6 +18,7 @@ import io.saasforge.iam.contract.api.AuthenticationApi;
 import io.saasforge.iam.contract.model.AccessTokenResult;
 import io.saasforge.iam.contract.model.AuthenticationResult;
 import io.saasforge.iam.contract.model.ContextSelectionRequiredResult;
+import io.saasforge.iam.contract.model.ClientCredentialsTokenResponse;
 import io.saasforge.iam.contract.model.ContextSelectionRequest;
 import io.saasforge.iam.contract.model.InitialPasswordChangeRequiredResult;
 import io.saasforge.iam.contract.model.LoginRequest;
@@ -21,12 +26,16 @@ import io.saasforge.iam.contract.model.MembershipCandidate;
 import io.saasforge.iam.contract.model.PasswordChangeRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Duration;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
@@ -42,18 +51,42 @@ public class AuthenticationController implements AuthenticationApi {
     private final InitialPasswordChangeService passwordChangeService;
     private final RefreshSessionService refreshSessionService;
     private final LogoutService logoutService;
+    private final ClientCredentialsTokenService clientCredentialsTokenService;
 
     public AuthenticationController(
             PasswordLoginService loginService,
             ContextSelectionService contextSelectionService,
             InitialPasswordChangeService passwordChangeService,
             RefreshSessionService refreshSessionService,
-            LogoutService logoutService) {
+            LogoutService logoutService,
+            ClientCredentialsTokenService clientCredentialsTokenService) {
         this.loginService = loginService;
         this.contextSelectionService = contextSelectionService;
         this.passwordChangeService = passwordChangeService;
         this.refreshSessionService = refreshSessionService;
         this.logoutService = logoutService;
+        this.clientCredentialsTokenService = clientCredentialsTokenService;
+    }
+
+    @Override
+    public ResponseEntity<ClientCredentialsTokenResponse> issueClientCredentialsToken(
+            String grantType, String scope) {
+        BasicCredentials credentials = basicCredentials(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
+        try {
+            var token = clientCredentialsTokenService.issue(
+                    credentials.clientId(), credentials.clientSecret(), grantType, scope);
+            return ResponseEntity.ok(new ClientCredentialsTokenResponse()
+                    .accessToken(token.value())
+                    .tokenType(ClientCredentialsTokenResponse.TokenTypeEnum.BEARER)
+                    .expiresIn(Math.toIntExact(token.expiresInSeconds()))
+                    .scope(token.scope()));
+        } catch (ClientCredentialsGrantInvalidException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        } catch (ClientCredentialsInvalidException exception) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, exception.getMessage(), exception);
+        } catch (ClientCredentialsScopeRejectedException exception) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, exception.getMessage(), exception);
+        }
     }
 
     @Override
@@ -163,5 +196,30 @@ public class AuthenticationController implements AuthenticationApi {
         String traceparent = request.getHeader("traceparent");
         Matcher matcher = TRACE_PARENT.matcher(traceparent == null ? "" : traceparent);
         return matcher.matches() ? matcher.group(1) : null;
+    }
+
+    private static BasicCredentials basicCredentials(String authorization) {
+        if (authorization == null || !authorization.startsWith("Basic ")) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "OAuth Client 认证失败");
+        }
+        try {
+            String decoded = new String(
+                    Base64.getDecoder().decode(authorization.substring(6)), StandardCharsets.UTF_8);
+            int separator = decoded.indexOf(':');
+            if (separator <= 0 || separator == decoded.length() - 1) {
+                throw new IllegalArgumentException("Basic 凭据格式不合法");
+            }
+            String rawClientId = decoded.substring(0, separator);
+            UUID clientId = UUID.fromString(rawClientId);
+            if (clientId.version() != 7 || !clientId.toString().equals(rawClientId)) {
+                throw new IllegalArgumentException("Client ID 格式不合法");
+            }
+            return new BasicCredentials(clientId, decoded.substring(separator + 1));
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "OAuth Client 认证失败", exception);
+        }
+    }
+
+    private record BasicCredentials(UUID clientId, String clientSecret) {
     }
 }

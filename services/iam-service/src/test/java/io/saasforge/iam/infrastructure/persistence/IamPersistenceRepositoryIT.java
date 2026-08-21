@@ -8,8 +8,14 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.saasforge.iam.domain.client.OAuthClient;
+import io.saasforge.iam.domain.client.ClientSecretDigest;
 import io.saasforge.iam.domain.client.OAuthClientRepository;
 import io.saasforge.iam.domain.client.OAuthScope;
+import io.saasforge.iam.application.bootstrap.ReservedServiceClient;
+import io.saasforge.iam.application.bootstrap.ReservedServiceClientBootstrapConflictException;
+import io.saasforge.iam.application.bootstrap.ReservedServiceClientBootstrapInput;
+import io.saasforge.iam.application.bootstrap.ReservedServiceClientBootstrapResult;
+import io.saasforge.iam.application.bootstrap.ReservedServiceClientBootstrapService;
 import io.saasforge.iam.domain.identity.Argon2idPasswordHash;
 import io.saasforge.iam.domain.identity.CredentialType;
 import io.saasforge.iam.domain.identity.DuplicateIdentityEmailException;
@@ -29,11 +35,14 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.time.Duration;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.time.ZoneOffset;
 import java.util.Set;
+import java.util.Base64;
+import java.util.List;
 import java.util.UUID;
 import javax.sql.DataSource;
 import org.apache.ibatis.session.SqlSessionFactory;
@@ -97,6 +106,9 @@ class IamPersistenceRepositoryIT {
 
     @Autowired
     private OAuthClientRepository clients;
+
+    @Autowired
+    private ReservedServiceClientBootstrapService reservedClientBootstrap;
 
     @Autowired
     private SigningKeyRepository signingKeys;
@@ -212,6 +224,60 @@ class IamPersistenceRepositoryIT {
     }
 
     @Test
+    void persistsFixedReservedClientIdInternalScopesAndSecretDigestOnly() throws SQLException {
+        Instant now = Instant.parse("2026-08-21T02:00:00Z");
+        UUID clientId = UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4c8f");
+        String secret = Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[32]);
+        Sha256Digest digest = ClientSecretDigest.fromPlaintext(secret);
+        OAuthClient client = OAuthClient.register(
+                        "iam-service", Set.of(OAuthScope.TENANT_ACCESS_MEMBERSHIP_READ), now)
+                .identifiedBy(clientId);
+
+        OAuthClient persisted = clients.createWithId(client, digest, now);
+        var state = clients.findBootstrapState(clientId).orElseThrow();
+
+        assertEquals(clientId, persisted.id());
+        assertEquals(Set.of(OAuthScope.TENANT_ACCESS_MEMBERSHIP_READ), state.client().allowedScopes());
+        assertTrue(state.exactlyMatches(digest));
+        try (Connection connection = dataSource.getConnection();
+                PreparedStatement statement = connection.prepareStatement(
+                        "SELECT secret_digest::text FROM iam_oauth_client_secrets WHERE client_id = ?")) {
+            statement.setObject(1, clientId);
+            try (var result = statement.executeQuery()) {
+                assertTrue(result.next());
+                assertFalse(result.getString(1).contains(secret));
+            }
+        }
+    }
+
+    @Test
+    void reservedClientBootstrapIsStrictlyIdempotentAndRejectsDatabaseDrift() {
+        List<ReservedServiceClientBootstrapInput> inputs = List.of(
+                new ReservedServiceClientBootstrapInput(
+                        ReservedServiceClient.IAM,
+                        UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4c92"), serviceClientSecret((byte) 21)),
+                new ReservedServiceClientBootstrapInput(
+                        ReservedServiceClient.TENANT_ACCESS,
+                        UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4c93"), serviceClientSecret((byte) 22)),
+                new ReservedServiceClientBootstrapInput(
+                        ReservedServiceClient.ENTITLEMENT,
+                        UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4c94"), serviceClientSecret((byte) 23)));
+
+        ReservedServiceClientBootstrapResult initialized = reservedClientBootstrap.bootstrap(inputs);
+        ReservedServiceClientBootstrapResult replayed = reservedClientBootstrap.bootstrap(inputs);
+
+        assertTrue(initialized.clients().values().stream()
+                .allMatch(value -> value.outcome() == ReservedServiceClientBootstrapResult.Outcome.INITIALIZED));
+        assertTrue(replayed.clients().values().stream()
+                .allMatch(value -> value.outcome() == ReservedServiceClientBootstrapResult.Outcome.ALREADY_INITIALIZED));
+        new org.springframework.jdbc.core.JdbcTemplate(dataSource).update(
+                "UPDATE iam_oauth_clients SET allowed_scopes = ARRAY['runtime:read'] WHERE id = ?",
+                inputs.get(0).clientId());
+        assertThrows(ReservedServiceClientBootstrapConflictException.class,
+                () -> reservedClientBootstrap.bootstrap(inputs));
+    }
+
+    @Test
     void persistsSigningKeyMetadataEnforcesUniquenessAndLifecycle() throws SQLException {
         Instant now = Instant.parse("2026-08-20T03:00:00Z");
         SigningKey first = signingKeys.savePublished(SigningKey.publish("kid-" + UUID.randomUUID(), "kms/key/1", "modulus-1", "AQAB", now));
@@ -278,6 +344,12 @@ class IamPersistenceRepositoryIT {
         byte[] digest = new byte[32];
         digest[0] = (byte) value;
         return Sha256Digest.of(digest);
+    }
+
+    private static String serviceClientSecret(byte value) {
+        byte[] bytes = new byte[32];
+        java.util.Arrays.fill(bytes, value);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
     private static boolean columnExists(Connection connection, String tableName, String columnName) throws SQLException {
@@ -354,6 +426,12 @@ class IamPersistenceRepositoryIT {
         @Bean
         SqlSessionTemplate sqlSessionTemplate(SqlSessionFactory iamSqlSessionFactory) {
             return new SqlSessionTemplate(iamSqlSessionFactory);
+        }
+
+        @Bean
+        ReservedServiceClientBootstrapService reservedServiceClientBootstrapService(OAuthClientRepository clients) {
+            return new ReservedServiceClientBootstrapService(
+                    clients, Clock.fixed(Instant.parse("2026-08-21T08:00:00Z"), ZoneOffset.UTC));
         }
     }
 }

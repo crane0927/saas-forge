@@ -214,6 +214,65 @@ services:
         bind:
           create_host_path: false
 
+  iam-reserved-service-client-bootstrap:
+    profiles: ["service-client-bootstrap"]
+    image: saasforge/iam-service:local
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile
+      args:
+        MODULE: services/iam-service
+    depends_on:
+      iam-migrate:
+        condition: service_completed_successfully
+    entrypoint:
+      - java
+      - -Dloader.main=io.saasforge.iambootstrap.ReservedServiceClientBootstrapApplication
+      - -jar
+      - /app/application.jar
+    command:
+      - --saasforge.iam.bootstrap.service-clients.iam.id-file=/run/secrets/iam-client-id
+      - --saasforge.iam.bootstrap.service-clients.iam.secret-file=/run/secrets/iam-client-secret
+      - --saasforge.iam.bootstrap.service-clients.tenant-access.id-file=/run/secrets/tenant-access-client-id
+      - --saasforge.iam.bootstrap.service-clients.tenant-access.secret-file=/run/secrets/tenant-access-client-secret
+      - --saasforge.iam.bootstrap.service-clients.entitlement.id-file=/run/secrets/entitlement-client-id
+      - --saasforge.iam.bootstrap.service-clients.entitlement.secret-file=/run/secrets/entitlement-client-secret
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/iam_db
+      SPRING_DATASOURCE_USERNAME: iam_app
+      SPRING_DATASOURCE_PASSWORD: ${IAM_APP_PASSWORD:?IAM_APP_PASSWORD is required}
+    volumes:
+      - type: bind
+        source: ${IAM_SERVICE_CLIENT_ID_FILE:-.secrets/iam-client-id}
+        target: /run/secrets/iam-client-id
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${IAM_SERVICE_CLIENT_SECRET_FILE:-.secrets/iam-client-secret}
+        target: /run/secrets/iam-client-secret
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${TENANT_ACCESS_SERVICE_CLIENT_ID_FILE:-.secrets/tenant-access-client-id}
+        target: /run/secrets/tenant-access-client-id
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${TENANT_ACCESS_SERVICE_CLIENT_SECRET_FILE:-.secrets/tenant-access-client-secret}
+        target: /run/secrets/tenant-access-client-secret
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${ENTITLEMENT_SERVICE_CLIENT_ID_FILE:-.secrets/entitlement-client-id}
+        target: /run/secrets/entitlement-client-id
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${ENTITLEMENT_SERVICE_CLIENT_SECRET_FILE:-.secrets/entitlement-client-secret}
+        target: /run/secrets/entitlement-client-secret
+        read_only: true
+        bind: { create_host_path: false }
+
   tenant-access-migrate:
     image: flyway/flyway:12
     depends_on:
@@ -290,10 +349,22 @@ services:
       NACOS_TLS_ENABLED: "false"
       NACOS_IAM_USERNAME: ${NACOS_IAM_USERNAME:?NACOS_IAM_USERNAME is required}
       NACOS_IAM_PASSWORD: ${NACOS_IAM_PASSWORD:?NACOS_IAM_PASSWORD is required}
+      SAASFORGE_SERVICE_CLIENT_ID_FILE: /run/secrets/service-client-id
+      SAASFORGE_SERVICE_CLIENT_SECRET_FILE: /run/secrets/service-client-secret
     ports:
       - "127.0.0.1:8081:8080"
     volumes:
       - ${IAM_JWT_PEM_PRIVATE_KEY_FILE:?IAM_JWT_PEM_PRIVATE_KEY_FILE is required}:/run/secrets/iam-jwt-private-key.pem:ro
+      - type: bind
+        source: ${IAM_SERVICE_CLIENT_ID_FILE:-.secrets/iam-client-id}
+        target: /run/secrets/service-client-id
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${IAM_SERVICE_CLIENT_SECRET_FILE:-.secrets/iam-client-secret}
+        target: /run/secrets/service-client-secret
+        read_only: true
+        bind: { create_host_path: false }
 
   tenant-access-service:
     image: saasforge/tenant-access-service:local
@@ -316,8 +387,21 @@ services:
       NACOS_TLS_ENABLED: "false"
       NACOS_TENANT_ACCESS_USERNAME: ${NACOS_TENANT_ACCESS_USERNAME:?NACOS_TENANT_ACCESS_USERNAME is required}
       NACOS_TENANT_ACCESS_PASSWORD: ${NACOS_TENANT_ACCESS_PASSWORD:?NACOS_TENANT_ACCESS_PASSWORD is required}
+      SAASFORGE_SERVICE_CLIENT_ID_FILE: /run/secrets/service-client-id
+      SAASFORGE_SERVICE_CLIENT_SECRET_FILE: /run/secrets/service-client-secret
     ports:
       - "127.0.0.1:8082:8080"
+    volumes:
+      - type: bind
+        source: ${TENANT_ACCESS_SERVICE_CLIENT_ID_FILE:-.secrets/tenant-access-client-id}
+        target: /run/secrets/service-client-id
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${TENANT_ACCESS_SERVICE_CLIENT_SECRET_FILE:-.secrets/tenant-access-client-secret}
+        target: /run/secrets/service-client-secret
+        read_only: true
+        bind: { create_host_path: false }
 
   entitlement-service:
     image: saasforge/entitlement-service:local
@@ -337,8 +421,21 @@ services:
       NACOS_TLS_ENABLED: "false"
       NACOS_ENTITLEMENT_USERNAME: ${NACOS_ENTITLEMENT_USERNAME:?NACOS_ENTITLEMENT_USERNAME is required}
       NACOS_ENTITLEMENT_PASSWORD: ${NACOS_ENTITLEMENT_PASSWORD:?NACOS_ENTITLEMENT_PASSWORD is required}
+      SAASFORGE_SERVICE_CLIENT_ID_FILE: /run/secrets/service-client-id
+      SAASFORGE_SERVICE_CLIENT_SECRET_FILE: /run/secrets/service-client-secret
     ports:
       - "127.0.0.1:8083:8080"
+    volumes:
+      - type: bind
+        source: ${ENTITLEMENT_SERVICE_CLIENT_ID_FILE:-.secrets/entitlement-client-id}
+        target: /run/secrets/service-client-id
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${ENTITLEMENT_SERVICE_CLIENT_SECRET_FILE:-.secrets/entitlement-client-secret}
+        target: /run/secrets/service-client-secret
+        read_only: true
+        bind: { create_host_path: false }
 
   audit-service:
     image: saasforge/audit-service:local

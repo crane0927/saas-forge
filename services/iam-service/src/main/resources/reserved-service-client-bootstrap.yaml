@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: iam-reserved-service-client-bootstrap
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration
+      - org.springframework.boot.data.redis.autoconfigure.DataRedisRepositoriesAutoConfiguration
+      - org.springframework.boot.kafka.autoconfigure.KafkaAutoConfiguration
+  main:
+    banner-mode: "off"
+    web-application-type: none
+  cloud:
+    discovery:
+      enabled: false
+    service-registry:
+      auto-registration:
+        enabled: false
+    nacos:
+      config:
+        enabled: false
+      discovery:
+        enabled: false
+  flyway:
+    enabled: false
+
+mybatis:
+  mapper-locations: classpath*:mapper/**/*Mapper.xml
+  type-handlers-package: io.saasforge.iam.infrastructure.persistence.type

@@ -10,6 +10,12 @@ public interface OAuthClientRepository {
 
     OAuthClient create(OAuthClient client, Sha256Digest initialSecretDigest, Instant issuedAt);
 
+    OAuthClient createWithId(OAuthClient client, Sha256Digest initialSecretDigest, Instant issuedAt);
+
+    void lockReservedClientBootstrap();
+
+    Optional<OAuthClientBootstrapState> findBootstrapState(UUID clientId);
+
     Optional<OAuthClient> findActiveBySecretDigest(Sha256Digest secretDigest, Instant at);
 
     ClientSecret rotate(UUID clientId, Sha256Digest nextSecretDigest, Instant at);

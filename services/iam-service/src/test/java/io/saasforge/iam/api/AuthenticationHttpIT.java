@@ -35,6 +35,10 @@ import io.saasforge.iam.application.signing.SigningKeyRevocationTransaction;
 import io.saasforge.iam.config.AuthenticationConfiguration;
 import io.saasforge.iam.domain.authorization.PlatformRoleAssignment;
 import io.saasforge.iam.domain.authorization.PlatformRoleAssignmentRepository;
+import io.saasforge.iam.domain.client.ClientSecretDigest;
+import io.saasforge.iam.domain.client.OAuthClient;
+import io.saasforge.iam.domain.client.OAuthClientRepository;
+import io.saasforge.iam.domain.client.OAuthScope;
 import io.saasforge.iam.domain.identity.Argon2idPasswordHash;
 import io.saasforge.iam.domain.identity.Identity;
 import io.saasforge.iam.domain.identity.IdentityRepository;
@@ -95,6 +99,7 @@ import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.converter.json.JacksonJsonHttpMessageConverter;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -207,6 +212,9 @@ class AuthenticationHttpIT {
 
     @Autowired
     PlatformRoleAssignmentRepository platformRoles;
+
+    @Autowired
+    OAuthClientRepository oauthClients;
 
     @Autowired
     InitialPasswordChangeService passwordChangeService;
@@ -1195,6 +1203,55 @@ class AuthenticationHttpIT {
     }
 
     @Test
+    @Order(26)
+    void clientCredentialsEndpointRejectsWrongSecretRevokedClientAndOverprivilegedScope() throws Exception {
+        Instant now = Instant.now().minusSeconds(1);
+        UUID clientId = UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4c8f");
+        String secret = serviceClientSecret((byte) 11);
+        oauthClients.createWithId(
+                OAuthClient.register("iam-service", Set.of(OAuthScope.TENANT_ACCESS_MEMBERSHIP_READ), now)
+                        .identifiedBy(clientId),
+                ClientSecretDigest.fromPlaintext(secret), now);
+
+        MvcResult issued = mockMvc.perform(post("/oauth2/token")
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .header(HttpHeaders.AUTHORIZATION, basic(clientId, secret))
+                        .param("grant_type", "client_credentials")
+                        .param("scope", "tenant-access:membership:read"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token_type").value("Bearer"))
+                .andExpect(jsonPath("$.expires_in").value(300))
+                .andExpect(jsonPath("$.scope").value("tenant-access:membership:read"))
+                .andReturn();
+        String token = json(issued.getResponse().getContentAsByteArray()).get("access_token").asString();
+        JsonNode header = json(Base64.getUrlDecoder().decode(token.split("\\.")[0]));
+        JsonNode claims = json(Base64.getUrlDecoder().decode(token.split("\\.")[1]));
+        assertEquals("at+jwt", header.get("typ").asString());
+        assertEquals(clientId.toString(), claims.get("client_id").asString());
+        assertEquals(Set.of("iss", "aud", "iat", "exp", "jti", "sub", "client_id", "scope"),
+                claims.propertyNames());
+
+        mockMvc.perform(post("/oauth2/token")
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .header(HttpHeaders.AUTHORIZATION, basic(clientId, serviceClientSecret((byte) 12)))
+                        .param("grant_type", "client_credentials"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/oauth2/token")
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .header(HttpHeaders.AUTHORIZATION, basic(clientId, secret))
+                        .param("grant_type", "client_credentials")
+                        .param("scope", "iam:identity:write"))
+                .andExpect(status().isForbidden());
+
+        oauthClients.revoke(clientId, Instant.now());
+        mockMvc.perform(post("/oauth2/token")
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .header(HttpHeaders.AUTHORIZATION, basic(clientId, secret))
+                        .param("grant_type", "client_credentials"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     @Order(29)
     void recoveryFailsClosedUntilDurableJtiAndKidRevocationsAreRebuilt() throws Exception {
         TestUser user = createUser("revocation-recovery@example.test", "correct-password", true, Credential.REGULAR);
@@ -1415,6 +1472,17 @@ class AuthenticationHttpIT {
                 iamJdbcUrl(), "iam_migrator", "iam-migrator-password")) {
             connection.createStatement().execute(sql);
         }
+    }
+
+    private static String basic(UUID clientId, String secret) {
+        return "Basic " + Base64.getEncoder().encodeToString(
+                (clientId + ":" + secret).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String serviceClientSecret(byte value) {
+        byte[] bytes = new byte[32];
+        java.util.Arrays.fill(bytes, value);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
     private static void accessibleMemberships(

@@ -95,6 +95,49 @@ class AuthenticationSecurityTest {
         assertEquals(tenantId.toString(), claims.get("tenantId").asString());
     }
 
+    @Test
+    void serviceAccessTokenUsesAtJwtAndOnlySortedServiceClaims() {
+        StubSigningKeyRepository keys = new StubSigningKeyRepository();
+        keys.activeKeys(List.of(SigningKey.restore(
+                UUID.randomUUID(), "active-kid", "kms/key/1", "modulus", "AQAB", SigningKeyStatus.ACTIVE,
+                NOW.minusSeconds(600), NOW.minusSeconds(300), null, null, null)));
+        JwtSigningService signing = new JwtSigningService(new ActiveSigningKeyResolver(keys),
+                (keyReference, algorithm, input) -> new byte[32]);
+        Clock clock = Clock.fixed(NOW.plusMillis(999), ZoneOffset.UTC);
+        ServiceAccessTokenIssuer issuer = new ServiceAccessTokenIssuer(
+                signing, new ObjectMapper(), new UuidV7Generator(clock, new SecureRandom()), clock,
+                "https://iam.example.test", Duration.ofMinutes(5));
+
+        UUID clientId = uuidV7();
+        IssuedServiceAccessToken token = issuer.issue(clientId, Set.of(
+                io.saasforge.iam.domain.client.OAuthScope.IAM_PLATFORM_ROLE_READ,
+                io.saasforge.iam.domain.client.OAuthScope.IAM_IDENTITY_WRITE));
+        String[] segments = token.value().split("\\.");
+        JsonNode header = json(segments[0]);
+        JsonNode claims = json(segments[1]);
+
+        assertEquals(Set.of("alg", "typ", "kid"), header.propertyNames());
+        assertEquals("RS256", header.get("alg").asString());
+        assertEquals("at+jwt", header.get("typ").asString());
+        assertEquals(Set.of("iss", "aud", "iat", "exp", "jti", "sub", "client_id", "scope"),
+                claims.propertyNames());
+        assertEquals(clientId.toString(), claims.get("sub").asString());
+        assertEquals(clientId.toString(), claims.get("client_id").asString());
+        assertEquals("iam:identity:write iam:platform-role:read", claims.get("scope").asString());
+        assertEquals(300, claims.get("exp").asLong() - claims.get("iat").asLong());
+        assertEquals(7, UUID.fromString(claims.get("jti").asString()).version());
+        assertFalse(claims.has("identityId"));
+        assertFalse(claims.has("tenantId"));
+        assertFalse(claims.has("membershipId"));
+        assertFalse(claims.has("role"));
+        assertFalse(claims.has("permission"));
+    }
+
+    private static UUID uuidV7() {
+        long random = UUID.randomUUID().getLeastSignificantBits();
+        return new UUID(0x0198c9d50f257000L, (random & 0x3fffffffffffffffL) | 0x8000000000000000L);
+    }
+
     private static JsonNode json(String encoded) {
         return new ObjectMapper().readTree(Base64.getUrlDecoder().decode(encoded));
     }

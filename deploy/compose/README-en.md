@@ -98,6 +98,22 @@ echo "Platform Admin Secret files are ready"
 
 The bootstrap state intentionally changes after the initial password is replaced. Do not rerun the bootstrap task after a successful password change.
 
+## Explicit reserved service OAuth Client bootstrap
+
+Generate three deployment-local fixed Client IDs and Secrets from the Compose directory:
+
+```bash
+./generate-service-client-secrets.sh
+```
+
+The script uses `openssl` to generate UUIDv7 Client IDs and 256-bit random Secrets, applies `umask 077`, and refuses to overwrite existing files. Then run the explicit one-shot task:
+
+```bash
+docker compose --profile service-client-bootstrap run --rm iam-reserved-service-client-bootstrap
+```
+
+Replay succeeds only when all three Client IDs, Secret digests, ACTIVE states, and fixed internal scopes match exactly. Drift fails without reconciliation. Normal startup does not execute this task, and each runtime service mounts only its own Client ID and Secret. No Secret value is stored in source, images, Compose values, or Nacos configuration.
+
 ### 4. Log in with the initial password
 
 The following commands require `jq` and call the public endpoint through the local Gateway on port `8080`. Complete the initial login and password change in the same terminal because `COOKIE_JAR` holds the restricted session cookie:

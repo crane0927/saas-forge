@@ -3,6 +3,7 @@ package io.saasforge.iam.config;
 import io.saasforge.contracts.tenantaccess.membership.v1.AccessibleMembershipQueryServiceGrpc;
 import io.saasforge.iam.application.authentication.AccessibleMemberships;
 import io.saasforge.iam.application.authentication.ContextSelectionService;
+import io.saasforge.iam.application.authentication.ClientCredentialsTokenService;
 import io.saasforge.iam.application.authentication.CompromisedPasswordChecker;
 import io.saasforge.iam.application.authentication.InitialPasswordChangeService;
 import io.saasforge.iam.application.authentication.LoginProtection;
@@ -24,11 +25,13 @@ import io.saasforge.iam.application.authentication.RefreshReplayDetectedEventFac
 import io.saasforge.iam.application.authentication.SessionStartedEventFactory;
 import io.saasforge.iam.application.authentication.SessionRevokedEventFactory;
 import io.saasforge.iam.application.authentication.UserAccessTokenIssuer;
+import io.saasforge.iam.application.authentication.ServiceAccessTokenIssuer;
 import io.saasforge.iam.application.authentication.UuidV7Generator;
 import io.saasforge.iam.application.signing.JwtSigningService;
 import io.saasforge.iam.domain.authorization.PlatformRoleAssignmentRepository;
 import io.saasforge.iam.domain.identity.IdentityRepository;
 import io.saasforge.iam.domain.outbox.OutboxEventRepository;
+import io.saasforge.iam.domain.client.OAuthClientRepository;
 import io.saasforge.iam.domain.session.AccessTokenIssuanceRepository;
 import io.saasforge.iam.domain.session.RefreshTokenFamilyRepository;
 import io.saasforge.iam.domain.signing.SigningKeyRepository;
@@ -102,6 +105,24 @@ public class AuthenticationConfiguration {
             @Value("${security.jwt.issuer}") String issuer,
             @Value("${security.jwt.access-token-ttl:PT15M}") Duration ttl) {
         return new UserAccessTokenIssuer(signingService, objectMapper, uuidV7Generator, clock, issuer, ttl);
+    }
+
+    @Bean
+    ServiceAccessTokenIssuer serviceAccessTokenIssuer(
+            JwtSigningService signingService,
+            ObjectMapper objectMapper,
+            UuidV7Generator uuidV7Generator,
+            Clock clock,
+            @Value("${security.jwt.issuer}") String issuer,
+            @Value("${security.jwt.service-access-token-ttl:PT5M}") Duration ttl) {
+        return new ServiceAccessTokenIssuer(
+                signingService, objectMapper, uuidV7Generator, clock, issuer, ttl);
+    }
+
+    @Bean
+    ClientCredentialsTokenService clientCredentialsTokenService(
+            OAuthClientRepository clients, ServiceAccessTokenIssuer tokens, Clock clock) {
+        return new ClientCredentialsTokenService(clients, tokens, clock);
     }
 
     @Bean

@@ -10,11 +10,17 @@ public interface OAuthClientMapper {
 
     OAuthClientRow insertClient(@Param("row") OAuthClientRow row);
 
+    OAuthClientRow insertClientWithId(@Param("row") OAuthClientRow row);
+
     OAuthClientSecretRow insertSecret(@Param("row") OAuthClientSecretRow row);
 
     OAuthClientRow findActiveClientBySecretDigest(@Param("secretDigest") byte[] secretDigest, @Param("at") OffsetDateTime at);
 
     OAuthClientRow lockClientById(@Param("clientId") UUID clientId);
+
+    int lockReservedClientBootstrap();
+
+    java.util.List<OAuthClientSecretRow> findSecretsByClientId(@Param("clientId") UUID clientId);
 
     int hasOverlappingSecret(@Param("clientId") UUID clientId, @Param("at") OffsetDateTime at);
 

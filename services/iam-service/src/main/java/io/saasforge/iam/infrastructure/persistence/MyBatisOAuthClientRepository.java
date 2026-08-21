@@ -2,6 +2,7 @@ package io.saasforge.iam.infrastructure.persistence;
 
 import io.saasforge.iam.domain.client.ClientSecret;
 import io.saasforge.iam.domain.client.OAuthClient;
+import io.saasforge.iam.domain.client.OAuthClientBootstrapState;
 import io.saasforge.iam.domain.client.OAuthClientRepository;
 import io.saasforge.iam.domain.client.OAuthClientStatus;
 import io.saasforge.iam.domain.client.OAuthScope;
@@ -32,6 +33,33 @@ public class MyBatisOAuthClientRepository implements OAuthClientRepository {
         OAuthClient persisted = toDomain(mapper.insertClient(toRow(client)));
         mapper.insertSecret(secretRow(persisted.id(), initialSecretDigest, issuedAt));
         return persisted;
+    }
+
+    @Override
+    @Transactional
+    public OAuthClient createWithId(OAuthClient client, Sha256Digest initialSecretDigest, Instant issuedAt) {
+        OAuthClient persisted = toDomain(mapper.insertClientWithId(toRow(client)));
+        mapper.insertSecret(secretRow(persisted.id(), initialSecretDigest, issuedAt));
+        return persisted;
+    }
+
+    @Override
+    public void lockReservedClientBootstrap() {
+        if (mapper.lockReservedClientBootstrap() != 1) {
+            throw new IllegalStateException("保留 OAuth Client 引导锁获取失败");
+        }
+    }
+
+    @Override
+    public Optional<OAuthClientBootstrapState> findBootstrapState(UUID clientId) {
+        return Optional.ofNullable(mapper.lockClientById(clientId)).map(row -> new OAuthClientBootstrapState(
+                toDomain(row),
+                mapper.findSecretsByClientId(clientId).stream()
+                        .map(secret -> new OAuthClientBootstrapState.SecretState(
+                                Sha256Digest.of(secret.getSecretDigest()),
+                                IamTime.asInstant(secret.getValidUntil()),
+                                IamTime.asInstant(secret.getRevokedAt())))
+                        .toList()));
     }
 
     @Override
@@ -78,6 +106,7 @@ public class MyBatisOAuthClientRepository implements OAuthClientRepository {
 
     private static OAuthClientRow toRow(OAuthClient client) {
         OAuthClientRow row = new OAuthClientRow();
+        row.setId(client.id());
         row.setDisplayName(client.displayName());
         row.setAllowedScopes(client.allowedScopes().stream().map(OAuthScope::value).toArray(String[]::new));
         row.setClientStatus(client.status().name());

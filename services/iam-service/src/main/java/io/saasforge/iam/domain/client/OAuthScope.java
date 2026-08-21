@@ -4,7 +4,13 @@ import java.util.Arrays;
 
 public enum OAuthScope {
     RUNTIME_READ("runtime:read"),
-    RUNTIME_QUOTA_WRITE("runtime:quota:write");
+    RUNTIME_QUOTA_WRITE("runtime:quota:write"),
+    TENANT_ACCESS_MEMBERSHIP_READ("tenant-access:membership:read"),
+    TENANT_ACCESS_TENANT_READ("tenant-access:tenant:read"),
+    IAM_IDENTITY_WRITE("iam:identity:write"),
+    IAM_PASSWORD_SETUP_WRITE("iam:password-setup:write"),
+    IAM_PLATFORM_ROLE_READ("iam:platform-role:read"),
+    ENTITLEMENT_QUOTA_WRITE("entitlement:quota:write");
 
     private final String value;
 

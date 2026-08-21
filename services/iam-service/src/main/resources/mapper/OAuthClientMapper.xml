@@ -31,6 +31,14 @@
         RETURNING id, display_name, allowed_scopes, client_status, created_at, revoked_at
     </select>
 
+    <select id="insertClientWithId" resultMap="clientRow" affectData="true" flushCache="true">
+        INSERT INTO iam_oauth_clients (id, display_name, allowed_scopes, client_status, created_at, revoked_at)
+        VALUES (#{row.id}, #{row.displayName},
+                #{row.allowedScopes, typeHandler=io.saasforge.iam.infrastructure.persistence.type.StringArrayTypeHandler},
+                #{row.clientStatus}, #{row.createdAt}, #{row.revokedAt})
+        RETURNING id, display_name, allowed_scopes, client_status, created_at, revoked_at
+    </select>
+
     <select id="insertSecret" resultMap="secretRow" affectData="true" flushCache="true">
         INSERT INTO iam_oauth_client_secrets (client_id, secret_digest, created_at, valid_until, revoked_at)
         VALUES (#{row.clientId}, #{row.secretDigest}, #{row.createdAt}, #{row.validUntil}, #{row.revokedAt})
@@ -52,6 +60,18 @@
         FROM iam_oauth_clients
         WHERE id = #{clientId}
         FOR UPDATE
+    </select>
+
+    <select id="lockReservedClientBootstrap" resultType="int">
+        SELECT 1
+        FROM pg_advisory_xact_lock(1935762249, 3)
+    </select>
+
+    <select id="findSecretsByClientId" resultMap="secretRow">
+        SELECT id, client_id, secret_digest, created_at, valid_until, revoked_at
+        FROM iam_oauth_client_secrets
+        WHERE client_id = #{clientId}
+        ORDER BY created_at, id
     </select>
 
     <select id="hasOverlappingSecret" resultType="int">
