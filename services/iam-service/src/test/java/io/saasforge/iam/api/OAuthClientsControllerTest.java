@@ -111,6 +111,11 @@ class OAuthClientsControllerTest {
         }
 
         @Override
+        public Optional<OAuthClient> findById(UUID clientId) {
+            return Optional.ofNullable(client).filter(value -> value.id().equals(clientId));
+        }
+
+        @Override
         public Optional<OAuthClient> findActiveBySecretDigest(Sha256Digest secretDigest, Instant at) {
             return currentDigest.equals(secretDigest) ? Optional.of(client) : Optional.empty();
         }
@@ -146,6 +151,11 @@ class OAuthClientsControllerTest {
 
         @Override
         public Optional<OAuthClientBootstrapState> findBootstrapState(UUID clientId) {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<OAuthClient> findById(UUID clientId) {
             return Optional.empty();
         }
 

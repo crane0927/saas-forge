@@ -8,6 +8,10 @@
 
 [Platform Authorization v1](iam/authorization/v1/platform_authorization.proto) 定义平台服务向 IAM 实时复核 Platform Role 的只读边界。请求只携带规范 UUIDv7 `identity_id` 与精确 `role_key`，响应只返回 `allowed`；调用必须携带有效 Service Access Token 和 `iam:platform-role:read` Scope。无效令牌、错误 Scope、非法输入或 IAM 不可用均失败关闭，调用端不得从 Gateway Header、Tenant Context 或 User Access Token 中推导角色。
 
+## IAM Identity 幂等确保
+
+[Identity Provisioning v1](iam/identity/v1/identity_provisioning.proto) 定义 Tenant Access 在配额副作用前创建或复用 IAM Identity 的写边界。`request_id` 必须是重试中保持稳定的 UUIDv7；调用必须使用保留的 Tenant Access Service Access Token 和 `iam:identity:write` Scope。IAM 按规范化邮箱去重，只返回 Identity ID 与稳定的凭证处置结论，不创建或重置 Credential。
+
 ## IAM ↔ Tenant Access Membership 校验
 
 [Membership Validation v1](tenant_access/membership/v1/membership_validation.proto) 定义 Tenant Access 向 IAM 提供的通用、只读 Membership 即时校验。请求携带 `identity_id` 与 `membership_id`，仅在 Membership 属于该 Identity、处于启用状态且所属 Tenant 当前可访问时返回权威的 Membership 与 Tenant ID；否则返回无原因的 `membership_not_usable`。

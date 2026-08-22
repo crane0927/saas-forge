@@ -16,6 +16,8 @@ public interface OAuthClientRepository {
 
     Optional<OAuthClientBootstrapState> findBootstrapState(UUID clientId);
 
+    Optional<OAuthClient> findById(UUID clientId);
+
     Optional<OAuthClient> findActiveBySecretDigest(Sha256Digest secretDigest, Instant at);
 
     ClientSecret rotate(UUID clientId, Sha256Digest nextSecretDigest, Instant at);

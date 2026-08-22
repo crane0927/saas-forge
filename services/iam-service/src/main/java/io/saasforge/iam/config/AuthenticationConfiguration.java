@@ -28,9 +28,11 @@ import io.saasforge.iam.application.authentication.UserAccessTokenIssuer;
 import io.saasforge.iam.application.authentication.ServiceAccessTokenIssuer;
 import io.saasforge.iam.application.authentication.UuidV7Generator;
 import io.saasforge.iam.application.authorization.PlatformRoleAuthorizationService;
+import io.saasforge.iam.application.identity.EnsureIdentityService;
 import io.saasforge.iam.application.signing.JwtSigningService;
 import io.saasforge.iam.domain.authorization.PlatformRoleAssignmentRepository;
 import io.saasforge.iam.domain.identity.IdentityRepository;
+import io.saasforge.iam.domain.identity.IdentityProvisioningRepository;
 import io.saasforge.iam.domain.outbox.OutboxEventRepository;
 import io.saasforge.iam.domain.client.OAuthClientRepository;
 import io.saasforge.iam.domain.session.AccessTokenIssuanceRepository;
@@ -146,6 +148,14 @@ public class AuthenticationConfiguration {
     PlatformRoleAuthorizationService platformRoleAuthorizationService(
             PlatformRoleAssignmentRepository roles, Clock clock) {
         return new PlatformRoleAuthorizationService(roles, clock);
+    }
+
+    @Bean
+    EnsureIdentityService ensureIdentityService(
+            IdentityProvisioningRepository requests,
+            IdentityRepository identities,
+            Clock clock) {
+        return new EnsureIdentityService(requests, identities, clock);
     }
 
     @Bean

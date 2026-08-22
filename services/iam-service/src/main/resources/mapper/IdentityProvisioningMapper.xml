@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.saasforge.iam.infrastructure.persistence.mapper.IdentityProvisioningMapper">
+    <resultMap id="factRow" type="io.saasforge.iam.infrastructure.persistence.record.IdentityProvisioningFactRow">
+        <id property="callerClientId" column="caller_client_id"/>
+        <id property="requestId" column="request_id"/>
+        <result property="requestFingerprint" column="request_fingerprint"/>
+        <result property="identityId" column="identity_id"/>
+        <result property="credentialStatus" column="credential_status"/>
+        <result property="ensuredAt" column="ensured_at"/>
+    </resultMap>
+
+    <select id="lockRequest" resultType="int">
+        SELECT 1
+        FROM pg_advisory_xact_lock(hashtextextended(#{lockKey}, 1935762249))
+    </select>
+
+    <select id="find" resultMap="factRow">
+        SELECT caller_client_id, request_id, request_fingerprint, identity_id, credential_status, ensured_at
+        FROM iam_identity_provisioning_facts
+        WHERE caller_client_id = #{row.callerClientId}
+          AND request_id = #{row.requestId}
+    </select>
+
+    <insert id="insert">
+        INSERT INTO iam_identity_provisioning_facts
+            (caller_client_id, request_id, request_fingerprint, identity_id, credential_status, ensured_at)
+        VALUES
+            (#{row.callerClientId}, #{row.requestId}, #{row.requestFingerprint},
+             #{row.identityId}, #{row.credentialStatus}, #{row.ensuredAt})
+    </insert>
+</mapper>

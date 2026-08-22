@@ -62,6 +62,12 @@
         FOR UPDATE
     </select>
 
+    <select id="findClientById" resultMap="clientRow">
+        SELECT id, display_name, allowed_scopes, client_status, created_at, revoked_at
+        FROM iam_oauth_clients
+        WHERE id = #{clientId}
+    </select>
+
     <select id="lockReservedClientBootstrap" resultType="int">
         SELECT 1
         FROM pg_advisory_xact_lock(1935762249, 3)

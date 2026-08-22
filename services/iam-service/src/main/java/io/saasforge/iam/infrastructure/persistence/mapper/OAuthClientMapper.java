@@ -18,6 +18,8 @@ public interface OAuthClientMapper {
 
     OAuthClientRow lockClientById(@Param("clientId") UUID clientId);
 
+    OAuthClientRow findClientById(@Param("clientId") UUID clientId);
+
     int lockReservedClientBootstrap();
 
     java.util.List<OAuthClientSecretRow> findSecretsByClientId(@Param("clientId") UUID clientId);

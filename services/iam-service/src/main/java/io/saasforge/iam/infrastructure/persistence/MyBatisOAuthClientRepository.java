@@ -63,6 +63,11 @@ public class MyBatisOAuthClientRepository implements OAuthClientRepository {
     }
 
     @Override
+    public Optional<OAuthClient> findById(UUID clientId) {
+        return Optional.ofNullable(mapper.findClientById(clientId)).map(MyBatisOAuthClientRepository::toDomain);
+    }
+
+    @Override
     public Optional<OAuthClient> findActiveBySecretDigest(Sha256Digest secretDigest, Instant at) {
         return Optional.ofNullable(mapper.findActiveClientBySecretDigest(secretDigest.value(), IamTime.asOffsetDateTime(at)))
                 .map(MyBatisOAuthClientRepository::toDomain);
