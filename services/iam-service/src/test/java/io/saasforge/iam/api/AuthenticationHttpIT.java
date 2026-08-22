@@ -23,6 +23,8 @@ import io.saasforge.contracts.tenantaccess.membership.v1.ListAccessibleMembershi
 import io.saasforge.contracts.tenantaccess.membership.v1.ListAccessibleMembershipsResponse;
 import io.saasforge.iam.application.authentication.AccessibleMemberships;
 import io.saasforge.iam.application.authentication.InitialPasswordChangeService;
+import io.saasforge.iam.application.authentication.PasswordSetupChallengeToken;
+import io.saasforge.iam.application.authentication.PasswordSetupService;
 import io.saasforge.iam.application.authentication.PresentedAccessToken;
 import io.saasforge.iam.application.authentication.PresentedAccessTokenVerifier;
 import io.saasforge.iam.application.authentication.RevocationIndex;
@@ -218,6 +220,9 @@ class AuthenticationHttpIT {
 
     @Autowired
     InitialPasswordChangeService passwordChangeService;
+
+    @Autowired
+    PasswordSetupService passwordSetupService;
 
     @Autowired
     StringRedisTemplate redis;
@@ -1317,7 +1322,7 @@ class AuthenticationHttpIT {
     }
 
     @Test
-    @Order(30)
+    @Order(32)
     void redisUnavailabilityFailsClosedThroughPublicContract() throws Exception {
         TestUser user = createUser("logout-redis-down@example.test", "correct-password", true, Credential.REGULAR);
         MvcResult session = login("logout-redis-down@example.test", "correct-password", "PLATFORM").andReturn();
@@ -1348,6 +1353,51 @@ class AuthenticationHttpIT {
                                 """))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value("AUTHENTICATION_PROTECTION_UNAVAILABLE"))
+                .andExpect(header().doesNotExist("Set-Cookie"));
+    }
+
+    @Test
+    @Order(31)
+    void anonymousPasswordSetupAcceptsOnlySecretBodyAndCreatesNoSession() throws Exception {
+        TestUser user = createUser("password-setup-http@example.test", "unused", false, Credential.NONE);
+        PasswordSetupChallengeToken challenge = passwordSetupService.issueChallenge(user.identity().id());
+
+        mockMvc.perform(post("/api/v1/auth/password-setups")
+                        .header("Idempotency-Key", uuidV7(53_001).toString())
+                        .header("X-SF-CSRF", "1")
+                        .header("traceparent", "00-" + TRACE_ID + "-0123456789abcdef-01")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsBytes(Map.of(
+                                "token", challenge.value(),
+                                "newPassword", "HTTP-Setup-Password-2026"))))
+                .andExpect(status().isNoContent())
+                .andExpect(header().doesNotExist("Set-Cookie"));
+
+        assertEquals(0, sessionFactCount(user.identity().id()));
+        assertEquals(1, identities.findCredentials(user.identity().id()).size());
+
+        TestUser rejected = createUser("password-setup-extra-field@example.test", "unused", false, Credential.NONE);
+        PasswordSetupChallengeToken rejectedChallenge = passwordSetupService.issueChallenge(rejected.identity().id());
+        mockMvc.perform(post("/api/v1/auth/password-setups")
+                        .header("Idempotency-Key", uuidV7(53_002).toString())
+                        .header("X-SF-CSRF", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsBytes(Map.of(
+                                "token", rejectedChallenge.value(),
+                                "newPassword", "HTTP-Setup-Password-2026",
+                                "email", "forged@example.test"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(header().doesNotExist("Set-Cookie"));
+        assertTrue(identities.findCredentials(rejected.identity().id()).isEmpty());
+
+        mockMvc.perform(post("/api/v1/auth/password-setups")
+                        .header("Idempotency-Key", uuidV7(53_003).toString())
+                        .header("X-SF-CSRF", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\","
+                                + "\"newPassword\":\"HTTP-Setup-Password-2026\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PASSWORD_SETUP_TOKEN_INVALID"))
                 .andExpect(header().doesNotExist("Set-Cookie"));
     }
 

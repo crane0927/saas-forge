@@ -129,6 +129,30 @@ paths:
         '405': { $ref: './common.yaml#/components/responses/Problem' }
         '503': { $ref: './common.yaml#/components/responses/Problem' }
 
+  /api/v1/auth/password-setups:
+    post:
+      tags: [Authentication]
+      operationId: establishPassword
+      x-saasforge-service: iam-service
+      summary: Establish the first Password Credential with a one-time Challenge
+      description: |
+        This anonymous endpoint accepts no Identity, Tenant, Membership, or email.
+        A successful exchange never creates a login session or sets a cookie.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordSetupRequest'
+      responses:
+        '204': { $ref: './common.yaml#/components/responses/NoContent' }
+        '400': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+
   /api/v1/auth/context-selections:
     post:
       tags: [Authentication]
@@ -734,6 +758,22 @@ components:
       type: object
       required: [newPassword]
       properties:
+        newPassword:
+          type: string
+          format: password
+          minLength: 1
+          writeOnly: true
+      additionalProperties: false
+    PasswordSetupRequest:
+      type: object
+      required: [token, newPassword]
+      properties:
+        token:
+          type: string
+          minLength: 43
+          maxLength: 43
+          pattern: '^[A-Za-z0-9_-]{43}$'
+          writeOnly: true
         newPassword:
           type: string
           format: password

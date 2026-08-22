@@ -50,6 +50,7 @@ class GatewayProblemDetailsWriter {
             case "UPSTREAM_INVALID_RESPONSE" -> "Upstream invalid response";
             case "UPSTREAM_TIMEOUT" -> "Upstream timeout";
             case "UPSTREAM_UNAVAILABLE" -> "Upstream service unavailable";
+            case "BROWSER_REQUEST_REJECTED" -> "Browser request rejected";
             default -> throw new IllegalArgumentException("Unsupported Gateway Problem Details code: " + code);
         };
     }

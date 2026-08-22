@@ -47,6 +47,10 @@
         RETURNING id, identity_id, credential_type, password_hash, issued_at, expires_at, invalidated_at
     </select>
 
+    <select id="lockIdentityById" resultType="java.util.UUID">
+        SELECT id FROM iam_identities WHERE id = #{identityId} FOR UPDATE
+    </select>
+
     <select id="replaceInitialPassword" resultMap="credentialRow" affectData="true" flushCache="true">
         WITH invalidated_initial AS (
             UPDATE iam_credentials

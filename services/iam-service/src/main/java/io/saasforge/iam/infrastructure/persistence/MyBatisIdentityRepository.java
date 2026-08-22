@@ -54,11 +54,24 @@ public class MyBatisIdentityRepository implements IdentityRepository {
 
     @Override
     public PasswordCredential create(PasswordCredential credential) {
+        lockIdentity(credential.identityId());
         if (credential.type() == CredentialType.PASSWORD
                 && mapper.hasValidRegularPassword(credential.identityId()) != 0) {
             throw new IllegalStateException("Identity 已有有效的常规密码凭据");
         }
         return toDomain(mapper.insertCredential(toRow(credential)));
+    }
+
+    @Override
+    public Optional<PasswordCredential> createFirstPassword(PasswordCredential credential) {
+        if (credential.type() != CredentialType.PASSWORD) {
+            throw new IllegalArgumentException("首个 Password Setup Credential 必须是正式密码");
+        }
+        lockIdentity(credential.identityId());
+        if (!mapper.lockCredentialsByIdentityId(credential.identityId()).isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(toDomain(mapper.insertCredential(toRow(credential))));
     }
 
     @Override
@@ -103,6 +116,13 @@ public class MyBatisIdentityRepository implements IdentityRepository {
         row.setDisplayName(identity.displayName());
         row.setCreatedAt(IamTime.asOffsetDateTime(identity.createdAt()));
         return row;
+    }
+
+    @Override
+    public void lockIdentity(UUID identityId) {
+        if (mapper.lockIdentityById(identityId) == null) {
+            throw new IllegalStateException("Identity 不存在");
+        }
     }
 
     private static CredentialRow toRow(PasswordCredential credential) {

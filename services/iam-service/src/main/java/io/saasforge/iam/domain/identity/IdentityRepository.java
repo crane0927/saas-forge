@@ -17,7 +17,13 @@ public interface IdentityRepository {
 
     Optional<Identity> findByEmail(NormalizedEmail email);
 
+    /** 跨 Credential/Challenge 写入统一使用的 Identity 事务锁。 */
+    void lockIdentity(UUID identityId);
+
     PasswordCredential create(PasswordCredential credential);
+
+    /** 锁定 Identity 后，仅在从未存在任何 Credential 时创建首个正式密码。 */
+    Optional<PasswordCredential> createFirstPassword(PasswordCredential credential);
 
     /**
      * 原子地创建常规密码凭据，并永久失效且保留指定的初始密码凭据。

@@ -152,6 +152,15 @@ class EnsureIdentityServiceTest {
         }
 
         @Override
+        public void lockIdentity(UUID identityId) {
+        }
+
+        @Override
+        public Optional<PasswordCredential> createFirstPassword(PasswordCredential credential) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public PasswordCredential create(PasswordCredential credential) {
             credentialCreates++;
             throw new UnsupportedOperationException();

@@ -17,6 +17,8 @@ public interface IdentityMapper {
 
     CredentialRow insertCredential(@Param("row") CredentialRow row);
 
+    UUID lockIdentityById(@Param("identityId") UUID identityId);
+
     CredentialRow replaceInitialPassword(
             @Param("initialCredentialId") UUID initialCredentialId,
             @Param("password") CredentialRow password);

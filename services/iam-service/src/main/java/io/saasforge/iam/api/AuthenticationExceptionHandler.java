@@ -12,6 +12,7 @@ import io.saasforge.iam.application.authentication.TenantAccessUnavailableExcept
 import io.saasforge.iam.application.authentication.PasswordChangeSessionInvalidException;
 import io.saasforge.iam.application.authentication.PasswordCompromisedException;
 import io.saasforge.iam.application.authentication.PasswordPolicyException;
+import io.saasforge.iam.application.authentication.PasswordSetupTokenInvalidException;
 import io.saasforge.iam.application.authentication.RefreshAuthorizationRejectedException;
 import io.saasforge.iam.application.authentication.RefreshSessionInvalidException;
 import io.saasforge.iam.application.authentication.RefreshRotationInProgressException;
@@ -115,6 +116,13 @@ public class AuthenticationExceptionHandler {
             PasswordCompromisedException exception, HttpServletRequest request) {
         return problem(HttpStatus.BAD_REQUEST, PasswordCompromisedException.CODE,
                 "Password compromised", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(PasswordSetupTokenInvalidException.class)
+    ResponseEntity<Problem> passwordSetupTokenInvalid(
+            PasswordSetupTokenInvalidException exception, HttpServletRequest request) {
+        return problem(HttpStatus.BAD_REQUEST, PasswordSetupTokenInvalidException.CODE,
+                "Password setup token invalid", exception.getMessage(), request);
     }
 
     @ExceptionHandler(PasswordChangeSessionInvalidException.class)

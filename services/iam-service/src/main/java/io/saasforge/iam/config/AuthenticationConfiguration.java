@@ -14,6 +14,9 @@ import io.saasforge.iam.application.authentication.PasswordVerifier;
 import io.saasforge.iam.application.authentication.PasswordPolicy;
 import io.saasforge.iam.application.authentication.PasswordChangedEventFactory;
 import io.saasforge.iam.application.authentication.PasswordLoginService;
+import io.saasforge.iam.application.authentication.PasswordEstablishedEventFactory;
+import io.saasforge.iam.application.authentication.PasswordSetupChallengeIssuer;
+import io.saasforge.iam.application.authentication.PasswordSetupService;
 import io.saasforge.iam.application.authentication.RefreshTokenIssuer;
 import io.saasforge.iam.application.authentication.RevocationIndex;
 import io.saasforge.iam.application.authentication.RevocationIndexRecovery;
@@ -32,6 +35,7 @@ import io.saasforge.iam.application.identity.EnsureIdentityService;
 import io.saasforge.iam.application.signing.JwtSigningService;
 import io.saasforge.iam.domain.authorization.PlatformRoleAssignmentRepository;
 import io.saasforge.iam.domain.identity.IdentityRepository;
+import io.saasforge.iam.domain.identity.PasswordSetupChallengeRepository;
 import io.saasforge.iam.domain.identity.IdentityProvisioningRepository;
 import io.saasforge.iam.domain.outbox.OutboxEventRepository;
 import io.saasforge.iam.domain.client.OAuthClientRepository;
@@ -79,6 +83,11 @@ public class AuthenticationConfiguration {
     @Bean
     PasswordVerifier passwordVerifier() {
         return new PasswordVerifier();
+    }
+
+    @Bean
+    PasswordSetupChallengeIssuer passwordSetupChallengeIssuer(SecureRandom authenticationSecureRandom) {
+        return new PasswordSetupChallengeIssuer(authenticationSecureRandom);
     }
 
     @Bean
@@ -177,6 +186,14 @@ public class AuthenticationConfiguration {
             UuidV7Generator uuidV7Generator,
             @Value("${saasforge.environment:dev}") String environment) {
         return new PasswordChangedEventFactory(objectMapper, uuidV7Generator, environment);
+    }
+
+    @Bean
+    PasswordEstablishedEventFactory passwordEstablishedEventFactory(
+            ObjectMapper objectMapper,
+            UuidV7Generator uuidV7Generator,
+            @Value("${saasforge.environment:dev}") String environment) {
+        return new PasswordEstablishedEventFactory(objectMapper, uuidV7Generator, environment);
     }
 
     @Bean
@@ -336,6 +353,22 @@ public class AuthenticationConfiguration {
             Clock clock) {
         return new InitialPasswordChangeService(
                 identities, refreshTokenFamilies, refreshTokenIssuer, passwordPolicy, compromisedPasswords,
+                passwordVerifier, outboxEvents, eventFactory, clock);
+    }
+
+    @Bean
+    PasswordSetupService passwordSetupService(
+            PasswordSetupChallengeRepository challenges,
+            IdentityRepository identities,
+            PasswordSetupChallengeIssuer challengeIssuer,
+            PasswordPolicy passwordPolicy,
+            CompromisedPasswordChecker compromisedPasswords,
+            PasswordVerifier passwordVerifier,
+            OutboxEventRepository outboxEvents,
+            PasswordEstablishedEventFactory eventFactory,
+            Clock clock) {
+        return new PasswordSetupService(
+                challenges, identities, challengeIssuer, passwordPolicy, compromisedPasswords,
                 passwordVerifier, outboxEvents, eventFactory, clock);
     }
 }

@@ -109,6 +109,7 @@ class GatewayJwksRouteTest {
                 route("POST", "/api/v1/auth/refresh", "iam"),
                 route("POST", "/api/v1/auth/logout", "iam"),
                 route("POST", "/api/v1/auth/tenant-switches", "iam"),
+                route("POST", "/api/v1/auth/password-setups", "iam"),
                 route("POST", "/oauth2/token", "iam"),
                 route("GET", "/.well-known/jwks.json", "iam"),
                 route("POST", "/api/v1/platform/tenants", "tenant-access"),
@@ -135,6 +136,11 @@ class GatewayJwksRouteTest {
                 request.header("Content-Type", "application/json")
                         .method(route.method(), HttpRequest.BodyPublishers.ofString(body));
             }
+            if ("/api/v1/auth/password-setups".equals(route.path())) {
+                request.header("Origin", "https://console.saasforge.test")
+                        .header("X-SF-CSRF", "1")
+                        .header("Sec-Fetch-Site", "same-site");
+            }
 
             HttpResponse<String> response = send(request.build());
 
@@ -146,6 +152,45 @@ class GatewayJwksRouteTest {
             assertEquals(route.path() + "?" + query, observed.pathAndQuery(), route.path());
             assertEquals(body, observed.body(), route.path());
         }
+    }
+
+    @Test
+    void passwordSetupRequiresControlledOriginAndCsrfAndAllowsExactPreflight()
+            throws IOException, InterruptedException {
+        HttpRequest.Builder base = HttpRequest.newBuilder(gatewayUri("/api/v1/auth/password-setups"))
+                .header("Content-Type", "application/json");
+        HttpResponse<String> missingOrigin = send(base.copy()
+                .header("X-SF-CSRF", "1")
+                .POST(HttpRequest.BodyPublishers.ofString("{}"))
+                .build());
+        assertEquals(403, missingOrigin.statusCode());
+        assertTrue(missingOrigin.body().contains("\"code\":\"BROWSER_REQUEST_REJECTED\""));
+
+        HttpResponse<String> remoteOrigin = send(base.copy()
+                .header("Origin", "https://remote.saasforge.test")
+                .header("X-SF-CSRF", "1")
+                .POST(HttpRequest.BodyPublishers.ofString("{}"))
+                .build());
+        assertEquals(403, remoteOrigin.statusCode());
+
+        HttpResponse<String> crossSite = send(base.copy()
+                .header("Origin", "https://console.saasforge.test")
+                .header("X-SF-CSRF", "1")
+                .header("Sec-Fetch-Site", "cross-site")
+                .POST(HttpRequest.BodyPublishers.ofString("{}"))
+                .build());
+        assertEquals(403, crossSite.statusCode());
+
+        HttpResponse<String> preflight = send(HttpRequest.newBuilder(gatewayUri("/api/v1/auth/password-setups"))
+                .header("Origin", "https://console.saasforge.test")
+                .header("Access-Control-Request-Method", "POST")
+                .header("Access-Control-Request-Headers", "content-type,idempotency-key,x-sf-csrf")
+                .method("OPTIONS", HttpRequest.BodyPublishers.noBody())
+                .build());
+        assertEquals(200, preflight.statusCode());
+        assertEquals("https://console.saasforge.test",
+                preflight.headers().firstValue("Access-Control-Allow-Origin").orElseThrow());
+        assertEquals("true", preflight.headers().firstValue("Access-Control-Allow-Credentials").orElseThrow());
     }
 
     @Test

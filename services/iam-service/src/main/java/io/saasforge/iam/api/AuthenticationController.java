@@ -13,6 +13,7 @@ import io.saasforge.iam.application.authentication.LoginContextType;
 import io.saasforge.iam.application.authentication.LoginResult;
 import io.saasforge.iam.application.authentication.LogoutService;
 import io.saasforge.iam.application.authentication.PasswordLoginService;
+import io.saasforge.iam.application.authentication.PasswordSetupService;
 import io.saasforge.iam.application.authentication.RefreshSessionService;
 import io.saasforge.iam.contract.api.AuthenticationApi;
 import io.saasforge.iam.contract.model.AccessTokenResult;
@@ -24,6 +25,7 @@ import io.saasforge.iam.contract.model.InitialPasswordChangeRequiredResult;
 import io.saasforge.iam.contract.model.LoginRequest;
 import io.saasforge.iam.contract.model.MembershipCandidate;
 import io.saasforge.iam.contract.model.PasswordChangeRequest;
+import io.saasforge.iam.contract.model.PasswordSetupRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Duration;
 import java.nio.charset.StandardCharsets;
@@ -49,6 +51,7 @@ public class AuthenticationController implements AuthenticationApi {
     private final PasswordLoginService loginService;
     private final ContextSelectionService contextSelectionService;
     private final InitialPasswordChangeService passwordChangeService;
+    private final PasswordSetupService passwordSetupService;
     private final RefreshSessionService refreshSessionService;
     private final LogoutService logoutService;
     private final ClientCredentialsTokenService clientCredentialsTokenService;
@@ -57,12 +60,14 @@ public class AuthenticationController implements AuthenticationApi {
             PasswordLoginService loginService,
             ContextSelectionService contextSelectionService,
             InitialPasswordChangeService passwordChangeService,
+            PasswordSetupService passwordSetupService,
             RefreshSessionService refreshSessionService,
             LogoutService logoutService,
             ClientCredentialsTokenService clientCredentialsTokenService) {
         this.loginService = loginService;
         this.contextSelectionService = contextSelectionService;
         this.passwordChangeService = passwordChangeService;
+        this.passwordSetupService = passwordSetupService;
         this.refreshSessionService = refreshSessionService;
         this.logoutService = logoutService;
         this.clientCredentialsTokenService = clientCredentialsTokenService;
@@ -118,6 +123,14 @@ public class AuthenticationController implements AuthenticationApi {
         return ResponseEntity.noContent()
                 .header(HttpHeaders.SET_COOKIE, clearedRefreshCookie().toString())
                 .build();
+    }
+
+    @Override
+    public ResponseEntity<Void> establishPassword(
+            UUID idempotencyKey, String csrfHeader, PasswordSetupRequest request) {
+        passwordSetupService.establishPassword(
+                idempotencyKey, request.getToken(), request.getNewPassword(), traceId());
+        return ResponseEntity.noContent().build();
     }
 
     @Override
