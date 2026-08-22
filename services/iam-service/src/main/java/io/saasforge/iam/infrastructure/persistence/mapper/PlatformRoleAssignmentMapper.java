@@ -9,5 +9,8 @@ public interface PlatformRoleAssignmentMapper {
 
     PlatformRoleAssignmentRow insert(@Param("row") PlatformRoleAssignmentRow row);
 
-    int countActive(@Param("identityId") UUID identityId, @Param("at") OffsetDateTime at);
+    int countActive(
+            @Param("identityId") UUID identityId,
+            @Param("roleKey") String roleKey,
+            @Param("at") OffsetDateTime at);
 }

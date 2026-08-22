@@ -48,8 +48,18 @@ public final class ServiceAccessTokenVerifier {
     }
 
     public ServiceAccessTokenClaims verify(String token, UUID expectedClientId, String requiredScope) {
-        if (token == null || token.isBlank() || expectedClientId == null
-                || requiredScope == null || requiredScope.isBlank()) {
+        if (expectedClientId == null) {
+            throw new ServiceAccessTokenInvalidException();
+        }
+        ServiceAccessTokenClaims claims = verify(token, requiredScope);
+        if (!claims.clientId().equals(expectedClientId)) {
+            throw new ServiceAccessTokenInvalidException();
+        }
+        return claims;
+    }
+
+    public ServiceAccessTokenClaims verify(String token, String requiredScope) {
+        if (token == null || token.isBlank() || requiredScope == null || requiredScope.isBlank()) {
             throw new ServiceAccessTokenInvalidException();
         }
         try {
@@ -82,15 +92,17 @@ public final class ServiceAccessTokenVerifier {
                 throw new ServiceAccessTokenInvalidException();
             }
             UUID clientId = canonicalUuidV7(claims.getStringClaim("client_id"));
-            if (!clientId.equals(expectedClientId) || !clientId.toString().equals(claims.getSubject())) {
+            if (!clientId.toString().equals(claims.getSubject())) {
                 throw new ServiceAccessTokenInvalidException();
             }
             UUID jti = canonicalUuidV7(claims.getJWTID());
             Set<String> scopes = scopes(claims.getStringClaim("scope"));
             if (!scopes.contains(requiredScope)) {
-                throw new ServiceAccessTokenInvalidException();
+                throw new ServiceAccessTokenScopeException();
             }
             return new ServiceAccessTokenClaims(clientId, scopes, jti, issuedAt, expiresAt);
+        } catch (ServiceAccessTokenScopeException exception) {
+            throw exception;
         } catch (ServiceAccessTokenInvalidException exception) {
             throw exception;
         } catch (Exception exception) {

@@ -4,6 +4,10 @@
 
 所有 v1 package 受已发布契约基线保护；质量门拒绝删除或改变既有 service、RPC、message、field tag、类型、名称或 `oneof` 归属。
 
+## IAM Platform Role 校验
+
+[Platform Authorization v1](iam/authorization/v1/platform_authorization.proto) 定义平台服务向 IAM 实时复核 Platform Role 的只读边界。请求只携带规范 UUIDv7 `identity_id` 与精确 `role_key`，响应只返回 `allowed`；调用必须携带有效 Service Access Token 和 `iam:platform-role:read` Scope。无效令牌、错误 Scope、非法输入或 IAM 不可用均失败关闭，调用端不得从 Gateway Header、Tenant Context 或 User Access Token 中推导角色。
+
 ## IAM ↔ Tenant Access Membership 校验
 
 [Membership Validation v1](tenant_access/membership/v1/membership_validation.proto) 定义 Tenant Access 向 IAM 提供的通用、只读 Membership 即时校验。请求携带 `identity_id` 与 `membership_id`，仅在 Membership 属于该 Identity、处于启用状态且所属 Tenant 当前可访问时返回权威的 Membership 与 Tenant ID；否则返回无原因的 `membership_not_usable`。

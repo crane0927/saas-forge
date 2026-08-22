@@ -7,5 +7,5 @@ public interface PlatformRoleAssignmentRepository {
 
     PlatformRoleAssignment grant(PlatformRoleAssignment assignment);
 
-    boolean hasActiveAssignment(UUID identityId, Instant at);
+    boolean hasActiveAssignment(UUID identityId, String roleKey, Instant at);
 }

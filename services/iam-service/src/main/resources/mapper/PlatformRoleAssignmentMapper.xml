@@ -17,6 +17,7 @@
         SELECT count(*)
         FROM iam_platform_role_assignments
         WHERE identity_id = #{identityId}
+          AND role_key = #{roleKey}
           AND assigned_at &lt;= #{at}
           AND (revoked_at IS NULL OR revoked_at &gt; #{at})
     </select>

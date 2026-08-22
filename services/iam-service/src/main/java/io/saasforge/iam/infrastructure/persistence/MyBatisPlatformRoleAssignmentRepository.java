@@ -27,8 +27,8 @@ public class MyBatisPlatformRoleAssignmentRepository implements PlatformRoleAssi
     }
 
     @Override
-    public boolean hasActiveAssignment(UUID identityId, Instant at) {
-        return mapper.countActive(identityId, IamTime.asOffsetDateTime(at)) > 0;
+    public boolean hasActiveAssignment(UUID identityId, String roleKey, Instant at) {
+        return mapper.countActive(identityId, roleKey, IamTime.asOffsetDateTime(at)) > 0;
     }
 
     private static PlatformRoleAssignment toDomain(PlatformRoleAssignmentRow row) {

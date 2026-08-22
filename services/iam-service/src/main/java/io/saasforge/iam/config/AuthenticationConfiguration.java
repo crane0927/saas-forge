@@ -27,6 +27,7 @@ import io.saasforge.iam.application.authentication.SessionRevokedEventFactory;
 import io.saasforge.iam.application.authentication.UserAccessTokenIssuer;
 import io.saasforge.iam.application.authentication.ServiceAccessTokenIssuer;
 import io.saasforge.iam.application.authentication.UuidV7Generator;
+import io.saasforge.iam.application.authorization.PlatformRoleAuthorizationService;
 import io.saasforge.iam.application.signing.JwtSigningService;
 import io.saasforge.iam.domain.authorization.PlatformRoleAssignmentRepository;
 import io.saasforge.iam.domain.identity.IdentityRepository;
@@ -41,6 +42,9 @@ import io.saasforge.iam.infrastructure.security.RedisRevocationIndex;
 import io.saasforge.iam.infrastructure.security.RedisRefreshRotationLease;
 import io.saasforge.iam.infrastructure.security.NimbusPresentedAccessTokenVerifier;
 import io.saasforge.iam.infrastructure.security.ClasspathCompromisedPasswordChecker;
+import io.saasforge.iam.infrastructure.security.IamJwtVerificationKeyResolver;
+import io.saasforge.sdk.auth.ServiceAccessTokenVerifier;
+import io.saasforge.sdk.auth.ServiceJwtVerificationKeyResolver;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
@@ -123,6 +127,25 @@ public class AuthenticationConfiguration {
     ClientCredentialsTokenService clientCredentialsTokenService(
             OAuthClientRepository clients, ServiceAccessTokenIssuer tokens, Clock clock) {
         return new ClientCredentialsTokenService(clients, tokens, clock);
+    }
+
+    @Bean
+    ServiceJwtVerificationKeyResolver serviceJwtVerificationKeyResolver(SigningKeyRepository signingKeys) {
+        return new IamJwtVerificationKeyResolver(signingKeys);
+    }
+
+    @Bean
+    ServiceAccessTokenVerifier serviceAccessTokenVerifier(
+            ServiceJwtVerificationKeyResolver keys,
+            Clock clock,
+            @Value("${security.jwt.issuer}") String issuer) {
+        return new ServiceAccessTokenVerifier(keys, clock, issuer, "saasforge-api", Duration.ofSeconds(30));
+    }
+
+    @Bean
+    PlatformRoleAuthorizationService platformRoleAuthorizationService(
+            PlatformRoleAssignmentRepository roles, Clock clock) {
+        return new PlatformRoleAuthorizationService(roles, clock);
     }
 
     @Bean

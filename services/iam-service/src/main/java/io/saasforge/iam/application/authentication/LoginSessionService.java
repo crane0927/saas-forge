@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 public class LoginSessionService {
     private static final Duration REFRESH_IDLE_LIFETIME = Duration.ofMinutes(30);
+    private static final String PLATFORM_ADMIN_ROLE = "PLATFORM_ADMIN";
 
     private final PlatformRoleAssignmentRepository platformRoles;
     private final RefreshTokenFamilyRepository refreshTokenFamilies;
@@ -54,7 +55,7 @@ public class LoginSessionService {
             throw new IllegalArgumentException("会话 Purpose 与 Tenant 上下文不匹配");
         }
         if (purpose == RefreshTokenFamilyPurpose.USER_PLATFORM
-                && !platformRoles.hasActiveAssignment(identityId, accessToken.issuedAt())) {
+                && !platformRoles.hasActiveAssignment(identityId, PLATFORM_ADMIN_ROLE, accessToken.issuedAt())) {
             throw new AccessContextUnavailableException();
         }
         RefreshTokenFamily family = refreshTokenFamilies.create(

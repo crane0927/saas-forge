@@ -38,6 +38,7 @@
                         <sourceDirectory>${project.basedir}</sourceDirectory>
                     </sourceDirectories>
                     <includes>
+                        <include>iam/**/*.proto</include>
                         <include>tenant_access/**/*.proto</include>
                     </includes>
                     <binaryMavenPlugins>

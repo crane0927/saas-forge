@@ -15,6 +15,8 @@ import java.util.List;
 import java.util.UUID;
 
 public final class RefreshSessionService {
+    private static final String PLATFORM_ADMIN_ROLE = "PLATFORM_ADMIN";
+
     private final PlatformRoleAssignmentRepository platformRoles;
     private final AccessibleMemberships accessibleMemberships;
     private final RefreshTokenFamilyRepository refreshTokenFamilies;
@@ -78,7 +80,7 @@ public final class RefreshSessionService {
             Sha256Digest idempotencyKeyDigest,
             Instant inspectedAt,
             String traceId) {
-        if (!platformRoles.hasActiveAssignment(family.identityId(), inspectedAt)) {
+        if (!platformRoles.hasActiveAssignment(family.identityId(), PLATFORM_ADMIN_ROLE, inspectedAt)) {
             rejectAuthorization(presentedToken);
         }
         return rotateWithAccessToken(

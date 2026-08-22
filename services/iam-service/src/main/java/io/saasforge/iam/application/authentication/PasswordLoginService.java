@@ -14,6 +14,7 @@ import java.util.Optional;
 
 public final class PasswordLoginService {
     private static final int ACCESSIBLE_MEMBERSHIP_LIMIT = 100;
+    private static final String PLATFORM_ADMIN_ROLE = "PLATFORM_ADMIN";
 
     private final IdentityRepository identities;
     private final PlatformRoleAssignmentRepository platformRoles;
@@ -87,7 +88,7 @@ public final class PasswordLoginService {
     }
 
     private LoginResult platformLogin(Identity identity, Instant now, String traceId) {
-        if (!platformRoles.hasActiveAssignment(identity.id(), now)) {
+        if (!platformRoles.hasActiveAssignment(identity.id(), PLATFORM_ADMIN_ROLE, now)) {
             throw new AccessContextUnavailableException();
         }
         IssuedAccessToken accessToken = accessTokenIssuer.issueUserToken(identity.id(), null, null);
