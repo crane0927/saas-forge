@@ -25,6 +25,9 @@ public interface TenantAdministratorInitializationRepository {
 
     void scheduleRetry(InitializationWorkflow workflow, Instant retryAt, String failureSummary);
 
+    /** 暂停后台自动领取但保留原工作流；显式重放原 Idempotency-Key 可重新领取。 */
+    void exhaustRecovery(InitializationWorkflow workflow, Instant exhaustedAt, String failureSummary);
+
     void completeCompensation(InitializationWorkflow workflow, Instant completedAt);
 
     void completeFailure(InitializationWorkflow workflow, String outcomeCode, Instant completedAt);

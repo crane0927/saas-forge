@@ -76,8 +76,9 @@ public class TenantAdministratorInitializationConfiguration {
     InitializationRecoveryPolicy initializationRecoveryPolicy(
             @Value("${saasforge.tenant-access.initialization.lease-duration:PT30S}") Duration leaseDuration,
             @Value("${saasforge.tenant-access.initialization.initial-backoff:PT1S}") Duration initialBackoff,
-            @Value("${saasforge.tenant-access.initialization.maximum-backoff:PT1M}") Duration maximumBackoff) {
-        return new InitializationRecoveryPolicy(leaseDuration, initialBackoff, maximumBackoff);
+            @Value("${saasforge.tenant-access.initialization.maximum-backoff:PT1M}") Duration maximumBackoff,
+            @Value("${saasforge.tenant-access.initialization.maximum-attempts:10}") int maximumAttempts) {
+        return new InitializationRecoveryPolicy(leaseDuration, initialBackoff, maximumBackoff, maximumAttempts);
     }
 
     @Bean

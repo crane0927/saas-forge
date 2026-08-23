@@ -2,8 +2,10 @@ package io.saasforge.tenantaccess.application.administrator;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.saasforge.tenantaccess.application.tenant.UuidV7Generator;
 import io.saasforge.tenantaccess.domain.tenant.TenantStatus;
@@ -177,6 +179,46 @@ class InitializeTenantAdministratorServiceTest {
         assertEquals("TENANT_ADMIN_INITIALIZATION_RETRY_REQUIRED", retryRequired.code());
     }
 
+    @Test
+    void exhaustedAutomaticRecoveryRemainsDiagnosticAndExplicitlyRecoverable() {
+        identityTemporarilyUnavailable = true;
+        assertThrows(RemoteWorkflowUnavailableException.class, this::initialize);
+        for (int attempt = 2; attempt <= 10; attempt++) {
+            assertTrue(service.recoverNext());
+        }
+
+        assertTrue(workflows.recoveryExhausted);
+        assertEquals(10, workflows.workflow.attemptCount());
+        assertEquals(InitializationWorkflowState.PREPARED, workflows.workflow.state());
+        assertNull(workflows.workflow.outcomeCode());
+        assertEquals("RemoteWorkflowUnavailableException", workflows.lastFailure);
+        assertFalse(service.recoverNext());
+
+        identityTemporarilyUnavailable = false;
+        assertEquals(TenantStatus.ACTIVE, initialize().status());
+        assertFalse(workflows.recoveryExhausted);
+    }
+
+    @Test
+    void exhaustedPasswordDeliveryKeepsStableSuccessAndCanBeExplicitlyRecovered() {
+        deliveryFails = true;
+        assertEquals(TenantStatus.ACTIVE, initialize().status());
+        for (int attempt = 2; attempt <= 10; attempt++) {
+            assertTrue(service.recoverNext());
+        }
+
+        assertTrue(workflows.recoveryExhausted);
+        assertEquals("SUCCESS", workflows.workflow.outcomeCode());
+        assertTrue(workflows.workflow.passwordDeliveryPending());
+        assertFalse(service.recoverNext());
+
+        deliveryFails = false;
+        assertEquals(TenantStatus.ACTIVE, initialize().status());
+        assertFalse(workflows.recoveryExhausted);
+        assertFalse(workflows.workflow.passwordDeliveryPending());
+        assertEquals(0, calls.stream().filter(call -> call.startsWith("release:")).count());
+    }
+
     private TenantAdministratorInitializationResult initialize() {
         return service.initialize(ACTOR, KEY, TENANT, "admin@example.com", "Admin", null);
     }
@@ -187,6 +229,8 @@ class InitializeTenantAdministratorServiceTest {
 
     private final class InMemoryWorkflows implements TenantAdministratorInitializationRepository {
         private InitializationWorkflow workflow;
+        private boolean recoveryExhausted;
+        private String lastFailure;
 
         @Override
         public InitializationWorkflow prepare(InitializationWorkflow candidate, Instant now) {
@@ -204,6 +248,7 @@ class InitializeTenantAdministratorServiceTest {
             if (workflow.leaseOwner() != null) {
                 return Optional.empty();
             }
+            recoveryExhausted = false;
             workflow = copy(workflow, workflow.state(), workflow.outcomeCode(), workflow.result(),
                     workflow.administratorIdentityId(), workflow.credentialDisposition(),
                     workflow.passwordDeliveryPending(), workflow.attemptCount() + 1, claimant, claimedUntil);
@@ -212,7 +257,8 @@ class InitializeTenantAdministratorServiceTest {
 
         @Override
         public Optional<InitializationWorkflow> claimNext(String claimant, Instant now, Instant claimedUntil) {
-            return workflow == null ? Optional.empty() : claim(workflow.workflowId(), claimant, now, claimedUntil);
+            return workflow == null || recoveryExhausted
+                    ? Optional.empty() : claim(workflow.workflowId(), claimant, now, claimedUntil);
         }
 
         @Override
@@ -244,6 +290,16 @@ class InitializeTenantAdministratorServiceTest {
 
         @Override
         public void scheduleRetry(InitializationWorkflow current, Instant retryAt, String failureSummary) {
+            lastFailure = failureSummary;
+            workflow = copy(workflow, workflow.state(), workflow.outcomeCode(), workflow.result(),
+                    workflow.administratorIdentityId(), workflow.credentialDisposition(),
+                    workflow.passwordDeliveryPending(), workflow.attemptCount(), null, null);
+        }
+
+        @Override
+        public void exhaustRecovery(InitializationWorkflow current, Instant exhaustedAt, String failureSummary) {
+            recoveryExhausted = true;
+            lastFailure = failureSummary;
             workflow = copy(workflow, workflow.state(), workflow.outcomeCode(), workflow.result(),
                     workflow.administratorIdentityId(), workflow.credentialDisposition(),
                     workflow.passwordDeliveryPending(), workflow.attemptCount(), null, null);
@@ -321,7 +377,8 @@ class InitializeTenantAdministratorServiceTest {
                     current.identityRequestId(), current.consumeOperationId(), current.releaseOperationId(),
                     current.passwordDeliveryRequestId(), current.traceId(), outcome, result, current.createdAt(),
                     state, administratorIdentityId, credentialDisposition, deliveryPending, attemptCount,
-                    current.nextAttemptAt(), leaseOwner, leaseUntil);
+                    current.nextAttemptAt(), leaseOwner, leaseUntil,
+                    recoveryExhausted ? NOW : null, lastFailure);
         }
     }
 }

@@ -57,6 +57,7 @@ saasforge:
       lease-duration: PT30S
       initial-backoff: PT1S
       maximum-backoff: PT1M
+      maximum-attempts: 10
 
 mybatis:
   mapper-locations: classpath*:mapper/**/*Mapper.xml

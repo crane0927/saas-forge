@@ -76,7 +76,9 @@ public class InitializeTenantAdministratorService {
                 fingerprint(tenantId, email, displayName), email, displayName,
                 ids.next(), ids.next(), ids.next(), ids.next(), traceId,
                 null, null, now), now);
-        if (workflow.completed()) {
+        boolean exhaustedPasswordDelivery = "SUCCESS".equals(workflow.outcomeCode())
+                && workflow.passwordDeliveryPending() && workflow.recoveryExhaustedAt() != null;
+        if (workflow.completed() && !exhaustedPasswordDelivery) {
             replayOutcome(workflow);
             return workflow.result();
         }
@@ -191,8 +193,15 @@ public class InitializeTenantAdministratorService {
     }
 
     private void scheduleRetry(InitializationWorkflow workflow, RuntimeException exception) {
-        Instant retryAt = now().plus(recoveryPolicy.retryDelay(workflow.attemptCount()));
-        workflows.scheduleRetry(workflow, retryAt, exception.getClass().getSimpleName());
+        Instant failedAt = now();
+        String failureSummary = exception.getClass().getSimpleName();
+        if (recoveryPolicy.automaticRecoveryExhausted(workflow.attemptCount())) {
+            // 自动恢复到达上限后保留原状态和失败诊断；显式重放原 Key 仍可重新领取并恢复。
+            workflows.exhaustRecovery(workflow, failedAt, failureSummary);
+            return;
+        }
+        workflows.scheduleRetry(
+                workflow, failedAt.plus(recoveryPolicy.retryDelay(workflow.attemptCount())), failureSummary);
     }
 
     private static void replayOutcome(InitializationWorkflow workflow) {

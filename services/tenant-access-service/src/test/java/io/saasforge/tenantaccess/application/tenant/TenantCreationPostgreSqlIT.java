@@ -3,15 +3,18 @@ package io.saasforge.tenantaccess.application.tenant;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.saasforge.tenantaccess.application.administrator.IdentityCredentialDisposition;
 import io.saasforge.tenantaccess.application.administrator.IdentityProvisioningGateway;
+import io.saasforge.tenantaccess.application.administrator.InitializationRecoveryPolicy;
 import io.saasforge.tenantaccess.application.administrator.InitializationWorkflow;
 import io.saasforge.tenantaccess.application.administrator.InitializationWorkflowState;
 import io.saasforge.tenantaccess.application.administrator.InitializationQuotaGateway;
 import io.saasforge.tenantaccess.application.administrator.InitializeTenantAdministratorService;
+import io.saasforge.tenantaccess.application.administrator.RemoteWorkflowUnavailableException;
 import io.saasforge.tenantaccess.application.administrator.TenantAdministratorInitializationResult;
 import io.saasforge.tenantaccess.application.administrator.TenantAdministratorInitializedEventFactory;
 import io.saasforge.tenantaccess.application.administrator.TenantAdministratorInitializationRepository;
@@ -35,6 +38,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -45,6 +49,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 import javax.sql.DataSource;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -286,13 +291,81 @@ class TenantCreationPostgreSqlIT {
     }
 
     @Test
+    void workerRestartExhaustionRemainsDiagnosticAndExplicitReplayPublishesThroughKafka() throws SQLException {
+        Instant now = Instant.now().minusSeconds(10).truncatedTo(ChronoUnit.MILLIS);
+        UUID actor = uuidV7(94);
+        UUID idempotencyKey = uuidV7(95);
+        TenantCreationResult tenant = service.create(
+                actor, uuidV7(96), "Restart Tenant", now.plusSeconds(3600), null);
+        AtomicBoolean identityAvailable = new AtomicBoolean();
+        List<UUID> identityRequests = new ArrayList<>();
+        IdentityProvisioningGateway identities = (requestId, email, displayName) -> {
+            identityRequests.add(requestId);
+            if (!identityAvailable.get()) {
+                throw new RemoteWorkflowUnavailableException(new IllegalStateException("IAM unavailable"));
+            }
+            return new IdentityProvisioningGateway.Result(uuidV7(97), IdentityCredentialDisposition.PASSWORD_READY);
+        };
+        InitializationQuotaGateway quota = new InitializationQuotaGateway() {
+            @Override
+            public void consume(UUID tenantId, UUID operationId) {
+            }
+
+            @Override
+            public void release(UUID tenantId, UUID operationId) {
+            }
+        };
+        InitializationRecoveryPolicy policy = new InitializationRecoveryPolicy(
+                Duration.ofSeconds(30), Duration.ofSeconds(1), Duration.ofMinutes(1), 2);
+        InitializeTenantAdministratorService firstProcess = new InitializeTenantAdministratorService(
+                administratorInitialization, identities, quota, (requestId, identityId) -> { },
+                new UuidV7Generator(Clock.fixed(now, ZoneOffset.UTC), new SecureRandom()),
+                Clock.fixed(now, ZoneOffset.UTC), policy, "process-a");
+
+        assertThrows(RemoteWorkflowUnavailableException.class, () -> firstProcess.initialize(
+                actor, idempotencyKey, tenant.id(), "admin@example.com", "Admin", null));
+
+        InitializeTenantAdministratorService restartedWorker = new InitializeTenantAdministratorService(
+                administratorInitialization, identities, quota, (requestId, identityId) -> { },
+                new UuidV7Generator(Clock.fixed(now.plusSeconds(2), ZoneOffset.UTC), new SecureRandom()),
+                Clock.fixed(now.plusSeconds(2), ZoneOffset.UTC), policy, "process-b");
+        assertTrue(restartedWorker.recoverNext());
+        assertEquals("true", scalar("SELECT (recovery_exhausted_at IS NOT NULL)::text "
+                + "FROM tenant_administrator_initialization_workflows"));
+        assertEquals("RemoteWorkflowUnavailableException", scalar(
+                "SELECT last_failure FROM tenant_administrator_initialization_workflows"));
+        assertNull(scalar("SELECT outcome_code FROM tenant_administrator_initialization_workflows"));
+        assertFalse(restartedWorker.recoverNext());
+
+        identityAvailable.set(true);
+        TenantAdministratorInitializationResult result = restartedWorker.initialize(
+                actor, idempotencyKey, tenant.id(), "admin@example.com", "Admin", null);
+        assertEquals(TenantStatus.ACTIVE, result.status());
+        assertEquals(3, identityRequests.size());
+        assertEquals(1, identityRequests.stream().distinct().count());
+        assertEquals("false", scalar("SELECT (recovery_exhausted_at IS NOT NULL)::text "
+                + "FROM tenant_administrator_initialization_workflows"));
+
+        try (KafkaConsumer<String, String> consumer = kafkaConsumer()) {
+            consumer.subscribe(List.of("saasforge.test.tenant-access-service.events"));
+            consumer.poll(Duration.ofMillis(250));
+            outboxPublisher.publishNext();
+            outboxPublisher.publishNext();
+            ConsumerRecord<String, String> event = awaitEventContaining(
+                    consumer, TenantAdministratorInitializedEventFactory.EVENT_TYPE);
+            assertEquals(tenant.id().toString(), event.key());
+        }
+    }
+
+    @Test
     void localActivationCommitFailureUsesStableReleaseAndRequiresNewAttempt() throws SQLException {
-        Instant now = Instant.parse("2026-08-23T10:00:00Z");
+        Instant now = Instant.now().minusSeconds(10).truncatedTo(ChronoUnit.MILLIS);
         UUID actor = uuidV7(100);
         TenantCreationResult tenant = service.create(
                 actor, uuidV7(101), "Compensation Tenant", now.plusSeconds(3600), null);
         List<UUID> consumed = new ArrayList<>();
         List<UUID> released = new ArrayList<>();
+        AtomicBoolean releaseUnavailable = new AtomicBoolean(true);
         InitializationQuotaGateway quota = new InitializationQuotaGateway() {
             @Override
             public void consume(UUID tenantId, UUID operationId) {
@@ -302,16 +375,22 @@ class TenantCreationPostgreSqlIT {
             @Override
             public void release(UUID tenantId, UUID operationId) {
                 released.add(operationId);
+                if (releaseUnavailable.get()) {
+                    throw new RemoteWorkflowUnavailableException(
+                            new IllegalStateException("Entitlement unavailable"));
+                }
             }
         };
         Clock clock = Clock.fixed(now, ZoneOffset.UTC);
+        InitializationRecoveryPolicy policy = new InitializationRecoveryPolicy(
+                Duration.ofSeconds(30), Duration.ofSeconds(1), Duration.ofMinutes(1), 10);
         InitializeTenantAdministratorService initialization = new InitializeTenantAdministratorService(
                 administratorInitialization,
                 (requestId, email, displayName) -> new IdentityProvisioningGateway.Result(
                         uuidV7(102), IdentityCredentialDisposition.PASSWORD_READY),
                 quota,
                 (requestId, identityId) -> { },
-                new UuidV7Generator(clock, new SecureRandom()), clock);
+                new UuidV7Generator(clock, new SecureRandom()), clock, policy, "process-a");
 
         executeAsMigrator("""
                 CREATE OR REPLACE FUNCTION fail_tenant_admin_outbox() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -325,7 +404,7 @@ class TenantCreationPostgreSqlIT {
                     TenantAdministratorInitializationException.class,
                     () -> initialization.initialize(
                             actor, firstKey, tenant.id(), "admin@example.com", "Admin", null));
-            assertEquals("TENANT_ADMIN_INITIALIZATION_RETRY_REQUIRED", failure.code());
+            assertEquals("TENANT_ADMIN_INITIALIZATION_COMPENSATING", failure.code());
         } finally {
             executeAsMigrator("DROP TRIGGER fail_tenant_admin_outbox ON tenant_access_outbox_events; "
                     + "DROP FUNCTION fail_tenant_admin_outbox()");
@@ -335,22 +414,38 @@ class TenantCreationPostgreSqlIT {
         assertEquals(List.of(UUID.fromString(scalar(
                 "SELECT release_operation_id::text FROM tenant_administrator_initialization_workflows "
                         + "WHERE idempotency_key = '" + firstKey + "'"))), released);
-        assertEquals("TENANT_ADMIN_INITIALIZATION_RETRY_REQUIRED", scalar(
-                "SELECT outcome_code FROM tenant_administrator_initialization_workflows "
+        assertEquals("COMPENSATING", scalar(
+                "SELECT workflow_state FROM tenant_administrator_initialization_workflows "
                         + "WHERE idempotency_key = '" + firstKey + "'"));
         assertEquals("PENDING", scalar("SELECT tenant_status FROM tenants WHERE id = '" + tenant.id() + "'"));
         assertEquals(0, count("memberships"));
 
+        releaseUnavailable.set(false);
+        Clock restartedClock = Clock.fixed(now.plusSeconds(2), ZoneOffset.UTC);
+        InitializeTenantAdministratorService restartedWorker = new InitializeTenantAdministratorService(
+                administratorInitialization,
+                (requestId, email, displayName) -> new IdentityProvisioningGateway.Result(
+                        uuidV7(102), IdentityCredentialDisposition.PASSWORD_READY),
+                quota,
+                (requestId, identityId) -> { },
+                new UuidV7Generator(restartedClock, new SecureRandom()), restartedClock, policy, "process-b");
+        assertTrue(restartedWorker.recoverNext());
+        assertEquals(2, released.size());
+        assertEquals(released.get(0), released.get(1));
+        assertEquals("TENANT_ADMIN_INITIALIZATION_RETRY_REQUIRED", scalar(
+                "SELECT outcome_code FROM tenant_administrator_initialization_workflows "
+                        + "WHERE idempotency_key = '" + firstKey + "'"));
+
         TenantAdministratorInitializationException replay = assertThrows(
                 TenantAdministratorInitializationException.class,
-                () -> initialization.initialize(
+                () -> restartedWorker.initialize(
                         actor, firstKey, tenant.id(), "admin@example.com", "Admin", null));
         assertEquals("TENANT_ADMIN_INITIALIZATION_RETRY_REQUIRED", replay.code());
         assertEquals(1, consumed.size());
-        assertEquals(1, released.size());
+        assertEquals(2, released.size());
 
         UUID secondKey = uuidV7(104);
-        TenantAdministratorInitializationResult result = initialization.initialize(
+        TenantAdministratorInitializationResult result = restartedWorker.initialize(
                 actor, secondKey, tenant.id(), "admin@example.com", "Admin", null);
         assertEquals(TenantStatus.ACTIVE, result.status());
         assertEquals(2, consumed.size());
@@ -566,6 +661,19 @@ class TenantCreationPostgreSqlIT {
             }
         }
         throw new AssertionError("未收到 Tenant Access Outbox 事件");
+    }
+
+    private static ConsumerRecord<String, String> awaitEventContaining(
+            KafkaConsumer<String, String> consumer, String expectedContent) {
+        Instant deadline = Instant.now().plusSeconds(15);
+        while (Instant.now().isBefore(deadline)) {
+            for (ConsumerRecord<String, String> record : consumer.poll(Duration.ofMillis(500))) {
+                if (record.value().contains(expectedContent)) {
+                    return record;
+                }
+            }
+        }
+        throw new AssertionError("未收到预期 Tenant Access Outbox 事件: " + expectedContent);
     }
 
     private static KafkaConsumer<String, String> kafkaConsumer() {

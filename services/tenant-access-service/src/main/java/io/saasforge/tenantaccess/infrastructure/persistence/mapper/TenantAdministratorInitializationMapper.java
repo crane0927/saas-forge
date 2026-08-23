@@ -58,6 +58,13 @@ public interface TenantAdministratorInitializationMapper {
             @Param("retryAt") OffsetDateTime retryAt,
             @Param("lastFailure") String lastFailure);
 
+    int exhaustRecovery(
+            @Param("workflowId") UUID workflowId,
+            @Param("claimant") String claimant,
+            @Param("attemptCount") int attemptCount,
+            @Param("exhaustedAt") OffsetDateTime exhaustedAt,
+            @Param("lastFailure") String lastFailure);
+
     int completeCompensation(
             @Param("workflowId") UUID workflowId,
             @Param("claimant") String claimant,

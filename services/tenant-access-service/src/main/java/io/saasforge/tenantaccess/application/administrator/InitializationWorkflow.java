@@ -26,7 +26,40 @@ public record InitializationWorkflow(
         int attemptCount,
         Instant nextAttemptAt,
         String leaseOwner,
-        Instant leaseUntil) {
+        Instant leaseUntil,
+        Instant recoveryExhaustedAt,
+        String lastFailure) {
+
+    public InitializationWorkflow(
+            UUID workflowId,
+            UUID tenantId,
+            UUID actorIdentityId,
+            UUID idempotencyKey,
+            String requestFingerprint,
+            String administratorEmail,
+            String administratorDisplayName,
+            UUID identityRequestId,
+            UUID consumeOperationId,
+            UUID releaseOperationId,
+            UUID passwordDeliveryRequestId,
+            String traceId,
+            String outcomeCode,
+            TenantAdministratorInitializationResult result,
+            Instant createdAt,
+            InitializationWorkflowState state,
+            UUID administratorIdentityId,
+            IdentityCredentialDisposition credentialDisposition,
+            boolean passwordDeliveryPending,
+            int attemptCount,
+            Instant nextAttemptAt,
+            String leaseOwner,
+            Instant leaseUntil) {
+        this(workflowId, tenantId, actorIdentityId, idempotencyKey, requestFingerprint,
+                administratorEmail, administratorDisplayName, identityRequestId, consumeOperationId,
+                releaseOperationId, passwordDeliveryRequestId, traceId, outcomeCode, result, createdAt,
+                state, administratorIdentityId, credentialDisposition, passwordDeliveryPending,
+                attemptCount, nextAttemptAt, leaseOwner, leaseUntil, null, null);
+    }
 
     public InitializationWorkflow(
             UUID workflowId,
@@ -50,7 +83,7 @@ public record InitializationWorkflow(
                 outcomeCode == null ? InitializationWorkflowState.PREPARED
                         : "SUCCESS".equals(outcomeCode)
                                 ? InitializationWorkflowState.SUCCEEDED : InitializationWorkflowState.FAILED,
-                null, null, false, 0, createdAt, null, null);
+                null, null, false, 0, createdAt, null, null, null, null);
     }
 
     public boolean completed() {

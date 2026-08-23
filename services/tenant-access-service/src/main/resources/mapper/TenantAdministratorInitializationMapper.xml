@@ -52,7 +52,7 @@
                workflow_state AS workflowState, administrator_identity_id AS administratorIdentityId,
                credential_disposition AS credentialDisposition, attempt_count AS attemptCount,
                next_attempt_at AS nextAttemptAt, lease_owner AS leaseOwner, lease_until AS leaseUntil,
-               last_failure AS lastFailure,
+               recovery_exhausted_at AS recoveryExhaustedAt, last_failure AS lastFailure,
                EXISTS (SELECT 1 FROM password_setup_delivery_work_items work
                        WHERE work.workflow_id = tenant_administrator_initialization_workflows.workflow_id
                          AND work.work_status = 'PENDING') AS passwordDeliveryPending
@@ -74,7 +74,7 @@
                workflow_state AS workflowState, administrator_identity_id AS administratorIdentityId,
                credential_disposition AS credentialDisposition, attempt_count AS attemptCount,
                next_attempt_at AS nextAttemptAt, lease_owner AS leaseOwner, lease_until AS leaseUntil,
-               last_failure AS lastFailure,
+               recovery_exhausted_at AS recoveryExhaustedAt, last_failure AS lastFailure,
                EXISTS (SELECT 1 FROM password_setup_delivery_work_items work
                        WHERE work.workflow_id = tenant_administrator_initialization_workflows.workflow_id
                          AND work.work_status = 'PENDING') AS passwordDeliveryPending
@@ -110,6 +110,14 @@
     <update id="scheduleRetry">
         UPDATE tenant_administrator_initialization_workflows
         SET next_attempt_at = #{retryAt}, lease_owner = NULL, lease_until = NULL,
+            recovery_exhausted_at = NULL, last_failure = #{lastFailure}
+        WHERE workflow_id = #{workflowId}
+          AND lease_owner = #{claimant} AND attempt_count = #{attemptCount}
+    </update>
+
+    <update id="exhaustRecovery">
+        UPDATE tenant_administrator_initialization_workflows
+        SET recovery_exhausted_at = #{exhaustedAt}, lease_owner = NULL, lease_until = NULL,
             last_failure = #{lastFailure}
         WHERE workflow_id = #{workflowId}
           AND lease_owner = #{claimant} AND attempt_count = #{attemptCount}

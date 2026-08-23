@@ -6,9 +6,15 @@ public final class InitializationRecoveryPolicy {
     private final Duration leaseDuration;
     private final Duration initialBackoff;
     private final Duration maximumBackoff;
+    private final int maximumAttempts;
 
     public InitializationRecoveryPolicy(
             Duration leaseDuration, Duration initialBackoff, Duration maximumBackoff) {
+        this(leaseDuration, initialBackoff, maximumBackoff, 10);
+    }
+
+    public InitializationRecoveryPolicy(
+            Duration leaseDuration, Duration initialBackoff, Duration maximumBackoff, int maximumAttempts) {
         if (leaseDuration == null || leaseDuration.isZero() || leaseDuration.isNegative()) {
             throw new IllegalArgumentException("Tenant Admin 初始化租约时长必须为正数");
         }
@@ -18,9 +24,13 @@ public final class InitializationRecoveryPolicy {
         if (maximumBackoff == null || maximumBackoff.compareTo(initialBackoff) < 0) {
             throw new IllegalArgumentException("Tenant Admin 初始化最大退避不得小于初始退避");
         }
+        if (maximumAttempts < 1) {
+            throw new IllegalArgumentException("Tenant Admin 初始化最大自动尝试次数必须为正数");
+        }
         this.leaseDuration = leaseDuration;
         this.initialBackoff = initialBackoff;
         this.maximumBackoff = maximumBackoff;
+        this.maximumAttempts = maximumAttempts;
     }
 
     public Duration leaseDuration() {
@@ -37,5 +47,9 @@ public final class InitializationRecoveryPolicy {
             seconds = maximumBackoff.toSeconds();
         }
         return Duration.ofSeconds(Math.min(maximumBackoff.toSeconds(), Math.max(1, seconds)));
+    }
+
+    public boolean automaticRecoveryExhausted(int attemptCount) {
+        return attemptCount >= maximumAttempts;
     }
 }

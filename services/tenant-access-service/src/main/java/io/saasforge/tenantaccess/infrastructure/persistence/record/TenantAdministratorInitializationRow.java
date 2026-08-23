@@ -29,6 +29,7 @@ public record TenantAdministratorInitializationRow(
         OffsetDateTime nextAttemptAt,
         String leaseOwner,
         OffsetDateTime leaseUntil,
+        OffsetDateTime recoveryExhaustedAt,
         String lastFailure,
         boolean passwordDeliveryPending) {
 }

@@ -116,6 +116,17 @@ public final class MyBatisTenantAdministratorInitializationRepository
 
     @Override
     @Transactional
+    public void exhaustRecovery(InitializationWorkflow workflow, Instant exhaustedAt, String failureSummary) {
+        setTarget(workflow.tenantId());
+        if (mapper.exhaustRecovery(
+                workflow.workflowId(), workflow.leaseOwner(), workflow.attemptCount(),
+                TenantAccessTime.asOffsetDateTime(exhaustedAt), failureSummary) != 1) {
+            throw staleLease();
+        }
+    }
+
+    @Override
+    @Transactional
     public void completeCompensation(InitializationWorkflow workflow, Instant completedAt) {
         setTarget(workflow.tenantId());
         if (mapper.completeCompensation(
@@ -290,7 +301,7 @@ public final class MyBatisTenantAdministratorInitializationRepository
                 completedAt == null ? null : TenantAccessTime.asOffsetDateTime(completedAt.plus(IDEMPOTENCY_RETENTION)),
                 terminalOutcome == null ? InitializationWorkflowState.PREPARED.name()
                         : InitializationWorkflowState.FAILED.name(),
-                null, null, 0, TenantAccessTime.asOffsetDateTime(now), null, null, null, false);
+                null, null, 0, TenantAccessTime.asOffsetDateTime(now), null, null, null, null, false);
     }
 
     private InitializationWorkflow fromRow(TenantAdministratorInitializationRow row) {
@@ -306,7 +317,8 @@ public final class MyBatisTenantAdministratorInitializationRepository
                 row.administratorIdentityId(), row.credentialDisposition() == null
                         ? null : IdentityCredentialDisposition.valueOf(row.credentialDisposition()),
                 row.passwordDeliveryPending(), row.attemptCount(), TenantAccessTime.asInstant(row.nextAttemptAt()),
-                row.leaseOwner(), TenantAccessTime.asInstant(row.leaseUntil()));
+                row.leaseOwner(), TenantAccessTime.asInstant(row.leaseUntil()),
+                TenantAccessTime.asInstant(row.recoveryExhaustedAt()), row.lastFailure());
     }
 
     private InitializationWorkflow transition(
