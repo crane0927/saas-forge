@@ -28,22 +28,29 @@ public class PlatformAuthorizationConfiguration {
     }
 
     @Bean
+    IamServiceAccessTokenProvider tenantAccessIamServiceAccessTokenProvider(
+            RestClient tenantAccessIamRestClient,
+            Clock clock,
+            @Value("${saasforge.tenant-access.service-client-id-file}") String clientIdFile,
+            @Value("${saasforge.tenant-access.service-client-secret-file}") String clientSecretFile) {
+        return new IamServiceAccessTokenProvider(
+                tenantAccessIamRestClient, Path.of(clientIdFile), Path.of(clientSecretFile), clock);
+    }
+
+    @Bean
     PlatformAdminAuthorizer platformAdminAuthorizer(
             RestClient tenantAccessIamRestClient,
+            IamServiceAccessTokenProvider serviceTokens,
             StringRedisTemplate redis,
             GrpcChannelFactory channels,
             Clock clock,
             @Value("${security.jwt.issuer}") String issuer,
-            @Value("${saasforge.environment:dev}") String environment,
-            @Value("${saasforge.tenant-access.service-client-id-file}") String clientIdFile,
-            @Value("${saasforge.tenant-access.service-client-secret-file}") String clientSecretFile) {
+            @Value("${saasforge.environment:dev}") String environment) {
         IamJwksKeyResolver keys = new IamJwksKeyResolver(tenantAccessIamRestClient);
         RedisUserAccessTokenRevocationChecker revocations =
                 new RedisUserAccessTokenRevocationChecker(redis, environment);
         UserAccessTokenVerifier userTokens = new UserAccessTokenVerifier(
                 keys, revocations, clock, issuer, "saasforge-api", Duration.ofSeconds(30));
-        IamServiceAccessTokenProvider serviceTokens = new IamServiceAccessTokenProvider(
-                tenantAccessIamRestClient, Path.of(clientIdFile), Path.of(clientSecretFile), clock);
         GrpcPlatformRoleChecker roles = new GrpcPlatformRoleChecker(
                 PlatformAuthorizationServiceGrpc.newBlockingStub(channels.createChannel("iam")),
                 serviceTokens::token);

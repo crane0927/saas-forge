@@ -3,6 +3,8 @@ package io.saasforge.tenantaccess.api;
 import io.saasforge.sdk.auth.PlatformAuthorizationDeniedException;
 import io.saasforge.tenantaccess.application.tenant.IdempotencyKeyInvalidException;
 import io.saasforge.tenantaccess.application.tenant.IdempotencyKeyReusedException;
+import io.saasforge.tenantaccess.application.administrator.RemoteWorkflowUnavailableException;
+import io.saasforge.tenantaccess.application.administrator.TenantAdministratorInitializationException;
 import io.saasforge.tenantaccess.domain.tenant.TenantExpiryInvalidException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
@@ -40,6 +42,23 @@ public class TenantCreationExceptionHandler {
             IdempotencyKeyReusedException exception, HttpServletRequest request) {
         return problem(HttpStatus.CONFLICT, IdempotencyKeyReusedException.CODE,
                 "Idempotency key reused", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(TenantAdministratorInitializationException.class)
+    ResponseEntity<Problem> initializationFailure(
+            TenantAdministratorInitializationException exception, HttpServletRequest request) {
+        HttpStatus status = "TENANT_NOT_FOUND".equals(exception.code())
+                ? HttpStatus.NOT_FOUND
+                : HttpStatus.CONFLICT;
+        return problem(status, exception.code(), "Tenant administrator initialization failed",
+                exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(RemoteWorkflowUnavailableException.class)
+    ResponseEntity<Problem> dependencyUnavailable(
+            RemoteWorkflowUnavailableException exception, HttpServletRequest request) {
+        return problem(HttpStatus.BAD_GATEWAY, "TENANT_ADMIN_INITIALIZATION_DEPENDENCY_UNAVAILABLE",
+                "Tenant administrator initialization dependency unavailable", exception.getMessage(), request);
     }
 
     private static ResponseEntity<Problem> problem(

@@ -1,10 +1,13 @@
 package io.saasforge.tenantaccess.api;
 
 import io.saasforge.tenantaccess.application.authorization.PlatformAdminAuthorizer;
+import io.saasforge.tenantaccess.application.administrator.InitializeTenantAdministratorService;
+import io.saasforge.tenantaccess.application.administrator.TenantAdministratorInitializationResult;
 import io.saasforge.tenantaccess.application.tenant.CreatePendingTenantService;
 import io.saasforge.tenantaccess.application.tenant.TenantCreationResult;
 import io.saasforge.tenantaccess.contract.api.PlatformTenantsApi;
 import io.saasforge.tenantaccess.contract.model.CreateTenantRequest;
+import io.saasforge.tenantaccess.contract.model.AdministratorInitializationRequest;
 import io.saasforge.tenantaccess.contract.model.Tenant;
 import io.saasforge.tenantaccess.contract.model.TenantStatus;
 import jakarta.servlet.http.HttpServletRequest;
@@ -25,11 +28,32 @@ public class TenantCreationController implements PlatformTenantsApi {
 
     private final PlatformAdminAuthorizer authorizer;
     private final CreatePendingTenantService tenantCreation;
+    private final InitializeTenantAdministratorService administratorInitialization;
 
     public TenantCreationController(
-            PlatformAdminAuthorizer authorizer, CreatePendingTenantService tenantCreation) {
+            PlatformAdminAuthorizer authorizer,
+            CreatePendingTenantService tenantCreation,
+            InitializeTenantAdministratorService administratorInitialization) {
         this.authorizer = authorizer;
         this.tenantCreation = tenantCreation;
+        this.administratorInitialization = administratorInitialization;
+    }
+
+    @Override
+    public ResponseEntity<Tenant> initializeTenantAdministrator(
+            UUID tenantId,
+            UUID idempotencyKey,
+            AdministratorInitializationRequest request) {
+        HttpServletRequest httpRequest = currentRequest();
+        UUID actorIdentityId = authorizer.authorize(httpRequest.getHeader(HttpHeaders.AUTHORIZATION));
+        TenantAdministratorInitializationResult result = administratorInitialization.initialize(
+                actorIdentityId,
+                idempotencyKey,
+                tenantId,
+                request.getAdministratorEmail(),
+                request.getAdministratorDisplayName(),
+                traceId(httpRequest));
+        return ResponseEntity.ok(toResponse(result));
     }
 
     @Override
@@ -47,6 +71,16 @@ public class TenantCreationController implements PlatformTenantsApi {
     }
 
     private static Tenant toResponse(TenantCreationResult result) {
+        return new Tenant(
+                result.id(),
+                result.displayName(),
+                TenantStatus.valueOf(result.status().name()),
+                result.expiresAt().atOffset(ZoneOffset.UTC),
+                result.createdAt().atOffset(ZoneOffset.UTC),
+                result.updatedAt().atOffset(ZoneOffset.UTC));
+    }
+
+    private static Tenant toResponse(TenantAdministratorInitializationResult result) {
         return new Tenant(
                 result.id(),
                 result.displayName(),

@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.saasforge.tenantaccess.infrastructure.persistence.mapper.TenantAdministratorInitializationMapper">
+    <select id="setOperationTarget" resultType="string">
+        SELECT set_config('app.tenant_id', CAST(#{tenantId} AS TEXT), true)
+    </select>
+
+    <select id="lockTenant" resultType="io.saasforge.tenantaccess.infrastructure.persistence.record.TenantRow">
+        SELECT id, display_name AS displayName, tenant_status AS status, expires_at AS expiresAt,
+               created_at AS createdAt, updated_at AS updatedAt
+        FROM tenants WHERE id = #{tenantId} FOR UPDATE
+    </select>
+
+    <delete id="deleteExpiredWorkflow">
+        DELETE FROM tenant_administrator_initialization_workflows
+        WHERE actor_identity_id = #{actorIdentityId} AND idempotency_key = #{idempotencyKey}
+          AND completed_at IS NOT NULL AND expires_at &lt;= #{now}
+          AND NOT EXISTS (
+              SELECT 1 FROM password_setup_delivery_work_items
+              WHERE password_setup_delivery_work_items.workflow_id = tenant_administrator_initialization_workflows.workflow_id
+                AND work_status = 'PENDING')
+    </delete>
+
+    <insert id="insertWorkflow">
+        INSERT INTO tenant_administrator_initialization_workflows
+            (workflow_id, tenant_id, actor_identity_id, idempotency_key, request_fingerprint,
+             administrator_email, administrator_display_name, identity_request_id,
+             consume_operation_id, release_operation_id, password_delivery_request_id,
+             trace_id, outcome_code, response_status, response_body, created_at, completed_at, expires_at)
+        VALUES
+            (#{row.workflowId}, #{row.tenantId}, #{row.actorIdentityId}, #{row.idempotencyKey},
+             #{row.requestFingerprint}, #{row.administratorEmail}, #{row.administratorDisplayName},
+             #{row.identityRequestId}, #{row.consumeOperationId}, #{row.releaseOperationId},
+             #{row.passwordDeliveryRequestId}, #{row.traceId}, #{row.outcomeCode}, #{row.responseStatus},
+             CAST(#{row.responseBody} AS JSONB), #{row.createdAt}, #{row.completedAt}, #{row.expiresAt})
+        ON CONFLICT DO NOTHING
+    </insert>
+
+    <select id="findWorkflow" resultType="io.saasforge.tenantaccess.infrastructure.persistence.record.TenantAdministratorInitializationRow">
+        SELECT workflow_id AS workflowId, tenant_id AS tenantId, actor_identity_id AS actorIdentityId,
+               idempotency_key AS idempotencyKey, request_fingerprint AS requestFingerprint,
+               administrator_email AS administratorEmail,
+               administrator_display_name AS administratorDisplayName,
+               identity_request_id AS identityRequestId, consume_operation_id AS consumeOperationId,
+               release_operation_id AS releaseOperationId,
+               password_delivery_request_id AS passwordDeliveryRequestId, trace_id AS traceId,
+               outcome_code AS outcomeCode, response_status AS responseStatus,
+               response_body::TEXT AS responseBody,
+               created_at AS createdAt, completed_at AS completedAt, expires_at AS expiresAt
+        FROM tenant_administrator_initialization_workflows
+        WHERE actor_identity_id = #{actorIdentityId} AND idempotency_key = #{idempotencyKey}
+    </select>
+
+    <select id="lockWorkflow" resultType="io.saasforge.tenantaccess.infrastructure.persistence.record.TenantAdministratorInitializationRow">
+        SELECT workflow_id AS workflowId, tenant_id AS tenantId, actor_identity_id AS actorIdentityId,
+               idempotency_key AS idempotencyKey, request_fingerprint AS requestFingerprint,
+               administrator_email AS administratorEmail,
+               administrator_display_name AS administratorDisplayName,
+               identity_request_id AS identityRequestId, consume_operation_id AS consumeOperationId,
+               release_operation_id AS releaseOperationId,
+               password_delivery_request_id AS passwordDeliveryRequestId, trace_id AS traceId,
+               outcome_code AS outcomeCode, response_status AS responseStatus,
+               response_body::TEXT AS responseBody,
+               created_at AS createdAt, completed_at AS completedAt, expires_at AS expiresAt
+        FROM tenant_administrator_initialization_workflows WHERE workflow_id = #{workflowId} FOR UPDATE
+    </select>
+
+    <update id="completeFailure">
+        UPDATE tenant_administrator_initialization_workflows
+        SET outcome_code = #{outcomeCode}, response_status = #{responseStatus},
+            completed_at = #{completedAt}, expires_at = #{expiresAt}
+        WHERE workflow_id = #{workflowId} AND outcome_code IS NULL
+    </update>
+
+    <insert id="insertMembership">
+        INSERT INTO memberships (id, tenant_id, identity_id, membership_status)
+        VALUES (#{membershipId}, #{tenantId}, #{identityId}, 'ENABLED')
+        ON CONFLICT (tenant_id, identity_id) DO NOTHING
+    </insert>
+
+    <select id="findMembershipId" resultType="java.util.UUID">
+        SELECT id FROM memberships WHERE tenant_id = #{tenantId} AND identity_id = #{identityId}
+    </select>
+
+    <update id="enableMembership">
+        UPDATE memberships SET membership_status = 'ENABLED' WHERE id = #{membershipId}
+    </update>
+
+    <insert id="insertAdministratorRole">
+        INSERT INTO tenant_roles (id, tenant_id, role_key, system_managed, created_at)
+        VALUES (#{roleId}, #{tenantId}, 'TENANT_ADMINISTRATOR', true, #{createdAt})
+        ON CONFLICT (tenant_id, role_key) DO NOTHING
+    </insert>
+
+    <select id="findAdministratorRoleId" resultType="java.util.UUID">
+        SELECT id FROM tenant_roles
+        WHERE tenant_id = #{tenantId} AND role_key = 'TENANT_ADMINISTRATOR' AND system_managed = true
+    </select>
+
+    <insert id="insertRoleAssignment">
+        INSERT INTO membership_role_assignments (tenant_id, membership_id, role_id, assigned_at)
+        VALUES (#{tenantId}, #{membershipId}, #{roleId}, #{assignedAt})
+        ON CONFLICT DO NOTHING
+    </insert>
+
+    <insert id="insertInitialAdministrator">
+        INSERT INTO initial_tenant_administrators (tenant_id, membership_id, established_at)
+        VALUES (#{tenantId}, #{membershipId}, #{establishedAt})
+        ON CONFLICT (tenant_id) DO NOTHING
+    </insert>
+
+    <select id="findInitialAdministratorMembershipId" resultType="java.util.UUID">
+        SELECT membership_id FROM initial_tenant_administrators WHERE tenant_id = #{tenantId}
+    </select>
+
+    <update id="activateTenant">
+        UPDATE tenants SET tenant_status = 'ACTIVE', updated_at = #{updatedAt}
+        WHERE id = #{tenantId} AND tenant_status = 'PENDING' AND expires_at &gt; #{updatedAt}
+    </update>
+
+    <insert id="insertPasswordDeliveryWorkItem">
+        INSERT INTO password_setup_delivery_work_items
+            (workflow_id, tenant_id, identity_id, delivery_request_id, work_status, created_at)
+        VALUES (#{workflowId}, #{tenantId}, #{identityId}, #{deliveryRequestId}, 'PENDING', #{createdAt})
+        ON CONFLICT (workflow_id) DO NOTHING
+    </insert>
+
+    <update id="completeSuccess">
+        UPDATE tenant_administrator_initialization_workflows
+        SET outcome_code = 'SUCCESS', response_status = 200,
+            response_body = CAST(#{responseBody} AS JSONB),
+            completed_at = #{completedAt}, expires_at = #{expiresAt}
+        WHERE workflow_id = #{workflowId} AND outcome_code IS NULL
+    </update>
+
+    <update id="completePasswordDelivery">
+        UPDATE password_setup_delivery_work_items
+        SET work_status = 'COMPLETED', completed_at = #{completedAt}
+        WHERE workflow_id = #{workflowId} AND work_status = 'PENDING'
+    </update>
+</mapper>

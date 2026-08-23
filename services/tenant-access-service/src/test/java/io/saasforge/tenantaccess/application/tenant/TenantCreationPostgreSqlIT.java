@@ -8,6 +8,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.saasforge.tenantaccess.infrastructure.persistence.MyBatisTenantAccessOutboxEventRepository;
 import io.saasforge.tenantaccess.infrastructure.persistence.MyBatisTenantCreationIdempotency;
 import io.saasforge.tenantaccess.infrastructure.persistence.MyBatisTenantRepository;
+import io.saasforge.tenantaccess.infrastructure.persistence.MyBatisTenantAdministratorInitializationRepository;
+import io.saasforge.tenantaccess.application.administrator.IdentityCredentialDisposition;
+import io.saasforge.tenantaccess.application.administrator.InitializationWorkflow;
+import io.saasforge.tenantaccess.application.administrator.TenantAdministratorInitializationResult;
+import io.saasforge.tenantaccess.application.administrator.TenantAdministratorInitializedEventFactory;
+import io.saasforge.tenantaccess.application.administrator.TenantAdministratorInitializationRepository;
+import io.saasforge.tenantaccess.application.administrator.TenantAdministratorInitializationException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
@@ -19,6 +26,7 @@ import java.sql.Statement;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -84,6 +92,9 @@ class TenantCreationPostgreSqlIT {
     @Autowired
     private InitialSubscriptionEligibilityService eligibility;
 
+    @Autowired
+    private TenantAdministratorInitializationRepository administratorInitialization;
+
     @BeforeAll
     void migrate() {
         Flyway.configure()
@@ -120,6 +131,116 @@ class TenantCreationPostgreSqlIT {
         assertEquals("PENDING", scalar("SELECT tenant_status FROM tenants WHERE id = '" + result.id() + "'"));
         assertTrue(scalar("SELECT event_snapshot::text FROM tenant_access_outbox_events")
                 .contains("com.saasforge.tenant.created.v1"));
+    }
+
+    @Test
+    void activatesTenantWithOneInitialAdministratorRoleAndPendingPasswordDelivery() throws SQLException {
+        UUID actor = uuidV7(60);
+        TenantCreationResult tenant = service.create(
+                actor, uuidV7(61), "Admin Tenant", Instant.now().plusSeconds(3600), null);
+        Instant now = Instant.now();
+        InitializationWorkflow workflow = new InitializationWorkflow(
+                uuidV7(62), tenant.id(), actor, uuidV7(63), "a".repeat(64),
+                "admin@example.com", "Admin", uuidV7(64), uuidV7(65), uuidV7(66), uuidV7(67),
+                null, null, null, now);
+
+        InitializationWorkflow prepared = administratorInitialization.prepare(workflow, now);
+        TenantAdministratorInitializationResult result = administratorInitialization.activate(
+                prepared, uuidV7(68), IdentityCredentialDisposition.SETUP_ALLOWED, now.plusMillis(1));
+
+        assertEquals("ACTIVE", result.status().name());
+        assertEquals("ACTIVE", scalar("SELECT tenant_status FROM tenants WHERE id = '" + tenant.id() + "'"));
+        assertEquals(1, count("memberships"));
+        assertEquals(1, count("tenant_roles"));
+        assertEquals(1, count("membership_role_assignments"));
+        assertEquals(1, count("initial_tenant_administrators"));
+        assertEquals(1, count("password_setup_delivery_work_items"));
+        assertEquals("TENANT_ADMINISTRATOR", scalar("SELECT role_key FROM tenant_roles"));
+        assertEquals("true", scalar("SELECT system_managed::text FROM tenant_roles"));
+        assertEquals("SUCCESS", scalar("SELECT outcome_code FROM tenant_administrator_initialization_workflows"));
+        assertEquals("200", scalar("SELECT response_status::text FROM tenant_administrator_initialization_workflows"));
+        assertTrue(scalar("SELECT event_snapshot::text FROM tenant_access_outbox_events "
+                + "WHERE event_snapshot->>'type' = 'com.saasforge.tenant.administrator-initialized.v1'")
+                .contains(tenant.id().toString()));
+
+        InitializationWorkflow replay = administratorInitialization.prepare(workflow, now.plusSeconds(1));
+        assertEquals(result, replay.result());
+        assertEquals(1, count("memberships"));
+        assertEquals(1, count("tenant_roles"));
+
+        InitializationWorkflow newKey = administratorInitialization.prepare(
+                workflow(tenant.id(), actor, uuidV7(69), "f".repeat(64)), now.plusSeconds(1));
+        assertEquals("TENANT_ALREADY_INITIALIZED", newKey.outcomeCode());
+
+        administratorInitialization.completePasswordDelivery(tenant.id(), workflow.workflowId(), now.plusSeconds(2));
+        assertEquals("COMPLETED", scalar("SELECT work_status FROM password_setup_delivery_work_items"));
+    }
+
+    @Test
+    void persistsStableQuotaFailureThroughForcedRls() throws SQLException {
+        UUID actor = uuidV7(80);
+        TenantCreationResult tenant = service.create(
+                actor, uuidV7(81), "Quota Tenant", Instant.now().plusSeconds(3600), null);
+        InitializationWorkflow prepared = administratorInitialization.prepare(
+                workflow(tenant.id(), actor, uuidV7(82), "e".repeat(64)), Instant.now());
+
+        administratorInitialization.completeFailure(
+                tenant.id(), prepared.workflowId(), "QUOTA_EXCEEDED", Instant.now());
+        InitializationWorkflow replay = administratorInitialization.prepare(prepared, Instant.now());
+
+        assertEquals("QUOTA_EXCEEDED", replay.outcomeCode());
+        assertEquals("409", scalar("SELECT response_status::text FROM tenant_administrator_initialization_workflows"));
+        assertEquals("true", scalar("SELECT relforcerowsecurity::text FROM pg_class "
+                + "WHERE relname = 'tenant_administrator_initialization_workflows'"));
+    }
+
+    @Test
+    void rejectsExpiredTenantBeforeRemoteWorkAndSerializesConcurrentKeys() throws Exception {
+        UUID expiredTenant = uuidV7(70);
+        insertTenant(expiredTenant, "PENDING", Instant.now().minusSeconds(1));
+        InitializationWorkflow expired = administratorInitialization.prepare(
+                workflow(expiredTenant, uuidV7(71), uuidV7(72), "b".repeat(64)), Instant.now());
+        assertEquals("TENANT_EXPIRY_REACHED", expired.outcomeCode());
+
+        UUID concurrentTenant = uuidV7(73);
+        insertTenant(concurrentTenant, "PENDING", Instant.now().plusSeconds(3600));
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<String> first = executor.submit(() -> prepareOutcome(
+                    workflow(concurrentTenant, uuidV7(74), uuidV7(75), "c".repeat(64)), start));
+            Future<String> second = executor.submit(() -> prepareOutcome(
+                    workflow(concurrentTenant, uuidV7(74), uuidV7(76), "d".repeat(64)), start));
+            start.countDown();
+
+            assertEquals(Set.of("PREPARED", "TENANT_ADMIN_INITIALIZATION_IN_PROGRESS"),
+                    Set.of(first.get(), second.get()));
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    private String prepareOutcome(InitializationWorkflow workflow, CountDownLatch start) throws InterruptedException {
+        start.await();
+        try {
+            return administratorInitialization.prepare(workflow, Instant.now()).completed()
+                    ? "COMPLETED"
+                    : "PREPARED";
+        } catch (TenantAdministratorInitializationException exception) {
+            return exception.code();
+        }
+    }
+
+    private static InitializationWorkflow workflow(
+            UUID tenantId, UUID actorIdentityId, UUID idempotencyKey, String fingerprint) {
+        return new InitializationWorkflow(
+                uuidV7(idempotencyKey.getLeastSignificantBits() & 0xfff), tenantId, actorIdentityId,
+                idempotencyKey, fingerprint, "admin@example.com", "Admin",
+                uuidV7((idempotencyKey.getLeastSignificantBits() & 0xfff) + 100),
+                uuidV7((idempotencyKey.getLeastSignificantBits() & 0xfff) + 200),
+                uuidV7((idempotencyKey.getLeastSignificantBits() & 0xfff) + 300),
+                uuidV7((idempotencyKey.getLeastSignificantBits() & 0xfff) + 400),
+                null, null, null, Instant.now());
     }
 
     @Test
@@ -290,7 +411,8 @@ class TenantCreationPostgreSqlIT {
             basePackages = "io.saasforge.tenantaccess.infrastructure.persistence.mapper",
             sqlSessionFactoryRef = "tenantAccessSqlSessionFactory")
     @Import({MyBatisTenantRepository.class, MyBatisTenantCreationIdempotency.class,
-            MyBatisTenantAccessOutboxEventRepository.class})
+            MyBatisTenantAccessOutboxEventRepository.class,
+            MyBatisTenantAdministratorInitializationRepository.class})
     static class PersistenceConfiguration {
         @Bean
         DataSource dataSource() {
@@ -335,6 +457,13 @@ class TenantCreationPostgreSqlIT {
         @Bean
         TenantCreatedEventFactory eventFactory(ObjectMapper objectMapper, UuidV7Generator ids) {
             return new TenantCreatedEventFactory(
+                    objectMapper, ids, "saasforge.test.tenant-access-service.events");
+        }
+
+        @Bean
+        TenantAdministratorInitializedEventFactory administratorInitializedEventFactory(
+                ObjectMapper objectMapper, UuidV7Generator ids) {
+            return new TenantAdministratorInitializedEventFactory(
                     objectMapper, ids, "saasforge.test.tenant-access-service.events");
         }
 

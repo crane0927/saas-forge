@@ -28,6 +28,9 @@ spring:
         iam:
           address: ${IAM_GRPC_ADDRESS:static://iam-service:9090}
           default-deadline: PT3S
+        entitlement:
+          address: ${ENTITLEMENT_GRPC_ADDRESS:static://entitlement-service:9090}
+          default-deadline: PT3S
 
 security:
   jwt:
