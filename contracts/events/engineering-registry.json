@@ -126,6 +126,62 @@
           "consumerName": "audit-service.tenant-events"
         }
       ]
+    },
+    {
+      "type": "com.saasforge.quota-definition.created.v1",
+      "producerService": "entitlement-service",
+      "source": "urn:saasforge:entitlement-service",
+      "schema": "contracts/events/quota-definition-created.v1.schema.json",
+      "topic": "saasforge.<environment>.entitlement-service.events",
+      "orderingKey": "quotaDefinitionId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.entitlement-configuration-events"
+        }
+      ]
+    },
+    {
+      "type": "com.saasforge.quota-definition.activated.v1",
+      "producerService": "entitlement-service",
+      "source": "urn:saasforge:entitlement-service",
+      "schema": "contracts/events/quota-definition-activated.v1.schema.json",
+      "topic": "saasforge.<environment>.entitlement-service.events",
+      "orderingKey": "quotaDefinitionId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.entitlement-configuration-events"
+        }
+      ]
+    },
+    {
+      "type": "com.saasforge.plan.created.v1",
+      "producerService": "entitlement-service",
+      "source": "urn:saasforge:entitlement-service",
+      "schema": "contracts/events/plan-created.v1.schema.json",
+      "topic": "saasforge.<environment>.entitlement-service.events",
+      "orderingKey": "planId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.entitlement-configuration-events"
+        }
+      ]
+    },
+    {
+      "type": "com.saasforge.plan.activated.v1",
+      "producerService": "entitlement-service",
+      "source": "urn:saasforge:entitlement-service",
+      "schema": "contracts/events/plan-activated.v1.schema.json",
+      "topic": "saasforge.<environment>.entitlement-service.events",
+      "orderingKey": "planId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.entitlement-configuration-events"
+        }
+      ]
     }
   ]
 }

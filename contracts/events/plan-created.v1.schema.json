@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://saasforge.io/contracts/events/plan-created.v1.schema.json",
+  "title": "Plan Created v1",
+  "allOf": [
+    { "$ref": "cloudevents-envelope.v1.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "com.saasforge.plan.created.v1" },
+        "source": { "const": "urn:saasforge:entitlement-service" },
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["planId", "code", "status", "actorIdentityId"],
+          "properties": {
+            "planId": { "$ref": "#/$defs/uuidV7" },
+            "code": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,62}$" },
+            "status": { "const": "DRAFT" },
+            "actorIdentityId": { "$ref": "#/$defs/uuidV7" }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "uuidV7": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    }
+  }
+}

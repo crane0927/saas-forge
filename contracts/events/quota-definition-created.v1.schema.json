@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://saasforge.io/contracts/events/quota-definition-created.v1.schema.json",
+  "title": "Quota Definition Created v1",
+  "allOf": [
+    { "$ref": "cloudevents-envelope.v1.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "com.saasforge.quota-definition.created.v1" },
+        "source": { "const": "urn:saasforge:entitlement-service" },
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["quotaDefinitionId", "code", "status", "actorIdentityId"],
+          "properties": {
+            "quotaDefinitionId": { "$ref": "#/$defs/uuidV7" },
+            "code": { "const": "max_users" },
+            "status": { "const": "DRAFT" },
+            "actorIdentityId": { "$ref": "#/$defs/uuidV7" }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "uuidV7": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    }
+  }
+}

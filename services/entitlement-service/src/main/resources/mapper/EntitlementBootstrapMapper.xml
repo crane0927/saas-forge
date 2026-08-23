@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.saasforge.entitlement.infrastructure.persistence.mapper.EntitlementBootstrapMapper">
+    <insert id="insertQuotaDefinition">
+        INSERT INTO quota_definitions
+            (id, code, quota_definition_status, created_at, updated_at)
+        VALUES
+            (#{row.id}, #{row.code}, #{row.status}, #{row.createdAt}, #{row.updatedAt})
+        ON CONFLICT (code) DO NOTHING
+    </insert>
+
+    <select id="findQuotaDefinition"
+            resultType="io.saasforge.entitlement.infrastructure.persistence.record.QuotaDefinitionRow">
+        SELECT id,
+               code,
+               quota_definition_status AS status,
+               created_at AS createdAt,
+               updated_at AS updatedAt
+        FROM quota_definitions
+        WHERE id = #{id}
+    </select>
+
+    <update id="activateQuotaDefinition">
+        UPDATE quota_definitions
+        SET quota_definition_status = 'ACTIVE',
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND quota_definition_status = 'DRAFT'
+    </update>
+
+    <insert id="insertPlan">
+        INSERT INTO plans
+            (id, code, display_name, plan_status, created_at, updated_at)
+        VALUES
+            (#{row.id}, #{row.code}, #{row.displayName}, #{row.status}, #{row.createdAt}, #{row.updatedAt})
+        ON CONFLICT (code) DO NOTHING
+    </insert>
+
+    <insert id="insertPlanQuotaLimit">
+        INSERT INTO plan_quotas (plan_id, quota_definition_id, quota_limit)
+        VALUES (#{row.planId}, #{row.quotaDefinitionId}, #{row.quotaLimit})
+    </insert>
+
+    <select id="findPlan" resultType="io.saasforge.entitlement.infrastructure.persistence.record.PlanRow">
+        SELECT id,
+               code,
+               display_name AS displayName,
+               plan_status AS status,
+               created_at AS createdAt,
+               updated_at AS updatedAt
+        FROM plans
+        WHERE id = #{id}
+    </select>
+
+    <select id="findPlanQuotaLimits"
+            resultType="io.saasforge.entitlement.infrastructure.persistence.record.PlanQuotaLimitRow">
+        SELECT plan_id AS planId,
+               quota_definition_id AS quotaDefinitionId,
+               quota_limit AS quotaLimit
+        FROM plan_quotas
+        WHERE plan_id = #{planId}
+    </select>
+
+    <update id="activatePlan">
+        UPDATE plans
+        SET plan_status = 'ACTIVE',
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND plan_status = 'DRAFT'
+    </update>
+
+    <delete id="deleteExpiredIdempotency">
+        DELETE FROM entitlement_bootstrap_idempotency
+        WHERE caller_identity_id = #{callerIdentityId}
+          AND idempotency_key = #{idempotencyKey}
+          AND expires_at &lt;= #{now}
+    </delete>
+
+    <insert id="claimIdempotency">
+        INSERT INTO entitlement_bootstrap_idempotency
+            (caller_identity_id, idempotency_key, operation_type, request_fingerprint, target_id, expires_at)
+        VALUES
+            (#{row.callerIdentityId}, #{row.idempotencyKey}, #{row.operationType},
+             #{row.requestFingerprint}, #{row.targetId}, #{row.expiresAt})
+        ON CONFLICT (caller_identity_id, idempotency_key) DO NOTHING
+    </insert>
+
+    <select id="findIdempotency"
+            resultType="io.saasforge.entitlement.infrastructure.persistence.record.EntitlementIdempotencyRow">
+        SELECT caller_identity_id AS callerIdentityId,
+               idempotency_key AS idempotencyKey,
+               operation_type AS operationType,
+               request_fingerprint AS requestFingerprint,
+               target_id AS targetId,
+               response_status AS responseStatus,
+               response_kind AS responseKind,
+               response_body::TEXT AS responseBody,
+               completed_at AS completedAt,
+               expires_at AS expiresAt
+        FROM entitlement_bootstrap_idempotency
+        WHERE caller_identity_id = #{callerIdentityId}
+          AND idempotency_key = #{idempotencyKey}
+    </select>
+
+    <update id="completeIdempotency">
+        UPDATE entitlement_bootstrap_idempotency
+        SET response_status = #{row.responseStatus},
+            response_kind = #{row.responseKind},
+            response_body = CAST(#{row.responseBody} AS JSONB),
+            completed_at = #{row.completedAt}
+        WHERE caller_identity_id = #{row.callerIdentityId}
+          AND idempotency_key = #{row.idempotencyKey}
+          AND response_status IS NULL
+    </update>
+
+    <insert id="insertOutbox">
+        INSERT INTO entitlement_outbox_events
+            (event_id, aggregate_id, occurred_at, topic, ordering_key, trace_id,
+             event_snapshot, next_attempt_at)
+        VALUES
+            (#{row.eventId}, #{row.aggregateId}, #{row.occurredAt}, #{row.topic}, #{row.orderingKey},
+             #{row.traceId}, CAST(#{row.eventSnapshot} AS JSONB), #{row.occurredAt})
+    </insert>
+</mapper>
