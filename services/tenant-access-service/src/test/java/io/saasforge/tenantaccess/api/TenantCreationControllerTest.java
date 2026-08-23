@@ -2,12 +2,14 @@ package io.saasforge.tenantaccess.api;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import io.saasforge.sdk.auth.PlatformAuthorizationDeniedException;
 import io.saasforge.tenantaccess.application.authorization.PlatformAdminAuthorizer;
 import io.saasforge.tenantaccess.application.administrator.InitializeTenantAdministratorService;
 import io.saasforge.tenantaccess.application.administrator.TenantAdministratorInitializationResult;
+import io.saasforge.tenantaccess.application.administrator.TenantAdministratorInitializationException;
 import io.saasforge.tenantaccess.domain.tenant.TenantStatus;
 import io.saasforge.tenantaccess.application.tenant.CreatePendingTenantService;
 import io.saasforge.tenantaccess.application.tenant.TenantCreationResult;
@@ -101,6 +103,38 @@ class TenantCreationControllerTest {
                         .content("{\"administratorEmail\":\"admin@example.com\"}"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("PLATFORM_AUTHORIZATION_DENIED"));
+    }
+
+    @Test
+    void compensationInProgressReturnsServiceUnavailableWithRetryAfter() throws Exception {
+        InitializeTenantAdministratorService initialization = new InitializeTenantAdministratorService(
+                null, null, null, null, null, null) {
+            @Override
+            public TenantAdministratorInitializationResult initialize(
+                    UUID actorIdentityId,
+                    UUID idempotencyKey,
+                    UUID tenantId,
+                    String email,
+                    String displayName,
+                    String traceId) {
+                throw new TenantAdministratorInitializationException(
+                        "TENANT_ADMIN_INITIALIZATION_COMPENSATING", "正在补偿", 7);
+            }
+        };
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(new TenantCreationController(
+                        authorization -> KEY, unusedCreation(), initialization))
+                .setControllerAdvice(new TenantCreationExceptionHandler())
+                .build();
+
+        mvc.perform(post("/api/v1/platform/tenants/{tenantId}/administrator-initializations",
+                        UUID.fromString("019535d9-0000-7000-8000-000000000010"))
+                        .header("Authorization", "Bearer platform-token")
+                        .header("Idempotency-Key", KEY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"administratorEmail\":\"admin@example.com\"}"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(header().string("Retry-After", "7"))
+                .andExpect(jsonPath("$.code").value("TENANT_ADMIN_INITIALIZATION_COMPENSATING"));
     }
 
     private static MockMvc mvc(

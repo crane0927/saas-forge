@@ -21,5 +21,14 @@ public record TenantAdministratorInitializationRow(
         String responseBody,
         OffsetDateTime createdAt,
         OffsetDateTime completedAt,
-        OffsetDateTime expiresAt) {
+        OffsetDateTime expiresAt,
+        String workflowState,
+        UUID administratorIdentityId,
+        String credentialDisposition,
+        int attemptCount,
+        OffsetDateTime nextAttemptAt,
+        String leaseOwner,
+        OffsetDateTime leaseUntil,
+        String lastFailure,
+        boolean passwordDeliveryPending) {
 }

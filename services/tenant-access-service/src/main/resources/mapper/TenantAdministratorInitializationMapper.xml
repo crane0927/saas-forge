@@ -26,13 +26,15 @@
             (workflow_id, tenant_id, actor_identity_id, idempotency_key, request_fingerprint,
              administrator_email, administrator_display_name, identity_request_id,
              consume_operation_id, release_operation_id, password_delivery_request_id,
-             trace_id, outcome_code, response_status, response_body, created_at, completed_at, expires_at)
+             trace_id, outcome_code, response_status, response_body, created_at, completed_at, expires_at,
+             workflow_state, attempt_count, next_attempt_at)
         VALUES
             (#{row.workflowId}, #{row.tenantId}, #{row.actorIdentityId}, #{row.idempotencyKey},
              #{row.requestFingerprint}, #{row.administratorEmail}, #{row.administratorDisplayName},
              #{row.identityRequestId}, #{row.consumeOperationId}, #{row.releaseOperationId},
              #{row.passwordDeliveryRequestId}, #{row.traceId}, #{row.outcomeCode}, #{row.responseStatus},
-             CAST(#{row.responseBody} AS JSONB), #{row.createdAt}, #{row.completedAt}, #{row.expiresAt})
+             CAST(#{row.responseBody} AS JSONB), #{row.createdAt}, #{row.completedAt}, #{row.expiresAt},
+             #{row.workflowState}, #{row.attemptCount}, #{row.nextAttemptAt})
         ON CONFLICT DO NOTHING
     </insert>
 
@@ -46,7 +48,14 @@
                password_delivery_request_id AS passwordDeliveryRequestId, trace_id AS traceId,
                outcome_code AS outcomeCode, response_status AS responseStatus,
                response_body::TEXT AS responseBody,
-               created_at AS createdAt, completed_at AS completedAt, expires_at AS expiresAt
+               created_at AS createdAt, completed_at AS completedAt, expires_at AS expiresAt,
+               workflow_state AS workflowState, administrator_identity_id AS administratorIdentityId,
+               credential_disposition AS credentialDisposition, attempt_count AS attemptCount,
+               next_attempt_at AS nextAttemptAt, lease_owner AS leaseOwner, lease_until AS leaseUntil,
+               last_failure AS lastFailure,
+               EXISTS (SELECT 1 FROM password_setup_delivery_work_items work
+                       WHERE work.workflow_id = tenant_administrator_initialization_workflows.workflow_id
+                         AND work.work_status = 'PENDING') AS passwordDeliveryPending
         FROM tenant_administrator_initialization_workflows
         WHERE actor_identity_id = #{actorIdentityId} AND idempotency_key = #{idempotencyKey}
     </select>
@@ -61,15 +70,67 @@
                password_delivery_request_id AS passwordDeliveryRequestId, trace_id AS traceId,
                outcome_code AS outcomeCode, response_status AS responseStatus,
                response_body::TEXT AS responseBody,
-               created_at AS createdAt, completed_at AS completedAt, expires_at AS expiresAt
+               created_at AS createdAt, completed_at AS completedAt, expires_at AS expiresAt,
+               workflow_state AS workflowState, administrator_identity_id AS administratorIdentityId,
+               credential_disposition AS credentialDisposition, attempt_count AS attemptCount,
+               next_attempt_at AS nextAttemptAt, lease_owner AS leaseOwner, lease_until AS leaseUntil,
+               last_failure AS lastFailure,
+               EXISTS (SELECT 1 FROM password_setup_delivery_work_items work
+                       WHERE work.workflow_id = tenant_administrator_initialization_workflows.workflow_id
+                         AND work.work_status = 'PENDING') AS passwordDeliveryPending
         FROM tenant_administrator_initialization_workflows WHERE workflow_id = #{workflowId} FOR UPDATE
     </select>
 
+    <select id="claimWorkflow" resultType="java.util.UUID" flushCache="true" affectData="true">
+        SELECT claim_tenant_admin_initialization_workflow(
+            #{workflowId}, #{claimant}, #{at}, #{claimedUntil})
+    </select>
+
+    <select id="claimNextWorkflow" resultType="java.util.UUID" flushCache="true" affectData="true">
+        SELECT claim_next_tenant_admin_initialization_workflow(
+            #{claimant}, #{at}, #{claimedUntil})
+    </select>
+
+    <update id="completeIdentity">
+        UPDATE tenant_administrator_initialization_workflows
+        SET workflow_state = 'IDENTITY_READY', administrator_identity_id = #{administratorIdentityId},
+            credential_disposition = #{credentialDisposition}, next_attempt_at = #{completedAt},
+            last_failure = NULL
+        WHERE workflow_id = #{workflowId} AND workflow_state = 'PREPARED'
+          AND lease_owner = #{claimant} AND attempt_count = #{attemptCount}
+    </update>
+
+    <update id="transitionState">
+        UPDATE tenant_administrator_initialization_workflows
+        SET workflow_state = #{nextState}, next_attempt_at = #{transitionedAt}, last_failure = NULL
+        WHERE workflow_id = #{workflowId} AND workflow_state = #{expectedState}
+          AND lease_owner = #{claimant} AND attempt_count = #{attemptCount}
+    </update>
+
+    <update id="scheduleRetry">
+        UPDATE tenant_administrator_initialization_workflows
+        SET next_attempt_at = #{retryAt}, lease_owner = NULL, lease_until = NULL,
+            last_failure = #{lastFailure}
+        WHERE workflow_id = #{workflowId}
+          AND lease_owner = #{claimant} AND attempt_count = #{attemptCount}
+    </update>
+
+    <update id="completeCompensation">
+        UPDATE tenant_administrator_initialization_workflows
+        SET workflow_state = 'FAILED', outcome_code = 'TENANT_ADMIN_INITIALIZATION_RETRY_REQUIRED',
+            response_status = 409, completed_at = #{completedAt}, expires_at = #{expiresAt},
+            lease_owner = NULL, lease_until = NULL, last_failure = NULL
+        WHERE workflow_id = #{workflowId} AND workflow_state = 'COMPENSATING'
+          AND lease_owner = #{claimant} AND attempt_count = #{attemptCount}
+    </update>
+
     <update id="completeFailure">
         UPDATE tenant_administrator_initialization_workflows
-        SET outcome_code = #{outcomeCode}, response_status = #{responseStatus},
-            completed_at = #{completedAt}, expires_at = #{expiresAt}
+        SET workflow_state = 'FAILED', outcome_code = #{outcomeCode}, response_status = #{responseStatus},
+            completed_at = #{completedAt}, expires_at = #{expiresAt},
+            lease_owner = NULL, lease_until = NULL, last_failure = NULL
         WHERE workflow_id = #{workflowId} AND outcome_code IS NULL
+          AND lease_owner = #{claimant} AND attempt_count = #{attemptCount}
     </update>
 
     <insert id="insertMembership">
@@ -127,15 +188,27 @@
 
     <update id="completeSuccess">
         UPDATE tenant_administrator_initialization_workflows
-        SET outcome_code = 'SUCCESS', response_status = 200,
+        SET workflow_state = 'SUCCEEDED', outcome_code = 'SUCCESS', response_status = 200,
             response_body = CAST(#{responseBody} AS JSONB),
-            completed_at = #{completedAt}, expires_at = #{expiresAt}
-        WHERE workflow_id = #{workflowId} AND outcome_code IS NULL
+            completed_at = #{completedAt}, expires_at = #{expiresAt},
+            lease_owner = CASE WHEN #{releaseLease} THEN NULL ELSE lease_owner END,
+            lease_until = CASE WHEN #{releaseLease} THEN NULL ELSE lease_until END,
+            last_failure = NULL
+        WHERE workflow_id = #{workflowId} AND workflow_state = 'ACTIVATING' AND outcome_code IS NULL
+          AND lease_owner = #{claimant} AND attempt_count = #{attemptCount}
     </update>
 
     <update id="completePasswordDelivery">
-        UPDATE password_setup_delivery_work_items
-        SET work_status = 'COMPLETED', completed_at = #{completedAt}
-        WHERE workflow_id = #{workflowId} AND work_status = 'PENDING'
+        WITH completed AS (
+            UPDATE password_setup_delivery_work_items
+            SET work_status = 'COMPLETED', completed_at = #{completedAt}
+            WHERE workflow_id = #{workflowId} AND work_status = 'PENDING'
+            RETURNING workflow_id
+        )
+        UPDATE tenant_administrator_initialization_workflows workflow
+        SET lease_owner = NULL, lease_until = NULL, last_failure = NULL
+        FROM completed
+        WHERE workflow.workflow_id = completed.workflow_id
+          AND workflow.lease_owner = #{claimant} AND workflow.attempt_count = #{attemptCount}
     </update>
 </mapper>

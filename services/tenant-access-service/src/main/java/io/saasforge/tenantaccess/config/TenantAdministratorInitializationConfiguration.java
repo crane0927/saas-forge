@@ -5,9 +5,11 @@ import io.saasforge.contracts.iam.identity.v1.IdentityProvisioningServiceGrpc;
 import io.saasforge.contracts.iam.passwordsetup.v1.PasswordSetupServiceGrpc;
 import io.saasforge.tenantaccess.application.administrator.IdentityProvisioningGateway;
 import io.saasforge.tenantaccess.application.administrator.InitializationQuotaGateway;
+import io.saasforge.tenantaccess.application.administrator.InitializationRecoveryPolicy;
 import io.saasforge.tenantaccess.application.administrator.InitializeTenantAdministratorService;
 import io.saasforge.tenantaccess.application.administrator.PasswordSetupDeliveryGateway;
 import io.saasforge.tenantaccess.application.administrator.TenantAdministratorInitializationRepository;
+import io.saasforge.tenantaccess.application.administrator.TenantAdministratorInitializationWorker;
 import io.saasforge.tenantaccess.application.administrator.TenantAdministratorInitializedEventFactory;
 import io.saasforge.tenantaccess.application.tenant.UuidV7Generator;
 import io.saasforge.tenantaccess.infrastructure.grpc.GrpcIdentityProvisioningGateway;
@@ -15,6 +17,7 @@ import io.saasforge.tenantaccess.infrastructure.grpc.GrpcInitializationQuotaGate
 import io.saasforge.tenantaccess.infrastructure.grpc.GrpcPasswordSetupDeliveryGateway;
 import io.saasforge.tenantaccess.infrastructure.security.IamServiceAccessTokenProvider;
 import java.time.Clock;
+import java.time.Duration;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -62,8 +65,24 @@ public class TenantAdministratorInitializationConfiguration {
             InitializationQuotaGateway quota,
             PasswordSetupDeliveryGateway passwordDeliveries,
             UuidV7Generator ids,
-            Clock clock) {
+            Clock clock,
+            InitializationRecoveryPolicy recoveryPolicy) {
         return new InitializeTenantAdministratorService(
-                workflows, identities, quota, passwordDeliveries, ids, clock);
+                workflows, identities, quota, passwordDeliveries, ids, clock, recoveryPolicy,
+                java.lang.management.ManagementFactory.getRuntimeMXBean().getName());
+    }
+
+    @Bean
+    InitializationRecoveryPolicy initializationRecoveryPolicy(
+            @Value("${saasforge.tenant-access.initialization.lease-duration:PT30S}") Duration leaseDuration,
+            @Value("${saasforge.tenant-access.initialization.initial-backoff:PT1S}") Duration initialBackoff,
+            @Value("${saasforge.tenant-access.initialization.maximum-backoff:PT1M}") Duration maximumBackoff) {
+        return new InitializationRecoveryPolicy(leaseDuration, initialBackoff, maximumBackoff);
+    }
+
+    @Bean
+    TenantAdministratorInitializationWorker tenantAdministratorInitializationWorker(
+            InitializeTenantAdministratorService service) {
+        return new TenantAdministratorInitializationWorker(service);
     }
 }

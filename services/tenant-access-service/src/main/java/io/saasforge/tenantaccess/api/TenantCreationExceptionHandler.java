@@ -47,18 +47,33 @@ public class TenantCreationExceptionHandler {
     @ExceptionHandler(TenantAdministratorInitializationException.class)
     ResponseEntity<Problem> initializationFailure(
             TenantAdministratorInitializationException exception, HttpServletRequest request) {
-        HttpStatus status = "TENANT_NOT_FOUND".equals(exception.code())
-                ? HttpStatus.NOT_FOUND
-                : HttpStatus.CONFLICT;
-        return problem(status, exception.code(), "Tenant administrator initialization failed",
+        HttpStatus status = switch (exception.code()) {
+            case "TENANT_NOT_FOUND" -> HttpStatus.NOT_FOUND;
+            case "TENANT_ADMIN_INITIALIZATION_COMPENSATING" -> HttpStatus.SERVICE_UNAVAILABLE;
+            default -> HttpStatus.CONFLICT;
+        };
+        ResponseEntity<Problem> response = problem(
+                status, exception.code(), "Tenant administrator initialization failed",
                 exception.getMessage(), request);
+        if (status == HttpStatus.SERVICE_UNAVAILABLE) {
+            return ResponseEntity.status(status)
+                    .header("Retry-After", Long.toString(Math.max(1, exception.retryAfterSeconds())))
+                    .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                    .body(response.getBody());
+        }
+        return response;
     }
 
     @ExceptionHandler(RemoteWorkflowUnavailableException.class)
     ResponseEntity<Problem> dependencyUnavailable(
             RemoteWorkflowUnavailableException exception, HttpServletRequest request) {
-        return problem(HttpStatus.BAD_GATEWAY, "TENANT_ADMIN_INITIALIZATION_DEPENDENCY_UNAVAILABLE",
+        ResponseEntity<Problem> response = problem(
+                HttpStatus.SERVICE_UNAVAILABLE, "TENANT_ADMIN_INITIALIZATION_DEPENDENCY_UNAVAILABLE",
                 "Tenant administrator initialization dependency unavailable", exception.getMessage(), request);
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .header("Retry-After", "1")
+                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .body(response.getBody());
     }
 
     private static ResponseEntity<Problem> problem(

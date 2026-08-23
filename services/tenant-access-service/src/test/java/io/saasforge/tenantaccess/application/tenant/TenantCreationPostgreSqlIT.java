@@ -2,19 +2,27 @@ package io.saasforge.tenantaccess.application.tenant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.saasforge.tenantaccess.infrastructure.persistence.MyBatisTenantAccessOutboxEventRepository;
-import io.saasforge.tenantaccess.infrastructure.persistence.MyBatisTenantCreationIdempotency;
-import io.saasforge.tenantaccess.infrastructure.persistence.MyBatisTenantRepository;
-import io.saasforge.tenantaccess.infrastructure.persistence.MyBatisTenantAdministratorInitializationRepository;
 import io.saasforge.tenantaccess.application.administrator.IdentityCredentialDisposition;
+import io.saasforge.tenantaccess.application.administrator.IdentityProvisioningGateway;
 import io.saasforge.tenantaccess.application.administrator.InitializationWorkflow;
+import io.saasforge.tenantaccess.application.administrator.InitializationWorkflowState;
+import io.saasforge.tenantaccess.application.administrator.InitializationQuotaGateway;
+import io.saasforge.tenantaccess.application.administrator.InitializeTenantAdministratorService;
 import io.saasforge.tenantaccess.application.administrator.TenantAdministratorInitializationResult;
 import io.saasforge.tenantaccess.application.administrator.TenantAdministratorInitializedEventFactory;
 import io.saasforge.tenantaccess.application.administrator.TenantAdministratorInitializationRepository;
 import io.saasforge.tenantaccess.application.administrator.TenantAdministratorInitializationException;
+import io.saasforge.tenantaccess.domain.outbox.OutboxEventRepository;
+import io.saasforge.tenantaccess.domain.tenant.TenantStatus;
+import io.saasforge.tenantaccess.infrastructure.messaging.TenantAccessOutboxPublisher;
+import io.saasforge.tenantaccess.infrastructure.persistence.MyBatisTenantAccessOutboxEventRepository;
+import io.saasforge.tenantaccess.infrastructure.persistence.MyBatisTenantAdministratorInitializationRepository;
+import io.saasforge.tenantaccess.infrastructure.persistence.MyBatisTenantCreationIdempotency;
+import io.saasforge.tenantaccess.infrastructure.persistence.MyBatisTenantRepository;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
@@ -24,14 +32,26 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
-import java.util.UUID;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import javax.sql.DataSource;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.serialization.StringDeserializer;
+import org.apache.kafka.common.serialization.StringSerializer;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
@@ -49,12 +69,15 @@ import org.springframework.context.annotation.Import;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.kafka.core.DefaultKafkaProducerFactory;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.kafka.KafkaContainer;
 import org.testcontainers.utility.DockerImageName;
 import org.testcontainers.utility.MountableFile;
 import tools.jackson.databind.ObjectMapper;
@@ -82,8 +105,12 @@ class TenantCreationPostgreSqlIT {
                     MountableFile.forHostPath(REPOSITORY_ROOT.resolve("deploy/postgresql/bootstrap.sh")),
                     "/docker-entrypoint-initdb.d/01-bootstrap.sh");
 
+    @Container
+    private static final KafkaContainer KAFKA = new KafkaContainer(DockerImageName.parse("apache/kafka:4.0.0"));
+
     static {
         POSTGRES.start();
+        KAFKA.start();
     }
 
     @Autowired
@@ -94,6 +121,9 @@ class TenantCreationPostgreSqlIT {
 
     @Autowired
     private TenantAdministratorInitializationRepository administratorInitialization;
+
+    @Autowired
+    private TenantAccessOutboxPublisher outboxPublisher;
 
     @BeforeAll
     void migrate() {
@@ -111,6 +141,7 @@ class TenantCreationPostgreSqlIT {
 
     @AfterAll
     void stop() {
+        KAFKA.stop();
         POSTGRES.stop();
     }
 
@@ -134,6 +165,23 @@ class TenantCreationPostgreSqlIT {
     }
 
     @Test
+    void publishesCommittedTenantFactThroughKafkaAndMarksPostgreSqlOutbox() throws SQLException {
+        try (KafkaConsumer<String, String> consumer = kafkaConsumer()) {
+            consumer.subscribe(List.of("saasforge.test.tenant-access-service.events"));
+            consumer.poll(Duration.ofMillis(250));
+            TenantCreationResult tenant = service.create(
+                    uuidV7(5), uuidV7(6), "Kafka Tenant", Instant.now().plusSeconds(3600), null);
+
+            outboxPublisher.publishNext();
+            ConsumerRecord<String, String> event = awaitEvent(consumer);
+
+            assertEquals(tenant.id().toString(), event.key());
+            assertTrue(event.value().contains("com.saasforge.tenant.created.v1"));
+            assertEquals("true", scalar("SELECT (published_at IS NOT NULL)::text FROM tenant_access_outbox_events"));
+        }
+    }
+
+    @Test
     void activatesTenantWithOneInitialAdministratorRoleAndPendingPasswordDelivery() throws SQLException {
         UUID actor = uuidV7(60);
         TenantCreationResult tenant = service.create(
@@ -145,8 +193,16 @@ class TenantCreationPostgreSqlIT {
                 null, null, null, now);
 
         InitializationWorkflow prepared = administratorInitialization.prepare(workflow, now);
+        InitializationWorkflow claimed = administratorInitialization.claim(
+                prepared.workflowId(), "postgres-it", now, now.plusSeconds(30)).orElseThrow();
+        InitializationWorkflow identityReady = administratorInitialization.completeIdentity(
+                claimed, uuidV7(68), IdentityCredentialDisposition.SETUP_ALLOWED, now.plusMillis(1));
+        InitializationWorkflow quotaConsumed = administratorInitialization.completeQuotaConsumption(
+                identityReady, now.plusMillis(2));
+        InitializationWorkflow activating = administratorInitialization.beginActivation(
+                quotaConsumed, now.plusMillis(3));
         TenantAdministratorInitializationResult result = administratorInitialization.activate(
-                prepared, uuidV7(68), IdentityCredentialDisposition.SETUP_ALLOWED, now.plusMillis(1));
+                activating, uuidV7(68), IdentityCredentialDisposition.SETUP_ALLOWED, now.plusMillis(4));
 
         assertEquals("ACTIVE", result.status().name());
         assertEquals("ACTIVE", scalar("SELECT tenant_status FROM tenants WHERE id = '" + tenant.id() + "'"));
@@ -172,7 +228,7 @@ class TenantCreationPostgreSqlIT {
                 workflow(tenant.id(), actor, uuidV7(69), "f".repeat(64)), now.plusSeconds(1));
         assertEquals("TENANT_ALREADY_INITIALIZED", newKey.outcomeCode());
 
-        administratorInitialization.completePasswordDelivery(tenant.id(), workflow.workflowId(), now.plusSeconds(2));
+        administratorInitialization.completePasswordDelivery(activating, now.plusSeconds(2));
         assertEquals("COMPLETED", scalar("SELECT work_status FROM password_setup_delivery_work_items"));
     }
 
@@ -183,15 +239,122 @@ class TenantCreationPostgreSqlIT {
                 actor, uuidV7(81), "Quota Tenant", Instant.now().plusSeconds(3600), null);
         InitializationWorkflow prepared = administratorInitialization.prepare(
                 workflow(tenant.id(), actor, uuidV7(82), "e".repeat(64)), Instant.now());
+        InitializationWorkflow claimed = administratorInitialization.claim(
+                prepared.workflowId(), "postgres-it", Instant.now(), Instant.now().plusSeconds(30)).orElseThrow();
 
         administratorInitialization.completeFailure(
-                tenant.id(), prepared.workflowId(), "QUOTA_EXCEEDED", Instant.now());
+                claimed, "QUOTA_EXCEEDED", Instant.now());
         InitializationWorkflow replay = administratorInitialization.prepare(prepared, Instant.now());
 
         assertEquals("QUOTA_EXCEEDED", replay.outcomeCode());
         assertEquals("409", scalar("SELECT response_status::text FROM tenant_administrator_initialization_workflows"));
         assertEquals("true", scalar("SELECT relforcerowsecurity::text FROM pg_class "
                 + "WHERE relname = 'tenant_administrator_initialization_workflows'"));
+    }
+
+    @Test
+    void workerClaimRestoresAuthoritativeTargetAndExpiredLeaseTakeoverFencesOldExecutor() {
+        Instant now = Instant.parse("2026-08-23T09:00:00Z");
+        UUID actor = uuidV7(90);
+        TenantCreationResult tenant = service.create(
+                actor, uuidV7(91), "Lease Tenant", now.plusSeconds(3600), null);
+        InitializationWorkflow prepared = administratorInitialization.prepare(
+                workflow(tenant.id(), actor, uuidV7(92), "9".repeat(64)), now);
+
+        InitializationWorkflow first = administratorInitialization.claimNext(
+                "worker-a", now, now.plusSeconds(10)).orElseThrow();
+        assertEquals(prepared.workflowId(), first.workflowId());
+        assertEquals(tenant.id(), first.tenantId());
+        InitializationWorkflow identityReady = administratorInitialization.completeIdentity(
+                first, uuidV7(93), IdentityCredentialDisposition.PASSWORD_READY, now.plusSeconds(1));
+        InitializationWorkflow quotaConsumed = administratorInitialization.completeQuotaConsumption(
+                identityReady, now.plusSeconds(2));
+        InitializationWorkflow activating = administratorInitialization.beginActivation(
+                quotaConsumed, now.plusSeconds(3));
+
+        assertTrue(administratorInitialization.claimNext(
+                "worker-b", now.plusSeconds(9), now.plusSeconds(20)).isEmpty());
+        InitializationWorkflow takeover = administratorInitialization.claimNext(
+                "worker-b", now.plusSeconds(11), now.plusSeconds(21)).orElseThrow();
+        assertEquals(InitializationWorkflowState.ACTIVATING, takeover.state());
+        assertEquals(activating.attemptCount() + 1, takeover.attemptCount());
+        assertThrows(IllegalStateException.class,
+                () -> administratorInitialization.beginCompensation(activating, now.plusSeconds(12)));
+        InitializationWorkflow compensating = administratorInitialization.beginCompensation(
+                takeover, now.plusSeconds(12));
+        assertEquals(InitializationWorkflowState.COMPENSATING, compensating.state());
+    }
+
+    @Test
+    void localActivationCommitFailureUsesStableReleaseAndRequiresNewAttempt() throws SQLException {
+        Instant now = Instant.parse("2026-08-23T10:00:00Z");
+        UUID actor = uuidV7(100);
+        TenantCreationResult tenant = service.create(
+                actor, uuidV7(101), "Compensation Tenant", now.plusSeconds(3600), null);
+        List<UUID> consumed = new ArrayList<>();
+        List<UUID> released = new ArrayList<>();
+        InitializationQuotaGateway quota = new InitializationQuotaGateway() {
+            @Override
+            public void consume(UUID tenantId, UUID operationId) {
+                consumed.add(operationId);
+            }
+
+            @Override
+            public void release(UUID tenantId, UUID operationId) {
+                released.add(operationId);
+            }
+        };
+        Clock clock = Clock.fixed(now, ZoneOffset.UTC);
+        InitializeTenantAdministratorService initialization = new InitializeTenantAdministratorService(
+                administratorInitialization,
+                (requestId, email, displayName) -> new IdentityProvisioningGateway.Result(
+                        uuidV7(102), IdentityCredentialDisposition.PASSWORD_READY),
+                quota,
+                (requestId, identityId) -> { },
+                new UuidV7Generator(clock, new SecureRandom()), clock);
+
+        executeAsMigrator("""
+                CREATE OR REPLACE FUNCTION fail_tenant_admin_outbox() RETURNS trigger LANGUAGE plpgsql AS $$
+                BEGIN RAISE EXCEPTION 'forced local activation failure'; END $$;
+                CREATE TRIGGER fail_tenant_admin_outbox BEFORE INSERT ON tenant_access_outbox_events
+                FOR EACH ROW EXECUTE FUNCTION fail_tenant_admin_outbox()
+                """);
+        UUID firstKey = uuidV7(103);
+        try {
+            TenantAdministratorInitializationException failure = assertThrows(
+                    TenantAdministratorInitializationException.class,
+                    () -> initialization.initialize(
+                            actor, firstKey, tenant.id(), "admin@example.com", "Admin", null));
+            assertEquals("TENANT_ADMIN_INITIALIZATION_RETRY_REQUIRED", failure.code());
+        } finally {
+            executeAsMigrator("DROP TRIGGER fail_tenant_admin_outbox ON tenant_access_outbox_events; "
+                    + "DROP FUNCTION fail_tenant_admin_outbox()");
+        }
+
+        assertEquals(1, consumed.size());
+        assertEquals(List.of(UUID.fromString(scalar(
+                "SELECT release_operation_id::text FROM tenant_administrator_initialization_workflows "
+                        + "WHERE idempotency_key = '" + firstKey + "'"))), released);
+        assertEquals("TENANT_ADMIN_INITIALIZATION_RETRY_REQUIRED", scalar(
+                "SELECT outcome_code FROM tenant_administrator_initialization_workflows "
+                        + "WHERE idempotency_key = '" + firstKey + "'"));
+        assertEquals("PENDING", scalar("SELECT tenant_status FROM tenants WHERE id = '" + tenant.id() + "'"));
+        assertEquals(0, count("memberships"));
+
+        TenantAdministratorInitializationException replay = assertThrows(
+                TenantAdministratorInitializationException.class,
+                () -> initialization.initialize(
+                        actor, firstKey, tenant.id(), "admin@example.com", "Admin", null));
+        assertEquals("TENANT_ADMIN_INITIALIZATION_RETRY_REQUIRED", replay.code());
+        assertEquals(1, consumed.size());
+        assertEquals(1, released.size());
+
+        UUID secondKey = uuidV7(104);
+        TenantAdministratorInitializationResult result = initialization.initialize(
+                actor, secondKey, tenant.id(), "admin@example.com", "Admin", null);
+        assertEquals(TenantStatus.ACTIVE, result.status());
+        assertEquals(2, consumed.size());
+        assertNotEquals(consumed.get(0), consumed.get(1));
     }
 
     @Test
@@ -394,6 +557,27 @@ class TenantCreationPostgreSqlIT {
         return UUID.fromString("019535d9-0000-7000-8000-" + String.format("%012x", value));
     }
 
+    private static ConsumerRecord<String, String> awaitEvent(KafkaConsumer<String, String> consumer) {
+        Instant deadline = Instant.now().plusSeconds(15);
+        while (Instant.now().isBefore(deadline)) {
+            var records = consumer.poll(Duration.ofMillis(500));
+            if (!records.isEmpty()) {
+                return records.iterator().next();
+            }
+        }
+        throw new AssertionError("未收到 Tenant Access Outbox 事件");
+    }
+
+    private static KafkaConsumer<String, String> kafkaConsumer() {
+        Properties properties = new Properties();
+        properties.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, KAFKA.getBootstrapServers());
+        properties.put(ConsumerConfig.GROUP_ID_CONFIG, "tenant-access-test-" + UUID.randomUUID());
+        properties.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        return new KafkaConsumer<>(properties);
+    }
+
     private static Path repositoryRoot() {
         Path current = Path.of(System.getProperty("user.dir")).toAbsolutePath();
         while (current != null) {
@@ -455,6 +639,23 @@ class TenantCreationPostgreSqlIT {
         }
 
         @Bean
+        KafkaTemplate<String, String> kafkaTemplate() {
+            return new KafkaTemplate<>(new DefaultKafkaProducerFactory<>(Map.of(
+                    ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, KAFKA.getBootstrapServers(),
+                    ProducerConfig.ACKS_CONFIG, "all",
+                    ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class,
+                    ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class)));
+        }
+
+        @Bean
+        TenantAccessOutboxPublisher outboxPublisher(
+                OutboxEventRepository repository,
+                KafkaTemplate<String, String> kafkaTemplate,
+                Clock clock) {
+            return new TenantAccessOutboxPublisher(repository, kafkaTemplate, clock, Duration.ofSeconds(30));
+        }
+
+        @Bean
         TenantCreatedEventFactory eventFactory(ObjectMapper objectMapper, UuidV7Generator ids) {
             return new TenantCreatedEventFactory(
                     objectMapper, ids, "saasforge.test.tenant-access-service.events");
@@ -471,7 +672,7 @@ class TenantCreationPostgreSqlIT {
         CreatePendingTenantService service(
                 MyBatisTenantRepository tenants,
                 MyBatisTenantCreationIdempotency idempotency,
-                MyBatisTenantAccessOutboxEventRepository outbox,
+                OutboxEventRepository outbox,
                 TenantCreatedEventFactory events,
                 UuidV7Generator ids,
                 Clock clock) {

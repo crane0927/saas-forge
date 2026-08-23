@@ -1,6 +1,7 @@
 package io.saasforge.tenantaccess.application.administrator;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -12,6 +13,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,6 +29,10 @@ class InitializeTenantAdministratorServiceTest {
     private final InMemoryWorkflows workflows = new InMemoryWorkflows();
     private IdentityCredentialDisposition disposition;
     private QuotaUnavailableException quotaFailure;
+    private boolean identityTemporarilyUnavailable;
+    private boolean quotaTemporarilyUnavailable;
+    private boolean releaseTemporarilyUnavailable;
+    private boolean activationFails;
     private boolean deliveryFails;
     private InitializeTenantAdministratorService service;
 
@@ -34,18 +40,41 @@ class InitializeTenantAdministratorServiceTest {
     void setUp() {
         disposition = IdentityCredentialDisposition.SETUP_ALLOWED;
         quotaFailure = null;
+        identityTemporarilyUnavailable = false;
+        quotaTemporarilyUnavailable = false;
+        releaseTemporarilyUnavailable = false;
+        activationFails = false;
         deliveryFails = false;
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
         service = new InitializeTenantAdministratorService(
                 workflows,
                 (requestId, email, displayName) -> {
                     calls.add("identity:" + requestId);
+                    if (identityTemporarilyUnavailable) {
+                        throw new RemoteWorkflowUnavailableException(new IllegalStateException("IAM unavailable"));
+                    }
                     return new IdentityProvisioningGateway.Result(IDENTITY, disposition);
                 },
-                (tenantId, operationId) -> {
-                    calls.add("quota:" + operationId);
-                    if (quotaFailure != null) {
-                        throw quotaFailure;
+                new InitializationQuotaGateway() {
+                    @Override
+                    public void consume(UUID tenantId, UUID operationId) {
+                        calls.add("quota:" + operationId);
+                        if (quotaFailure != null) {
+                            throw quotaFailure;
+                        }
+                        if (quotaTemporarilyUnavailable) {
+                            throw new RemoteWorkflowUnavailableException(
+                                    new IllegalStateException("Entitlement unavailable"));
+                        }
+                    }
+
+                    @Override
+                    public void release(UUID tenantId, UUID operationId) {
+                        calls.add("release:" + operationId);
+                        if (releaseTemporarilyUnavailable) {
+                            throw new RemoteWorkflowUnavailableException(
+                                    new IllegalStateException("Entitlement unavailable"));
+                        }
                     }
                 },
                 (requestId, identityId) -> {
@@ -64,22 +93,17 @@ class InitializeTenantAdministratorServiceTest {
         TenantAdministratorInitializationResult replay = initialize();
 
         assertSame(first, replay);
-        assertEquals(List.of(
-                "prepare",
-                "identity:" + workflows.workflow.identityRequestId(),
-                "quota:" + workflows.workflow.consumeOperationId(),
-                "activate",
-                "delivery:" + workflows.workflow.passwordDeliveryRequestId(),
-                "delivery-complete",
-                "prepare"), calls);
+        assertEquals(1, calls.stream().filter(call -> call.startsWith("identity:")).count());
+        assertEquals(1, calls.stream().filter(call -> call.startsWith("quota:")).count());
+        assertEquals(1, calls.stream().filter("activate"::equals).count());
+        assertEquals(1, calls.stream().filter(call -> call.startsWith("delivery:")).count());
     }
 
     @Test
     void passwordReadySkipsDeliveryAndRecoveryStopsBeforeQuota() {
         disposition = IdentityCredentialDisposition.PASSWORD_READY;
         initialize();
-        assertEquals(List.of("prepare", "identity:" + workflows.workflow.identityRequestId(),
-                "quota:" + workflows.workflow.consumeOperationId(), "activate"), calls);
+        assertEquals(0, calls.stream().filter(call -> call.startsWith("delivery:")).count());
 
         calls.clear();
         workflows.workflow = null;
@@ -87,7 +111,7 @@ class InitializeTenantAdministratorServiceTest {
         TenantAdministratorInitializationException exception = assertThrows(
                 TenantAdministratorInitializationException.class, this::initialize);
         assertEquals("IDENTITY_CREDENTIAL_RECOVERY_REQUIRED", exception.code());
-        assertEquals(List.of("prepare", "identity:" + workflows.workflow.identityRequestId(), "failure"), calls);
+        assertEquals(0, calls.stream().filter(call -> call.startsWith("quota:")).count());
     }
 
     @Test
@@ -104,9 +128,53 @@ class InitializeTenantAdministratorServiceTest {
         deliveryFails = true;
         TenantAdministratorInitializationResult result = initialize();
         assertEquals(TenantStatus.ACTIVE, result.status());
-        assertEquals(List.of("prepare", "identity:" + workflows.workflow.identityRequestId(),
-                "quota:" + workflows.workflow.consumeOperationId(), "activate",
-                "delivery:" + workflows.workflow.passwordDeliveryRequestId()), calls);
+        assertEquals(1, calls.stream().filter("activate"::equals).count());
+        assertEquals(1, calls.stream().filter(call -> call.startsWith("delivery:")).count());
+
+        deliveryFails = false;
+        service.recoverNext();
+        assertEquals(2, calls.stream().filter(call -> call.startsWith("delivery:")).count());
+        assertEquals(0, calls.stream().filter(call -> call.startsWith("release:")).count());
+        assertFalse(workflows.workflow.passwordDeliveryPending());
+    }
+
+    @Test
+    void workerContinuesSameStableWorkflowAfterIamAndEntitlementRecover() {
+        identityTemporarilyUnavailable = true;
+        assertThrows(RemoteWorkflowUnavailableException.class, this::initialize);
+        UUID identityRequestId = workflows.workflow.identityRequestId();
+        UUID consumeOperationId = workflows.workflow.consumeOperationId();
+        assertEquals(InitializationWorkflowState.PREPARED, workflows.workflow.state());
+
+        identityTemporarilyUnavailable = false;
+        quotaTemporarilyUnavailable = true;
+        service.recoverNext();
+        assertEquals(InitializationWorkflowState.IDENTITY_READY, workflows.workflow.state());
+
+        quotaTemporarilyUnavailable = false;
+        service.recoverNext();
+        assertEquals("SUCCESS", workflows.workflow.outcomeCode());
+        assertEquals(2, calls.stream().filter(call -> call.equals("identity:" + identityRequestId)).count());
+        assertEquals(2, calls.stream().filter(call -> call.equals("quota:" + consumeOperationId)).count());
+    }
+
+    @Test
+    void compensationReplayUsesStableReleaseOperationAndRequiresNewAttempt() {
+        activationFails = true;
+        releaseTemporarilyUnavailable = true;
+
+        TenantAdministratorInitializationException compensating = assertThrows(
+                TenantAdministratorInitializationException.class, this::initialize);
+        assertEquals("TENANT_ADMIN_INITIALIZATION_COMPENSATING", compensating.code());
+        UUID releaseOperationId = workflows.workflow.releaseOperationId();
+        assertEquals(1, calls.stream().filter(call -> call.equals("release:" + releaseOperationId)).count());
+
+        releaseTemporarilyUnavailable = false;
+        service.recoverNext();
+        assertEquals(2, calls.stream().filter(call -> call.equals("release:" + releaseOperationId)).count());
+        TenantAdministratorInitializationException retryRequired = assertThrows(
+                TenantAdministratorInitializationException.class, this::initialize);
+        assertEquals("TENANT_ADMIN_INITIALIZATION_RETRY_REQUIRED", retryRequired.code());
     }
 
     private TenantAdministratorInitializationResult initialize() {
@@ -130,9 +198,71 @@ class InitializeTenantAdministratorServiceTest {
         }
 
         @Override
-        public void completeFailure(UUID tenantId, UUID workflowId, String outcomeCode, Instant completedAt) {
+        public Optional<InitializationWorkflow> claim(
+                UUID workflowId, String claimant, Instant now, Instant claimedUntil) {
+            calls.add("claim");
+            if (workflow.leaseOwner() != null) {
+                return Optional.empty();
+            }
+            workflow = copy(workflow, workflow.state(), workflow.outcomeCode(), workflow.result(),
+                    workflow.administratorIdentityId(), workflow.credentialDisposition(),
+                    workflow.passwordDeliveryPending(), workflow.attemptCount() + 1, claimant, claimedUntil);
+            return Optional.of(workflow);
+        }
+
+        @Override
+        public Optional<InitializationWorkflow> claimNext(String claimant, Instant now, Instant claimedUntil) {
+            return workflow == null ? Optional.empty() : claim(workflow.workflowId(), claimant, now, claimedUntil);
+        }
+
+        @Override
+        public InitializationWorkflow completeIdentity(
+                InitializationWorkflow current,
+                UUID administratorIdentityId,
+                IdentityCredentialDisposition credentialDisposition,
+                Instant completedAt) {
+            workflow = copy(current, InitializationWorkflowState.IDENTITY_READY, null, null,
+                    administratorIdentityId, credentialDisposition, false,
+                    current.attemptCount(), current.leaseOwner(), current.leaseUntil());
+            return workflow;
+        }
+
+        @Override
+        public InitializationWorkflow completeQuotaConsumption(InitializationWorkflow current, Instant completedAt) {
+            return transition(current, InitializationWorkflowState.QUOTA_CONSUMED);
+        }
+
+        @Override
+        public InitializationWorkflow beginActivation(InitializationWorkflow current, Instant startedAt) {
+            return transition(current, InitializationWorkflowState.ACTIVATING);
+        }
+
+        @Override
+        public InitializationWorkflow beginCompensation(InitializationWorkflow current, Instant startedAt) {
+            return transition(current, InitializationWorkflowState.COMPENSATING);
+        }
+
+        @Override
+        public void scheduleRetry(InitializationWorkflow current, Instant retryAt, String failureSummary) {
+            workflow = copy(workflow, workflow.state(), workflow.outcomeCode(), workflow.result(),
+                    workflow.administratorIdentityId(), workflow.credentialDisposition(),
+                    workflow.passwordDeliveryPending(), workflow.attemptCount(), null, null);
+        }
+
+        @Override
+        public void completeCompensation(InitializationWorkflow current, Instant completedAt) {
+            workflow = copy(current, InitializationWorkflowState.FAILED,
+                    "TENANT_ADMIN_INITIALIZATION_RETRY_REQUIRED", null,
+                    current.administratorIdentityId(), current.credentialDisposition(), false,
+                    current.attemptCount(), null, null);
+        }
+
+        @Override
+        public void completeFailure(InitializationWorkflow current, String outcomeCode, Instant completedAt) {
             calls.add("failure");
-            workflow = completed(workflow, outcomeCode, null);
+            workflow = copy(current, InitializationWorkflowState.FAILED, outcomeCode, null,
+                    current.administratorIdentityId(), current.credentialDisposition(), false,
+                    current.attemptCount(), null, null);
         }
 
         @Override
@@ -142,26 +272,56 @@ class InitializeTenantAdministratorServiceTest {
                 IdentityCredentialDisposition credentialDisposition,
                 Instant activatedAt) {
             calls.add("activate");
+            if (activationFails) {
+                throw new IllegalStateException("local activation commit failed");
+            }
             TenantAdministratorInitializationResult result = new TenantAdministratorInitializationResult(
                     TENANT, "Acme", TenantStatus.ACTIVE, NOW.plusSeconds(3600), NOW.minusSeconds(60), NOW);
-            workflow = completed(workflow, "SUCCESS", result);
+            workflow = copy(current, InitializationWorkflowState.SUCCEEDED, "SUCCESS", result,
+                    administratorIdentityId, credentialDisposition,
+                    credentialDisposition == IdentityCredentialDisposition.SETUP_ALLOWED,
+                    current.attemptCount(), credentialDisposition == IdentityCredentialDisposition.SETUP_ALLOWED
+                            ? current.leaseOwner() : null,
+                    credentialDisposition == IdentityCredentialDisposition.SETUP_ALLOWED
+                            ? current.leaseUntil() : null);
             return result;
         }
 
         @Override
-        public void completePasswordDelivery(UUID tenantId, UUID workflowId, Instant completedAt) {
+        public void completePasswordDelivery(InitializationWorkflow current, Instant completedAt) {
             calls.add("delivery-complete");
+            workflow = copy(workflow, InitializationWorkflowState.SUCCEEDED, "SUCCESS", workflow.result(),
+                    workflow.administratorIdentityId(), workflow.credentialDisposition(), false,
+                    workflow.attemptCount(), null, null);
         }
 
-        private InitializationWorkflow completed(
+        private InitializationWorkflow transition(
+                InitializationWorkflow current, InitializationWorkflowState state) {
+            workflow = copy(current, state, current.outcomeCode(), current.result(),
+                    current.administratorIdentityId(), current.credentialDisposition(),
+                    current.passwordDeliveryPending(), current.attemptCount(),
+                    current.leaseOwner(), current.leaseUntil());
+            return workflow;
+        }
+
+        private InitializationWorkflow copy(
                 InitializationWorkflow current,
+                InitializationWorkflowState state,
                 String outcome,
-                TenantAdministratorInitializationResult result) {
+                TenantAdministratorInitializationResult result,
+                UUID administratorIdentityId,
+                IdentityCredentialDisposition credentialDisposition,
+                boolean deliveryPending,
+                int attemptCount,
+                String leaseOwner,
+                Instant leaseUntil) {
             return new InitializationWorkflow(
                     current.workflowId(), current.tenantId(), current.actorIdentityId(), current.idempotencyKey(),
                     current.requestFingerprint(), current.administratorEmail(), current.administratorDisplayName(),
                     current.identityRequestId(), current.consumeOperationId(), current.releaseOperationId(),
-                    current.passwordDeliveryRequestId(), current.traceId(), outcome, result, current.createdAt());
+                    current.passwordDeliveryRequestId(), current.traceId(), outcome, result, current.createdAt(),
+                    state, administratorIdentityId, credentialDisposition, deliveryPending, attemptCount,
+                    current.nextAttemptAt(), leaseOwner, leaseUntil);
         }
     }
 }

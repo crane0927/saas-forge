@@ -24,8 +24,51 @@ public interface TenantAdministratorInitializationMapper {
 
     TenantAdministratorInitializationRow lockWorkflow(@Param("workflowId") UUID workflowId);
 
+    UUID claimWorkflow(
+            @Param("workflowId") UUID workflowId,
+            @Param("claimant") String claimant,
+            @Param("at") OffsetDateTime at,
+            @Param("claimedUntil") OffsetDateTime claimedUntil);
+
+    UUID claimNextWorkflow(
+            @Param("claimant") String claimant,
+            @Param("at") OffsetDateTime at,
+            @Param("claimedUntil") OffsetDateTime claimedUntil);
+
+    int completeIdentity(
+            @Param("workflowId") UUID workflowId,
+            @Param("claimant") String claimant,
+            @Param("attemptCount") int attemptCount,
+            @Param("administratorIdentityId") UUID administratorIdentityId,
+            @Param("credentialDisposition") String credentialDisposition,
+            @Param("completedAt") OffsetDateTime completedAt);
+
+    int transitionState(
+            @Param("workflowId") UUID workflowId,
+            @Param("claimant") String claimant,
+            @Param("attemptCount") int attemptCount,
+            @Param("expectedState") String expectedState,
+            @Param("nextState") String nextState,
+            @Param("transitionedAt") OffsetDateTime transitionedAt);
+
+    int scheduleRetry(
+            @Param("workflowId") UUID workflowId,
+            @Param("claimant") String claimant,
+            @Param("attemptCount") int attemptCount,
+            @Param("retryAt") OffsetDateTime retryAt,
+            @Param("lastFailure") String lastFailure);
+
+    int completeCompensation(
+            @Param("workflowId") UUID workflowId,
+            @Param("claimant") String claimant,
+            @Param("attemptCount") int attemptCount,
+            @Param("completedAt") OffsetDateTime completedAt,
+            @Param("expiresAt") OffsetDateTime expiresAt);
+
     int completeFailure(
             @Param("workflowId") UUID workflowId,
+            @Param("claimant") String claimant,
+            @Param("attemptCount") int attemptCount,
             @Param("outcomeCode") String outcomeCode,
             @Param("responseStatus") int responseStatus,
             @Param("completedAt") OffsetDateTime completedAt,
@@ -71,11 +114,16 @@ public interface TenantAdministratorInitializationMapper {
 
     int completeSuccess(
             @Param("workflowId") UUID workflowId,
+            @Param("claimant") String claimant,
+            @Param("attemptCount") int attemptCount,
             @Param("responseBody") String responseBody,
+            @Param("releaseLease") boolean releaseLease,
             @Param("completedAt") OffsetDateTime completedAt,
             @Param("expiresAt") OffsetDateTime expiresAt);
 
     int completePasswordDelivery(
             @Param("workflowId") UUID workflowId,
+            @Param("claimant") String claimant,
+            @Param("attemptCount") int attemptCount,
             @Param("completedAt") OffsetDateTime completedAt);
 }

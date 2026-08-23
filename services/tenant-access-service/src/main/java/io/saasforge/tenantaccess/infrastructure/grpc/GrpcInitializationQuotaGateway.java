@@ -25,22 +25,36 @@ public final class GrpcInitializationQuotaGateway implements InitializationQuota
 
     @Override
     public void consume(UUID tenantId, UUID operationId) {
+        execute(tenantId, operationId, true);
+    }
+
+    @Override
+    public void release(UUID tenantId, UUID operationId) {
+        execute(tenantId, operationId, false);
+    }
+
+    private void execute(UUID tenantId, UUID operationId, boolean consume) {
         try {
-            client.withInterceptors(MetadataUtils.newAttachHeadersInterceptor(
-                            GrpcIdentityProvisioningGateway.metadata(accessToken.get())))
-                    .consume(QuotaCommandRequest.newBuilder()
-                            .setTenantId(tenantId.toString())
-                            .setQuotaCode("max_users")
-                            .setAmount(1)
-                            .setOperationId(operationId.toString())
-                            .setPurpose(QuotaPurpose.TENANT_ADMIN_INITIALIZATION)
-                            .build());
+            QuotaCommandRequest request = QuotaCommandRequest.newBuilder()
+                    .setTenantId(tenantId.toString())
+                    .setQuotaCode("max_users")
+                    .setAmount(1)
+                    .setOperationId(operationId.toString())
+                    .setPurpose(QuotaPurpose.TENANT_ADMIN_INITIALIZATION)
+                    .build();
+            var authorized = client.withInterceptors(MetadataUtils.newAttachHeadersInterceptor(
+                    GrpcIdentityProvisioningGateway.metadata(accessToken.get())));
+            if (consume) {
+                authorized.consume(request);
+            } else {
+                authorized.release(request);
+            }
         } catch (StatusRuntimeException exception) {
             String code = exception.getStatus().getDescription();
-            if ((exception.getStatus().getCode() == Status.Code.RESOURCE_EXHAUSTED
+            if (consume && ((exception.getStatus().getCode() == Status.Code.RESOURCE_EXHAUSTED
                     && "QUOTA_EXCEEDED".equals(code))
                     || (exception.getStatus().getCode() == Status.Code.FAILED_PRECONDITION
-                    && "SUBSCRIPTION_REQUIRED".equals(code))) {
+                    && "SUBSCRIPTION_REQUIRED".equals(code)))) {
                 throw new QuotaUnavailableException(code, exception);
             }
             throw new RemoteWorkflowUnavailableException(exception);

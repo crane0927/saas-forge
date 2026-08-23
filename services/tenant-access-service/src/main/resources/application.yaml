@@ -22,6 +22,12 @@ spring:
         fail-fast: true
   flyway:
     enabled: false
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
   grpc:
     client:
       channels:
@@ -43,6 +49,14 @@ saasforge:
     service-client-id-file: ${SAASFORGE_SERVICE_CLIENT_ID_FILE:?SAASFORGE_SERVICE_CLIENT_ID_FILE is required}
     service-client-secret-file: ${SAASFORGE_SERVICE_CLIENT_SECRET_FILE:?SAASFORGE_SERVICE_CLIENT_SECRET_FILE is required}
     outbox-topic: saasforge.${saasforge.environment}.tenant-access-service.events
+    outbox:
+      publish-delay: PT1S
+      lease-duration: PT30S
+    initialization:
+      recovery-delay: PT1S
+      lease-duration: PT30S
+      initial-backoff: PT1S
+      maximum-backoff: PT1M
 
 mybatis:
   mapper-locations: classpath*:mapper/**/*Mapper.xml
