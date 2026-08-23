@@ -985,9 +985,8 @@ components:
       properties:
         planId: { $ref: './common.yaml#/components/schemas/UuidV7' }
         endsAt:
-          oneOf:
-            - $ref: '#/components/schemas/Timestamp'
-            - type: 'null'
+          type: [string, 'null']
+          format: date-time
       additionalProperties: false
     RuntimeScope:
       type: string

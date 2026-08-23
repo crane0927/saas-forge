@@ -6,12 +6,18 @@ import io.saasforge.entitlement.application.bootstrap.IdempotencyRequestInProgre
 import io.saasforge.entitlement.domain.plan.PlanAlreadyExistsException;
 import io.saasforge.entitlement.domain.plan.PlanInvalidException;
 import io.saasforge.entitlement.domain.plan.PlanNotFoundException;
+import io.saasforge.entitlement.domain.plan.PlanNotActiveException;
 import io.saasforge.entitlement.domain.plan.PlanTransitionException;
 import io.saasforge.entitlement.domain.quota.QuotaDefinitionAlreadyExistsException;
 import io.saasforge.entitlement.domain.quota.QuotaDefinitionInvalidException;
 import io.saasforge.entitlement.domain.quota.QuotaDefinitionNotFoundException;
 import io.saasforge.entitlement.domain.quota.QuotaDefinitionTransitionException;
 import io.saasforge.sdk.auth.PlatformAuthorizationDeniedException;
+import io.saasforge.entitlement.application.subscription.TenantEligibilityUnavailableException;
+import io.saasforge.entitlement.application.subscription.TenantExpiryReachedException;
+import io.saasforge.entitlement.application.subscription.TenantInvalidStateException;
+import io.saasforge.entitlement.application.subscription.TenantNotFoundException;
+import io.saasforge.entitlement.domain.subscription.InitialSubscriptionAlreadyExistsException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
 import java.util.UUID;
@@ -45,10 +51,11 @@ public class EntitlementBootstrapExceptionHandler {
                 "Invalid idempotency key", exception.getMessage(), request);
     }
 
-    @ExceptionHandler({QuotaDefinitionNotFoundException.class, PlanNotFoundException.class})
+    @ExceptionHandler({QuotaDefinitionNotFoundException.class, PlanNotFoundException.class, TenantNotFoundException.class})
     ResponseEntity<Problem> notFound(RuntimeException exception, HttpServletRequest request) {
         String code = exception instanceof QuotaDefinitionNotFoundException
-                ? QuotaDefinitionNotFoundException.CODE : PlanNotFoundException.CODE;
+                ? QuotaDefinitionNotFoundException.CODE
+                : exception instanceof PlanNotFoundException ? PlanNotFoundException.CODE : TenantNotFoundException.CODE;
         return problem(HttpStatus.NOT_FOUND, code, "Entitlement resource not found", exception.getMessage(), request);
     }
 
@@ -58,7 +65,11 @@ public class EntitlementBootstrapExceptionHandler {
             QuotaDefinitionAlreadyExistsException.class,
             QuotaDefinitionTransitionException.class,
             PlanAlreadyExistsException.class,
-            PlanTransitionException.class
+            PlanTransitionException.class,
+            PlanNotActiveException.class,
+            InitialSubscriptionAlreadyExistsException.class,
+            TenantInvalidStateException.class,
+            TenantExpiryReachedException.class
     })
     ResponseEntity<Problem> conflict(RuntimeException exception, HttpServletRequest request) {
         String code;
@@ -74,6 +85,14 @@ public class EntitlementBootstrapExceptionHandler {
             code = PlanAlreadyExistsException.CODE;
         } else if (exception instanceof PlanTransitionException) {
             code = PlanTransitionException.CODE;
+        } else if (exception instanceof PlanNotActiveException) {
+            code = PlanNotActiveException.CODE;
+        } else if (exception instanceof InitialSubscriptionAlreadyExistsException) {
+            code = InitialSubscriptionAlreadyExistsException.CODE;
+        } else if (exception instanceof TenantInvalidStateException) {
+            code = TenantInvalidStateException.CODE;
+        } else if (exception instanceof TenantExpiryReachedException) {
+            code = TenantExpiryReachedException.CODE;
         } else {
             throw new IllegalStateException("未映射的 Entitlement 冲突", exception);
         }
@@ -83,6 +102,13 @@ public class EntitlementBootstrapExceptionHandler {
             response.header("Retry-After", "1");
         }
         return response.body(body(HttpStatus.CONFLICT, code, "Entitlement conflict", exception.getMessage(), request));
+    }
+
+    @ExceptionHandler(TenantEligibilityUnavailableException.class)
+    ResponseEntity<Problem> tenantEligibilityUnavailable(
+            TenantEligibilityUnavailableException exception, HttpServletRequest request) {
+        return problem(HttpStatus.BAD_GATEWAY, TenantEligibilityUnavailableException.CODE,
+                "Tenant eligibility unavailable", exception.getMessage(), request);
     }
 
     private static ResponseEntity<Problem> problem(

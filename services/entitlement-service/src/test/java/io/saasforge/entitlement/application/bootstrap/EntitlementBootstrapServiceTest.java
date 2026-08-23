@@ -158,7 +158,7 @@ class EntitlementBootstrapServiceTest {
                 UUID callerIdentityId, UUID idempotencyKey, Operation operation,
                 String fingerprint, UUID targetId, Instant expiresAt) {
             return entries.putIfAbsent(key(callerIdentityId, idempotencyKey),
-                    new Entry(operation, fingerprint, targetId, null, null, null)) == null;
+                    new Entry(operation, fingerprint, targetId, null, null, null, null)) == null;
         }
 
         @Override
@@ -172,7 +172,7 @@ class EntitlementBootstrapServiceTest {
                 QuotaDefinitionResult result, Instant completedAt) {
             Entry current = entries.get(key(callerIdentityId, idempotencyKey));
             entries.put(key(callerIdentityId, idempotencyKey), new Entry(
-                    current.operation(), current.fingerprint(), current.targetId(), status, result, null));
+                    current.operation(), current.fingerprint(), current.targetId(), status, result, null, null));
         }
 
         @Override
@@ -181,7 +181,17 @@ class EntitlementBootstrapServiceTest {
                 PlanResult result, Instant completedAt) {
             Entry current = entries.get(key(callerIdentityId, idempotencyKey));
             entries.put(key(callerIdentityId, idempotencyKey), new Entry(
-                    current.operation(), current.fingerprint(), current.targetId(), status, null, result));
+                    current.operation(), current.fingerprint(), current.targetId(), status, null, result, null));
+        }
+
+        @Override
+        public void completeInitialSubscription(
+                UUID callerIdentityId, UUID idempotencyKey, int status,
+                io.saasforge.entitlement.application.subscription.InitialSubscriptionResult result,
+                Instant completedAt) {
+            Entry current = entries.get(key(callerIdentityId, idempotencyKey));
+            entries.put(key(callerIdentityId, idempotencyKey), new Entry(
+                    current.operation(), current.fingerprint(), current.targetId(), status, null, null, result));
         }
 
         private static String key(UUID actor, UUID idempotencyKey) {

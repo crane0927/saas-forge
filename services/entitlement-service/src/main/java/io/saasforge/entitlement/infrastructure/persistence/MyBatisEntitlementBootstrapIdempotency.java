@@ -3,6 +3,7 @@ package io.saasforge.entitlement.infrastructure.persistence;
 import io.saasforge.entitlement.application.bootstrap.EntitlementBootstrapIdempotency;
 import io.saasforge.entitlement.application.bootstrap.PlanResult;
 import io.saasforge.entitlement.application.bootstrap.QuotaDefinitionResult;
+import io.saasforge.entitlement.application.subscription.InitialSubscriptionResult;
 import io.saasforge.entitlement.infrastructure.persistence.mapper.EntitlementBootstrapMapper;
 import io.saasforge.entitlement.infrastructure.persistence.record.EntitlementIdempotencyRow;
 import java.time.Instant;
@@ -15,6 +16,7 @@ import tools.jackson.databind.ObjectMapper;
 public class MyBatisEntitlementBootstrapIdempotency implements EntitlementBootstrapIdempotency {
     private static final String QUOTA_DEFINITION = "QUOTA_DEFINITION";
     private static final String PLAN = "PLAN";
+    private static final String SUBSCRIPTION = "SUBSCRIPTION";
 
     private final EntitlementBootstrapMapper mapper;
     private final ObjectMapper objectMapper;
@@ -53,7 +55,9 @@ public class MyBatisEntitlementBootstrapIdempotency implements EntitlementBootst
                         QUOTA_DEFINITION.equals(row.responseKind())
                                 ? objectMapper.readValue(row.responseBody(), QuotaDefinitionResult.class) : null,
                         PLAN.equals(row.responseKind())
-                                ? objectMapper.readValue(row.responseBody(), PlanResult.class) : null));
+                                ? objectMapper.readValue(row.responseBody(), PlanResult.class) : null,
+                        SUBSCRIPTION.equals(row.responseKind())
+                                ? objectMapper.readValue(row.responseBody(), InitialSubscriptionResult.class) : null));
     }
 
     @Override
@@ -69,6 +73,14 @@ public class MyBatisEntitlementBootstrapIdempotency implements EntitlementBootst
             UUID callerIdentityId, UUID idempotencyKey, int responseStatus,
             PlanResult result, Instant completedAt) {
         complete(callerIdentityId, idempotencyKey, responseStatus, PLAN,
+                objectMapper.writeValueAsString(result), completedAt);
+    }
+
+    @Override
+    public void completeInitialSubscription(
+            UUID callerIdentityId, UUID idempotencyKey, int responseStatus,
+            InitialSubscriptionResult result, Instant completedAt) {
+        complete(callerIdentityId, idempotencyKey, responseStatus, SUBSCRIPTION,
                 objectMapper.writeValueAsString(result), completedAt);
     }
 

@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="io.saasforge.entitlement.infrastructure.persistence.mapper.EntitlementBootstrapMapper">
+    <select id="setOperationTarget" resultType="string">
+        SELECT set_config('app.tenant_id', CAST(#{tenantId} AS TEXT), true)
+    </select>
+
     <insert id="insertQuotaDefinition">
         INSERT INTO quota_definitions
             (id, code, quota_definition_status, created_at, updated_at)
@@ -68,6 +72,14 @@
         WHERE id = #{id}
           AND plan_status = 'DRAFT'
     </update>
+
+    <insert id="insertSubscription">
+        INSERT INTO subscriptions
+            (id, tenant_id, plan_id, subscription_status, ends_at, created_at)
+        VALUES
+            (#{row.id}, #{row.tenantId}, #{row.planId}, #{row.status}, #{row.endsAt}, #{row.createdAt})
+        ON CONFLICT (tenant_id) DO NOTHING
+    </insert>
 
     <delete id="deleteExpiredIdempotency">
         DELETE FROM entitlement_bootstrap_idempotency

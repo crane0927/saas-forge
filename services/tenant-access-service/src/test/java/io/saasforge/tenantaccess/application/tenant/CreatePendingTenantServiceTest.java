@@ -94,6 +94,11 @@ class CreatePendingTenantServiceTest {
         public void create(Tenant tenant) {
             created.add(tenant);
         }
+
+        @Override
+        public Optional<Tenant> findById(UUID tenantId) {
+            return created.stream().filter(tenant -> tenant.id().equals(tenantId)).findFirst();
+        }
     }
 
     private static final class InMemoryIdempotency implements TenantCreationIdempotency {

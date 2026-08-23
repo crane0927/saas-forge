@@ -4,6 +4,8 @@ import io.saasforge.entitlement.application.authorization.PlatformAdminAuthorize
 import io.saasforge.entitlement.application.bootstrap.EntitlementBootstrapService;
 import io.saasforge.entitlement.application.bootstrap.PlanResult;
 import io.saasforge.entitlement.application.bootstrap.QuotaDefinitionResult;
+import io.saasforge.entitlement.application.subscription.CreateInitialSubscriptionService;
+import io.saasforge.entitlement.application.subscription.InitialSubscriptionResult;
 import io.saasforge.entitlement.contract.api.PlatformEntitlementBootstrapApi;
 import io.saasforge.entitlement.contract.model.CreatePlanRequest;
 import io.saasforge.entitlement.contract.model.CreateQuotaDefinitionRequest;
@@ -32,11 +34,15 @@ public class EntitlementBootstrapController implements PlatformEntitlementBootst
 
     private final PlatformAdminAuthorizer authorizer;
     private final EntitlementBootstrapService bootstrap;
+    private final CreateInitialSubscriptionService initialSubscriptions;
 
     public EntitlementBootstrapController(
-            PlatformAdminAuthorizer authorizer, EntitlementBootstrapService bootstrap) {
+            PlatformAdminAuthorizer authorizer,
+            EntitlementBootstrapService bootstrap,
+            CreateInitialSubscriptionService initialSubscriptions) {
         this.authorizer = authorizer;
         this.bootstrap = bootstrap;
+        this.initialSubscriptions = initialSubscriptions;
     }
 
     @Override
@@ -89,7 +95,14 @@ public class EntitlementBootstrapController implements PlatformEntitlementBootst
             UUID tenantId,
             UUID idempotencyKey,
             io.saasforge.entitlement.contract.model.CreateInitialSubscriptionRequest request) {
-        return ResponseEntity.status(405).build();
+        HttpServletRequest httpRequest = currentRequest();
+        UUID actor = authorizer.authorize(httpRequest.getHeader(HttpHeaders.AUTHORIZATION));
+        InitialSubscriptionResult result = initialSubscriptions.create(
+                actor, idempotencyKey, tenantId, request.getPlanId(),
+                request.getEndsAt() == null ? null : request.getEndsAt().toInstant(), traceId(httpRequest));
+        return ResponseEntity.created(URI.create(
+                        "/api/v1/platform/tenants/" + tenantId + "/subscriptions/" + result.id()))
+                .body(toResponse(result));
     }
 
     private static QuotaDefinition toResponse(QuotaDefinitionResult result) {
@@ -106,6 +119,13 @@ public class EntitlementBootstrapController implements PlatformEntitlementBootst
                         .map(limit -> new PlanQuotaLimit(limit.quotaDefinitionId(), limit.limit()))
                         .toList(),
                 result.createdAt().atOffset(ZoneOffset.UTC), result.updatedAt().atOffset(ZoneOffset.UTC));
+    }
+
+    private static Subscription toResponse(InitialSubscriptionResult result) {
+        return new Subscription(
+                result.id(), result.tenantId(), result.planId(), Subscription.StatusEnum.ACTIVE,
+                result.endsAt() == null ? null : result.endsAt().atOffset(ZoneOffset.UTC),
+                result.createdAt().atOffset(ZoneOffset.UTC));
     }
 
     private static HttpServletRequest currentRequest() {

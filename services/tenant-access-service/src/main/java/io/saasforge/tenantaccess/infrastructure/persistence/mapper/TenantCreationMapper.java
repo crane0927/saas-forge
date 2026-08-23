@@ -12,6 +12,8 @@ public interface TenantCreationMapper {
 
     int insertTenant(@Param("row") TenantRow row);
 
+    TenantRow findTenant(@Param("tenantId") UUID tenantId);
+
     int deleteExpiredIdempotency(
             @Param("callerIdentityId") UUID callerIdentityId,
             @Param("idempotencyKey") UUID idempotencyKey,

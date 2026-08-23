@@ -28,6 +28,9 @@ spring:
         iam:
           address: ${IAM_GRPC_ADDRESS:static://iam-service:9090}
           default-deadline: PT3S
+        tenant-access:
+          address: ${TENANT_ACCESS_GRPC_ADDRESS:static://tenant-access-service:9090}
+          default-deadline: PT3S
 
 security:
   jwt:

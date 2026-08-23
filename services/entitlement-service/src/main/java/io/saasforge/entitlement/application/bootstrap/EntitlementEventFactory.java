@@ -1,5 +1,6 @@
 package io.saasforge.entitlement.application.bootstrap;
 
+import io.saasforge.entitlement.application.subscription.InitialSubscriptionResult;
 import io.saasforge.entitlement.domain.outbox.OutboxEvent;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -43,6 +44,22 @@ public final class EntitlementEventFactory {
         String action = activated ? "activated" : "created";
         return event(result.id(), "com.saasforge.plan." + action + ".v1",
                 "plan-" + action + ".v1.schema.json", data, occurredAt, traceId);
+    }
+
+    public OutboxEvent subscription(
+            InitialSubscriptionResult result,
+            UUID actorIdentityId,
+            Instant occurredAt,
+            String traceId) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("subscriptionId", result.id().toString());
+        data.put("tenantId", result.tenantId().toString());
+        data.put("planId", result.planId().toString());
+        data.put("status", result.status().name());
+        data.put("endsAt", result.endsAt() == null ? null : result.endsAt().toString());
+        data.put("actorIdentityId", actorIdentityId.toString());
+        return event(result.id(), "com.saasforge.subscription.created.v1",
+                "subscription-created.v1.schema.json", data, occurredAt, traceId);
     }
 
     private OutboxEvent event(

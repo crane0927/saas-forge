@@ -10,6 +10,18 @@
         VALUES (#{row.id}, #{row.displayName}, #{row.status}, #{row.expiresAt}, #{row.createdAt}, #{row.updatedAt})
     </insert>
 
+    <select id="findTenant"
+            resultType="io.saasforge.tenantaccess.infrastructure.persistence.record.TenantRow">
+        SELECT id,
+               display_name AS displayName,
+               tenant_status AS status,
+               expires_at AS expiresAt,
+               created_at AS createdAt,
+               updated_at AS updatedAt
+        FROM tenants
+        WHERE id = #{tenantId}
+    </select>
+
     <delete id="deleteExpiredIdempotency">
         DELETE FROM tenant_creation_idempotency
         WHERE caller_identity_id = #{callerIdentityId}

@@ -5,6 +5,7 @@ import io.saasforge.tenantaccess.domain.tenant.TenantRepository;
 import io.saasforge.tenantaccess.infrastructure.persistence.mapper.TenantCreationMapper;
 import io.saasforge.tenantaccess.infrastructure.persistence.record.TenantRow;
 import java.util.UUID;
+import java.util.Optional;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -32,5 +33,15 @@ public class MyBatisTenantRepository implements TenantRepository {
         if (mapper.insertTenant(row) != 1) {
             throw new IllegalStateException("Tenant 保存失败");
         }
+    }
+
+    @Override
+    public Optional<Tenant> findById(UUID tenantId) {
+        return Optional.ofNullable(mapper.findTenant(tenantId)).map(row -> new Tenant(
+                row.id(), row.displayName(),
+                io.saasforge.tenantaccess.domain.tenant.TenantStatus.valueOf(row.status()),
+                TenantAccessTime.asInstant(row.expiresAt()),
+                TenantAccessTime.asInstant(row.createdAt()),
+                TenantAccessTime.asInstant(row.updatedAt())));
     }
 }

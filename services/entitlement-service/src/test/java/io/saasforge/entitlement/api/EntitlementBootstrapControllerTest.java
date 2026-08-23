@@ -8,6 +8,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import io.saasforge.entitlement.application.authorization.PlatformAdminAuthorizer;
 import io.saasforge.entitlement.application.bootstrap.EntitlementBootstrapService;
 import io.saasforge.entitlement.application.bootstrap.QuotaDefinitionResult;
+import io.saasforge.entitlement.application.subscription.CreateInitialSubscriptionService;
+import io.saasforge.entitlement.application.subscription.InitialSubscriptionResult;
+import io.saasforge.entitlement.domain.subscription.SubscriptionStatus;
 import io.saasforge.entitlement.domain.quota.QuotaDefinitionStatus;
 import io.saasforge.sdk.auth.PlatformAuthorizationDeniedException;
 import java.time.Instant;
@@ -62,9 +65,46 @@ class EntitlementBootstrapControllerTest {
                 .andExpect(jsonPath("$.status").value("DRAFT"));
     }
 
+    @Test
+    void createsInitialActiveSubscriptionWithContractLocationAndBody() throws Exception {
+        UUID tenantId = UUID.fromString("019535d9-0000-7000-8000-000000000010");
+        UUID planId = UUID.fromString("019535d9-0000-7000-8000-000000000011");
+        UUID subscriptionId = UUID.fromString("019535d9-0000-7000-8000-000000000012");
+        CreateInitialSubscriptionService subscriptions = new CreateInitialSubscriptionService(
+                null, null, null, null, null, null, null, null) {
+            @Override
+            public InitialSubscriptionResult create(
+                    UUID actor, UUID key, UUID tenant, UUID plan, Instant endsAt, String traceId) {
+                return new InitialSubscriptionResult(
+                        subscriptionId, tenant, plan, SubscriptionStatus.ACTIVE, endsAt,
+                        Instant.parse("2026-08-23T06:00:00Z"));
+            }
+        };
+        MockMvc mvc = mvc(authorization -> KEY, unusedBootstrap(), subscriptions);
+
+        mvc.perform(post("/api/v1/platform/tenants/{tenantId}/subscriptions", tenantId)
+                        .header("Authorization", "Bearer platform-token")
+                        .header("Idempotency-Key", KEY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"planId\":\"" + planId + "\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(header().string("Location", "/api/v1/platform/tenants/" + tenantId
+                        + "/subscriptions/" + subscriptionId))
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.tenantId").value(tenantId.toString()));
+    }
+
     private static MockMvc mvc(
             PlatformAdminAuthorizer authorizer, EntitlementBootstrapService bootstrap) {
-        return MockMvcBuilders.standaloneSetup(new EntitlementBootstrapController(authorizer, bootstrap))
+        return mvc(authorizer, bootstrap, null);
+    }
+
+    private static MockMvc mvc(
+            PlatformAdminAuthorizer authorizer,
+            EntitlementBootstrapService bootstrap,
+            CreateInitialSubscriptionService subscriptions) {
+        return MockMvcBuilders.standaloneSetup(
+                        new EntitlementBootstrapController(authorizer, bootstrap, subscriptions))
                 .setControllerAdvice(new EntitlementBootstrapExceptionHandler())
                 .build();
     }

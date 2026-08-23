@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package io.saasforge.contracts.tenantaccess.provisioning.v1;
+
+option java_multiple_files = true;
+option java_package = "io.saasforge.contracts.tenantaccess.provisioning.v1";
+
+// Entitlement uses this read-only boundary before creating a Tenant's first Subscription.
+service TenantProvisioningQueryService {
+  rpc CheckInitialSubscriptionEligibility(CheckInitialSubscriptionEligibilityRequest)
+      returns (CheckInitialSubscriptionEligibilityResponse);
+}
+
+message CheckInitialSubscriptionEligibilityRequest {
+  // Canonical lowercase, hyphenated UUIDv7 Tenant ID.
+  string tenant_id = 1;
+}
+
+message CheckInitialSubscriptionEligibilityResponse {
+  InitialSubscriptionEligibility eligibility = 1;
+}
+
+enum InitialSubscriptionEligibility {
+  INITIAL_SUBSCRIPTION_ELIGIBILITY_UNSPECIFIED = 0;
+  PENDING_ELIGIBLE = 1;
+  NOT_FOUND = 2;
+  INVALID_STATE = 3;
+  EXPIRY_REACHED = 4;
+}

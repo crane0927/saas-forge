@@ -12,13 +12,15 @@ import org.springframework.web.client.RestClient;
 
 /** 使用外部只读 Secret 文件取得 Entitlement 自己的短期 Service Access Token。 */
 public final class IamServiceAccessTokenProvider {
-    private static final String SCOPE = "iam:platform-role:read";
+    private static final String PLATFORM_ROLE_SCOPE = "iam:platform-role:read";
+    private static final String TENANT_READ_SCOPE = "tenant-access:tenant:read";
 
     private final RestClient iam;
     private final Path clientIdFile;
     private final Path clientSecretFile;
     private final Clock clock;
-    private volatile CachedToken cached;
+    private volatile CachedToken platformRoleToken;
+    private volatile CachedToken tenantReadToken;
 
     public IamServiceAccessTokenProvider(
             RestClient iam, Path clientIdFile, Path clientSecretFile, Clock clock) {
@@ -29,7 +31,16 @@ public final class IamServiceAccessTokenProvider {
     }
 
     public synchronized String token() {
+        return token(PLATFORM_ROLE_SCOPE);
+    }
+
+    public synchronized String tenantReadToken() {
+        return token(TENANT_READ_SCOPE);
+    }
+
+    private String token(String scope) {
         Instant now = clock.instant();
+        CachedToken cached = PLATFORM_ROLE_SCOPE.equals(scope) ? platformRoleToken : tenantReadToken;
         if (cached != null && cached.refreshAfter().isAfter(now)) {
             return cached.value();
         }
@@ -43,15 +54,25 @@ public final class IamServiceAccessTokenProvider {
                 .uri("/oauth2/token")
                 .headers(headers -> headers.setBasicAuth(clientId, clientSecret))
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .body("grant_type=client_credentials&scope=iam%3Aplatform-role%3Aread")
+                .body("grant_type=client_credentials&scope=" + encodedScope(scope))
                 .retrieve()
                 .body(TokenResponse.class);
         if (response == null || response.accessToken() == null || response.accessToken().isBlank()
-                || response.expiresIn() < 1 || !SCOPE.equals(response.scope())) {
+                || response.expiresIn() < 1 || !scope.equals(response.scope())) {
             throw new IllegalStateException("IAM Service Access Token 响应不合法");
         }
-        cached = new CachedToken(response.accessToken(), now.plusSeconds(Math.max(1, response.expiresIn() - 30L)));
-        return cached.value();
+        CachedToken issued = new CachedToken(
+                response.accessToken(), now.plusSeconds(Math.max(1, response.expiresIn() - 30L)));
+        if (PLATFORM_ROLE_SCOPE.equals(scope)) {
+            platformRoleToken = issued;
+        } else {
+            tenantReadToken = issued;
+        }
+        return issued.value();
+    }
+
+    private static String encodedScope(String scope) {
+        return scope.replace(":", "%3A");
     }
 
     private static String readSecret(Path path) {

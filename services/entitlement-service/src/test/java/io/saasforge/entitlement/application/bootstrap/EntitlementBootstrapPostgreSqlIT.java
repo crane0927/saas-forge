@@ -11,6 +11,10 @@ import io.saasforge.entitlement.infrastructure.persistence.MyBatisEntitlementBoo
 import io.saasforge.entitlement.infrastructure.persistence.MyBatisEntitlementOutboxEventRepository;
 import io.saasforge.entitlement.infrastructure.persistence.MyBatisPlanRepository;
 import io.saasforge.entitlement.infrastructure.persistence.MyBatisQuotaDefinitionRepository;
+import io.saasforge.entitlement.infrastructure.persistence.MyBatisSubscriptionRepository;
+import io.saasforge.entitlement.application.subscription.CreateInitialSubscriptionService;
+import io.saasforge.entitlement.application.subscription.TenantEligibilityGateway;
+import io.saasforge.entitlement.domain.subscription.InitialSubscriptionAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
@@ -82,6 +86,9 @@ class EntitlementBootstrapPostgreSqlIT {
     @Autowired
     private EntitlementBootstrapService service;
 
+    @Autowired
+    private CreateInitialSubscriptionService initialSubscriptions;
+
     @BeforeAll
     void migrate() {
         Flyway.configure()
@@ -94,7 +101,7 @@ class EntitlementBootstrapPostgreSqlIT {
     @BeforeEach
     void clean() throws SQLException {
         executeAsMigrator("TRUNCATE entitlement_outbox_events, entitlement_bootstrap_idempotency, "
-                + "plan_quotas, plans, quota_definitions CASCADE");
+                + "subscriptions, plan_quotas, plans, quota_definitions CASCADE");
     }
 
     @AfterAll
@@ -210,6 +217,95 @@ class EntitlementBootstrapPostgreSqlIT {
         }
     }
 
+    @Test
+    void createsOnlyOneInitialSubscriptionWithStableReplayConcurrentExclusionAndRls() throws Exception {
+        UUID actor = uuidV7(40);
+        UUID tenant = uuidV7(41);
+        UUID otherTenant = uuidV7(42);
+        PlanResult plan = activePlan(actor, 43);
+        var created = initialSubscriptions.create(
+                actor, uuidV7(50), tenant, plan.id(), null, null);
+        assertEquals(created, initialSubscriptions.create(
+                actor, uuidV7(50), tenant, plan.id(), null, null));
+        assertThrows(InitialSubscriptionAlreadyExistsException.class,
+                () -> initialSubscriptions.create(actor, uuidV7(51), tenant, plan.id(), null, null));
+
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<Boolean> first = executor.submit(() -> concurrentCreate(
+                    start, actor, uuidV7(52), otherTenant, plan.id()));
+            Future<Boolean> second = executor.submit(() -> concurrentCreate(
+                    start, actor, uuidV7(53), otherTenant, plan.id()));
+            start.countDown();
+            assertEquals(1, (first.get() ? 1 : 0) + (second.get() ? 1 : 0));
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertEquals(2, count("subscriptions"));
+        assertEquals(1, visibleSubscriptionCount(tenant));
+        assertEquals(1, visibleSubscriptionCount(otherTenant));
+        String snapshots = scalar("SELECT string_agg(event_snapshot::text, ' ') FROM entitlement_outbox_events");
+        assertTrue(snapshots.contains("com.saasforge.subscription.created.v1"));
+    }
+
+    @Test
+    void subscriptionOutboxFailureRollsBackSubscriptionAndIdempotency() throws SQLException {
+        UUID actor = uuidV7(60);
+        UUID tenant = uuidV7(61);
+        PlanResult plan = activePlan(actor, 62);
+        int idempotencyBefore = count("entitlement_bootstrap_idempotency");
+        int outboxBefore = count("entitlement_outbox_events");
+        executeAsMigrator("""
+                CREATE OR REPLACE FUNCTION fail_entitlement_outbox() RETURNS trigger LANGUAGE plpgsql AS $$
+                BEGIN RAISE EXCEPTION 'forced outbox failure'; END $$;
+                CREATE TRIGGER fail_entitlement_outbox BEFORE INSERT ON entitlement_outbox_events
+                FOR EACH ROW EXECUTE FUNCTION fail_entitlement_outbox()
+                """);
+        try {
+            assertThrows(RuntimeException.class,
+                    () -> initialSubscriptions.create(
+                            actor, uuidV7(66), tenant, plan.id(), null, null));
+            assertEquals(0, count("subscriptions"));
+            assertEquals(idempotencyBefore, count("entitlement_bootstrap_idempotency"));
+            assertEquals(outboxBefore, count("entitlement_outbox_events"));
+        } finally {
+            executeAsMigrator("DROP TRIGGER fail_entitlement_outbox ON entitlement_outbox_events; "
+                    + "DROP FUNCTION fail_entitlement_outbox()");
+        }
+    }
+
+    private boolean concurrentCreate(
+            CountDownLatch start, UUID actor, UUID key, UUID tenantId, UUID planId) throws InterruptedException {
+        start.await();
+        try {
+            initialSubscriptions.create(actor, key, tenantId, planId, null, null);
+            return true;
+        } catch (InitialSubscriptionAlreadyExistsException exception) {
+            return false;
+        }
+    }
+
+    private PlanResult activePlan(UUID actor, long seed) {
+        QuotaDefinitionResult quota = service.createQuotaDefinition(actor, uuidV7(seed), "max_users", null);
+        service.activateQuotaDefinition(actor, uuidV7(seed + 1), quota.id(), null);
+        PlanResult plan = service.createPlan(
+                actor, uuidV7(seed + 2), "starter-" + seed, "Starter", quota.id(), 10, null);
+        return service.activatePlan(actor, uuidV7(seed + 3), plan.id(), null);
+    }
+
+    private static int visibleSubscriptionCount(UUID tenantId) throws SQLException {
+        try (Connection connection = appConnection(); Statement statement = connection.createStatement()) {
+            connection.setAutoCommit(false);
+            statement.execute("SELECT set_config('app.tenant_id', '" + tenantId + "', true)");
+            try (ResultSet result = statement.executeQuery("SELECT count(*) FROM subscriptions")) {
+                result.next();
+                return result.getInt(1);
+            }
+        }
+    }
+
     private static int count(String table) throws SQLException {
         return Integer.parseInt(scalar("SELECT count(*)::text FROM " + table));
     }
@@ -266,6 +362,7 @@ class EntitlementBootstrapPostgreSqlIT {
     @Import({
             MyBatisQuotaDefinitionRepository.class,
             MyBatisPlanRepository.class,
+            MyBatisSubscriptionRepository.class,
             MyBatisEntitlementBootstrapIdempotency.class,
             MyBatisEntitlementOutboxEventRepository.class
     })
@@ -327,6 +424,25 @@ class EntitlementBootstrapPostgreSqlIT {
                 Clock clock) {
             return new EntitlementBootstrapService(
                     quotaDefinitions, plans, idempotency, outbox, events, ids, clock);
+        }
+
+        @Bean
+        TenantEligibilityGateway tenantEligibilityGateway() {
+            return tenantId -> TenantEligibilityGateway.Outcome.PENDING_ELIGIBLE;
+        }
+
+        @Bean
+        CreateInitialSubscriptionService initialSubscriptions(
+                MyBatisPlanRepository plans,
+                MyBatisSubscriptionRepository subscriptions,
+                TenantEligibilityGateway tenantEligibility,
+                MyBatisEntitlementBootstrapIdempotency idempotency,
+                MyBatisEntitlementOutboxEventRepository outbox,
+                EntitlementEventFactory events,
+                UuidV7Generator ids,
+                Clock clock) {
+            return new CreateInitialSubscriptionService(
+                    plans, subscriptions, tenantEligibility, idempotency, outbox, events, ids, clock);
         }
     }
 }

@@ -81,6 +81,9 @@ class TenantCreationPostgreSqlIT {
     @Autowired
     private CreatePendingTenantService service;
 
+    @Autowired
+    private InitialSubscriptionEligibilityService eligibility;
+
     @BeforeAll
     void migrate() {
         Flyway.configure()
@@ -143,6 +146,27 @@ class TenantCreationPostgreSqlIT {
         }
         assertEquals(1, count("tenants"));
         assertEquals(1, count("tenant_access_outbox_events"));
+    }
+
+    @Test
+    void derivesInitialSubscriptionEligibilityThroughForcedTenantRls() throws SQLException {
+        UUID eligibleTenant = uuidV7(50);
+        UUID expiredTenant = uuidV7(51);
+        UUID activeTenant = uuidV7(52);
+        insertTenant(eligibleTenant, "PENDING", Instant.now().plusSeconds(3600));
+        insertTenant(expiredTenant, "PENDING", Instant.now().minusSeconds(1));
+        insertTenant(activeTenant, "ACTIVE", Instant.now().plusSeconds(3600));
+
+        assertEquals(InitialSubscriptionEligibility.PENDING_ELIGIBLE, eligibility.check(eligibleTenant));
+        assertEquals(InitialSubscriptionEligibility.EXPIRY_REACHED, eligibility.check(expiredTenant));
+        assertEquals(InitialSubscriptionEligibility.INVALID_STATE, eligibility.check(activeTenant));
+        assertEquals(InitialSubscriptionEligibility.NOT_FOUND, eligibility.check(uuidV7(53)));
+    }
+
+    private static void insertTenant(UUID tenantId, String status, Instant expiresAt) throws SQLException {
+        executeAsMigrator("INSERT INTO tenants "
+                + "(id, display_name, tenant_status, expires_at, created_at, updated_at) VALUES ('"
+                + tenantId + "', 'Eligibility', '" + status + "', '" + expiresAt + "', now(), now())");
     }
 
     @Test
@@ -323,6 +347,12 @@ class TenantCreationPostgreSqlIT {
                 UuidV7Generator ids,
                 Clock clock) {
             return new CreatePendingTenantService(tenants, idempotency, outbox, events, ids, clock);
+        }
+
+        @Bean
+        InitialSubscriptionEligibilityService eligibility(
+                MyBatisTenantRepository tenants, Clock clock) {
+            return new InitialSubscriptionEligibilityService(tenants, clock);
         }
     }
 }

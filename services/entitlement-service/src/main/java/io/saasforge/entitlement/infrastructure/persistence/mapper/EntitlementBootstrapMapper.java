@@ -5,12 +5,15 @@ import io.saasforge.entitlement.infrastructure.persistence.record.EntitlementOut
 import io.saasforge.entitlement.infrastructure.persistence.record.PlanQuotaLimitRow;
 import io.saasforge.entitlement.infrastructure.persistence.record.PlanRow;
 import io.saasforge.entitlement.infrastructure.persistence.record.QuotaDefinitionRow;
+import io.saasforge.entitlement.infrastructure.persistence.record.SubscriptionRow;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import org.apache.ibatis.annotations.Param;
 
 public interface EntitlementBootstrapMapper {
+    String setOperationTarget(@Param("tenantId") UUID tenantId);
+
     int insertQuotaDefinition(@Param("row") QuotaDefinitionRow row);
 
     QuotaDefinitionRow findQuotaDefinition(@Param("id") UUID id);
@@ -26,6 +29,8 @@ public interface EntitlementBootstrapMapper {
     List<PlanQuotaLimitRow> findPlanQuotaLimits(@Param("planId") UUID planId);
 
     int activatePlan(@Param("id") UUID id, @Param("updatedAt") OffsetDateTime updatedAt);
+
+    int insertSubscription(@Param("row") SubscriptionRow row);
 
     int deleteExpiredIdempotency(
             @Param("callerIdentityId") UUID callerIdentityId,
