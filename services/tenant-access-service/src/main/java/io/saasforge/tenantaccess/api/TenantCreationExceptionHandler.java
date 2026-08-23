@@ -4,6 +4,7 @@ import io.saasforge.sdk.auth.PlatformAuthorizationDeniedException;
 import io.saasforge.tenantaccess.application.tenant.IdempotencyKeyInvalidException;
 import io.saasforge.tenantaccess.application.tenant.IdempotencyKeyReusedException;
 import io.saasforge.tenantaccess.application.administrator.RemoteWorkflowUnavailableException;
+import io.saasforge.tenantaccess.application.administrator.AdministratorPasswordSetupException;
 import io.saasforge.tenantaccess.application.administrator.TenantAdministratorInitializationException;
 import io.saasforge.tenantaccess.domain.tenant.TenantExpiryInvalidException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -74,6 +75,26 @@ public class TenantCreationExceptionHandler {
                 .header("Retry-After", "1")
                 .contentType(MediaType.APPLICATION_PROBLEM_JSON)
                 .body(response.getBody());
+    }
+
+    @ExceptionHandler(AdministratorPasswordSetupException.class)
+    ResponseEntity<Problem> administratorPasswordSetupFailure(
+            AdministratorPasswordSetupException exception, HttpServletRequest request) {
+        HttpStatus status = switch (exception.code()) {
+            case "TENANT_NOT_FOUND" -> HttpStatus.NOT_FOUND;
+            case "PASSWORD_SETUP_DELIVERY_PENDING" -> HttpStatus.SERVICE_UNAVAILABLE;
+            default -> HttpStatus.CONFLICT;
+        };
+        ResponseEntity<Problem> response = problem(
+                status, exception.code(), "Tenant administrator password setup failed",
+                exception.getMessage(), request);
+        if (status == HttpStatus.SERVICE_UNAVAILABLE) {
+            return ResponseEntity.status(status)
+                    .header("Retry-After", Long.toString(Math.max(1, exception.retryAfterSeconds())))
+                    .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                    .body(response.getBody());
+        }
+        return response;
     }
 
     private static ResponseEntity<Problem> problem(

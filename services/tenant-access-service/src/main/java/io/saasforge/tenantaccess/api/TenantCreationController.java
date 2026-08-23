@@ -2,6 +2,7 @@ package io.saasforge.tenantaccess.api;
 
 import io.saasforge.tenantaccess.application.authorization.PlatformAdminAuthorizer;
 import io.saasforge.tenantaccess.application.administrator.InitializeTenantAdministratorService;
+import io.saasforge.tenantaccess.application.administrator.ResendAdministratorPasswordSetupService;
 import io.saasforge.tenantaccess.application.administrator.TenantAdministratorInitializationResult;
 import io.saasforge.tenantaccess.application.tenant.CreatePendingTenantService;
 import io.saasforge.tenantaccess.application.tenant.TenantCreationResult;
@@ -29,14 +30,27 @@ public class TenantCreationController implements PlatformTenantsApi {
     private final PlatformAdminAuthorizer authorizer;
     private final CreatePendingTenantService tenantCreation;
     private final InitializeTenantAdministratorService administratorInitialization;
+    private final ResendAdministratorPasswordSetupService administratorPasswordSetup;
 
     public TenantCreationController(
             PlatformAdminAuthorizer authorizer,
             CreatePendingTenantService tenantCreation,
-            InitializeTenantAdministratorService administratorInitialization) {
+            InitializeTenantAdministratorService administratorInitialization,
+            ResendAdministratorPasswordSetupService administratorPasswordSetup) {
         this.authorizer = authorizer;
         this.tenantCreation = tenantCreation;
         this.administratorInitialization = administratorInitialization;
+        this.administratorPasswordSetup = administratorPasswordSetup;
+    }
+
+    @Override
+    public ResponseEntity<Void> resendTenantAdministratorPasswordSetup(
+            UUID tenantId, UUID idempotencyKey) {
+        HttpServletRequest httpRequest = currentRequest();
+        UUID actorIdentityId = authorizer.authorize(httpRequest.getHeader(HttpHeaders.AUTHORIZATION));
+        administratorPasswordSetup.resend(
+                actorIdentityId, idempotencyKey, tenantId, traceId(httpRequest));
+        return ResponseEntity.noContent().build();
     }
 
     @Override

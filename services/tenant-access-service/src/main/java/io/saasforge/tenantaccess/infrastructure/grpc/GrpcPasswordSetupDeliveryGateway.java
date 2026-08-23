@@ -1,10 +1,13 @@
 package io.saasforge.tenantaccess.infrastructure.grpc;
 
+import io.grpc.Status;
+import io.grpc.StatusRuntimeException;
 import io.grpc.stub.MetadataUtils;
 import io.saasforge.contracts.iam.passwordsetup.v1.DeliverPasswordSetupRequest;
 import io.saasforge.contracts.iam.passwordsetup.v1.PasswordSetupDeliveryResult;
 import io.saasforge.contracts.iam.passwordsetup.v1.PasswordSetupServiceGrpc;
 import io.saasforge.tenantaccess.application.administrator.PasswordSetupDeliveryGateway;
+import io.saasforge.tenantaccess.application.administrator.IdentityCredentialRecoveryRequiredException;
 import io.saasforge.tenantaccess.application.administrator.RemoteWorkflowUnavailableException;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -33,6 +36,11 @@ public final class GrpcPasswordSetupDeliveryGateway implements PasswordSetupDeli
                     && response.getResult() != PasswordSetupDeliveryResult.PASSWORD_READY) {
                 throw new IllegalStateException("IAM 返回未知 Password Setup 投递结果");
             }
+        } catch (StatusRuntimeException exception) {
+            if (exception.getStatus().getCode() == Status.Code.FAILED_PRECONDITION) {
+                throw new IdentityCredentialRecoveryRequiredException();
+            }
+            throw new RemoteWorkflowUnavailableException(exception);
         } catch (RuntimeException exception) {
             throw new RemoteWorkflowUnavailableException(exception);
         }

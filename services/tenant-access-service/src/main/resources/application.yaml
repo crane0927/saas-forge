@@ -58,6 +58,8 @@ saasforge:
       initial-backoff: PT1S
       maximum-backoff: PT1M
       maximum-attempts: 10
+    password-setup:
+      recovery-delay: PT1S
 
 mybatis:
   mapper-locations: classpath*:mapper/**/*Mapper.xml

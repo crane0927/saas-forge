@@ -8,6 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.saasforge.tenantaccess.application.administrator.IdentityCredentialDisposition;
+import io.saasforge.tenantaccess.application.administrator.AdministratorPasswordSetupRepository;
+import io.saasforge.tenantaccess.application.administrator.AdministratorPasswordSetupWorkflow;
 import io.saasforge.tenantaccess.application.administrator.IdentityProvisioningGateway;
 import io.saasforge.tenantaccess.application.administrator.InitializationRecoveryPolicy;
 import io.saasforge.tenantaccess.application.administrator.InitializationWorkflow;
@@ -23,6 +25,7 @@ import io.saasforge.tenantaccess.domain.outbox.OutboxEventRepository;
 import io.saasforge.tenantaccess.domain.tenant.TenantStatus;
 import io.saasforge.tenantaccess.infrastructure.messaging.TenantAccessOutboxPublisher;
 import io.saasforge.tenantaccess.infrastructure.persistence.MyBatisTenantAccessOutboxEventRepository;
+import io.saasforge.tenantaccess.infrastructure.persistence.MyBatisAdministratorPasswordSetupRepository;
 import io.saasforge.tenantaccess.infrastructure.persistence.MyBatisTenantAdministratorInitializationRepository;
 import io.saasforge.tenantaccess.infrastructure.persistence.MyBatisTenantCreationIdempotency;
 import io.saasforge.tenantaccess.infrastructure.persistence.MyBatisTenantRepository;
@@ -126,6 +129,9 @@ class TenantCreationPostgreSqlIT {
 
     @Autowired
     private TenantAdministratorInitializationRepository administratorInitialization;
+
+    @Autowired
+    private AdministratorPasswordSetupRepository administratorPasswordSetups;
 
     @Autowired
     private TenantAccessOutboxPublisher outboxPublisher;
@@ -235,6 +241,92 @@ class TenantCreationPostgreSqlIT {
 
         administratorInitialization.completePasswordDelivery(activating, now.plusSeconds(2));
         assertEquals("COMPLETED", scalar("SELECT work_status FROM password_setup_delivery_work_items"));
+    }
+
+    @Test
+    void passwordSetupResendUsesInitialRelationshipSupersedesOldWorkAndSerializesTenantLeases()
+            throws SQLException {
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+        UUID actor = uuidV7(610);
+        UUID identityId = uuidV7(611);
+        TenantCreationResult tenant = service.create(
+                actor, uuidV7(612), "Resend Tenant", now.plusSeconds(3600), null);
+        InitializationWorkflow prepared = administratorInitialization.prepare(
+                workflow(tenant.id(), actor, uuidV7(613), "6".repeat(64)), now);
+        InitializationWorkflow claimed = administratorInitialization.claim(
+                prepared.workflowId(), "initialization", now, now.plusSeconds(30)).orElseThrow();
+        InitializationWorkflow identityReady = administratorInitialization.completeIdentity(
+                claimed, identityId, IdentityCredentialDisposition.SETUP_ALLOWED, now.plusMillis(1));
+        InitializationWorkflow quotaReady = administratorInitialization.completeQuotaConsumption(
+                identityReady, now.plusMillis(2));
+        InitializationWorkflow activating = administratorInitialization.beginActivation(
+                quotaReady, now.plusMillis(3));
+        administratorInitialization.activate(
+                activating, identityId, IdentityCredentialDisposition.SETUP_ALLOWED, now.plusMillis(4));
+
+        AdministratorPasswordSetupWorkflow first = administratorPasswordSetups.prepare(
+                passwordSetupWorkflow(tenant.id(), actor, uuidV7(614), uuidV7(615), uuidV7(616), now), now);
+        AdministratorPasswordSetupWorkflow second = administratorPasswordSetups.prepare(
+                passwordSetupWorkflow(tenant.id(), actor, uuidV7(617), uuidV7(618), uuidV7(619),
+                        now.plusMillis(1)), now.plusMillis(1));
+
+        assertEquals(identityId, first.administratorIdentityId());
+        AdministratorPasswordSetupWorkflow firstLease = administratorPasswordSetups.claim(
+                first.workflowId(), "resend-a", now.plusSeconds(31), now.plusSeconds(61)).orElseThrow();
+        assertEquals("SUPERSEDED", scalar("SELECT work_status FROM password_setup_delivery_work_items"));
+        assertTrue(administratorPasswordSetups.claim(
+                second.workflowId(), "resend-b", now.plusSeconds(31), now.plusSeconds(61)).isEmpty());
+
+        administratorPasswordSetups.scheduleRetry(
+                firstLease, now.plusSeconds(40), "RemoteWorkflowUnavailableException");
+        assertTrue(administratorPasswordSetups.claimNext(
+                "resend-worker", now.plusSeconds(32), now.plusSeconds(62)).isEmpty());
+        AdministratorPasswordSetupWorkflow retriedFirst = administratorPasswordSetups.claimNext(
+                "resend-worker", now.plusSeconds(40), now.plusSeconds(70)).orElseThrow();
+        assertEquals(first.workflowId(), retriedFirst.workflowId());
+        administratorPasswordSetups.completeSuccess(retriedFirst, now.plusSeconds(41));
+        AdministratorPasswordSetupWorkflow secondLease = administratorPasswordSetups.claimNext(
+                "resend-b", now.plusSeconds(41), now.plusSeconds(71)).orElseThrow();
+        assertEquals(second.deliveryRequestId(), secondLease.deliveryRequestId());
+        assertEquals("true", scalar("SELECT relforcerowsecurity::text FROM pg_class "
+                + "WHERE relname = 'administrator_password_setup_workflows'"));
+        assertEquals("0", scalar("SELECT count(*)::text FROM information_schema.columns "
+                + "WHERE table_name = 'administrator_password_setup_workflows' "
+                + "AND column_name IN ('email', 'recipient', 'token', 'token_digest', 'mail_content')"));
+    }
+
+    @Test
+    void passwordSetupWorkerReclaimsSameDurableRequestAfterRestart() {
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+        UUID actor = uuidV7(620);
+        UUID identityId = uuidV7(621);
+        TenantCreationResult tenant = service.create(
+                actor, uuidV7(622), "Resend Recovery Tenant", now.plusSeconds(3600), null);
+        InitializationWorkflow prepared = administratorInitialization.prepare(
+                workflow(tenant.id(), actor, uuidV7(623), "7".repeat(64)), now);
+        InitializationWorkflow claimed = administratorInitialization.claim(
+                prepared.workflowId(), "initialization", now, now.plusSeconds(30)).orElseThrow();
+        InitializationWorkflow identityReady = administratorInitialization.completeIdentity(
+                claimed, identityId, IdentityCredentialDisposition.PASSWORD_READY, now.plusMillis(1));
+        InitializationWorkflow quotaReady = administratorInitialization.completeQuotaConsumption(
+                identityReady, now.plusMillis(2));
+        InitializationWorkflow activating = administratorInitialization.beginActivation(
+                quotaReady, now.plusMillis(3));
+        administratorInitialization.activate(
+                activating, identityId, IdentityCredentialDisposition.PASSWORD_READY, now.plusMillis(4));
+
+        AdministratorPasswordSetupWorkflow workflow = administratorPasswordSetups.prepare(
+                passwordSetupWorkflow(tenant.id(), actor, uuidV7(624), uuidV7(625), uuidV7(626), now), now);
+        AdministratorPasswordSetupWorkflow firstLease = administratorPasswordSetups.claim(
+                workflow.workflowId(), "process-a", now.plusSeconds(31), now.plusSeconds(61)).orElseThrow();
+        administratorPasswordSetups.scheduleRetry(
+                firstLease, now.plusSeconds(32), "RemoteWorkflowUnavailableException");
+
+        AdministratorPasswordSetupWorkflow restarted = administratorPasswordSetups.claimNext(
+                "process-b", now.plusSeconds(32), now.plusSeconds(62)).orElseThrow();
+        assertEquals(workflow.workflowId(), restarted.workflowId());
+        assertEquals(workflow.deliveryRequestId(), restarted.deliveryRequestId());
+        assertEquals(firstLease.attemptCount() + 1, restarted.attemptCount());
     }
 
     @Test
@@ -501,6 +593,20 @@ class TenantCreationPostgreSqlIT {
                 null, null, null, Instant.now());
     }
 
+    private static AdministratorPasswordSetupWorkflow passwordSetupWorkflow(
+            UUID tenantId,
+            UUID actorIdentityId,
+            UUID idempotencyKey,
+            UUID workflowId,
+            UUID deliveryRequestId,
+            Instant createdAt) {
+        return new AdministratorPasswordSetupWorkflow(
+                workflowId, tenantId, actorIdentityId, idempotencyKey,
+                "8".repeat(64),
+                null, deliveryRequestId, null, null, createdAt, 0, createdAt,
+                null, null, null, null);
+    }
+
     @Test
     void concurrentSameCallerAndKeyCreatesExactlyOneTenant() throws Exception {
         UUID actor = uuidV7(10);
@@ -704,7 +810,8 @@ class TenantCreationPostgreSqlIT {
             sqlSessionFactoryRef = "tenantAccessSqlSessionFactory")
     @Import({MyBatisTenantRepository.class, MyBatisTenantCreationIdempotency.class,
             MyBatisTenantAccessOutboxEventRepository.class,
-            MyBatisTenantAdministratorInitializationRepository.class})
+            MyBatisTenantAdministratorInitializationRepository.class,
+            MyBatisAdministratorPasswordSetupRepository.class})
     static class PersistenceConfiguration {
         @Bean
         DataSource dataSource() {

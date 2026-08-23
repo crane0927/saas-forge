@@ -387,6 +387,39 @@ paths:
         '502': { $ref: './common.yaml#/components/responses/Problem' }
         '504': { $ref: './common.yaml#/components/responses/Problem' }
 
+  /api/v1/platform/tenants/{tenantId}/administrator-password-setups:
+    post:
+      tags: [Platform tenants]
+      operationId: resendTenantAdministratorPasswordSetup
+      x-saasforge-service: tenant-access-service
+      summary: Resend the initial Tenant Administrator password setup email
+      description: |
+        Requires a Platform Admin. Tenant Access resolves the Identity only through
+        the immutable initial administrator relationship. No email address, Identity,
+        Token, mail content, or delivery state is accepted or returned.
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204':
+          description: SMTP accepted the latest setup email, or the Identity already has a valid password.
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '503':
+          description: The durable delivery workflow is still pending.
+          headers:
+            Retry-After:
+              required: true
+              description: Minimum seconds before polling the same Idempotency-Key again.
+              schema: { type: integer, minimum: 1 }
+          content:
+            application/problem+json:
+              schema: { $ref: './common.yaml#/components/schemas/ProblemDetails' }
+
   /api/v1/platform/tenants/{tenantId}/suspensions:
     post:
       tags: [Platform tenants]

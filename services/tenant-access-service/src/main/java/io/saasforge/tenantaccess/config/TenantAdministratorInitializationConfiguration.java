@@ -4,10 +4,13 @@ import io.saasforge.contracts.entitlement.quota.v1.QuotaCommandServiceGrpc;
 import io.saasforge.contracts.iam.identity.v1.IdentityProvisioningServiceGrpc;
 import io.saasforge.contracts.iam.passwordsetup.v1.PasswordSetupServiceGrpc;
 import io.saasforge.tenantaccess.application.administrator.IdentityProvisioningGateway;
+import io.saasforge.tenantaccess.application.administrator.AdministratorPasswordSetupRepository;
+import io.saasforge.tenantaccess.application.administrator.AdministratorPasswordSetupWorker;
 import io.saasforge.tenantaccess.application.administrator.InitializationQuotaGateway;
 import io.saasforge.tenantaccess.application.administrator.InitializationRecoveryPolicy;
 import io.saasforge.tenantaccess.application.administrator.InitializeTenantAdministratorService;
 import io.saasforge.tenantaccess.application.administrator.PasswordSetupDeliveryGateway;
+import io.saasforge.tenantaccess.application.administrator.ResendAdministratorPasswordSetupService;
 import io.saasforge.tenantaccess.application.administrator.TenantAdministratorInitializationRepository;
 import io.saasforge.tenantaccess.application.administrator.TenantAdministratorInitializationWorker;
 import io.saasforge.tenantaccess.application.administrator.TenantAdministratorInitializedEventFactory;
@@ -85,5 +88,23 @@ public class TenantAdministratorInitializationConfiguration {
     TenantAdministratorInitializationWorker tenantAdministratorInitializationWorker(
             InitializeTenantAdministratorService service) {
         return new TenantAdministratorInitializationWorker(service);
+    }
+
+    @Bean
+    ResendAdministratorPasswordSetupService resendAdministratorPasswordSetupService(
+            AdministratorPasswordSetupRepository workflows,
+            PasswordSetupDeliveryGateway deliveries,
+            UuidV7Generator ids,
+            Clock clock,
+            InitializationRecoveryPolicy recoveryPolicy) {
+        return new ResendAdministratorPasswordSetupService(
+                workflows, deliveries, ids, clock, recoveryPolicy,
+                java.lang.management.ManagementFactory.getRuntimeMXBean().getName());
+    }
+
+    @Bean
+    AdministratorPasswordSetupWorker administratorPasswordSetupWorker(
+            ResendAdministratorPasswordSetupService service) {
+        return new AdministratorPasswordSetupWorker(service);
     }
 }
