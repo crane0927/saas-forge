@@ -1,6 +1,9 @@
 spring:
   application:
     name: tenant-access-service
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
   config:
     import: nacos:tenant-access-service.yaml?group=SAAS_FORGE&refreshEnabled=false
   cloud:
@@ -19,6 +22,24 @@ spring:
         fail-fast: true
   flyway:
     enabled: false
+  grpc:
+    client:
+      channels:
+        iam:
+          address: ${IAM_GRPC_ADDRESS:static://iam-service:9090}
+          default-deadline: PT3S
+
+security:
+  jwt:
+    issuer: ${IAM_JWT_ISSUER:?IAM_JWT_ISSUER is required}
+
+saasforge:
+  environment: ${SAASFORGE_ENVIRONMENT:dev}
+  tenant-access:
+    iam-http-base-url: ${IAM_HTTP_BASE_URL:http://iam-service:8080}
+    service-client-id-file: ${SAASFORGE_SERVICE_CLIENT_ID_FILE:?SAASFORGE_SERVICE_CLIENT_ID_FILE is required}
+    service-client-secret-file: ${SAASFORGE_SERVICE_CLIENT_SECRET_FILE:?SAASFORGE_SERVICE_CLIENT_SECRET_FILE is required}
+    outbox-topic: saasforge.${saasforge.environment}.tenant-access-service.events
 
 mybatis:
   mapper-locations: classpath*:mapper/**/*Mapper.xml

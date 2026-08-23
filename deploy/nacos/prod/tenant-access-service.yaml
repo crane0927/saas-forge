@@ -1,6 +1,6 @@
 saasforge:
   tenant-access:
-    configuration-revision: "1"
+    configuration-revision: "2"
 
 management:
   endpoint:

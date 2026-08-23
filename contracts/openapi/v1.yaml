@@ -889,13 +889,10 @@ components:
       additionalProperties: false
     CreateTenantRequest:
       type: object
-      required: [displayName]
+      required: [displayName, expiresAt]
       properties:
         displayName: { type: string, minLength: 1, maxLength: 200 }
-        expiresAt:
-          oneOf:
-            - $ref: '#/components/schemas/Timestamp'
-            - type: 'null'
+        expiresAt: { type: string, format: date-time }
       additionalProperties: false
     AdministratorInitializationRequest:
       type: object

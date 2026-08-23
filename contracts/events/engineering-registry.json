@@ -112,6 +112,20 @@
           "consumerName": "audit-service.iam-refresh-security-events"
         }
       ]
+    },
+    {
+      "type": "com.saasforge.tenant.created.v1",
+      "producerService": "tenant-access-service",
+      "source": "urn:saasforge:tenant-access-service",
+      "schema": "contracts/events/tenant-created.v1.schema.json",
+      "topic": "saasforge.<environment>.tenant-access-service.events",
+      "orderingKey": "tenantId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.tenant-events"
+        }
+      ]
     }
   ]
 }

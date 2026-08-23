@@ -1,0 +1,68 @@
+package io.saasforge.tenantaccess.api;
+
+import io.saasforge.tenantaccess.application.authorization.PlatformAdminAuthorizer;
+import io.saasforge.tenantaccess.application.tenant.CreatePendingTenantService;
+import io.saasforge.tenantaccess.application.tenant.TenantCreationResult;
+import io.saasforge.tenantaccess.contract.api.PlatformTenantsApi;
+import io.saasforge.tenantaccess.contract.model.CreateTenantRequest;
+import io.saasforge.tenantaccess.contract.model.Tenant;
+import io.saasforge.tenantaccess.contract.model.TenantStatus;
+import jakarta.servlet.http.HttpServletRequest;
+import java.time.ZoneOffset;
+import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+
+@RestController
+public class TenantCreationController implements PlatformTenantsApi {
+    private static final Pattern TRACE_PARENT = Pattern.compile(
+            "^[0-9a-f]{2}-((?!0{32})[0-9a-f]{32})-(?!0{16})[0-9a-f]{16}-[0-9a-f]{2}$");
+
+    private final PlatformAdminAuthorizer authorizer;
+    private final CreatePendingTenantService tenantCreation;
+
+    public TenantCreationController(
+            PlatformAdminAuthorizer authorizer, CreatePendingTenantService tenantCreation) {
+        this.authorizer = authorizer;
+        this.tenantCreation = tenantCreation;
+    }
+
+    @Override
+    public ResponseEntity<Tenant> createPlatformTenant(
+            UUID idempotencyKey, CreateTenantRequest request) {
+        HttpServletRequest httpRequest = currentRequest();
+        UUID actorIdentityId = authorizer.authorize(httpRequest.getHeader(HttpHeaders.AUTHORIZATION));
+        TenantCreationResult result = tenantCreation.create(
+                actorIdentityId,
+                idempotencyKey,
+                request.getDisplayName(),
+                request.getExpiresAt() == null ? null : request.getExpiresAt().toInstant(),
+                traceId(httpRequest));
+        return ResponseEntity.status(201).body(toResponse(result));
+    }
+
+    private static Tenant toResponse(TenantCreationResult result) {
+        return new Tenant(
+                result.id(),
+                result.displayName(),
+                TenantStatus.valueOf(result.status().name()),
+                result.expiresAt().atOffset(ZoneOffset.UTC),
+                result.createdAt().atOffset(ZoneOffset.UTC),
+                result.updatedAt().atOffset(ZoneOffset.UTC));
+    }
+
+    private static HttpServletRequest currentRequest() {
+        return ((ServletRequestAttributes) RequestContextHolder.currentRequestAttributes()).getRequest();
+    }
+
+    static String traceId(HttpServletRequest request) {
+        String traceparent = request.getHeader("traceparent");
+        Matcher matcher = TRACE_PARENT.matcher(traceparent == null ? "" : traceparent);
+        return matcher.matches() ? matcher.group(1) : null;
+    }
+}

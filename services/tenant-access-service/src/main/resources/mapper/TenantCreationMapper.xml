@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.saasforge.tenantaccess.infrastructure.persistence.mapper.TenantCreationMapper">
+    <select id="setOperationTarget" resultType="string">
+        SELECT set_config('app.tenant_id', CAST(#{tenantId} AS TEXT), true)
+    </select>
+
+    <insert id="insertTenant">
+        INSERT INTO tenants (id, display_name, tenant_status, expires_at, created_at, updated_at)
+        VALUES (#{row.id}, #{row.displayName}, #{row.status}, #{row.expiresAt}, #{row.createdAt}, #{row.updatedAt})
+    </insert>
+
+    <delete id="deleteExpiredIdempotency">
+        DELETE FROM tenant_creation_idempotency
+        WHERE caller_identity_id = #{callerIdentityId}
+          AND idempotency_key = #{idempotencyKey}
+          AND expires_at &lt;= #{now}
+    </delete>
+
+    <insert id="claimIdempotency">
+        INSERT INTO tenant_creation_idempotency
+            (caller_identity_id, idempotency_key, request_fingerprint, tenant_id, expires_at)
+        VALUES
+            (#{row.callerIdentityId}, #{row.idempotencyKey}, #{row.requestFingerprint},
+             #{row.tenantId}, #{row.expiresAt})
+        ON CONFLICT (caller_identity_id, idempotency_key) DO NOTHING
+    </insert>
+
+    <select id="findIdempotency"
+            resultType="io.saasforge.tenantaccess.infrastructure.persistence.record.TenantCreationIdempotencyRow">
+        SELECT caller_identity_id AS callerIdentityId,
+               idempotency_key AS idempotencyKey,
+               request_fingerprint AS requestFingerprint,
+               tenant_id AS tenantId,
+               response_status AS responseStatus,
+               response_body::TEXT AS responseBody,
+               completed_at AS completedAt,
+               expires_at AS expiresAt
+        FROM tenant_creation_idempotency
+        WHERE caller_identity_id = #{callerIdentityId}
+          AND idempotency_key = #{idempotencyKey}
+    </select>
+
+    <update id="completeIdempotency">
+        UPDATE tenant_creation_idempotency
+        SET response_status = #{row.responseStatus},
+            response_body = CAST(#{row.responseBody} AS JSONB),
+            completed_at = #{row.completedAt}
+        WHERE caller_identity_id = #{row.callerIdentityId}
+          AND idempotency_key = #{row.idempotencyKey}
+          AND response_status IS NULL
+    </update>
+
+    <insert id="insertOutbox">
+        INSERT INTO tenant_access_outbox_events
+            (event_id, tenant_id, occurred_at, topic, ordering_key, trace_id,
+             event_snapshot, next_attempt_at)
+        VALUES
+            (#{row.eventId}, #{row.tenantId}, #{row.occurredAt}, #{row.topic}, #{row.orderingKey},
+             #{row.traceId}, CAST(#{row.eventSnapshot} AS JSONB), #{row.occurredAt})
+    </insert>
+</mapper>
