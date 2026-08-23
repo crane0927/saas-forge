@@ -38,6 +38,7 @@
                         <sourceDirectory>${project.basedir}</sourceDirectory>
                     </sourceDirectories>
                     <includes>
+                        <include>entitlement/**/*.proto</include>
                         <include>iam/**/*.proto</include>
                         <include>tenant_access/**/*.proto</include>
                     </includes>

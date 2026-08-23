@@ -5,6 +5,7 @@ import io.saasforge.entitlement.infrastructure.persistence.record.EntitlementOut
 import io.saasforge.entitlement.infrastructure.persistence.record.PlanQuotaLimitRow;
 import io.saasforge.entitlement.infrastructure.persistence.record.PlanRow;
 import io.saasforge.entitlement.infrastructure.persistence.record.QuotaDefinitionRow;
+import io.saasforge.entitlement.infrastructure.persistence.record.QuotaOperationRow;
 import io.saasforge.entitlement.infrastructure.persistence.record.SubscriptionRow;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -31,6 +32,50 @@ public interface EntitlementBootstrapMapper {
     int activatePlan(@Param("id") UUID id, @Param("updatedAt") OffsetDateTime updatedAt);
 
     int insertSubscription(@Param("row") SubscriptionRow row);
+
+    int claimQuotaOperation(@Param("row") QuotaOperationRow row);
+
+    QuotaOperationRow findQuotaOperation(@Param("operationId") UUID operationId);
+
+    UUID findQuotaDefinitionIdByCode(@Param("quotaCode") String quotaCode);
+
+    Integer findCurrentQuotaLimit(
+            @Param("tenantId") UUID tenantId,
+            @Param("quotaDefinitionId") UUID quotaDefinitionId,
+            @Param("at") OffsetDateTime at);
+
+    Integer findGrantedQuotaLimit(
+            @Param("tenantId") UUID tenantId,
+            @Param("quotaDefinitionId") UUID quotaDefinitionId);
+
+    int initializeQuotaUsage(
+            @Param("tenantId") UUID tenantId,
+            @Param("quotaDefinitionId") UUID quotaDefinitionId,
+            @Param("at") OffsetDateTime at);
+
+    Integer consumeQuota(
+            @Param("tenantId") UUID tenantId,
+            @Param("quotaDefinitionId") UUID quotaDefinitionId,
+            @Param("amount") int amount,
+            @Param("limit") int limit,
+            @Param("at") OffsetDateTime at);
+
+    Integer releaseQuota(
+            @Param("tenantId") UUID tenantId,
+            @Param("quotaDefinitionId") UUID quotaDefinitionId,
+            @Param("amount") int amount,
+            @Param("at") OffsetDateTime at);
+
+    int findCurrentUsage(
+            @Param("tenantId") UUID tenantId,
+            @Param("quotaDefinitionId") UUID quotaDefinitionId);
+
+    int completeQuotaOperation(
+            @Param("operationId") UUID operationId,
+            @Param("outcome") String outcome,
+            @Param("usage") Integer usage,
+            @Param("limit") Integer limit,
+            @Param("at") OffsetDateTime at);
 
     int deleteExpiredIdempotency(
             @Param("callerIdentityId") UUID callerIdentityId,

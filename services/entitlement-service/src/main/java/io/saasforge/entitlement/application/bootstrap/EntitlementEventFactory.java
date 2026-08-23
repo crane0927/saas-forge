@@ -2,6 +2,8 @@ package io.saasforge.entitlement.application.bootstrap;
 
 import io.saasforge.entitlement.application.subscription.InitialSubscriptionResult;
 import io.saasforge.entitlement.domain.outbox.OutboxEvent;
+import io.saasforge.entitlement.domain.quota.QuotaOperationAction;
+import io.saasforge.entitlement.domain.quota.QuotaOperationPurpose;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
@@ -60,6 +62,25 @@ public final class EntitlementEventFactory {
         data.put("actorIdentityId", actorIdentityId.toString());
         return event(result.id(), "com.saasforge.subscription.created.v1",
                 "subscription-created.v1.schema.json", data, occurredAt, traceId);
+    }
+
+    public OutboxEvent quotaOperation(
+            UUID tenantId,
+            UUID quotaDefinitionId,
+            UUID operationId,
+            int amount,
+            QuotaOperationPurpose purpose,
+            QuotaOperationAction action,
+            Instant occurredAt) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("tenantId", tenantId.toString());
+        data.put("quotaDefinitionId", quotaDefinitionId.toString());
+        data.put("operationId", operationId.toString());
+        data.put("amount", amount);
+        data.put("purpose", purpose.name());
+        String eventAction = action == QuotaOperationAction.CONSUME ? "consumed" : "released";
+        return event(tenantId, "com.saasforge.quota." + eventAction + ".v1",
+                "quota-" + eventAction + ".v1.schema.json", data, occurredAt, null);
     }
 
     private OutboxEvent event(

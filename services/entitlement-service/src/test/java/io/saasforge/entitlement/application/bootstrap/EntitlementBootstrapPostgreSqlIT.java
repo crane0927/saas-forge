@@ -4,14 +4,40 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
+import io.grpc.ManagedChannel;
+import io.grpc.Metadata;
+import io.grpc.Server;
+import io.grpc.ServerInterceptors;
+import io.grpc.Status;
+import io.grpc.StatusRuntimeException;
+import io.grpc.inprocess.InProcessChannelBuilder;
+import io.grpc.inprocess.InProcessServerBuilder;
+import io.grpc.stub.MetadataUtils;
+import io.saasforge.contracts.entitlement.quota.v1.QuotaCommandRequest;
+import io.saasforge.contracts.entitlement.quota.v1.QuotaCommandServiceGrpc;
+import io.saasforge.contracts.entitlement.quota.v1.QuotaPurpose;
+import io.saasforge.entitlement.application.quota.QuotaCommandApplicationService;
+import io.saasforge.entitlement.application.quota.QuotaCommandException;
+import io.saasforge.entitlement.application.quota.QuotaOperationIdReusedException;
 import io.saasforge.entitlement.domain.plan.PlanTransitionException;
+import io.saasforge.entitlement.domain.quota.QuotaOperationOutcome;
+import io.saasforge.entitlement.domain.quota.QuotaOperationPurpose;
 import io.saasforge.entitlement.domain.quota.QuotaDefinitionTransitionException;
 import io.saasforge.entitlement.infrastructure.persistence.MyBatisEntitlementBootstrapIdempotency;
 import io.saasforge.entitlement.infrastructure.persistence.MyBatisEntitlementOutboxEventRepository;
 import io.saasforge.entitlement.infrastructure.persistence.MyBatisPlanRepository;
 import io.saasforge.entitlement.infrastructure.persistence.MyBatisQuotaDefinitionRepository;
+import io.saasforge.entitlement.infrastructure.persistence.MyBatisQuotaOperationRepository;
 import io.saasforge.entitlement.infrastructure.persistence.MyBatisSubscriptionRepository;
+import io.saasforge.entitlement.infrastructure.grpc.QuotaCommandGrpcService;
+import io.saasforge.entitlement.infrastructure.grpc.QuotaCommandServerInterceptor;
+import io.saasforge.sdk.auth.ServiceAccessTokenClaims;
+import io.saasforge.sdk.auth.ServiceAccessTokenScopeException;
+import io.saasforge.sdk.auth.ServiceAccessTokenVerifier;
 import io.saasforge.entitlement.application.subscription.CreateInitialSubscriptionService;
 import io.saasforge.entitlement.application.subscription.TenantEligibilityGateway;
 import io.saasforge.entitlement.domain.subscription.InitialSubscriptionAlreadyExistsException;
@@ -28,6 +54,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.flywaydb.core.Flyway;
@@ -89,6 +116,9 @@ class EntitlementBootstrapPostgreSqlIT {
     @Autowired
     private CreateInitialSubscriptionService initialSubscriptions;
 
+    @Autowired
+    private QuotaCommandApplicationService quotaCommands;
+
     @BeforeAll
     void migrate() {
         Flyway.configure()
@@ -101,7 +131,7 @@ class EntitlementBootstrapPostgreSqlIT {
     @BeforeEach
     void clean() throws SQLException {
         executeAsMigrator("TRUNCATE entitlement_outbox_events, entitlement_bootstrap_idempotency, "
-                + "subscriptions, plan_quotas, plans, quota_definitions CASCADE");
+                + "quota_operations, quota_usages, subscriptions, plan_quotas, plans, quota_definitions CASCADE");
     }
 
     @AfterAll
@@ -276,6 +306,175 @@ class EntitlementBootstrapPostgreSqlIT {
         }
     }
 
+    @Test
+    void atomicallyConsumesAndReleasesWithStableReplayAndPurposeEvents() throws SQLException {
+        UUID actor = uuidV7(70);
+        UUID tenant = uuidV7(71);
+        UUID caller = uuidV7(72);
+        PlanResult plan = activePlan(actor, 73, 1);
+        initialSubscriptions.create(actor, uuidV7(77), tenant, plan.id(), null, null);
+
+        UUID consumeOperation = uuidV7(78);
+        var consumed = quotaCommands.consume(caller, tenant, "max_users", 1, consumeOperation,
+                QuotaOperationPurpose.TENANT_ADMIN_INITIALIZATION);
+        assertEquals(1, consumed.usage());
+        assertEquals(1, consumed.limit());
+        assertFalse(consumed.replayed());
+        assertTrue(quotaCommands.consume(caller, tenant, "max_users", 1, consumeOperation,
+                QuotaOperationPurpose.TENANT_ADMIN_INITIALIZATION).replayed());
+        assertThrows(QuotaOperationIdReusedException.class,
+                () -> quotaCommands.release(caller, tenant, "max_users", 1, consumeOperation,
+                        QuotaOperationPurpose.TENANT_ADMIN_INITIALIZATION));
+
+        UUID releaseOperation = uuidV7(79);
+        assertEquals(0, quotaCommands.release(caller, tenant, "max_users", 1, releaseOperation,
+                QuotaOperationPurpose.TENANT_ADMIN_INITIALIZATION).usage());
+        assertTrue(quotaCommands.release(caller, tenant, "max_users", 1, releaseOperation,
+                QuotaOperationPurpose.TENANT_ADMIN_INITIALIZATION).replayed());
+
+        QuotaCommandException underflow = assertThrows(QuotaCommandException.class,
+                () -> quotaCommands.release(caller, tenant, "max_users", 1, uuidV7(80),
+                        QuotaOperationPurpose.TENANT_ADMIN_INITIALIZATION));
+        assertEquals(QuotaOperationOutcome.QUOTA_RELEASE_UNDERFLOW, underflow.outcome());
+        String events = scalar("SELECT string_agg(event_snapshot::text, ' ') FROM entitlement_outbox_events");
+        assertTrue(events.contains("com.saasforge.quota.consumed.v1"));
+        assertTrue(events.contains("com.saasforge.quota.released.v1"));
+        assertTrue(events.contains("TENANT_ADMIN_INITIALIZATION"));
+        assertFalse(events.contains(caller.toString()));
+    }
+
+    @Test
+    void concurrentConsumeNeverExceedsCurrentSubscriptionLimit() throws Exception {
+        UUID actor = uuidV7(90);
+        UUID tenant = uuidV7(91);
+        UUID caller = uuidV7(92);
+        PlanResult plan = activePlan(actor, 93, 3);
+        initialSubscriptions.create(actor, uuidV7(97), tenant, plan.id(), null, null);
+
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(12);
+        try {
+            var futures = new java.util.ArrayList<Future<Boolean>>();
+            for (int index = 0; index < 12; index++) {
+                UUID operationId = uuidV7(100 + index);
+                futures.add(executor.submit(() -> concurrentConsume(start, caller, tenant, operationId)));
+            }
+            start.countDown();
+            int successes = 0;
+            for (Future<Boolean> future : futures) {
+                successes += future.get() ? 1 : 0;
+            }
+            assertEquals(3, successes);
+        } finally {
+            executor.shutdownNow();
+        }
+        assertEquals("3", scalar("SELECT used::text FROM quota_usages WHERE tenant_id = '" + tenant + "'"));
+        assertEquals(12, count("quota_operations"));
+    }
+
+    @Test
+    void outboxFailureRollsBackQuotaUsageAndOperationAndRlsHidesOtherTenants() throws SQLException {
+        UUID actor = uuidV7(120);
+        UUID tenant = uuidV7(121);
+        UUID otherTenant = uuidV7(122);
+        UUID caller = uuidV7(123);
+        PlanResult plan = activePlan(actor, 124, 2);
+        initialSubscriptions.create(actor, uuidV7(128), tenant, plan.id(), null, null);
+        initialSubscriptions.create(actor, uuidV7(129), otherTenant, plan.id(), null, null);
+
+        executeAsMigrator("""
+                CREATE OR REPLACE FUNCTION fail_quota_outbox() RETURNS trigger LANGUAGE plpgsql AS $$
+                BEGIN
+                    IF NEW.event_snapshot->>'type' = 'com.saasforge.quota.consumed.v1' THEN
+                        RAISE EXCEPTION 'forced quota outbox failure';
+                    END IF;
+                    RETURN NEW;
+                END $$;
+                CREATE TRIGGER fail_quota_outbox BEFORE INSERT ON entitlement_outbox_events
+                FOR EACH ROW EXECUTE FUNCTION fail_quota_outbox()
+                """);
+        try {
+            assertThrows(RuntimeException.class,
+                    () -> quotaCommands.consume(caller, tenant, "max_users", 1, uuidV7(130),
+                            QuotaOperationPurpose.TENANT_ADMIN_INITIALIZATION));
+            assertEquals(0, count("quota_usages"));
+            assertEquals(0, count("quota_operations"));
+        } finally {
+            executeAsMigrator("DROP TRIGGER fail_quota_outbox ON entitlement_outbox_events; "
+                    + "DROP FUNCTION fail_quota_outbox()");
+        }
+
+        quotaCommands.consume(caller, tenant, "max_users", 1, uuidV7(131),
+                QuotaOperationPurpose.TENANT_ADMIN_INITIALIZATION);
+        quotaCommands.consume(caller, otherTenant, "max_users", 1, uuidV7(132),
+                QuotaOperationPurpose.TENANT_ADMIN_INITIALIZATION);
+        assertEquals(1, visibleTenantRows("quota_usages", tenant));
+        assertEquals(1, visibleTenantRows("quota_usages", otherTenant));
+        assertEquals(1, visibleTenantRows("quota_operations", tenant));
+        assertEquals(1, visibleTenantRows("quota_operations", otherTenant));
+        assertEquals(0, visibleTenantRowsWithoutTarget("quota_operations"));
+    }
+
+    @Test
+    void grpcRejectsWrongScopeAndPurposeBeforeQuotaStateAndReturnsContractFields() throws Exception {
+        ServiceAccessTokenVerifier tokens = mock(ServiceAccessTokenVerifier.class);
+        UUID caller = uuidV7(140);
+        when(tokens.verify("tenant-access-token", "entitlement:quota:write"))
+                .thenReturn(new ServiceAccessTokenClaims(
+                        caller, java.util.Set.of("entitlement:quota:write"), uuidV7(141),
+                        java.time.Instant.EPOCH, java.time.Instant.EPOCH.plusSeconds(300)));
+        doThrow(new ServiceAccessTokenScopeException())
+                .when(tokens).verify("runtime-token", "entitlement:quota:write");
+        QuotaCommandGrpcService grpc = new QuotaCommandGrpcService(quotaCommands);
+        String serverName = InProcessServerBuilder.generateName();
+        Server server = InProcessServerBuilder.forName(serverName).directExecutor()
+                .addService(ServerInterceptors.intercept(grpc, new QuotaCommandServerInterceptor(tokens)))
+                .build().start();
+        ManagedChannel channel = InProcessChannelBuilder.forName(serverName).directExecutor().build();
+        try {
+            StatusRuntimeException wrongScope = assertThrows(StatusRuntimeException.class,
+                    () -> quotaStub(channel, "runtime-token").consume(quotaRequest(uuidV7(142), uuidV7(143),
+                            QuotaPurpose.TENANT_ADMIN_INITIALIZATION)));
+            assertEquals(Status.Code.PERMISSION_DENIED, wrongScope.getStatus().getCode());
+            assertEquals(0, count("quota_operations"));
+
+            StatusRuntimeException wrongPurpose = assertThrows(StatusRuntimeException.class,
+                    () -> quotaStub(channel, "tenant-access-token").consume(
+                            quotaRequest(uuidV7(144), uuidV7(145), QuotaPurpose.RUNTIME)));
+            assertEquals(Status.Code.INVALID_ARGUMENT, wrongPurpose.getStatus().getCode());
+            assertEquals(0, count("quota_operations"));
+
+            UUID actor = uuidV7(146);
+            UUID tenant = uuidV7(147);
+            PlanResult plan = activePlan(actor, 148, 2);
+            initialSubscriptions.create(actor, uuidV7(152), tenant, plan.id(), null, null);
+            var response = quotaStub(channel, "tenant-access-token").consume(
+                    quotaRequest(tenant, uuidV7(153), QuotaPurpose.TENANT_ADMIN_INITIALIZATION));
+            assertEquals(1, response.getUsage());
+            assertEquals(2, response.getLimit());
+            assertFalse(response.getReplayed());
+        } finally {
+            channel.shutdownNow().awaitTermination(5, TimeUnit.SECONDS);
+            server.shutdownNow().awaitTermination(5, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    void releaseStillCompensatesAfterSubscriptionExpires() throws SQLException {
+        UUID actor = uuidV7(160);
+        UUID tenant = uuidV7(161);
+        UUID caller = uuidV7(162);
+        PlanResult plan = activePlan(actor, 163, 1);
+        initialSubscriptions.create(actor, uuidV7(167), tenant, plan.id(), null, null);
+        quotaCommands.consume(caller, tenant, "max_users", 1, uuidV7(168),
+                QuotaOperationPurpose.TENANT_ADMIN_INITIALIZATION);
+        executeAsMigrator("UPDATE subscriptions SET ends_at = created_at + interval '1 millisecond' "
+                + "WHERE tenant_id = '" + tenant + "'");
+
+        assertEquals(0, quotaCommands.release(caller, tenant, "max_users", 1, uuidV7(169),
+                QuotaOperationPurpose.TENANT_ADMIN_INITIALIZATION).usage());
+    }
+
     private boolean concurrentCreate(
             CountDownLatch start, UUID actor, UUID key, UUID tenantId, UUID planId) throws InterruptedException {
         start.await();
@@ -287,12 +486,67 @@ class EntitlementBootstrapPostgreSqlIT {
         }
     }
 
+    private boolean concurrentConsume(
+            CountDownLatch start, UUID caller, UUID tenantId, UUID operationId) throws InterruptedException {
+        start.await();
+        try {
+            quotaCommands.consume(caller, tenantId, "max_users", 1, operationId,
+                    QuotaOperationPurpose.TENANT_ADMIN_INITIALIZATION);
+            return true;
+        } catch (QuotaCommandException exception) {
+            assertEquals(QuotaOperationOutcome.QUOTA_EXCEEDED, exception.outcome());
+            return false;
+        }
+    }
+
     private PlanResult activePlan(UUID actor, long seed) {
+        return activePlan(actor, seed, 10);
+    }
+
+    private PlanResult activePlan(UUID actor, long seed, int limit) {
         QuotaDefinitionResult quota = service.createQuotaDefinition(actor, uuidV7(seed), "max_users", null);
         service.activateQuotaDefinition(actor, uuidV7(seed + 1), quota.id(), null);
         PlanResult plan = service.createPlan(
-                actor, uuidV7(seed + 2), "starter-" + seed, "Starter", quota.id(), 10, null);
+                actor, uuidV7(seed + 2), "starter-" + seed, "Starter", quota.id(), limit, null);
         return service.activatePlan(actor, uuidV7(seed + 3), plan.id(), null);
+    }
+
+    private static int visibleTenantRows(String table, UUID tenantId) throws SQLException {
+        try (Connection connection = appConnection(); Statement statement = connection.createStatement()) {
+            connection.setAutoCommit(false);
+            statement.execute("SELECT set_config('app.tenant_id', '" + tenantId + "', true)");
+            try (ResultSet result = statement.executeQuery("SELECT count(*) FROM " + table)) {
+                result.next();
+                return result.getInt(1);
+            }
+        }
+    }
+
+    private static int visibleTenantRowsWithoutTarget(String table) throws SQLException {
+        try (Connection connection = appConnection(); Statement statement = connection.createStatement();
+             ResultSet result = statement.executeQuery("SELECT count(*) FROM " + table)) {
+            result.next();
+            return result.getInt(1);
+        }
+    }
+
+    private static QuotaCommandRequest quotaRequest(
+            UUID tenantId, UUID operationId, QuotaPurpose purpose) {
+        return QuotaCommandRequest.newBuilder()
+                .setTenantId(tenantId.toString())
+                .setQuotaCode("max_users")
+                .setAmount(1)
+                .setOperationId(operationId.toString())
+                .setPurpose(purpose)
+                .build();
+    }
+
+    private static QuotaCommandServiceGrpc.QuotaCommandServiceBlockingStub quotaStub(
+            ManagedChannel channel, String token) {
+        Metadata metadata = new Metadata();
+        metadata.put(Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER), "Bearer " + token);
+        return QuotaCommandServiceGrpc.newBlockingStub(channel)
+                .withInterceptors(MetadataUtils.newAttachHeadersInterceptor(metadata));
     }
 
     private static int visibleSubscriptionCount(UUID tenantId) throws SQLException {
@@ -361,6 +615,7 @@ class EntitlementBootstrapPostgreSqlIT {
             sqlSessionFactoryRef = "entitlementSqlSessionFactory")
     @Import({
             MyBatisQuotaDefinitionRepository.class,
+            MyBatisQuotaOperationRepository.class,
             MyBatisPlanRepository.class,
             MyBatisSubscriptionRepository.class,
             MyBatisEntitlementBootstrapIdempotency.class,
@@ -443,6 +698,15 @@ class EntitlementBootstrapPostgreSqlIT {
                 Clock clock) {
             return new CreateInitialSubscriptionService(
                     plans, subscriptions, tenantEligibility, idempotency, outbox, events, ids, clock);
+        }
+
+        @Bean
+        QuotaCommandApplicationService quotaCommands(
+                MyBatisQuotaOperationRepository operations,
+                MyBatisEntitlementOutboxEventRepository outbox,
+                EntitlementEventFactory events,
+                Clock clock) {
+            return new QuotaCommandApplicationService(operations, outbox, events, clock);
         }
     }
 }

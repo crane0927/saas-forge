@@ -81,6 +81,110 @@
         ON CONFLICT (tenant_id) DO NOTHING
     </insert>
 
+    <insert id="claimQuotaOperation">
+        INSERT INTO quota_operations
+            (operation_id, caller_client_id, tenant_id, quota_code, amount, operation_action,
+             purpose, request_fingerprint, created_at)
+        VALUES
+            (#{row.operationId}, #{row.callerClientId}, #{row.tenantId}, #{row.quotaCode}, #{row.amount},
+             #{row.action}, #{row.purpose}, #{row.requestFingerprint}, #{row.createdAt})
+        ON CONFLICT (operation_id) DO NOTHING
+    </insert>
+
+    <select id="findQuotaOperation"
+            resultType="io.saasforge.entitlement.infrastructure.persistence.record.QuotaOperationRow">
+        SELECT operation_id AS operationId,
+               caller_client_id AS callerClientId,
+               tenant_id AS tenantId,
+               quota_code AS quotaCode,
+               amount,
+               operation_action AS action,
+               purpose,
+               request_fingerprint AS requestFingerprint,
+               outcome,
+               response_usage AS usage,
+               response_limit AS limit,
+               created_at AS createdAt,
+               completed_at AS completedAt
+        FROM quota_operations
+        WHERE operation_id = #{operationId}
+    </select>
+
+    <select id="findQuotaDefinitionIdByCode" resultType="java.util.UUID">
+        SELECT id
+        FROM quota_definitions
+        WHERE code = #{quotaCode}
+    </select>
+
+    <select id="findCurrentQuotaLimit" resultType="java.lang.Integer">
+        SELECT pq.quota_limit
+        FROM subscriptions s
+        JOIN plan_quotas pq ON pq.plan_id = s.plan_id
+        WHERE s.tenant_id = #{tenantId}
+          AND pq.quota_definition_id = #{quotaDefinitionId}
+          AND s.subscription_status = 'ACTIVE'
+          AND (s.ends_at IS NULL OR s.ends_at &gt; #{at})
+    </select>
+
+    <select id="findGrantedQuotaLimit" resultType="java.lang.Integer">
+        SELECT pq.quota_limit
+        FROM subscriptions s
+        JOIN plan_quotas pq ON pq.plan_id = s.plan_id
+        WHERE s.tenant_id = #{tenantId}
+          AND pq.quota_definition_id = #{quotaDefinitionId}
+    </select>
+
+    <insert id="initializeQuotaUsage">
+        INSERT INTO quota_usages
+            (tenant_id, quota_definition_id, used, created_at, updated_at)
+        VALUES
+            (#{tenantId}, #{quotaDefinitionId}, 0, #{at}, #{at})
+        ON CONFLICT (tenant_id, quota_definition_id) DO NOTHING
+    </insert>
+
+    <select id="consumeQuota" resultType="java.lang.Integer" flushCache="true" affectData="true">
+        WITH adjusted AS (
+            UPDATE quota_usages
+            SET used = used + #{amount},
+                updated_at = #{at}
+            WHERE tenant_id = #{tenantId}
+              AND quota_definition_id = #{quotaDefinitionId}
+              AND used + #{amount} &lt;= #{limit}
+            RETURNING used
+        )
+        SELECT used FROM adjusted
+    </select>
+
+    <select id="releaseQuota" resultType="java.lang.Integer" flushCache="true" affectData="true">
+        WITH adjusted AS (
+            UPDATE quota_usages
+            SET used = used - #{amount},
+                updated_at = #{at}
+            WHERE tenant_id = #{tenantId}
+              AND quota_definition_id = #{quotaDefinitionId}
+              AND used &gt;= #{amount}
+            RETURNING used
+        )
+        SELECT used FROM adjusted
+    </select>
+
+    <select id="findCurrentUsage" resultType="java.lang.Integer">
+        SELECT used
+        FROM quota_usages
+        WHERE tenant_id = #{tenantId}
+          AND quota_definition_id = #{quotaDefinitionId}
+    </select>
+
+    <update id="completeQuotaOperation">
+        UPDATE quota_operations
+        SET outcome = #{outcome},
+            response_usage = #{usage},
+            response_limit = #{limit},
+            completed_at = #{at}
+        WHERE operation_id = #{operationId}
+          AND outcome IS NULL
+    </update>
+
     <delete id="deleteExpiredIdempotency">
         DELETE FROM entitlement_bootstrap_idempotency
         WHERE caller_identity_id = #{callerIdentityId}
