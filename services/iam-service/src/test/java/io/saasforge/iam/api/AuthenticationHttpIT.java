@@ -35,6 +35,7 @@ import io.saasforge.iam.application.signing.JwtSigningService;
 import io.saasforge.iam.application.signing.SigningKeyLifecycleService;
 import io.saasforge.iam.application.signing.SigningKeyRevocationTransaction;
 import io.saasforge.iam.config.AuthenticationConfiguration;
+import io.saasforge.iam.config.PasswordSetupMailConfiguration;
 import io.saasforge.iam.domain.authorization.PlatformRoleAssignment;
 import io.saasforge.iam.domain.authorization.PlatformRoleAssignmentRepository;
 import io.saasforge.iam.domain.client.ClientSecretDigest;
@@ -1710,7 +1711,7 @@ class AuthenticationHttpIT {
             AuthenticationController.class,
             OutboxPublisher.class
     })
-    @Import(AuthenticationConfiguration.class)
+    @Import({AuthenticationConfiguration.class, PasswordSetupMailConfiguration.class})
     static class TestConfiguration {
         @Bean
         static ConversionService conversionService() {

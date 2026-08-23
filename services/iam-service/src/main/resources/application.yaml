@@ -51,6 +51,16 @@ saasforge:
   environment: ${SAASFORGE_ENVIRONMENT:dev}
   iam:
     tenant-access-grpc-target: tenant-access
+    password-setup:
+      page-uri: ${PASSWORD_SETUP_PAGE_URI:}
+      smtp:
+        host: ${SMTP_HOST:}
+        port: ${SMTP_PORT:1025}
+        username: ${SMTP_USERNAME:}
+        password: ${SMTP_PASSWORD:}
+        from: ${SMTP_FROM:}
+        starttls: ${SMTP_STARTTLS:false}
+        timeout: ${SMTP_TIMEOUT:PT5S}
     outbox:
       publish-delay: PT1S
       lease-duration: PT30S

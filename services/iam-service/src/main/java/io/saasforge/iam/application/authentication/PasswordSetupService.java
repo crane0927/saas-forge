@@ -62,7 +62,7 @@ public class PasswordSetupService {
         PasswordSetupChallenge challenge = challenges.replaceOpenChallenge(
                         identityId, material.digest(), issuedAt, issuedAt.plus(CHALLENGE_LIFETIME))
                 .orElseThrow(PasswordSetupChallengeNotAllowedException::new);
-        return new PasswordSetupChallengeToken(material.token(), challenge.expiresAt());
+        return new PasswordSetupChallengeToken(challenge.id(), material.token(), challenge.expiresAt());
     }
 
     /** Credential、Challenge 消费、稳定 204 事实和 Outbox 必须在同一事务提交。 */

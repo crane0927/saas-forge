@@ -179,6 +179,7 @@ class PasswordSetupServiceTest {
         @Override public Identity create(Identity identity) { throw new UnsupportedOperationException(); }
         @Override public Identity findOrCreate(Identity identity) { throw new UnsupportedOperationException(); }
         @Override public Optional<Identity> findByEmail(NormalizedEmail email) { return Optional.empty(); }
+        @Override public Optional<Identity> findById(UUID identityId) { return Optional.empty(); }
         @Override public void lockIdentity(UUID identityId) { }
 
         @Override

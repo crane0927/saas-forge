@@ -152,6 +152,11 @@ class EnsureIdentityServiceTest {
         }
 
         @Override
+        public Optional<Identity> findById(UUID identityId) {
+            return Optional.ofNullable(identity).filter(value -> value.id().equals(identityId));
+        }
+
+        @Override
         public void lockIdentity(UUID identityId) {
         }
 

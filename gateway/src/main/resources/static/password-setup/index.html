@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>设置密码 · SaaS Forge</title>
+  <link rel="stylesheet" href="/password-setup/styles.css">
+  <script src="/password-setup/app.js" defer></script>
+</head>
+<body>
+  <main class="card" aria-labelledby="page-title">
+    <p class="eyebrow">SaaS Forge</p>
+    <h1 id="page-title">设置你的密码</h1>
+    <p class="intro">创建正式密码后，你可以使用邮件地址登录租户控制台。</p>
+
+    <form id="password-form" novalidate>
+      <label for="new-password">新密码</label>
+      <input id="new-password" name="new-password" type="password" minlength="12" maxlength="128"
+             autocomplete="new-password" required aria-describedby="password-help form-status">
+      <p id="password-help" class="help">至少 12 个字符，不得包含空格或常见弱密码。</p>
+
+      <label for="confirm-password">确认新密码</label>
+      <input id="confirm-password" name="confirm-password" type="password" minlength="12" maxlength="128"
+             autocomplete="new-password" required aria-describedby="form-status">
+
+      <button id="submit-button" type="submit">设置密码</button>
+    </form>
+
+    <p id="form-status" class="status" role="status" aria-live="polite"></p>
+  </main>
+</body>
+</html>

@@ -17,6 +17,9 @@ public interface IdentityRepository {
 
     Optional<Identity> findByEmail(NormalizedEmail email);
 
+    /** 按 IAM 权威标识读取 Identity，供不得接受调用方邮箱的内部用例使用。 */
+    Optional<Identity> findById(UUID identityId);
+
     /** 跨 Credential/Challenge 写入统一使用的 Identity 事务锁。 */
     void lockIdentity(UUID identityId);
 

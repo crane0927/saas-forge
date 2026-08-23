@@ -16,6 +16,10 @@ import io.saasforge.iam.application.authentication.PasswordChangedEventFactory;
 import io.saasforge.iam.application.authentication.PasswordLoginService;
 import io.saasforge.iam.application.authentication.PasswordEstablishedEventFactory;
 import io.saasforge.iam.application.authentication.PasswordSetupChallengeIssuer;
+import io.saasforge.iam.application.authentication.PasswordSetupDeliveredEventFactory;
+import io.saasforge.iam.application.authentication.PasswordSetupDeliveryService;
+import io.saasforge.iam.application.authentication.PasswordSetupDeliveryTransaction;
+import io.saasforge.iam.application.authentication.PasswordSetupMailer;
 import io.saasforge.iam.application.authentication.PasswordSetupService;
 import io.saasforge.iam.application.authentication.RefreshTokenIssuer;
 import io.saasforge.iam.application.authentication.RevocationIndex;
@@ -36,6 +40,7 @@ import io.saasforge.iam.application.signing.JwtSigningService;
 import io.saasforge.iam.domain.authorization.PlatformRoleAssignmentRepository;
 import io.saasforge.iam.domain.identity.IdentityRepository;
 import io.saasforge.iam.domain.identity.PasswordSetupChallengeRepository;
+import io.saasforge.iam.domain.identity.PasswordSetupDeliveryRepository;
 import io.saasforge.iam.domain.identity.IdentityProvisioningRepository;
 import io.saasforge.iam.domain.outbox.OutboxEventRepository;
 import io.saasforge.iam.domain.client.OAuthClientRepository;
@@ -194,6 +199,14 @@ public class AuthenticationConfiguration {
             UuidV7Generator uuidV7Generator,
             @Value("${saasforge.environment:dev}") String environment) {
         return new PasswordEstablishedEventFactory(objectMapper, uuidV7Generator, environment);
+    }
+
+    @Bean
+    PasswordSetupDeliveredEventFactory passwordSetupDeliveredEventFactory(
+            ObjectMapper objectMapper,
+            UuidV7Generator uuidV7Generator,
+            @Value("${saasforge.environment:dev}") String environment) {
+        return new PasswordSetupDeliveredEventFactory(objectMapper, uuidV7Generator, environment);
     }
 
     @Bean
@@ -370,5 +383,25 @@ public class AuthenticationConfiguration {
         return new PasswordSetupService(
                 challenges, identities, challengeIssuer, passwordPolicy, compromisedPasswords,
                 passwordVerifier, outboxEvents, eventFactory, clock);
+    }
+
+    @Bean
+    PasswordSetupDeliveryTransaction passwordSetupDeliveryTransaction(
+            PasswordSetupDeliveryRepository deliveries,
+            IdentityRepository identities,
+            PasswordSetupService passwordSetups,
+            OutboxEventRepository outboxEvents,
+            PasswordSetupDeliveredEventFactory eventFactory,
+            Clock clock) {
+        return new PasswordSetupDeliveryTransaction(
+                deliveries, identities, passwordSetups, outboxEvents, eventFactory, clock);
+    }
+
+    @Bean
+    PasswordSetupDeliveryService passwordSetupDeliveryService(
+            PasswordSetupDeliveryTransaction transaction,
+            PasswordSetupMailer mailer,
+            PasswordSetupMailConfiguration.PasswordSetupMailSettings mailSettings) {
+        return new PasswordSetupDeliveryService(transaction, mailer, mailSettings.pageUri());
     }
 }

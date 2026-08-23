@@ -15,6 +15,8 @@ public interface IdentityMapper {
 
     IdentityRow findIdentityByEmail(@Param("normalizedEmail") String normalizedEmail);
 
+    IdentityRow findIdentityById(@Param("identityId") UUID identityId);
+
     CredentialRow insertCredential(@Param("row") CredentialRow row);
 
     UUID lockIdentityById(@Param("identityId") UUID identityId);

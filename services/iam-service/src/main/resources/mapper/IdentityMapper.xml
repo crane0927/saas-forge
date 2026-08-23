@@ -40,6 +40,12 @@
         WHERE normalized_email = #{normalizedEmail}
     </select>
 
+    <select id="findIdentityById" resultMap="identityRow">
+        SELECT id, normalized_email, display_name, created_at
+        FROM iam_identities
+        WHERE id = #{identityId}
+    </select>
+
     <select id="insertCredential" resultMap="credentialRow" affectData="true" flushCache="true">
         INSERT INTO iam_credentials (identity_id, credential_type, password_hash, issued_at, expires_at, invalidated_at)
         VALUES (#{row.identityId}, #{row.credentialType}, #{row.passwordHash}, #{row.issuedAt},

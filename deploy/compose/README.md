@@ -7,7 +7,7 @@
 ## 包含内容
 
 - Gateway；IAM、Tenant Access、Entitlement、Audit 四个领域服务
-- PostgreSQL 18，以及四个服务各自的一次性 Flyway 迁移任务
+- PostgreSQL 18、Mailpit，以及四个服务各自的一次性 Flyway 迁移任务
 - Redis、单节点 KRaft Kafka、单节点 Nacos 与 OpenTelemetry Collector
 - PostgreSQL、Redis、Kafka 的独立命名卷
 
@@ -249,6 +249,7 @@ docker compose --profile credential-reset run --rm iam-platform-admin-credential
 | PostgreSQL | 5432 | 数据库连接 |
 | Redis | 6379 | 需使用 `REDIS_PASSWORD` 认证 |
 | Kafka | 29092 | 主机外部监听；容器内服务使用 `kafka:9092` |
+| Mailpit | 1025 / 8025 | 开发 SMTP / 邮件 Web 界面 |
 | Nacos | 8848 / 8849 | 配置与服务发现 API / 本地控制台；仅限本地开发 |
 | OpenTelemetry Collector | 4317 / 4318 | OTLP gRPC / HTTP |
 

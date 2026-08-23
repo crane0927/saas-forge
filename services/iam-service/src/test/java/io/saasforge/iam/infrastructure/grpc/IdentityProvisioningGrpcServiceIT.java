@@ -274,6 +274,11 @@ class IdentityProvisioningGrpcServiceIT {
         }
 
         @Override
+        public Optional<Identity> findById(UUID identityId) {
+            return Optional.empty();
+        }
+
+        @Override
         public void lockIdentity(UUID identityId) {
         }
 

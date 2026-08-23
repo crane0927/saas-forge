@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.List;
+import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -16,10 +17,18 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Component
 class OpenApiRouteGuard extends OncePerRequestFilter {
 
+    private static final Set<String> PASSWORD_SETUP_PAGE_RESOURCES = Set.of(
+            "/password-setup", "/password-setup/app.js", "/password-setup/styles.css");
+
     private final GatewayProblemDetailsWriter problemDetailsWriter;
 
     OpenApiRouteGuard(GatewayProblemDetailsWriter problemDetailsWriter) {
         this.problemDetailsWriter = problemDetailsWriter;
+    }
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return "GET".equals(request.getMethod()) && PASSWORD_SETUP_PAGE_RESOURCES.contains(requestPath(request));
     }
 
     @Override

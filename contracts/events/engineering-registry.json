@@ -44,6 +44,20 @@
       ]
     },
     {
+      "type": "com.saasforge.iam.password-setup-delivered.v1",
+      "producerService": "iam-service",
+      "source": "urn:saasforge:iam-service",
+      "schema": "contracts/events/iam-password-setup-delivered.v1.schema.json",
+      "topic": "saasforge.<environment>.iam-service.events",
+      "orderingKey": "identityId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.iam-password-events"
+        }
+      ]
+    },
+    {
       "type": "com.saasforge.iam.platform-admin-initialized.v1",
       "producerService": "iam-service",
       "source": "urn:saasforge:iam-service",

@@ -65,6 +65,12 @@ services:
     volumes:
       - kafka-data:/var/lib/kafka/data
 
+  mailpit:
+    image: axllent/mailpit:v1.30.7
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+
   otel-collector:
     image: otel/opentelemetry-collector:0.119.0
     command: ["--config=/etc/otelcol/config.yaml"]
@@ -334,6 +340,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      mailpit:
+        condition: service_started
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/iam_db
       SPRING_DATASOURCE_USERNAME: iam_app
@@ -351,6 +359,10 @@ services:
       NACOS_IAM_PASSWORD: ${NACOS_IAM_PASSWORD:?NACOS_IAM_PASSWORD is required}
       SAASFORGE_SERVICE_CLIENT_ID_FILE: /run/secrets/service-client-id
       SAASFORGE_SERVICE_CLIENT_SECRET_FILE: /run/secrets/service-client-secret
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      SMTP_FROM: no-reply@saasforge.test
+      PASSWORD_SETUP_PAGE_URI: https://console.saasforge.test/password-setup
     ports:
       - "127.0.0.1:8081:8080"
     volumes:

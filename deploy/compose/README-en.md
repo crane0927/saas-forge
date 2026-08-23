@@ -7,7 +7,7 @@ This directory provides the minimum saas-forge local runtime topology for develo
 ## Included components
 
 - Gateway and the IAM, Tenant Access, Entitlement, and Audit domain services
-- PostgreSQL 18 and one Flyway migration job per domain service
+- PostgreSQL 18, Mailpit, and one Flyway migration job per domain service
 - Redis, single-node KRaft Kafka, single-node Nacos, and the OpenTelemetry Collector
 - Separate named volumes for PostgreSQL, Redis, and Kafka
 
@@ -249,6 +249,7 @@ Every host port binds only to `127.0.0.1`; none is exposed to the local network.
 | PostgreSQL | 5432 | Database connection |
 | Redis | 6379 | Authenticate with `REDIS_PASSWORD` |
 | Kafka | 29092 | Host external listener; containers use `kafka:9092` |
+| Mailpit | 1025 / 8025 | Development SMTP / mail web UI |
 | Nacos | 8848 / 8849 | Configuration and service-discovery API / local console; local development only |
 | OpenTelemetry Collector | 4317 / 4318 | OTLP gRPC / HTTP |
 

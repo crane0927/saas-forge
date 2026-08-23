@@ -53,6 +53,11 @@ public class MyBatisIdentityRepository implements IdentityRepository {
     }
 
     @Override
+    public Optional<Identity> findById(UUID identityId) {
+        return Optional.ofNullable(mapper.findIdentityById(identityId)).map(MyBatisIdentityRepository::toDomain);
+    }
+
+    @Override
     public PasswordCredential create(PasswordCredential credential) {
         lockIdentity(credential.identityId());
         if (credential.type() == CredentialType.PASSWORD
