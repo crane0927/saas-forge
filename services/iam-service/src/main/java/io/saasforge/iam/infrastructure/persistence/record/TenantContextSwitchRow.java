@@ -15,6 +15,12 @@ public class TenantContextSwitchRow {
     private OffsetDateTime createdAt;
     private OffsetDateTime completedAt;
     private OffsetDateTime refreshedAt;
+    private int attemptCount;
+    private OffsetDateTime nextAttemptAt;
+    private String leaseOwner;
+    private OffsetDateTime leaseUntil;
+    private OffsetDateTime recoveryExhaustedAt;
+    private String lastFailure;
 
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
@@ -42,4 +48,18 @@ public class TenantContextSwitchRow {
     public void setCompletedAt(OffsetDateTime completedAt) { this.completedAt = completedAt; }
     public OffsetDateTime getRefreshedAt() { return refreshedAt; }
     public void setRefreshedAt(OffsetDateTime refreshedAt) { this.refreshedAt = refreshedAt; }
+    public int getAttemptCount() { return attemptCount; }
+    public void setAttemptCount(int attemptCount) { this.attemptCount = attemptCount; }
+    public OffsetDateTime getNextAttemptAt() { return nextAttemptAt; }
+    public void setNextAttemptAt(OffsetDateTime nextAttemptAt) { this.nextAttemptAt = nextAttemptAt; }
+    public String getLeaseOwner() { return leaseOwner; }
+    public void setLeaseOwner(String leaseOwner) { this.leaseOwner = leaseOwner; }
+    public OffsetDateTime getLeaseUntil() { return leaseUntil; }
+    public void setLeaseUntil(OffsetDateTime leaseUntil) { this.leaseUntil = leaseUntil; }
+    public OffsetDateTime getRecoveryExhaustedAt() { return recoveryExhaustedAt; }
+    public void setRecoveryExhaustedAt(OffsetDateTime recoveryExhaustedAt) {
+        this.recoveryExhaustedAt = recoveryExhaustedAt;
+    }
+    public String getLastFailure() { return lastFailure; }
+    public void setLastFailure(String lastFailure) { this.lastFailure = lastFailure; }
 }

@@ -16,17 +16,57 @@ public interface TenantContextSwitchMapper {
 
     TenantContextSwitchRow findAwaitingRefreshByFamily(@Param("familyId") UUID familyId);
 
+    TenantContextSwitchRow findById(@Param("workflowId") UUID workflowId);
+
+    TenantContextSwitchRow findNextClaimable(
+            @Param("now") OffsetDateTime now,
+            @Param("maximumAttempts") int maximumAttempts);
+
+    int exhaustExpiredAtLimit(
+            @Param("now") OffsetDateTime now,
+            @Param("maximumAttempts") int maximumAttempts,
+            @Param("failureSummary") String failureSummary);
+
+    int exhaustWorkflowAtLimit(
+            @Param("workflowId") UUID workflowId,
+            @Param("now") OffsetDateTime now,
+            @Param("maximumAttempts") int maximumAttempts,
+            @Param("failureSummary") String failureSummary);
+
     TenantContextSwitchRow insert(@Param("row") TenantContextSwitchRow row);
+
+    TenantContextSwitchRow claimExisting(
+            @Param("workflowId") UUID workflowId,
+            @Param("claimant") String claimant,
+            @Param("now") OffsetDateTime now,
+            @Param("claimedUntil") OffsetDateTime claimedUntil,
+            @Param("maximumAttempts") int maximumAttempts);
 
     int complete(
             @Param("workflowId") UUID workflowId,
             @Param("switchStatus") String switchStatus,
             @Param("resultHttpStatus") Integer resultHttpStatus,
+            @Param("attemptCount") int attemptCount,
             @Param("completedAt") OffsetDateTime completedAt);
+
+    int scheduleRetry(
+            @Param("workflowId") UUID workflowId,
+            @Param("claimant") String claimant,
+            @Param("attemptCount") int attemptCount,
+            @Param("retryAt") OffsetDateTime retryAt,
+            @Param("failureSummary") String failureSummary);
+
+    int exhaustRecovery(
+            @Param("workflowId") UUID workflowId,
+            @Param("claimant") String claimant,
+            @Param("attemptCount") int attemptCount,
+            @Param("exhaustedAt") OffsetDateTime exhaustedAt,
+            @Param("failureSummary") String failureSummary);
 
     int markAwaitingRefresh(
             @Param("workflowId") UUID workflowId,
             @Param("expectedContextVersion") long expectedContextVersion,
+            @Param("attemptCount") int attemptCount,
             @Param("completedAt") OffsetDateTime completedAt);
 
     int completePostSwitchRefresh(

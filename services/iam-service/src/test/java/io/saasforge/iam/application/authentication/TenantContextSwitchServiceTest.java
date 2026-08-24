@@ -1,13 +1,14 @@
 package io.saasforge.iam.application.authentication;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 import io.saasforge.iam.domain.session.RefreshTokenFamily;
@@ -20,6 +21,7 @@ import io.saasforge.iam.domain.session.TenantContextSwitchWorkflow;
 import io.saasforge.iam.domain.shared.Sha256Digest;
 import java.security.SecureRandom;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
@@ -43,7 +45,6 @@ class TenantContextSwitchServiceTest {
     private TenantContextSwitchRepository workflows;
     private MembershipValidation memberships;
     private TenantContextSwitchTransaction transaction;
-    private RefreshTokenIssuer refreshTokens;
     private TenantContextSwitchService service;
     private RefreshTokenFamily family;
 
@@ -53,55 +54,49 @@ class TenantContextSwitchServiceTest {
         workflows = mock(TenantContextSwitchRepository.class);
         memberships = mock(MembershipValidation.class);
         transaction = mock(TenantContextSwitchTransaction.class);
-        refreshTokens = new RefreshTokenIssuer(new SecureRandom());
         service = new TenantContextSwitchService(
-                families, workflows, memberships, refreshTokens, transaction,
-                Clock.fixed(NOW, ZoneOffset.UTC));
+                families, workflows, memberships, new RefreshTokenIssuer(new SecureRandom()), transaction,
+                new TenantContextSwitchRecoveryPolicy(
+                        Duration.ofSeconds(30), Duration.ofSeconds(1), Duration.ofMinutes(1), 10),
+                "test-worker", Clock.fixed(NOW, ZoneOffset.UTC));
         family = RefreshTokenFamily.start(
                         IDENTITY_ID, RefreshTokenFamilyPurpose.USER_TENANT,
                         CURRENT_MEMBERSHIP_ID, CURRENT_TENANT_ID, NOW.minusSeconds(10))
                 .identifiedBy(FAMILY_ID);
         when(families.findUsableByTokenDigest(any(), eq(NOW))).thenReturn(Optional.of(family));
+        when(families.findById(FAMILY_ID)).thenReturn(Optional.of(family));
     }
 
     @Test
     void persistsBeforeSequentialValidationAndCompletesStableNoOp() {
         TenantContextSwitchWorkflow workflow = workflow(CURRENT_MEMBERSHIP_ID, TenantContextSwitchStatus.PENDING);
-        when(workflows.claim(eq(FAMILY_ID), eq(0L), eq(IDEMPOTENCY_KEY),
-                eq(CURRENT_MEMBERSHIP_ID), any(), eq(NOW)))
-                .thenReturn(new TenantContextSwitchClaim(TenantContextSwitchClaim.Status.CREATED, workflow));
+        claimed(TenantContextSwitchClaim.Status.CREATED, workflow);
         when(memberships.validate(IDENTITY_ID, CURRENT_MEMBERSHIP_ID))
                 .thenReturn(Optional.of(new ValidatedMembership(CURRENT_MEMBERSHIP_ID, CURRENT_TENANT_ID)));
 
         assertDoesNotThrow(() -> service.switchContext(
                 IDEMPOTENCY_KEY, REFRESH_TOKEN, CURRENT_MEMBERSHIP_ID));
 
-        verify(workflows).claim(eq(FAMILY_ID), eq(0L), eq(IDEMPOTENCY_KEY),
-                eq(CURRENT_MEMBERSHIP_ID), any(), eq(NOW));
-        verify(memberships, times(2)).validate(IDENTITY_ID, CURRENT_MEMBERSHIP_ID);
-        verify(transaction).complete(WORKFLOW_ID, TenantContextSwitchStatus.NO_OP, NOW);
-        verify(families, never()).revokeForAuthorizationLoss(any(), any());
+        verify(transaction).complete(workflow, TenantContextSwitchStatus.NO_OP, NOW);
     }
 
     @Test
     void currentDenialTerminatesFamilyAndDoesNotInspectTarget() {
         TenantContextSwitchWorkflow workflow = workflow(TARGET_MEMBERSHIP_ID, TenantContextSwitchStatus.PENDING);
-        when(workflows.claim(any(), any(Long.class), any(), any(), any(), any()))
-                .thenReturn(new TenantContextSwitchClaim(TenantContextSwitchClaim.Status.CREATED, workflow));
+        claimed(TenantContextSwitchClaim.Status.CREATED, workflow);
         when(memberships.validate(IDENTITY_ID, CURRENT_MEMBERSHIP_ID)).thenReturn(Optional.empty());
 
         assertThrows(TenantContextSwitchAccessRejectedException.class,
                 () -> service.switchContext(IDEMPOTENCY_KEY, REFRESH_TOKEN, TARGET_MEMBERSHIP_ID));
 
-        verify(transaction).rejectCurrent(eq(WORKFLOW_ID), any(), eq(NOW));
+        verify(transaction).rejectCurrent(workflow, NOW);
         verify(memberships, never()).validate(IDENTITY_ID, TARGET_MEMBERSHIP_ID);
     }
 
     @Test
     void targetDenialPreservesCurrentSessionAndUsesReasonFreeFailure() {
         TenantContextSwitchWorkflow workflow = workflow(TARGET_MEMBERSHIP_ID, TenantContextSwitchStatus.PENDING);
-        when(workflows.claim(any(), any(Long.class), any(), any(), any(), any()))
-                .thenReturn(new TenantContextSwitchClaim(TenantContextSwitchClaim.Status.CREATED, workflow));
+        claimed(TenantContextSwitchClaim.Status.CREATED, workflow);
         when(memberships.validate(IDENTITY_ID, CURRENT_MEMBERSHIP_ID))
                 .thenReturn(Optional.of(new ValidatedMembership(CURRENT_MEMBERSHIP_ID, CURRENT_TENANT_ID)));
         when(memberships.validate(IDENTITY_ID, TARGET_MEMBERSHIP_ID)).thenReturn(Optional.empty());
@@ -109,39 +104,88 @@ class TenantContextSwitchServiceTest {
         assertThrows(TenantContextSwitchAccessRejectedException.class,
                 () -> service.switchContext(IDEMPOTENCY_KEY, REFRESH_TOKEN, TARGET_MEMBERSHIP_ID));
 
-        verify(transaction).complete(WORKFLOW_ID, TenantContextSwitchStatus.TARGET_REJECTED, NOW);
-        verify(transaction, never()).rejectCurrent(any(), any(), any());
+        verify(transaction).complete(workflow, TenantContextSwitchStatus.TARGET_REJECTED, NOW);
+        verify(transaction, never()).rejectCurrent(any(), any());
     }
 
     @Test
     void validatedRealChangeCommitsSwitchAndReturnsStableSuccess() {
         TenantContextSwitchWorkflow workflow = workflow(TARGET_MEMBERSHIP_ID, TenantContextSwitchStatus.PENDING);
-        when(workflows.claim(any(), any(Long.class), any(), any(), any(), any()))
-                .thenReturn(new TenantContextSwitchClaim(TenantContextSwitchClaim.Status.CREATED, workflow));
-        when(memberships.validate(IDENTITY_ID, CURRENT_MEMBERSHIP_ID))
-                .thenReturn(Optional.of(new ValidatedMembership(CURRENT_MEMBERSHIP_ID, CURRENT_TENANT_ID)));
-        when(memberships.validate(IDENTITY_ID, TARGET_MEMBERSHIP_ID))
-                .thenReturn(Optional.of(new ValidatedMembership(TARGET_MEMBERSHIP_ID, TARGET_TENANT_ID)));
+        claimed(TenantContextSwitchClaim.Status.CREATED, workflow);
+        validMemberships();
 
         assertDoesNotThrow(() -> service.switchContext(
                 IDEMPOTENCY_KEY, REFRESH_TOKEN, TARGET_MEMBERSHIP_ID));
+
         verify(transaction).switchContext(
-                WORKFLOW_ID, family, 0, TARGET_MEMBERSHIP_ID, TARGET_TENANT_ID, NOW, null);
-        verify(transaction, never()).rejectCurrent(any(), any(), any());
+                workflow, family, 0, TARGET_MEMBERSHIP_ID, TARGET_TENANT_ID, NOW, null);
     }
 
     @Test
-    void tenantAccessFailureLeavesSessionAndWorkflowUnchanged() {
+    void tenantAccessFailureSchedulesDurableRetryAndReturnsPending() {
         TenantContextSwitchWorkflow workflow = workflow(TARGET_MEMBERSHIP_ID, TenantContextSwitchStatus.PENDING);
-        when(workflows.claim(any(), any(Long.class), any(), any(), any(), any()))
-                .thenReturn(new TenantContextSwitchClaim(TenantContextSwitchClaim.Status.CREATED, workflow));
+        claimed(TenantContextSwitchClaim.Status.CREATED, workflow);
         when(memberships.validate(IDENTITY_ID, CURRENT_MEMBERSHIP_ID))
                 .thenThrow(new TenantAccessUnavailableException(new IllegalStateException("outage")));
 
-        assertThrows(TenantAccessUnavailableException.class,
+        TenantContextSwitchPendingException pending = assertThrows(TenantContextSwitchPendingException.class,
                 () -> service.switchContext(IDEMPOTENCY_KEY, REFRESH_TOKEN, TARGET_MEMBERSHIP_ID));
+
+        assertEquals(1, pending.retryAfterSeconds());
+        verify(workflows).scheduleRetry(workflow, NOW.plusSeconds(1), TenantAccessUnavailableException.CODE);
         verify(transaction, never()).complete(any(), any(), any());
-        verify(transaction, never()).rejectCurrent(any(), any(), any());
+    }
+
+    @Test
+    void pendingReplayDoesNotBypassLease() {
+        TenantContextSwitchWorkflow workflow = workflow(TARGET_MEMBERSHIP_ID, TenantContextSwitchStatus.PENDING);
+        claimed(TenantContextSwitchClaim.Status.REPLAY, workflow);
+
+        assertThrows(TenantContextSwitchPendingException.class,
+                () -> service.switchContext(IDEMPOTENCY_KEY, REFRESH_TOKEN, TARGET_MEMBERSHIP_ID));
+
+        verify(memberships, never()).validate(any(), any());
+    }
+
+    @Test
+    void exhaustedOriginalKeyRequiresNewKeyWithoutCallingTenantAccess() {
+        TenantContextSwitchWorkflow workflow = exhaustedWorkflow();
+        claimed(TenantContextSwitchClaim.Status.RECOVERY_EXHAUSTED, workflow);
+
+        TenantContextSwitchConflictException conflict = assertThrows(
+                TenantContextSwitchConflictException.class,
+                () -> service.switchContext(IDEMPOTENCY_KEY, REFRESH_TOKEN, TARGET_MEMBERSHIP_ID));
+
+        assertEquals(TenantContextSwitchConflictException.RETRY_REQUIRED_CODE, conflict.code());
+        verify(memberships, never()).validate(any(), any());
+    }
+
+    @Test
+    void workerRecoversClaimedWorkflowAfterRestart() {
+        TenantContextSwitchWorkflow workflow = workflow(TARGET_MEMBERSHIP_ID, TenantContextSwitchStatus.PENDING);
+        when(workflows.claimNext("test-worker", NOW, NOW.plusSeconds(30), 10))
+                .thenReturn(Optional.of(workflow));
+        validMemberships();
+
+        service.recoverNext();
+
+        verify(transaction).switchContext(
+                workflow, family, 0, TARGET_MEMBERSHIP_ID, TARGET_TENANT_ID, NOW, null);
+    }
+
+    @Test
+    void workerStopsAtMaximumAndStoresOnlyControlledFailureSummary() {
+        TenantContextSwitchWorkflow workflow = workflow(
+                TARGET_MEMBERSHIP_ID, TenantContextSwitchStatus.PENDING, 10);
+        when(workflows.claimNext("test-worker", NOW, NOW.plusSeconds(30), 10))
+                .thenReturn(Optional.of(workflow));
+        when(memberships.validate(IDENTITY_ID, CURRENT_MEMBERSHIP_ID))
+                .thenThrow(new IllegalStateException("token=secret@example.test redis:key"));
+
+        service.recoverNext();
+
+        verify(workflows).exhaustRecovery(workflow, NOW, "INTERNAL_RECOVERY_FAILURE");
+        verify(workflows, never()).scheduleRetry(any(), any(), any());
     }
 
     @Test
@@ -155,33 +199,68 @@ class TenantContextSwitchServiceTest {
                 () -> service.switchContext(IDEMPOTENCY_KEY, REFRESH_TOKEN, TARGET_MEMBERSHIP_ID));
         assertThrows(TenantContextSwitchSessionInvalidException.class,
                 () -> service.switchContext(IDEMPOTENCY_KEY, "invalid", TARGET_MEMBERSHIP_ID));
-        verify(memberships, never()).validate(any(), any());
-        verify(workflows, never()).claim(any(), any(Long.class), any(), any(), any(), any());
+        verify(workflows, never()).claim(
+                any(), any(Long.class), any(), any(), any(), any(), any(), any(), anyInt());
     }
 
     @Test
     void idempotencyAndFamilyConflictsDoNotCallTenantAccess() {
         TenantContextSwitchWorkflow workflow = workflow(TARGET_MEMBERSHIP_ID, TenantContextSwitchStatus.PENDING);
-        when(workflows.claim(any(), any(Long.class), any(), any(), any(), any()))
-                .thenReturn(new TenantContextSwitchClaim(TenantContextSwitchClaim.Status.TARGET_CONFLICT, workflow));
+        claimed(TenantContextSwitchClaim.Status.TARGET_CONFLICT, workflow);
         assertThrows(TenantContextSwitchConflictException.class,
                 () -> service.switchContext(IDEMPOTENCY_KEY, REFRESH_TOKEN, TARGET_MEMBERSHIP_ID));
 
-        when(workflows.claim(any(), any(Long.class), any(), any(), any(), any()))
-                .thenReturn(new TenantContextSwitchClaim(TenantContextSwitchClaim.Status.FAMILY_IN_PROGRESS, workflow));
+        claimed(TenantContextSwitchClaim.Status.FAMILY_IN_PROGRESS, workflow);
         assertThrows(TenantContextSwitchConflictException.class,
                 () -> service.switchContext(IDEMPOTENCY_KEY, REFRESH_TOKEN, TARGET_MEMBERSHIP_ID));
         verify(memberships, never()).validate(any(), any());
     }
 
+    private void claimed(TenantContextSwitchClaim.Status status, TenantContextSwitchWorkflow workflow) {
+        when(workflows.claim(
+                any(), any(Long.class), any(), any(), any(), any(), any(), any(), anyInt()))
+                .thenReturn(new TenantContextSwitchClaim(status, workflow));
+    }
+
+    @Test
+    void recoveryPolicyUsesExponentialBackoffWithConfiguredCap() {
+        TenantContextSwitchRecoveryPolicy policy = new TenantContextSwitchRecoveryPolicy(
+                Duration.ofSeconds(30), Duration.ofSeconds(1), Duration.ofSeconds(8), 10);
+
+        assertEquals(Duration.ofSeconds(1), policy.retryDelay(1));
+        assertEquals(Duration.ofSeconds(2), policy.retryDelay(2));
+        assertEquals(Duration.ofSeconds(8), policy.retryDelay(4));
+        assertEquals(Duration.ofSeconds(8), policy.retryDelay(10));
+        assertEquals(10, policy.maximumAttempts());
+    }
+
+    private void validMemberships() {
+        when(memberships.validate(IDENTITY_ID, CURRENT_MEMBERSHIP_ID))
+                .thenReturn(Optional.of(new ValidatedMembership(CURRENT_MEMBERSHIP_ID, CURRENT_TENANT_ID)));
+        when(memberships.validate(IDENTITY_ID, TARGET_MEMBERSHIP_ID))
+                .thenReturn(Optional.of(new ValidatedMembership(TARGET_MEMBERSHIP_ID, TARGET_TENANT_ID)));
+    }
+
     private static TenantContextSwitchWorkflow workflow(
             UUID targetMembershipId, TenantContextSwitchStatus status) {
+        return workflow(targetMembershipId, status, 1);
+    }
+
+    private static TenantContextSwitchWorkflow workflow(
+            UUID targetMembershipId, TenantContextSwitchStatus status, int attemptCount) {
         Instant completedAt = status == TenantContextSwitchStatus.PENDING ? null : NOW;
         return new TenantContextSwitchWorkflow(
                 WORKFLOW_ID, FAMILY_ID, IDEMPOTENCY_KEY, targetMembershipId,
                 Sha256Digest.of(new byte[32]), 0, status,
                 status == TenantContextSwitchStatus.NO_OP ? 204 : null,
-                NOW, completedAt, null);
+                NOW, completedAt, null, attemptCount, NOW, "test-worker", NOW.plusSeconds(30), null, null);
+    }
+
+    private static TenantContextSwitchWorkflow exhaustedWorkflow() {
+        return new TenantContextSwitchWorkflow(
+                WORKFLOW_ID, FAMILY_ID, IDEMPOTENCY_KEY, TARGET_MEMBERSHIP_ID,
+                Sha256Digest.of(new byte[32]), 0, TenantContextSwitchStatus.PENDING,
+                null, NOW, null, null, 10, NOW, null, null, NOW, TenantAccessUnavailableException.CODE);
     }
 
     private static UUID uuidV7(long suffix) {

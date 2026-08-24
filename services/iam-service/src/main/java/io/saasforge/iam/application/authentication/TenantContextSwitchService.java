@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
@@ -22,6 +23,8 @@ public final class TenantContextSwitchService {
     private final MembershipValidation memberships;
     private final RefreshTokenIssuer refreshTokens;
     private final TenantContextSwitchTransaction transaction;
+    private final TenantContextSwitchRecoveryPolicy recoveryPolicy;
+    private final String claimant;
     private final Clock clock;
 
     public TenantContextSwitchService(
@@ -30,12 +33,16 @@ public final class TenantContextSwitchService {
             MembershipValidation memberships,
             RefreshTokenIssuer refreshTokens,
             TenantContextSwitchTransaction transaction,
+            TenantContextSwitchRecoveryPolicy recoveryPolicy,
+            String claimant,
             Clock clock) {
         this.families = families;
         this.workflows = workflows;
         this.memberships = memberships;
         this.refreshTokens = refreshTokens;
         this.transaction = transaction;
+        this.recoveryPolicy = recoveryPolicy;
+        this.claimant = claimant;
         this.clock = clock;
     }
 
@@ -55,44 +62,133 @@ public final class TenantContextSwitchService {
         Sha256Digest targetFingerprint = digest(targetMembershipId.toString());
         TenantContextSwitchClaim claim = workflows.claim(
                 family.id(), family.contextVersion(), idempotencyKey,
-                targetMembershipId, targetFingerprint, inspectedAt);
+                targetMembershipId, targetFingerprint, inspectedAt, claimant,
+                inspectedAt.plus(recoveryPolicy.leaseDuration()), recoveryPolicy.maximumAttempts());
         TenantContextSwitchWorkflow workflow = claim.workflow();
         switch (claim.status()) {
             case TARGET_CONFLICT -> throw TenantContextSwitchConflictException.idempotencyConflict();
             case FAMILY_IN_PROGRESS -> throw TenantContextSwitchConflictException.inProgress();
             case FAMILY_REFRESH_REQUIRED -> throw TenantContextSwitchConflictException.refreshRequired();
             case FAMILY_CONTEXT_CHANGED -> throw new TenantContextSwitchSessionInvalidException();
+            case RECOVERY_EXHAUSTED -> throw TenantContextSwitchConflictException.retryRequired();
             case REPLAY -> {
                 replay(workflow);
-                if (workflow.status() == TenantContextSwitchStatus.NO_OP
-                        || workflow.status() == TenantContextSwitchStatus.AWAITING_REFRESH
-                        || workflow.status() == TenantContextSwitchStatus.POST_SWITCH_REFRESHED
-                        || workflow.status() == TenantContextSwitchStatus.POST_SWITCH_REFRESH_REJECTED) {
+                if (workflow.status() != TenantContextSwitchStatus.PENDING) {
                     return;
                 }
+                throw pending(workflow);
             }
-            case CREATED -> {
+            case CREATED, RECOVERY_CLAIMED -> {
                 // 新工作流继续执行下面的权威校验。
             }
         }
 
-        Optional<ValidatedMembership> current = memberships.validate(family.identityId(), family.membershipId());
-        if (current.isEmpty() || !family.tenantId().equals(current.orElseThrow().tenantId())) {
-            transaction.rejectCurrent(workflow.id(), refreshTokenDigest, clock.instant());
-            throw TenantContextSwitchAccessRejectedException.currentMembership();
-        }
-        Optional<ValidatedMembership> target = memberships.validate(family.identityId(), targetMembershipId);
-        if (target.isEmpty()) {
-            transaction.complete(workflow.id(), TenantContextSwitchStatus.TARGET_REJECTED, clock.instant());
-            throw TenantContextSwitchAccessRejectedException.targetMembership();
-        }
-        if (targetMembershipId.equals(family.membershipId())) {
-            transaction.complete(workflow.id(), TenantContextSwitchStatus.NO_OP, clock.instant());
+        process(workflow, traceId, true);
+    }
+
+    public void recoverNext() {
+        Instant now = clock.instant();
+        workflows.claimNext(
+                        claimant, now, now.plus(recoveryPolicy.leaseDuration()), recoveryPolicy.maximumAttempts())
+                .ifPresent(workflow -> process(workflow, null, false));
+    }
+
+    private void process(TenantContextSwitchWorkflow workflow, String traceId, boolean interactive) {
+        RefreshTokenFamily family;
+        try {
+            family = families.findById(workflow.familyId())
+                    .filter(candidate -> candidate.purpose() == RefreshTokenFamilyPurpose.USER_TENANT)
+                    .filter(candidate -> candidate.contextVersion() == workflow.expectedContextVersion())
+                    .filter(candidate -> candidate.isUsableAt(clock.instant()))
+                    .orElseThrow(() -> new IllegalStateException("Tenant Context Switch Family 不可恢复"));
+        } catch (RuntimeException exception) {
+            handleFailure(workflow, exception, interactive);
             return;
         }
-        transaction.switchContext(
-                workflow.id(), family, workflow.expectedContextVersion(),
-                targetMembershipId, target.orElseThrow().tenantId(), clock.instant(), traceId);
+
+        Optional<ValidatedMembership> current;
+        try {
+            current = memberships.validate(family.identityId(), family.membershipId());
+        } catch (RuntimeException exception) {
+            handleFailure(workflow, exception, interactive);
+            return;
+        }
+        if (current.isEmpty() || !family.tenantId().equals(current.orElseThrow().tenantId())) {
+            try {
+                transaction.rejectCurrent(workflow, clock.instant());
+            } catch (RuntimeException exception) {
+                handleFailure(workflow, exception, interactive);
+                return;
+            }
+            if (interactive) {
+                throw TenantContextSwitchAccessRejectedException.currentMembership();
+            }
+            return;
+        }
+        Optional<ValidatedMembership> target;
+        try {
+            target = memberships.validate(family.identityId(), workflow.targetMembershipId());
+        } catch (RuntimeException exception) {
+            handleFailure(workflow, exception, interactive);
+            return;
+        }
+        if (target.isEmpty()) {
+            try {
+                transaction.complete(workflow, TenantContextSwitchStatus.TARGET_REJECTED, clock.instant());
+            } catch (RuntimeException exception) {
+                handleFailure(workflow, exception, interactive);
+                return;
+            }
+            if (interactive) {
+                throw TenantContextSwitchAccessRejectedException.targetMembership();
+            }
+            return;
+        }
+        if (workflow.targetMembershipId().equals(family.membershipId())) {
+            try {
+                transaction.complete(workflow, TenantContextSwitchStatus.NO_OP, clock.instant());
+            } catch (RuntimeException exception) {
+                handleFailure(workflow, exception, interactive);
+            }
+            return;
+        }
+        try {
+            transaction.switchContext(
+                    workflow, family, workflow.expectedContextVersion(),
+                    workflow.targetMembershipId(), target.orElseThrow().tenantId(), clock.instant(), traceId);
+        } catch (RuntimeException exception) {
+            handleFailure(workflow, exception, interactive);
+        }
+    }
+
+    private void handleFailure(
+            TenantContextSwitchWorkflow workflow, RuntimeException failure, boolean interactive) {
+        Instant failedAt = clock.instant();
+        String failureSummary = failureSummary(failure);
+        Duration retryDelay = recoveryPolicy.retryDelay(workflow.attemptCount());
+        if (recoveryPolicy.exhausted(workflow.attemptCount())) {
+            workflows.exhaustRecovery(workflow, failedAt, failureSummary);
+        } else {
+            workflows.scheduleRetry(workflow, failedAt.plus(retryDelay), failureSummary);
+        }
+        if (interactive) {
+            throw new TenantContextSwitchPendingException(Math.max(1, retryDelay.toSeconds()));
+        }
+    }
+
+    private TenantContextSwitchPendingException pending(TenantContextSwitchWorkflow workflow) {
+        long seconds = Math.max(1, Duration.between(clock.instant(), workflow.nextAttemptAt()).toSeconds());
+        return new TenantContextSwitchPendingException(seconds);
+    }
+
+    private static String failureSummary(RuntimeException failure) {
+        if (failure instanceof TenantAccessUnavailableException) {
+            return TenantAccessUnavailableException.CODE;
+        }
+        if (failure instanceof RevocationIndexUnavailableException) {
+            return RevocationIndexUnavailableException.CODE;
+        }
+        return "INTERNAL_RECOVERY_FAILURE";
     }
 
     private static void replay(TenantContextSwitchWorkflow workflow) {
@@ -103,7 +199,7 @@ public final class TenantContextSwitchService {
             case CURRENT_REJECTED -> throw TenantContextSwitchAccessRejectedException.currentMembership();
             case TARGET_REJECTED -> throw TenantContextSwitchAccessRejectedException.targetMembership();
             case PENDING -> {
-                // PENDING 会继续同步重试权威校验，不把允许结果缓存为授权事实。
+                // PENDING 只能在取得恢复租约后继续，避免同 Key 请求绕过 Worker 租约并发执行。
             }
             case AWAITING_REFRESH, POST_SWITCH_REFRESHED, POST_SWITCH_REFRESH_REJECTED -> {
                 return;

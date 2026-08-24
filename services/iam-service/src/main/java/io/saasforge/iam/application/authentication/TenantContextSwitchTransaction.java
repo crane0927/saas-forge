@@ -8,7 +8,7 @@ import io.saasforge.iam.domain.session.RefreshTokenFamilyContextChange;
 import io.saasforge.iam.domain.session.RefreshTokenFamilyRepository;
 import io.saasforge.iam.domain.session.TenantContextSwitchRepository;
 import io.saasforge.iam.domain.session.TenantContextSwitchStatus;
-import io.saasforge.iam.domain.shared.Sha256Digest;
+import io.saasforge.iam.domain.session.TenantContextSwitchWorkflow;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -38,17 +38,17 @@ public class TenantContextSwitchTransaction {
     }
 
     @Transactional
-    public void rejectCurrent(UUID workflowId, Sha256Digest refreshTokenDigest, Instant rejectedAt) {
-        RefreshTokenFamily family = families.findByTokenDigest(refreshTokenDigest)
+    public void rejectCurrent(TenantContextSwitchWorkflow workflow, Instant rejectedAt) {
+        RefreshTokenFamily family = families.lockById(workflow.familyId())
                 .orElseThrow(() -> new IllegalStateException("Tenant Context Switch Family 不存在"));
         revokeFamily(family.id(), rejectedAt, "MEMBERSHIP_AUTHORIZATION_LOST");
-        workflows.complete(workflowId, TenantContextSwitchStatus.CURRENT_REJECTED, rejectedAt);
+        workflows.complete(workflow, TenantContextSwitchStatus.CURRENT_REJECTED, rejectedAt);
     }
 
     /** Redis 安全索引先于数据库成功；数据库回滚时保留 Redis 的额外拒绝。 */
     @Transactional
     public void switchContext(
-            UUID workflowId,
+            TenantContextSwitchWorkflow workflow,
             RefreshTokenFamily originalFamily,
             long expectedContextVersion,
             UUID targetMembershipId,
@@ -68,7 +68,7 @@ public class TenantContextSwitchTransaction {
             throw new IllegalStateException("Tenant Context Switch 的 Family Context 已变化");
         }
         persistAccessTokenRevocations(active, switchedAt, "TENANT_CONTEXT_SWITCHED");
-        workflows.markAwaitingRefresh(workflowId, expectedContextVersion, switchedAt);
+        workflows.markAwaitingRefresh(workflow, expectedContextVersion, switchedAt);
         outboxEvents.append(eventFactory.create(
                 originalFamily.id(), originalFamily.identityId(), originalFamily.membershipId(),
                 targetMembershipId, targetTenantId, switchedAt, traceId));
@@ -81,8 +81,9 @@ public class TenantContextSwitchTransaction {
     }
 
     @Transactional
-    public void complete(UUID workflowId, TenantContextSwitchStatus status, Instant completedAt) {
-        workflows.complete(workflowId, status, completedAt);
+    public void complete(
+            TenantContextSwitchWorkflow workflow, TenantContextSwitchStatus status, Instant completedAt) {
+        workflows.complete(workflow, status, completedAt);
     }
 
     private void revokeFamily(UUID familyId, Instant at, String reason) {

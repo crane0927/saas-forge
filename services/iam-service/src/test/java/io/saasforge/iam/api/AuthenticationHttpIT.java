@@ -33,6 +33,8 @@ import io.saasforge.iam.application.authentication.RevocationIndexRecovery;
 import io.saasforge.iam.application.authentication.RevocationIndexUnavailableException;
 import io.saasforge.iam.application.authentication.MembershipValidation;
 import io.saasforge.iam.application.authentication.TenantAccessUnavailableException;
+import io.saasforge.iam.application.authentication.TenantContextSwitchService;
+import io.saasforge.iam.application.authentication.TenantContextSwitchTransaction;
 import io.saasforge.iam.application.authentication.ValidatedMembership;
 import io.saasforge.iam.application.signing.JwtSigningPort;
 import io.saasforge.iam.application.signing.JwtSigningService;
@@ -52,6 +54,10 @@ import io.saasforge.iam.domain.identity.IdentityRepository;
 import io.saasforge.iam.domain.identity.PasswordCredential;
 import io.saasforge.iam.domain.signing.SigningKeyRepository;
 import io.saasforge.iam.domain.session.AccessTokenIssuanceRepository;
+import io.saasforge.iam.domain.session.RefreshTokenFamily;
+import io.saasforge.iam.domain.session.RefreshTokenFamilyRepository;
+import io.saasforge.iam.domain.session.TenantContextSwitchRepository;
+import io.saasforge.iam.domain.session.TenantContextSwitchWorkflow;
 import io.saasforge.iam.infrastructure.messaging.OutboxPublisher;
 import io.saasforge.iam.infrastructure.persistence.MyBatisIdentityRepository;
 import io.saasforge.iam.infrastructure.grpc.GrpcAccessibleMemberships;
@@ -150,6 +156,7 @@ import tools.jackson.databind.json.JsonMapper;
         "security.login-protection.maximum-failures=5",
         "security.login-protection.lock-duration=PT15M",
         "security.revocation-index.recovery-delay=PT1H",
+        "saasforge.iam.tenant-context-switch.recovery-delay=PT1H",
         "saasforge.iam.outbox.publish-delay=PT0.1S"
 })
 @WebAppConfiguration
@@ -244,6 +251,18 @@ class AuthenticationHttpIT {
 
     @Autowired
     SigningKeyLifecycleService signingKeyLifecycleService;
+
+    @Autowired
+    TenantContextSwitchService tenantContextSwitchService;
+
+    @Autowired
+    TenantContextSwitchRepository tenantContextSwitches;
+
+    @Autowired
+    TenantContextSwitchTransaction tenantContextSwitchTransaction;
+
+    @Autowired
+    RefreshTokenFamilyRepository refreshTokenFamilies;
 
     MockMvc mockMvc;
     JdbcTemplate jdbc;
@@ -1434,8 +1453,10 @@ class AuthenticationHttpIT {
 
         setIamAppIssuanceUpdatePrivilege(false);
         try {
-            assertThrows(Exception.class,
-                    () -> mockMvc.perform(tenantSwitch(refreshToken(session), key, targetMembership)));
+            mockMvc.perform(tenantSwitch(refreshToken(session), key, targetMembership))
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.code").value("TENANT_CONTEXT_SWITCH_PENDING"))
+                    .andExpect(header().string(HttpHeaders.RETRY_AFTER, "1"));
         } finally {
             setIamAppIssuanceUpdatePrivilege(true);
         }
@@ -1503,7 +1524,8 @@ class AuthenticationHttpIT {
         TENANT_ACCESS_FAILURES.add(outage.identity().id());
         mockMvc.perform(tenantSwitch(refreshToken(outageSession), uuidV7(56_011), uuidV7(56_012)))
                 .andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.code").value("TENANT_ACCESS_UNAVAILABLE"))
+                .andExpect(jsonPath("$.code").value("TENANT_CONTEXT_SWITCH_PENDING"))
+                .andExpect(header().string(HttpHeaders.RETRY_AFTER, "1"))
                 .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE));
         assertEquals(null, jdbc.queryForObject(
                 "SELECT revoked_at FROM iam_refresh_token_families WHERE identity_id = ?",
@@ -1520,6 +1542,199 @@ class AuthenticationHttpIT {
 
     @Test
     @Order(29)
+    void tenantSwitchWorkerTakesOverExpiredLeaseAfterRestartWithoutDuplicateFacts() throws Exception {
+        TestUser user = createUser(
+                "tenant-switch-restart@example.test", "correct-password", false, Credential.REGULAR);
+        UUID currentMembership = uuidV7(87_001);
+        UUID currentTenant = uuidV7(87_002);
+        UUID targetMembership = uuidV7(87_003);
+        UUID targetTenant = uuidV7(87_004);
+        UUID key = uuidV7(87_005);
+        accessibleMemberships(user.identity().id(), membership(currentMembership, currentTenant, "Current"));
+        MvcResult session = login(
+                "tenant-switch-restart@example.test", "correct-password", "TENANT").andReturn();
+        accessibleMemberships(user.identity().id(),
+                membership(currentMembership, currentTenant, "Current"),
+                membership(targetMembership, targetTenant, "Target"));
+        TENANT_ACCESS_FAILURES.add(user.identity().id());
+
+        mockMvc.perform(tenantSwitch(refreshToken(session), key, targetMembership))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("TENANT_CONTEXT_SWITCH_PENDING"));
+        mockMvc.perform(tenantSwitch(refreshToken(session), key, targetMembership))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("TENANT_CONTEXT_SWITCH_PENDING"));
+        mockMvc.perform(tenantSwitch(refreshToken(session), uuidV7(87_006), targetMembership))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("TENANT_CONTEXT_SWITCH_IN_PROGRESS"));
+
+        Map<String, Object> pending = jdbc.queryForMap("""
+                SELECT id, target_fingerprint, attempt_count, next_attempt_at, last_failure
+                FROM iam_tenant_context_switches
+                WHERE idempotency_key = ? AND family_id = (
+                    SELECT id FROM iam_refresh_token_families WHERE identity_id = ?)
+                """, key, user.identity().id());
+        assertEquals(1, ((Number) pending.get("attempt_count")).intValue());
+        assertEquals("TENANT_ACCESS_UNAVAILABLE", pending.get("last_failure"));
+        byte[] targetFingerprint = (byte[]) pending.get("target_fingerprint");
+
+        jdbc.update("""
+                UPDATE iam_tenant_context_switches
+                SET next_attempt_at = now() - interval '1 second',
+                    lease_owner = 'dead-process', lease_until = now() - interval '1 second'
+                WHERE id = ?
+                """, pending.get("id"));
+        jdbc.update("""
+                UPDATE iam_tenant_context_switches
+                SET next_attempt_at = now() + interval '1 day'
+                WHERE switch_status = 'PENDING' AND id <> ?
+                """, pending.get("id"));
+        TENANT_ACCESS_FAILURES.remove(user.identity().id());
+
+        tenantContextSwitchService.recoverNext();
+        tenantContextSwitchService.recoverNext();
+
+        Map<String, Object> recovered = jdbc.queryForMap("""
+                SELECT switch_status, target_fingerprint, attempt_count, lease_owner
+                FROM iam_tenant_context_switches WHERE id = ?
+                """, pending.get("id"));
+        assertEquals("AWAITING_REFRESH", recovered.get("switch_status"));
+        assertArrayEquals(targetFingerprint, (byte[]) recovered.get("target_fingerprint"));
+        assertEquals(2, ((Number) recovered.get("attempt_count")).intValue());
+        assertEquals(null, recovered.get("lease_owner"));
+        assertEquals(1, jdbc.queryForObject(
+                "SELECT count(*) FROM iam_outbox_events WHERE event_snapshot ->> 'type' = "
+                        + "'com.saasforge.iam.tenant-context-switched.v1' "
+                        + "AND event_snapshot ->> 'subject' = (SELECT family_id::text "
+                        + "FROM iam_tenant_context_switches WHERE id = ?)",
+                Integer.class, pending.get("id")));
+    }
+
+    @Test
+    @Order(30)
+    void exhaustedSwitchStopsWorkerAndAllowsNewKeyFromAuthoritativeFamilyState() throws Exception {
+        TestUser user = createUser(
+                "tenant-switch-exhausted@example.test", "correct-password", false, Credential.REGULAR);
+        UUID currentMembership = uuidV7(88_001);
+        UUID currentTenant = uuidV7(88_002);
+        UUID targetMembership = uuidV7(88_003);
+        UUID targetTenant = uuidV7(88_004);
+        UUID exhaustedKey = uuidV7(88_005);
+        UUID newKey = uuidV7(88_006);
+        accessibleMemberships(user.identity().id(), membership(currentMembership, currentTenant, "Current"));
+        MvcResult session = login(
+                "tenant-switch-exhausted@example.test", "correct-password", "TENANT").andReturn();
+        accessibleMemberships(user.identity().id(),
+                membership(currentMembership, currentTenant, "Current"),
+                membership(targetMembership, targetTenant, "Target"));
+        TENANT_ACCESS_FAILURES.add(user.identity().id());
+
+        mockMvc.perform(tenantSwitch(refreshToken(session), exhaustedKey, targetMembership))
+                .andExpect(status().isServiceUnavailable());
+        jdbc.update("""
+                UPDATE iam_tenant_context_switches
+                SET attempt_count = 10, next_attempt_at = now() - interval '1 second',
+                    lease_owner = 'crashed-final-worker', lease_until = now() - interval '1 second'
+                WHERE idempotency_key = ?
+                """, exhaustedKey);
+        jdbc.update("""
+                UPDATE iam_tenant_context_switches
+                SET next_attempt_at = now() + interval '1 day'
+                WHERE switch_status = 'PENDING' AND idempotency_key <> ?
+                """, exhaustedKey);
+
+        tenantContextSwitchService.recoverNext();
+        tenantContextSwitchService.recoverNext();
+
+        Map<String, Object> exhausted = jdbc.queryForMap("""
+                SELECT attempt_count, recovery_exhausted_at, last_failure, lease_owner
+                FROM iam_tenant_context_switches WHERE idempotency_key = ?
+                """, exhaustedKey);
+        assertEquals(10, ((Number) exhausted.get("attempt_count")).intValue());
+        assertNotNull(exhausted.get("recovery_exhausted_at"));
+        assertEquals("RECOVERY_ATTEMPT_LIMIT_REACHED", exhausted.get("last_failure"));
+        assertEquals(null, exhausted.get("lease_owner"));
+        mockMvc.perform(tenantSwitch(refreshToken(session), exhaustedKey, targetMembership))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("TENANT_CONTEXT_SWITCH_RETRY_REQUIRED"));
+
+        TENANT_ACCESS_FAILURES.remove(user.identity().id());
+        mockMvc.perform(tenantSwitch(refreshToken(session), newKey, targetMembership))
+                .andExpect(status().isNoContent());
+        assertEquals(2, jdbc.queryForObject(
+                "SELECT count(*) FROM iam_tenant_context_switches WHERE family_id = "
+                        + "(SELECT family_id FROM iam_tenant_context_switches WHERE idempotency_key = ?)",
+                Integer.class, exhaustedKey));
+        assertEquals("AWAITING_REFRESH", jdbc.queryForObject(
+                "SELECT switch_status FROM iam_tenant_context_switches WHERE idempotency_key = ?",
+                String.class, newKey));
+    }
+
+    @Test
+    @Order(31)
+    void leaseAttemptFencesLateWorkerBeforeAndAfterTakeoverCommit() throws Exception {
+        TestUser user = createUser(
+                "tenant-switch-fencing@example.test", "correct-password", false, Credential.REGULAR);
+        UUID currentMembership = uuidV7(89_001);
+        UUID currentTenant = uuidV7(89_002);
+        UUID targetMembership = uuidV7(89_003);
+        UUID targetTenant = uuidV7(89_004);
+        UUID key = uuidV7(89_005);
+        accessibleMemberships(user.identity().id(), membership(currentMembership, currentTenant, "Current"));
+        MvcResult session = login(
+                "tenant-switch-fencing@example.test", "correct-password", "TENANT").andReturn();
+        UUID familyId = jdbc.queryForObject(
+                "SELECT id FROM iam_refresh_token_families WHERE identity_id = ?", UUID.class, user.identity().id());
+        accessibleMemberships(user.identity().id(),
+                membership(currentMembership, currentTenant, "Current"),
+                membership(targetMembership, targetTenant, "Target"));
+        TENANT_ACCESS_FAILURES.add(user.identity().id());
+
+        mockMvc.perform(tenantSwitch(refreshToken(session), key, targetMembership))
+                .andExpect(status().isServiceUnavailable());
+        UUID workflowId = jdbc.queryForObject(
+                "SELECT id FROM iam_tenant_context_switches WHERE family_id = ? AND idempotency_key = ?",
+                UUID.class, familyId, key);
+        TenantContextSwitchWorkflow stale = tenantContextSwitches.findById(workflowId).orElseThrow();
+        jdbc.update("""
+                UPDATE iam_tenant_context_switches
+                SET next_attempt_at = now() - interval '1 second',
+                    lease_owner = 'dead-worker', lease_until = now() - interval '1 second'
+                WHERE id = ?
+                """, workflowId);
+        jdbc.update("""
+                UPDATE iam_tenant_context_switches
+                SET next_attempt_at = now() + interval '1 day'
+                WHERE switch_status = 'PENDING' AND id <> ?
+                """, workflowId);
+        Instant claimedAt = Instant.now();
+        TenantContextSwitchWorkflow takeover = tenantContextSwitches.claimNext(
+                "takeover-worker", claimedAt, claimedAt.plusSeconds(30), 10).orElseThrow();
+        RefreshTokenFamily originalFamily = refreshTokenFamilies.findById(familyId).orElseThrow();
+
+        assertThrows(IllegalStateException.class, () -> tenantContextSwitchTransaction.switchContext(
+                stale, originalFamily, 0, targetMembership, targetTenant, Instant.now(), null));
+        assertEquals(0L, jdbc.queryForObject(
+                "SELECT context_version FROM iam_refresh_token_families WHERE id = ?", Long.class, familyId));
+        assertEquals(0, jdbc.queryForObject(
+                "SELECT count(*) FROM iam_outbox_events WHERE event_snapshot ->> 'subject' = ? "
+                        + "AND event_snapshot ->> 'type' = 'com.saasforge.iam.tenant-context-switched.v1'",
+                Integer.class, familyId.toString()));
+
+        tenantContextSwitchTransaction.switchContext(
+                takeover, originalFamily, 0, targetMembership, targetTenant, Instant.now(), null);
+        assertThrows(IllegalStateException.class, () -> tenantContextSwitchTransaction.switchContext(
+                stale, originalFamily, 0, targetMembership, targetTenant, Instant.now(), null));
+        assertEquals(1L, jdbc.queryForObject(
+                "SELECT context_version FROM iam_refresh_token_families WHERE id = ?", Long.class, familyId));
+        assertEquals(1, jdbc.queryForObject(
+                "SELECT count(*) FROM iam_outbox_events WHERE event_snapshot ->> 'subject' = ? "
+                        + "AND event_snapshot ->> 'type' = 'com.saasforge.iam.tenant-context-switched.v1'",
+                Integer.class, familyId.toString()));
+    }
+
+    @Test
+    @Order(32)
     void recoveryFailsClosedUntilDurableJtiAndKidRevocationsAreRebuilt() throws Exception {
         TestUser user = createUser("revocation-recovery@example.test", "correct-password", true, Credential.REGULAR);
         MvcResult session = login("revocation-recovery@example.test", "correct-password", "PLATFORM").andReturn();
@@ -1584,7 +1799,7 @@ class AuthenticationHttpIT {
     }
 
     @Test
-    @Order(31)
+    @Order(33)
     void postSwitchRefreshAuthorizationLossRevokesTheFamilyAndClearsTheCookie() throws Exception {
         TestUser user = createUser(
                 "post-switch-refresh-denied@example.test", "correct-password", false, Credential.REGULAR);
@@ -1628,7 +1843,7 @@ class AuthenticationHttpIT {
     }
 
     @Test
-    @Order(32)
+    @Order(35)
     void redisUnavailabilityFailsClosedThroughPublicContract() throws Exception {
         TestUser user = createUser("logout-redis-down@example.test", "correct-password", true, Credential.REGULAR);
         MvcResult session = login("logout-redis-down@example.test", "correct-password", "PLATFORM").andReturn();
@@ -1662,7 +1877,8 @@ class AuthenticationHttpIT {
         assertSessionUnchanged(refreshUser.identity().id(), 1);
         mockMvc.perform(tenantSwitch(refreshToken(switchSession), switchKey, switchTargetMembership))
                 .andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.code").value("REVOCATION_INDEX_UNAVAILABLE"));
+                .andExpect(jsonPath("$.code").value("TENANT_CONTEXT_SWITCH_PENDING"))
+                .andExpect(header().string(HttpHeaders.RETRY_AFTER, "1"));
         Map<String, Object> unchangedSwitchFamily = jdbc.queryForMap("""
                 SELECT membership_id, tenant_id FROM iam_refresh_token_families WHERE identity_id = ?
                 """, switchUser.identity().id());
@@ -1695,7 +1911,7 @@ class AuthenticationHttpIT {
     }
 
     @Test
-    @Order(31)
+    @Order(34)
     void anonymousPasswordSetupAcceptsOnlySecretBodyAndCreatesNoSession() throws Exception {
         TestUser user = createUser("password-setup-http@example.test", "unused", false, Credential.NONE);
         PasswordSetupChallengeToken challenge = passwordSetupService.issueChallenge(user.identity().id());

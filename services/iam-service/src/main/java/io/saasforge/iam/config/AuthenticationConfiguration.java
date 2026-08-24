@@ -35,6 +35,8 @@ import io.saasforge.iam.application.authentication.UserAccessTokenIssuer;
 import io.saasforge.iam.application.authentication.ServiceAccessTokenIssuer;
 import io.saasforge.iam.application.authentication.MembershipValidation;
 import io.saasforge.iam.application.authentication.TenantContextSwitchService;
+import io.saasforge.iam.application.authentication.TenantContextSwitchRecoveryPolicy;
+import io.saasforge.iam.application.authentication.TenantContextSwitchWorker;
 import io.saasforge.iam.application.authentication.TenantContextSwitchedEventFactory;
 import io.saasforge.iam.application.authentication.TenantContextSwitchTransaction;
 import io.saasforge.iam.application.authentication.UuidV7Generator;
@@ -391,15 +393,32 @@ public class AuthenticationConfiguration {
     }
 
     @Bean
+    TenantContextSwitchRecoveryPolicy tenantContextSwitchRecoveryPolicy(
+            @Value("${saasforge.iam.tenant-context-switch.lease-duration:PT30S}") Duration leaseDuration,
+            @Value("${saasforge.iam.tenant-context-switch.initial-backoff:PT1S}") Duration initialBackoff,
+            @Value("${saasforge.iam.tenant-context-switch.maximum-backoff:PT1M}") Duration maximumBackoff,
+            @Value("${saasforge.iam.tenant-context-switch.maximum-attempts:10}") int maximumAttempts) {
+        return new TenantContextSwitchRecoveryPolicy(
+                leaseDuration, initialBackoff, maximumBackoff, maximumAttempts);
+    }
+
+    @Bean
     TenantContextSwitchService tenantContextSwitchService(
             RefreshTokenFamilyRepository families,
             TenantContextSwitchRepository workflows,
             MembershipValidation memberships,
             RefreshTokenIssuer refreshTokens,
             TenantContextSwitchTransaction transaction,
+            TenantContextSwitchRecoveryPolicy recoveryPolicy,
             Clock clock) {
         return new TenantContextSwitchService(
-                families, workflows, memberships, refreshTokens, transaction, clock);
+                families, workflows, memberships, refreshTokens, transaction, recoveryPolicy,
+                java.lang.management.ManagementFactory.getRuntimeMXBean().getName(), clock);
+    }
+
+    @Bean
+    TenantContextSwitchWorker tenantContextSwitchWorker(TenantContextSwitchService service) {
+        return new TenantContextSwitchWorker(service);
     }
 
     @Bean

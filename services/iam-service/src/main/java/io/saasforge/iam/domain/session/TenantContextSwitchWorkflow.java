@@ -16,7 +16,13 @@ public record TenantContextSwitchWorkflow(
         Integer resultHttpStatus,
         Instant createdAt,
         Instant completedAt,
-        Instant refreshedAt) {
+        Instant refreshedAt,
+        int attemptCount,
+        Instant nextAttemptAt,
+        String leaseOwner,
+        Instant leaseUntil,
+        Instant recoveryExhaustedAt,
+        String lastFailure) {
 
     public TenantContextSwitchWorkflow {
         if (id == null || familyId == null || idempotencyKey == null || targetMembershipId == null
@@ -25,6 +31,12 @@ public record TenantContextSwitchWorkflow(
         }
         if (expectedContextVersion < 0) {
             throw new IllegalArgumentException("Tenant Context Switch Context Version 不能为负数");
+        }
+        if (attemptCount < 0 || nextAttemptAt == null || ((leaseOwner == null) != (leaseUntil == null))) {
+            throw new IllegalArgumentException("Tenant Context Switch 恢复字段不合法");
+        }
+        if (lastFailure != null && lastFailure.length() > 100) {
+            throw new IllegalArgumentException("Tenant Context Switch 失败摘要过长");
         }
         if ((status == TenantContextSwitchStatus.PENDING) != (completedAt == null)) {
             throw new IllegalArgumentException("Tenant Context Switch 状态与终结时间不匹配");
@@ -51,5 +63,9 @@ public record TenantContextSwitchWorkflow(
 
     public boolean sameTarget(Sha256Digest candidateFingerprint) {
         return targetFingerprint.equals(candidateFingerprint);
+    }
+
+    public boolean recoveryExhausted() {
+        return recoveryExhaustedAt != null;
     }
 }

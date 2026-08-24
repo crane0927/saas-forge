@@ -14,13 +14,25 @@ public interface TenantContextSwitchRepository {
             UUID idempotencyKey,
             UUID targetMembershipId,
             Sha256Digest targetFingerprint,
-            Instant createdAt);
+            Instant createdAt,
+            String claimant,
+            Instant claimedUntil,
+            int maximumAttempts);
 
-    void complete(UUID workflowId, TenantContextSwitchStatus status, Instant completedAt);
+    Optional<TenantContextSwitchWorkflow> claimNext(
+            String claimant, Instant now, Instant claimedUntil, int maximumAttempts);
+
+    Optional<TenantContextSwitchWorkflow> findById(UUID workflowId);
+
+    void complete(TenantContextSwitchWorkflow workflow, TenantContextSwitchStatus status, Instant completedAt);
+
+    boolean scheduleRetry(TenantContextSwitchWorkflow workflow, Instant retryAt, String failureSummary);
+
+    boolean exhaustRecovery(TenantContextSwitchWorkflow workflow, Instant exhaustedAt, String failureSummary);
 
     Optional<TenantContextSwitchWorkflow> findAwaitingRefresh(UUID familyId);
 
-    void markAwaitingRefresh(UUID workflowId, long expectedContextVersion, Instant completedAt);
+    void markAwaitingRefresh(TenantContextSwitchWorkflow workflow, long expectedContextVersion, Instant completedAt);
 
     void completePostSwitchRefresh(UUID familyId, long contextVersion, boolean authorized, Instant refreshedAt);
 }
