@@ -47,6 +47,9 @@ security:
   revocation-index:
     recovery-delay: PT5S
 
+browser:
+  rootDomain: ${BROWSER_ROOT_DOMAIN:?BROWSER_ROOT_DOMAIN is required}
+
 saasforge:
   environment: ${SAASFORGE_ENVIRONMENT:dev}
   iam:

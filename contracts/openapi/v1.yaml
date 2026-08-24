@@ -243,12 +243,17 @@ paths:
       x-saasforge-service: iam-service
       summary: Select or switch the session Membership
       description: |
-        Accepts only the target Membership. The current Identity is authenticated by
-        either its Access Token or Refresh Token cookie; IAM verifies ownership and
-        Tenant accessibility before changing the session. Call refresh after 204.
+        Accepts only the target Membership. The host-only Refresh Token cookie is the
+        only session locator; a Bearer Access Token is ignored for this purpose. IAM
+        verifies the current and target Membership before changing the session. The
+        request must originate from a controlled browser Origin and pass Fetch Metadata
+        and CSRF checks. Call refresh after 204.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/CsrfHeader'
+        - $ref: '#/components/parameters/BrowserOrigin'
+        - $ref: '#/components/parameters/FetchSite'
+        - $ref: '#/components/parameters/RefreshTokenCookie'
       requestBody:
         required: true
         content:
@@ -261,10 +266,7 @@ paths:
         '401': { $ref: './common.yaml#/components/responses/Problem' }
         '403': { $ref: './common.yaml#/components/responses/Problem' }
         '409': { $ref: './common.yaml#/components/responses/Problem' }
-        '404': { $ref: './common.yaml#/components/responses/Problem' }
-        '405': { $ref: './common.yaml#/components/responses/Problem' }
-        '502': { $ref: './common.yaml#/components/responses/Problem' }
-        '504': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
 
   /oauth2/token:
     post:
@@ -732,6 +734,22 @@ components:
       schema:
         type: string
         const: '1'
+    BrowserOrigin:
+      name: Origin
+      in: header
+      required: true
+      description: Must exactly match the configured platform or tenant console HTTPS Origin.
+      schema:
+        type: string
+        format: uri
+    FetchSite:
+      name: Sec-Fetch-Site
+      in: header
+      required: false
+      description: When supplied by the browser, cross-site is rejected; absence still requires an exact Origin match.
+      schema:
+        type: string
+        enum: [same-origin, same-site, none]
     RefreshTokenCookie:
       name: __Host-sf_refresh
       in: cookie

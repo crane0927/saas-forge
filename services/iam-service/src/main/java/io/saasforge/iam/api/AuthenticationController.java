@@ -13,6 +13,7 @@ import io.saasforge.iam.application.authentication.LogoutService;
 import io.saasforge.iam.application.authentication.PasswordLoginService;
 import io.saasforge.iam.application.authentication.PasswordSetupService;
 import io.saasforge.iam.application.authentication.RefreshSessionService;
+import io.saasforge.iam.application.authentication.TenantContextSwitchService;
 import io.saasforge.iam.contract.api.AuthenticationApi;
 import io.saasforge.iam.contract.model.AccessTokenResult;
 import io.saasforge.iam.contract.model.AuthenticationResult;
@@ -24,9 +25,11 @@ import io.saasforge.iam.contract.model.LoginRequest;
 import io.saasforge.iam.contract.model.MembershipCandidate;
 import io.saasforge.iam.contract.model.PasswordChangeRequest;
 import io.saasforge.iam.contract.model.PasswordSetupRequest;
+import io.saasforge.iam.contract.model.TenantSwitchRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Duration;
 import java.nio.charset.StandardCharsets;
+import java.net.URI;
 import java.util.Base64;
 import java.util.UUID;
 import java.util.regex.Matcher;
@@ -51,6 +54,8 @@ public class AuthenticationController implements AuthenticationApi {
     private final RefreshSessionService refreshSessionService;
     private final LogoutService logoutService;
     private final ClientCredentialsTokenService clientCredentialsTokenService;
+    private final TenantContextSwitchService tenantContextSwitchService;
+    private final BrowserRequestSecurity browserRequestSecurity;
 
     public AuthenticationController(
             PasswordLoginService loginService,
@@ -59,7 +64,9 @@ public class AuthenticationController implements AuthenticationApi {
             PasswordSetupService passwordSetupService,
             RefreshSessionService refreshSessionService,
             LogoutService logoutService,
-            ClientCredentialsTokenService clientCredentialsTokenService) {
+            ClientCredentialsTokenService clientCredentialsTokenService,
+            TenantContextSwitchService tenantContextSwitchService,
+            BrowserRequestSecurity browserRequestSecurity) {
         this.loginService = loginService;
         this.contextSelectionService = contextSelectionService;
         this.passwordChangeService = passwordChangeService;
@@ -67,6 +74,8 @@ public class AuthenticationController implements AuthenticationApi {
         this.refreshSessionService = refreshSessionService;
         this.logoutService = logoutService;
         this.clientCredentialsTokenService = clientCredentialsTokenService;
+        this.tenantContextSwitchService = tenantContextSwitchService;
+        this.browserRequestSecurity = browserRequestSecurity;
     }
 
     @Override
@@ -137,6 +146,19 @@ public class AuthenticationController implements AuthenticationApi {
         return ResponseEntity.noContent()
                 .header(HttpHeaders.SET_COOKIE, clearedRefreshCookie().toString())
                 .build();
+    }
+
+    @Override
+    public ResponseEntity<Void> switchTenantContext(
+            UUID idempotencyKey,
+            String csrfHeader,
+            URI ignoredOrigin,
+            String refreshToken,
+            TenantSwitchRequest request,
+            String ignoredFetchSite) {
+        browserRequestSecurity.requireControlledMutation(currentRequest(), csrfHeader);
+        tenantContextSwitchService.switchContext(idempotencyKey, refreshToken, request.getMembershipId());
+        return ResponseEntity.noContent().build();
     }
 
     private AuthenticationResult responseBody(LoginResult result) {

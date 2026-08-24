@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.saasforge.iam.infrastructure.persistence.mapper.TenantContextSwitchMapper">
+
+    <resultMap id="workflowRow" type="io.saasforge.iam.infrastructure.persistence.record.TenantContextSwitchRow">
+        <id property="id" column="id"/>
+        <result property="familyId" column="family_id"/>
+        <result property="idempotencyKey" column="idempotency_key"/>
+        <result property="targetMembershipId" column="target_membership_id"/>
+        <result property="targetFingerprint" column="target_fingerprint"/>
+        <result property="expectedContextVersion" column="expected_context_version"/>
+        <result property="switchStatus" column="switch_status"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="completedAt" column="completed_at"/>
+    </resultMap>
+
+    <select id="lockFamilyContextVersion" resultType="long">
+        SELECT context_version
+        FROM iam_refresh_token_families
+        WHERE id = #{familyId}
+        FOR UPDATE
+    </select>
+
+    <select id="findByFamilyAndKey" resultMap="workflowRow">
+        SELECT id, family_id, idempotency_key, target_membership_id, target_fingerprint,
+               expected_context_version, switch_status, created_at, completed_at
+        FROM iam_tenant_context_switches
+        WHERE family_id = #{familyId} AND idempotency_key = #{idempotencyKey}
+    </select>
+
+    <select id="findPendingByFamily" resultMap="workflowRow">
+        SELECT id, family_id, idempotency_key, target_membership_id, target_fingerprint,
+               expected_context_version, switch_status, created_at, completed_at
+        FROM iam_tenant_context_switches
+        WHERE family_id = #{familyId} AND switch_status = 'PENDING'
+    </select>
+
+    <select id="insert" resultMap="workflowRow" affectData="true" flushCache="true">
+        INSERT INTO iam_tenant_context_switches
+            (family_id, idempotency_key, target_membership_id, target_fingerprint,
+             expected_context_version, switch_status, created_at, completed_at)
+        VALUES
+            (#{row.familyId}, #{row.idempotencyKey}, #{row.targetMembershipId}, #{row.targetFingerprint},
+             #{row.expectedContextVersion}, #{row.switchStatus}, #{row.createdAt}, #{row.completedAt})
+        RETURNING id, family_id, idempotency_key, target_membership_id, target_fingerprint,
+                  expected_context_version, switch_status, created_at, completed_at
+    </select>
+
+    <update id="complete">
+        UPDATE iam_tenant_context_switches
+        SET switch_status = #{switchStatus}, completed_at = #{completedAt}
+        WHERE id = #{workflowId} AND switch_status = 'PENDING'
+    </update>
+</mapper>

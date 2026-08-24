@@ -31,6 +31,9 @@ import io.saasforge.iam.application.authentication.PresentedAccessTokenVerifier;
 import io.saasforge.iam.application.authentication.RevocationIndex;
 import io.saasforge.iam.application.authentication.RevocationIndexRecovery;
 import io.saasforge.iam.application.authentication.RevocationIndexUnavailableException;
+import io.saasforge.iam.application.authentication.MembershipValidation;
+import io.saasforge.iam.application.authentication.TenantAccessUnavailableException;
+import io.saasforge.iam.application.authentication.ValidatedMembership;
 import io.saasforge.iam.application.signing.JwtSigningPort;
 import io.saasforge.iam.application.signing.JwtSigningService;
 import io.saasforge.iam.application.signing.SigningKeyLifecycleService;
@@ -140,6 +143,7 @@ import tools.jackson.databind.json.JsonMapper;
 @SpringJUnitConfig(AuthenticationHttpIT.TestConfiguration.class)
 @TestPropertySource(properties = {
         "saasforge.environment=test",
+        "browser.rootDomain=saasforge.test",
         "security.jwt.issuer=https://iam.test.saasforge.invalid",
         "security.jwt.access-token-ttl=PT15M",
         "security.login-protection.failure-window=PT15M",
@@ -1261,6 +1265,183 @@ class AuthenticationHttpIT {
     }
 
     @Test
+    @Order(27)
+    void tenantSwitchNoOpUsesOnlyCookieAndReplaysWithoutSideEffects() throws Exception {
+        TestUser user = createUser("tenant-switch-noop@example.test", "correct-password", false, Credential.REGULAR);
+        UUID membershipId = uuidV7(54_001);
+        UUID tenantId = uuidV7(54_002);
+        UUID key = uuidV7(54_003);
+        accessibleMemberships(user.identity().id(), membership(membershipId, tenantId, "Current Tenant"));
+        MvcResult session = login("tenant-switch-noop@example.test", "correct-password", "TENANT").andReturn();
+
+        mockMvc.perform(tenantSwitch(refreshToken(session), key, membershipId)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ignored-by-cookie-only-switch"))
+                .andExpect(status().isNoContent())
+                .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE));
+        mockMvc.perform(tenantSwitch(refreshToken(session), key, membershipId))
+                .andExpect(status().isNoContent());
+
+        Map<String, Object> workflow = jdbc.queryForMap("""
+                SELECT switch_status, completed_at, count(*) OVER () AS workflow_count
+                FROM iam_tenant_context_switches
+                WHERE idempotency_key = ?
+                """, key);
+        assertEquals("NO_OP", workflow.get("switch_status"));
+        assertNotNull(workflow.get("completed_at"));
+        assertEquals(1L, ((Number) workflow.get("workflow_count")).longValue());
+        Map<String, Object> sessionState = jdbc.queryForMap("""
+                SELECT family.membership_id, family.tenant_id, family.revoked_at, issuance.revoked_at AS token_revoked_at
+                FROM iam_refresh_token_families family
+                JOIN iam_access_token_issuances issuance ON issuance.family_id = family.id
+                WHERE family.identity_id = ?
+                """, user.identity().id());
+        assertEquals(membershipId, sessionState.get("membership_id"));
+        assertEquals(tenantId, sessionState.get("tenant_id"));
+        assertEquals(null, sessionState.get("revoked_at"));
+        assertEquals(null, sessionState.get("token_revoked_at"));
+        assertEquals(0, jdbc.queryForObject(
+                "SELECT count(*) FROM iam_outbox_events "
+                        + "WHERE event_snapshot ->> 'type' = 'com.saasforge.iam.tenant-context-switched.v1'",
+                Integer.class));
+
+        mockMvc.perform(post("/api/v1/auth/tenant-switches")
+                        .header("Idempotency-Key", uuidV7(54_004).toString())
+                        .header("X-SF-CSRF", "1")
+                        .header("Origin", "https://evil.test")
+                        .cookie(new Cookie("__Host-sf_refresh", refreshToken(session)))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsBytes(Map.of("membershipId", membershipId))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("BROWSER_REQUEST_REJECTED"));
+        mockMvc.perform(post("/api/v1/auth/tenant-switches")
+                        .header("Idempotency-Key", uuidV7(54_005).toString())
+                        .header("X-SF-CSRF", "1")
+                        .header("Origin", "https://console.saasforge.test")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsBytes(Map.of("membershipId", membershipId))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("TENANT_CONTEXT_SWITCH_SESSION_INVALID"))
+                .andExpect(header().string(HttpHeaders.SET_COOKIE, org.hamcrest.Matchers.containsString("Max-Age=0")));
+    }
+
+    @Test
+    @Order(28)
+    void tenantSwitchPersistsFamilyScopedPendingWorkflowAndRejectsConflicts() throws Exception {
+        TestUser user = createUser("tenant-switch-pending@example.test", "correct-password", false, Credential.REGULAR);
+        UUID currentMembershipId = uuidV7(55_001);
+        UUID currentTenantId = uuidV7(55_002);
+        UUID targetMembershipId = uuidV7(55_003);
+        UUID targetTenantId = uuidV7(55_004);
+        UUID otherTargetMembershipId = uuidV7(55_005);
+        UUID key = uuidV7(55_006);
+        accessibleMemberships(user.identity().id(), membership(currentMembershipId, currentTenantId, "Current"));
+        MvcResult session = login("tenant-switch-pending@example.test", "correct-password", "TENANT").andReturn();
+        accessibleMemberships(user.identity().id(),
+                membership(currentMembershipId, currentTenantId, "Current"),
+                membership(targetMembershipId, targetTenantId, "Target"));
+
+        mockMvc.perform(tenantSwitch(refreshToken(session), key, targetMembershipId))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("TENANT_CONTEXT_SWITCH_PENDING"))
+                .andExpect(header().string(HttpHeaders.RETRY_AFTER, "1"));
+        mockMvc.perform(tenantSwitch(refreshToken(session), key, targetMembershipId))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("TENANT_CONTEXT_SWITCH_PENDING"));
+        mockMvc.perform(tenantSwitch(refreshToken(session), key, otherTargetMembershipId))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("TENANT_CONTEXT_SWITCH_IDEMPOTENCY_CONFLICT"));
+        mockMvc.perform(tenantSwitch(refreshToken(session), uuidV7(55_007), targetMembershipId))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("TENANT_CONTEXT_SWITCH_IN_PROGRESS"));
+
+        assertEquals(1, jdbc.queryForObject(
+                "SELECT count(*) FROM iam_tenant_context_switches WHERE idempotency_key = ?",
+                Integer.class, key));
+        assertEquals("PENDING", jdbc.queryForObject(
+                "SELECT switch_status FROM iam_tenant_context_switches WHERE idempotency_key = ?",
+                String.class, key));
+        Map<String, Object> family = jdbc.queryForMap("""
+                SELECT membership_id, tenant_id, revoked_at
+                FROM iam_refresh_token_families WHERE identity_id = ?
+                """, user.identity().id());
+        assertEquals(currentMembershipId, family.get("membership_id"));
+        assertEquals(currentTenantId, family.get("tenant_id"));
+        assertEquals(null, family.get("revoked_at"));
+
+        TestUser anotherFamily = createUser(
+                "tenant-switch-other-family@example.test", "correct-password", false, Credential.REGULAR);
+        UUID anotherMembership = uuidV7(55_008);
+        UUID anotherTenant = uuidV7(55_009);
+        accessibleMemberships(anotherFamily.identity().id(), membership(anotherMembership, anotherTenant, "Other"));
+        MvcResult anotherSession = login(
+                "tenant-switch-other-family@example.test", "correct-password", "TENANT").andReturn();
+        mockMvc.perform(tenantSwitch(refreshToken(anotherSession), key, anotherMembership))
+                .andExpect(status().isNoContent());
+        assertEquals(2, jdbc.queryForObject(
+                "SELECT count(*) FROM iam_tenant_context_switches WHERE idempotency_key = ?",
+                Integer.class, key));
+    }
+
+    @Test
+    @Order(30)
+    void tenantSwitchMapsMembershipDenialOutageAndWrongPurposeWithoutPartialMutation() throws Exception {
+        TestUser currentDenied = createUser(
+                "tenant-switch-current-denied@example.test", "correct-password", false, Credential.REGULAR);
+        UUID currentMembership = uuidV7(56_001);
+        UUID currentTenant = uuidV7(56_002);
+        accessibleMemberships(currentDenied.identity().id(), membership(currentMembership, currentTenant, "Current"));
+        MvcResult currentSession = login(
+                "tenant-switch-current-denied@example.test", "correct-password", "TENANT").andReturn();
+        accessibleMemberships(currentDenied.identity().id());
+        mockMvc.perform(tenantSwitch(refreshToken(currentSession), uuidV7(56_003), uuidV7(56_004)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_CONTEXT_UNAVAILABLE"))
+                .andExpect(header().string(HttpHeaders.SET_COOKIE, org.hamcrest.Matchers.containsString("Max-Age=0")));
+        assertNotNull(jdbc.queryForObject(
+                "SELECT revoked_at FROM iam_refresh_token_families WHERE identity_id = ?",
+                Object.class, currentDenied.identity().id()));
+
+        TestUser targetDenied = createUser(
+                "tenant-switch-target-denied@example.test", "correct-password", false, Credential.REGULAR);
+        UUID targetCurrentMembership = uuidV7(56_005);
+        UUID targetCurrentTenant = uuidV7(56_006);
+        accessibleMemberships(targetDenied.identity().id(),
+                membership(targetCurrentMembership, targetCurrentTenant, "Current"));
+        MvcResult targetSession = login(
+                "tenant-switch-target-denied@example.test", "correct-password", "TENANT").andReturn();
+        mockMvc.perform(tenantSwitch(refreshToken(targetSession), uuidV7(56_007), uuidV7(56_008)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_CONTEXT_UNAVAILABLE"))
+                .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE));
+        assertEquals(null, jdbc.queryForObject(
+                "SELECT revoked_at FROM iam_refresh_token_families WHERE identity_id = ?",
+                Object.class, targetDenied.identity().id()));
+
+        TestUser outage = createUser(
+                "tenant-switch-outage@example.test", "correct-password", false, Credential.REGULAR);
+        UUID outageMembership = uuidV7(56_009);
+        UUID outageTenant = uuidV7(56_010);
+        accessibleMemberships(outage.identity().id(), membership(outageMembership, outageTenant, "Current"));
+        MvcResult outageSession = login("tenant-switch-outage@example.test", "correct-password", "TENANT").andReturn();
+        TENANT_ACCESS_FAILURES.add(outage.identity().id());
+        mockMvc.perform(tenantSwitch(refreshToken(outageSession), uuidV7(56_011), uuidV7(56_012)))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("TENANT_ACCESS_UNAVAILABLE"))
+                .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE));
+        assertEquals(null, jdbc.queryForObject(
+                "SELECT revoked_at FROM iam_refresh_token_families WHERE identity_id = ?",
+                Object.class, outage.identity().id()));
+
+        TestUser platform = createUser(
+                "tenant-switch-platform@example.test", "correct-password", true, Credential.REGULAR);
+        MvcResult platformSession = login(
+                "tenant-switch-platform@example.test", "correct-password", "PLATFORM").andReturn();
+        mockMvc.perform(tenantSwitch(refreshToken(platformSession), uuidV7(56_013), uuidV7(56_014)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("TENANT_CONTEXT_SWITCH_SESSION_INVALID"));
+    }
+
+    @Test
     @Order(29)
     void recoveryFailsClosedUntilDurableJtiAndKidRevocationsAreRebuilt() throws Exception {
         TestUser user = createUser("revocation-recovery@example.test", "correct-password", true, Credential.REGULAR);
@@ -1412,6 +1593,18 @@ class AuthenticationHttpIT {
                 .cookie(new Cookie("__Host-sf_refresh", refreshToken))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(new ObjectMapper().writeValueAsBytes(Map.of("membershipId", membershipId))));
+    }
+
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder tenantSwitch(
+            String refreshToken, UUID idempotencyKey, UUID membershipId) throws Exception {
+        return post("/api/v1/auth/tenant-switches")
+                .header("Idempotency-Key", idempotencyKey.toString())
+                .header("X-SF-CSRF", "1")
+                .header("Origin", "https://console.saasforge.test")
+                .header("Sec-Fetch-Site", "same-site")
+                .cookie(new Cookie("__Host-sf_refresh", refreshToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(new ObjectMapper().writeValueAsBytes(Map.of("membershipId", membershipId)));
     }
 
     private org.springframework.test.web.servlet.ResultActions refresh(String refreshToken) throws Exception {
@@ -1790,6 +1983,20 @@ class AuthenticationHttpIT {
         AccessibleMemberships accessibleMemberships() {
             return new GrpcAccessibleMemberships(
                     AccessibleMembershipQueryServiceGrpc.newBlockingStub(TENANT_ACCESS_CHANNEL));
+        }
+
+        @Bean
+        MembershipValidation membershipValidation() {
+            return (identityId, membershipId) -> {
+                if (TENANT_ACCESS_FAILURES.contains(identityId)) {
+                    throw new TenantAccessUnavailableException(new IllegalStateException("injected outage"));
+                }
+                return ACCESSIBLE_MEMBERSHIPS.getOrDefault(identityId, List.of()).stream()
+                        .filter(candidate -> membershipId.toString().equals(candidate.getMembershipId()))
+                        .findFirst()
+                        .map(candidate -> new ValidatedMembership(
+                                membershipId, UUID.fromString(candidate.getTenantId())));
+            };
         }
 
         @Bean

@@ -21,6 +21,11 @@ import io.saasforge.iam.application.authentication.RefreshContextChangedExceptio
 import io.saasforge.iam.application.authentication.RefreshSessionInvalidException;
 import io.saasforge.iam.application.authentication.RefreshRotationInProgressException;
 import io.saasforge.iam.application.authentication.RefreshRotationUnavailableException;
+import io.saasforge.iam.application.authentication.BrowserRequestRejectedException;
+import io.saasforge.iam.application.authentication.TenantContextSwitchAccessRejectedException;
+import io.saasforge.iam.application.authentication.TenantContextSwitchConflictException;
+import io.saasforge.iam.application.authentication.TenantContextSwitchPendingException;
+import io.saasforge.iam.application.authentication.TenantContextSwitchSessionInvalidException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
 import java.security.SecureRandom;
@@ -112,6 +117,51 @@ public class AuthenticationExceptionHandler {
             TenantAccessUnavailableException exception, HttpServletRequest request) {
         return problem(HttpStatus.SERVICE_UNAVAILABLE, TenantAccessUnavailableException.CODE,
                 "Tenant Access unavailable", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(BrowserRequestRejectedException.class)
+    ResponseEntity<Problem> browserRequestRejected(
+            BrowserRequestRejectedException exception, HttpServletRequest request) {
+        return problem(HttpStatus.FORBIDDEN, BrowserRequestRejectedException.CODE,
+                "Browser request rejected", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(TenantContextSwitchSessionInvalidException.class)
+    ResponseEntity<Problem> tenantContextSwitchSessionInvalid(
+            TenantContextSwitchSessionInvalidException exception, HttpServletRequest request) {
+        return problemWithClearedRefreshCookie(
+                HttpStatus.UNAUTHORIZED, TenantContextSwitchSessionInvalidException.CODE,
+                "Tenant context switch session invalid", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(TenantContextSwitchAccessRejectedException.class)
+    ResponseEntity<Problem> tenantContextSwitchAccessRejected(
+            TenantContextSwitchAccessRejectedException exception, HttpServletRequest request) {
+        if (exception.clearRefreshCookie()) {
+            return problemWithClearedRefreshCookie(
+                    HttpStatus.FORBIDDEN, TenantContextSwitchAccessRejectedException.CODE,
+                    "Access context unavailable", exception.getMessage(), request);
+        }
+        return problem(HttpStatus.FORBIDDEN, TenantContextSwitchAccessRejectedException.CODE,
+                "Access context unavailable", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(TenantContextSwitchConflictException.class)
+    ResponseEntity<Problem> tenantContextSwitchConflict(
+            TenantContextSwitchConflictException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, exception.code(),
+                "Tenant context switch conflict", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(TenantContextSwitchPendingException.class)
+    ResponseEntity<Problem> tenantContextSwitchPending(
+            TenantContextSwitchPendingException exception, HttpServletRequest request) {
+        Problem body = problemBody(HttpStatus.SERVICE_UNAVAILABLE, TenantContextSwitchPendingException.CODE,
+                "Tenant context switch pending", exception.getMessage(), request);
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .header(HttpHeaders.RETRY_AFTER, Long.toString(exception.retryAfterSeconds()))
+                .body(body);
     }
 
     @ExceptionHandler(ContextSelectionSessionInvalidException.class)
@@ -214,6 +264,11 @@ public class AuthenticationExceptionHandler {
             return problemWithClearedRefreshCookie(
                     HttpStatus.UNAUTHORIZED, RefreshSessionInvalidException.CODE,
                     "Refresh session invalid", "Refresh 会话无效或已失效", request);
+        }
+        if (request.getRequestURI().endsWith("/tenant-switches")) {
+            return problemWithClearedRefreshCookie(
+                    HttpStatus.UNAUTHORIZED, TenantContextSwitchSessionInvalidException.CODE,
+                    "Tenant context switch session invalid", "Tenant Context Switch 会话无效或已失效", request);
         }
         return problemWithClearedRefreshCookie(HttpStatus.UNAUTHORIZED, ContextSelectionSessionInvalidException.CODE,
                 "Context selection session invalid", "Tenant 上下文选择会话无效或已失效", request);

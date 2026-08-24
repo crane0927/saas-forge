@@ -33,6 +33,9 @@ import io.saasforge.iam.application.authentication.SessionStartedEventFactory;
 import io.saasforge.iam.application.authentication.SessionRevokedEventFactory;
 import io.saasforge.iam.application.authentication.UserAccessTokenIssuer;
 import io.saasforge.iam.application.authentication.ServiceAccessTokenIssuer;
+import io.saasforge.iam.application.authentication.MembershipValidation;
+import io.saasforge.iam.application.authentication.TenantContextSwitchService;
+import io.saasforge.iam.application.authentication.TenantContextSwitchTransaction;
 import io.saasforge.iam.application.authentication.UuidV7Generator;
 import io.saasforge.iam.application.authorization.PlatformRoleAuthorizationService;
 import io.saasforge.iam.application.identity.EnsureIdentityService;
@@ -46,12 +49,14 @@ import io.saasforge.iam.domain.outbox.OutboxEventRepository;
 import io.saasforge.iam.domain.client.OAuthClientRepository;
 import io.saasforge.iam.domain.session.AccessTokenIssuanceRepository;
 import io.saasforge.iam.domain.session.RefreshTokenFamilyRepository;
+import io.saasforge.iam.domain.session.TenantContextSwitchRepository;
 import io.saasforge.iam.domain.signing.SigningKeyRepository;
 import io.saasforge.iam.infrastructure.grpc.GrpcAccessibleMemberships;
 import io.saasforge.iam.infrastructure.security.RedisLoginProtection;
 import io.saasforge.iam.infrastructure.security.RedisRevocationIndex;
 import io.saasforge.iam.infrastructure.security.RedisRefreshRotationLease;
 import io.saasforge.iam.infrastructure.security.NimbusPresentedAccessTokenVerifier;
+import io.saasforge.iam.api.BrowserRequestSecurity;
 import io.saasforge.iam.infrastructure.security.ClasspathCompromisedPasswordChecker;
 import io.saasforge.iam.infrastructure.security.IamJwtVerificationKeyResolver;
 import io.saasforge.sdk.auth.ServiceAccessTokenVerifier;
@@ -351,6 +356,31 @@ public class AuthenticationConfiguration {
         return new RefreshSessionService(
                 platformRoles, accessibleMemberships, refreshTokenFamilies, accessTokenIssuer,
                 refreshTokenIssuer, sessionService, rotationLease, rotationTransaction, clock);
+    }
+
+    @Bean
+    BrowserRequestSecurity browserRequestSecurity(
+            @Value("${browser.rootDomain}") String rootDomain) {
+        return new BrowserRequestSecurity(rootDomain);
+    }
+
+    @Bean
+    TenantContextSwitchTransaction tenantContextSwitchTransaction(
+            TenantContextSwitchRepository workflows,
+            RefreshTokenFamilyRepository families) {
+        return new TenantContextSwitchTransaction(workflows, families);
+    }
+
+    @Bean
+    TenantContextSwitchService tenantContextSwitchService(
+            RefreshTokenFamilyRepository families,
+            TenantContextSwitchRepository workflows,
+            MembershipValidation memberships,
+            RefreshTokenIssuer refreshTokens,
+            TenantContextSwitchTransaction transaction,
+            Clock clock) {
+        return new TenantContextSwitchService(
+                families, workflows, memberships, refreshTokens, transaction, clock);
     }
 
     @Bean
