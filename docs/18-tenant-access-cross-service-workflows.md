@@ -58,11 +58,15 @@ Invitation 激活的公网资源属于 Tenant Access：`POST /api/v1/tenant/invi
 
 ## Tenant 切换
 
-Tenant 切换的根服务是 IAM：`POST /api/v1/auth/tenant-switches` 只接受目标 `membershipId`。IAM 以当前已认证 `identityId` 同步调用 Tenant Access 的 [Membership Validation v1](../contracts/protobuf/tenant_access/membership/v1/membership_validation.proto)；Tenant Access 必须确认 Membership 属于该 Identity、仍启用且所属 Tenant 当前可访问，并只返回权威的 `membershipId`、`tenantId`。
+Tenant Context Switch 的根服务是 IAM：`POST /api/v1/auth/tenant-switches` 只通过必需的 host-only、HttpOnly Refresh Token Cookie 定位当前 Refresh Token Family，并继续要求受控 Origin、Fetch Metadata 与 `X-SF-CSRF`；Bearer Access Token 不作为该操作的会话定位凭据。请求 Body 只接受目标 `membershipId`。只有已经具有 Tenant Context 的 `USER_TENANT` Family 可以切换；Platform 会话必须重新以 `TENANT` 意图登录，`USER_TENANT_SELECTION` 继续使用首次上下文选择流程，首次改密会话不得切换。
 
-IAM 持久化自身的切换尝试后，先将当前 Access Token `jti` 写入黑名单，再在 IAM 本地事务中更新当前会话的活动 Membership 并写入 `204 No Content` 的 HTTP 幂等结果及 `com.saasforge.iam.tenant-context-switched.v1`。Tenant Console Shell 只在收到 `204` 后调用既有刷新接口取得新 Access Token；切换接口不返回或持久化原始 Token。
+IAM 从 Family 取得 `identityId`，使用 IAM 保留服务 Client 的有效 Service Access Token 与精确 `tenant-access:membership:read` Scope，依次调用 Tenant Access 的 [Membership Validation v1](../contracts/protobuf/tenant_access/membership/v1/membership_validation.proto) 验证当前与目标 Membership，不新增切换专用 RPC。Tenant Access 只在 Membership 属于该 Identity、仍启用且所属 Tenant 当前可访问时返回权威 `membershipId`、`tenantId`，否则返回无原因拒绝；允许结论不得缓存。当前 Membership 不可用时 IAM 撤销该 Family 及其全部未过期 Token、清除 Cookie 并返回 `403 / ACCESS_CONTEXT_UNAVAILABLE`；目标 Membership 不可用时返回同一无原因 `403`，但保留当前会话。Tenant Access 不可用或响应非法时返回 `503 / TENANT_ACCESS_UNAVAILABLE`，不改变当前会话。
 
-Tenant Access 校验或黑名单写入失败时，IAM 不更新会话，也不签发新 Token。若黑名单已写入而最终数据库提交失败，旧 Access Token 可提前失效，但会话仍指向旧 Membership；客户端可通过 Refresh Cookie 取得旧上下文的新 Token，并用相同外部 Key 恢复该切换尝试。这种安全优先的提前下线不允许演变为旧 Token 与新会话上下文并存。
+每次请求以 `(familyId, Idempotency-Key)` 唯一标识并绑定目标 Membership：同 Family、同 Key、同目标稳定重放，同 Key 改变目标返回冲突，其他 Family 使用相同 Key 是独立请求。目标就是当前 Membership 时返回无副作用的稳定 `204 No Content`，不撤销 Token、不更新 Family，也不发布切换事件。实际切换时，IAM 先按照 [ADR 0029](adr/0029-revocations-use-a-durable-fact-and-synchronous-redis-index.md) 将该 Family 切换前签发且未过期的全部 User Access Token 写入 Redis Revocation Index，再在一个 IAM 数据库事务中持久化相同 `jti` 的撤销事实、更新 Family 上下文、记录稳定 `204` 结果、标记等待 Refresh，并写入 `com.saasforge.iam.tenant-context-switched.v1` Outbox。其他 Family 不受影响，切换接口不返回或持久化原始 Token。
+
+实际切换后，原请求同 Key 重放 `204`；客户端成功调用既有刷新接口取得目标 Tenant Token 前，其他切换返回 `409 / TENANT_CONTEXT_SWITCH_REFRESH_REQUIRED`。Switch 与 Refresh 对同一 Family 串行化并校验上下文版本；Refresh 在提交前发现 Family 已变化时不得保存已准备的 Token，也不得消费或轮换 Refresh Token。刷新时目标 Membership 已失效则撤销 Family 并要求重新登录；成功刷新只解除等待状态，不发布第二个切换事件。
+
+IAM 在第一次调用 Tenant Access 前持久化 Family 级根工作流，同一 Family 同时最多存在一个未终结切换。暂时失败返回 `503 / TENANT_CONTEXT_SWITCH_PENDING` 与 `Retry-After`，Worker 和同 Key 重试恢复同一流程，其他 Key 返回 `409 / TENANT_CONTEXT_SWITCH_IN_PROGRESS`。自动恢复默认最多尝试 10 次并可配置；耗尽后持久化时间与脱敏失败摘要，原 Key 稳定返回 `409 / TENANT_CONTEXT_SWITCH_RETRY_REQUIRED`，解除 Family 在途限制并允许新 Key 重试。Redis 已写入而数据库未提交时允许旧 Token 提前失效，但 Family 保持原上下文，额外拒绝不回滚。
 
 ## 成员禁用与 Tenant 冻结
 

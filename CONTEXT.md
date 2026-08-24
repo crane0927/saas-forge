@@ -188,6 +188,10 @@ _Avoid_: Tenant account, user-tenant mapping
 在当前时刻处于启用状态、且所属 Tenant 可访问的 Membership；只有它可以成为 User Access Token 的 Tenant 上下文候选。
 _Avoid_: Existing membership, active user
 
+**Tenant Context Switch**:
+当前浏览器会话从一个 Accessible Membership 转向另一个 Accessible Membership 的变更；它只影响该会话，切换前由该会话签发且仍有效的 User Access Token 均不再可用。
+_Avoid_: Account switch, global Tenant switch
+
 **Invitation**:
 邀请指定邮箱加入 Tenant 的一次性、限时凭据。Invitation 到期由 `expiresAt` 在激活时派生，而非持久化为 `EXPIRED` 状态。
 _Avoid_: Registration, user creation
