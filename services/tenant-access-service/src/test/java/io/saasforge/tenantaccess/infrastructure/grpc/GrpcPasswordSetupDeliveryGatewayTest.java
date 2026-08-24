@@ -10,6 +10,7 @@ import io.grpc.inprocess.InProcessServerBuilder;
 import io.grpc.stub.StreamObserver;
 import io.saasforge.contracts.iam.passwordsetup.v1.DeliverPasswordSetupRequest;
 import io.saasforge.contracts.iam.passwordsetup.v1.DeliverPasswordSetupResponse;
+import io.saasforge.contracts.iam.passwordsetup.v1.PasswordSetupDeliveryResult;
 import io.saasforge.contracts.iam.passwordsetup.v1.PasswordSetupServiceGrpc;
 import io.saasforge.tenantaccess.application.administrator.IdentityCredentialRecoveryRequiredException;
 import io.saasforge.tenantaccess.application.administrator.RemoteWorkflowUnavailableException;
@@ -52,6 +53,19 @@ class GrpcPasswordSetupDeliveryGatewayTest {
                 () -> gateway.deliver(REQUEST_ID, IDENTITY_ID));
     }
 
+    @Test
+    void acceptsDeliveredAndPasswordReadyButRejectsUnknownResult() throws Exception {
+        gateway(PasswordSetupDeliveryResult.DELIVERED).deliver(REQUEST_ID, IDENTITY_ID);
+        close();
+        gateway(PasswordSetupDeliveryResult.PASSWORD_READY).deliver(REQUEST_ID, IDENTITY_ID);
+        close();
+
+        GrpcPasswordSetupDeliveryGateway unknown = gateway(
+                PasswordSetupDeliveryResult.PASSWORD_SETUP_DELIVERY_RESULT_UNSPECIFIED);
+        assertThrows(RemoteWorkflowUnavailableException.class,
+                () -> unknown.deliver(REQUEST_ID, IDENTITY_ID));
+    }
+
     private GrpcPasswordSetupDeliveryGateway gateway(Status failure) throws IOException {
         String serverName = InProcessServerBuilder.generateName();
         server = InProcessServerBuilder.forName(serverName)
@@ -62,6 +76,26 @@ class GrpcPasswordSetupDeliveryGatewayTest {
                             DeliverPasswordSetupRequest request,
                             StreamObserver<DeliverPasswordSetupResponse> responseObserver) {
                         responseObserver.onError(failure.asRuntimeException());
+                    }
+                })
+                .build()
+                .start();
+        channel = InProcessChannelBuilder.forName(serverName).directExecutor().build();
+        return new GrpcPasswordSetupDeliveryGateway(
+                PasswordSetupServiceGrpc.newBlockingStub(channel), () -> "service-token");
+    }
+
+    private GrpcPasswordSetupDeliveryGateway gateway(PasswordSetupDeliveryResult result) throws IOException {
+        String serverName = InProcessServerBuilder.generateName();
+        server = InProcessServerBuilder.forName(serverName)
+                .directExecutor()
+                .addService(new PasswordSetupServiceGrpc.PasswordSetupServiceImplBase() {
+                    @Override
+                    public void deliverPasswordSetup(
+                            DeliverPasswordSetupRequest request,
+                            StreamObserver<DeliverPasswordSetupResponse> responseObserver) {
+                        responseObserver.onNext(DeliverPasswordSetupResponse.newBuilder().setResult(result).build());
+                        responseObserver.onCompleted();
                     }
                 })
                 .build()

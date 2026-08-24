@@ -69,6 +69,30 @@ class ServiceAccessTokenVerifierTest {
                 () -> verifier(NOW).verify(withUserClaim, CLIENT_ID, "iam:identity:write"));
     }
 
+    @Test
+    void rejectsEveryInvalidVerifierConfiguration() {
+        ServiceJwtVerificationKeyResolver resolver = ignored -> Optional.empty();
+        Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> new ServiceAccessTokenVerifier(null, clock, ISSUER, AUDIENCE, Duration.ZERO));
+        assertThrows(IllegalArgumentException.class,
+                () -> new ServiceAccessTokenVerifier(resolver, null, ISSUER, AUDIENCE, Duration.ZERO));
+        assertThrows(IllegalArgumentException.class,
+                () -> new ServiceAccessTokenVerifier(resolver, clock, null, AUDIENCE, Duration.ZERO));
+        assertThrows(IllegalArgumentException.class,
+                () -> new ServiceAccessTokenVerifier(resolver, clock, " ", AUDIENCE, Duration.ZERO));
+        assertThrows(IllegalArgumentException.class,
+                () -> new ServiceAccessTokenVerifier(resolver, clock, ISSUER, null, Duration.ZERO));
+        assertThrows(IllegalArgumentException.class,
+                () -> new ServiceAccessTokenVerifier(resolver, clock, ISSUER, " ", Duration.ZERO));
+        assertThrows(IllegalArgumentException.class,
+                () -> new ServiceAccessTokenVerifier(resolver, clock, ISSUER, AUDIENCE, null));
+        assertThrows(IllegalArgumentException.class,
+                () -> new ServiceAccessTokenVerifier(
+                        resolver, clock, ISSUER, AUDIENCE, Duration.ofSeconds(-1)));
+    }
+
     private static ServiceAccessTokenVerifier verifier(Instant now) {
         ServiceJwtVerificationKey publicKey = new ServiceJwtVerificationKey(
                 key.getKeyID(), key.getModulus().toString(), key.getPublicExponent().toString());
