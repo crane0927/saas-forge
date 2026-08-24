@@ -1,6 +1,39 @@
 saasforge:
   iam:
-    configuration-revision: "2"
+    configuration-revision: "3"
+
+spring:
+  ssl:
+    bundle:
+      pem:
+        tenant-access-grpc-client:
+          keystore:
+            certificate: ${IAM_GRPC_CLIENT_CERTIFICATE:?IAM_GRPC_CLIENT_CERTIFICATE is required}
+            private-key: ${IAM_GRPC_CLIENT_PRIVATE_KEY:?IAM_GRPC_CLIENT_PRIVATE_KEY is required}
+            verify-keys: true
+          truststore:
+            certificate: ${GRPC_CA_CERTIFICATE:?GRPC_CA_CERTIFICATE is required}
+  grpc:
+    client:
+      channels:
+        tenant-access:
+          negotiation-type: tls
+          ssl:
+            enabled: true
+            bundle: tenant-access-grpc-client
+  nacos:
+    config:
+      health-indicator:
+        enabled: true
+  cloud:
+    nacos:
+      discovery:
+        health-indicator:
+          enabled: true
+    discovery:
+      client:
+        health-indicator:
+          use-services-query: false
 
 security:
   jwt:
@@ -23,18 +56,3 @@ management:
           include: livenessState
         readiness:
           include: readinessState,nacosRegistrationReadiness
-
-spring:
-  nacos:
-    config:
-      health-indicator:
-        enabled: true
-  cloud:
-    nacos:
-      discovery:
-        health-indicator:
-          enabled: true
-    discovery:
-      client:
-        health-indicator:
-          use-services-query: false

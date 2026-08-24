@@ -2,28 +2,53 @@ package io.saasforge.tenantaccess.api.grpc;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertIterableEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.nimbusds.jose.JOSEObjectType;
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.crypto.RSASSASigner;
+import com.nimbusds.jose.jwk.RSAKey;
+import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.SignedJWT;
 import io.grpc.ManagedChannel;
 import io.grpc.Server;
+import io.grpc.ServerInterceptors;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
+import io.grpc.stub.MetadataUtils;
+import io.grpc.Metadata;
 import io.saasforge.contracts.tenantaccess.membership.v1.AccessibleMembership;
 import io.saasforge.contracts.tenantaccess.membership.v1.AccessibleMembershipQueryServiceGrpc;
 import io.saasforge.contracts.tenantaccess.membership.v1.ListAccessibleMembershipsRequest;
 import io.saasforge.contracts.tenantaccess.membership.v1.ListAccessibleMembershipsResponse;
+import io.saasforge.contracts.tenantaccess.membership.v1.MembershipValidationServiceGrpc;
+import io.saasforge.contracts.tenantaccess.membership.v1.ValidateMembershipRequest;
+import io.saasforge.contracts.tenantaccess.membership.v1.ValidateMembershipResponse;
+import io.saasforge.sdk.auth.ServiceAccessTokenVerifier;
+import io.saasforge.sdk.auth.ServiceJwtVerificationKey;
+import io.saasforge.tenantaccess.infrastructure.grpc.MembershipValidationServerInterceptor;
 import io.saasforge.tenantaccess.infrastructure.persistence.MyBatisAccessibleMembershipQuery;
+import io.saasforge.tenantaccess.infrastructure.persistence.MyBatisMembershipValidationQuery;
+import io.saasforge.tenantaccess.infrastructure.security.IamServiceClientId;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import javax.sql.DataSource;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.flywaydb.core.Flyway;
@@ -57,6 +82,9 @@ import org.testcontainers.utility.MountableFile;
 class AccessibleMembershipGrpcServiceIT {
 
     private static final Path REPOSITORY_ROOT = repositoryRoot();
+    private static final Instant NOW = Instant.parse("2026-08-24T08:00:00Z");
+    private static final UUID IAM_CLIENT_ID = uuidV7(9000);
+    private static final UUID OTHER_CLIENT_ID = uuidV7(9001);
 
     @Container
     private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(DockerImageName.parse("postgres:18"))
@@ -82,9 +110,16 @@ class AccessibleMembershipGrpcServiceIT {
     @Autowired
     private AccessibleMembershipGrpcService grpcService;
 
+    @Autowired
+    private MembershipValidationGrpcService membershipValidationGrpcService;
+
     private Server server;
     private ManagedChannel channel;
     private AccessibleMembershipQueryServiceGrpc.AccessibleMembershipQueryServiceBlockingStub client;
+    private MembershipValidationServiceGrpc.MembershipValidationServiceBlockingStub validationClient;
+    private RSAKey signingKey;
+    private RSAKey otherSigningKey;
+    private final AtomicBoolean keyUnavailable = new AtomicBoolean();
 
     @BeforeAll
     void migrate() {
@@ -97,14 +132,27 @@ class AccessibleMembershipGrpcServiceIT {
 
     @BeforeEach
     void startGrpcServer() throws Exception {
+        signingKey = new RSAKeyGenerator(2048).keyID("membership-key").generate();
+        otherSigningKey = new RSAKeyGenerator(2048).keyID("membership-key").generate();
+        keyUnavailable.set(false);
+        ServiceAccessTokenVerifier verifier = new ServiceAccessTokenVerifier(
+                this::verificationKey,
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                "https://iam.test",
+                "saasforge-api",
+                Duration.ofSeconds(30));
+        MembershipValidationServerInterceptor interceptor = new MembershipValidationServerInterceptor(
+                verifier, new IamServiceClientId(IAM_CLIENT_ID));
         String serverName = InProcessServerBuilder.generateName();
         server = InProcessServerBuilder.forName(serverName)
                 .directExecutor()
                 .addService(grpcService)
+                .addService(ServerInterceptors.intercept(membershipValidationGrpcService, interceptor))
                 .build()
                 .start();
         channel = InProcessChannelBuilder.forName(serverName).directExecutor().build();
         client = AccessibleMembershipQueryServiceGrpc.newBlockingStub(channel);
+        validationClient = MembershipValidationServiceGrpc.newBlockingStub(channel);
     }
 
     @AfterEach
@@ -202,10 +250,137 @@ class AccessibleMembershipGrpcServiceIT {
         assertEquals(Status.Code.INVALID_ARGUMENT, uppercase.getStatus().getCode());
     }
 
+    @Test
+    void validatesUsableMembershipFromPostgreSqlAndReflectsEveryDenyingState() throws Exception {
+        UUID identityId = uuidV7(6000);
+        UUID tenantId = uuidV7(6001);
+        UUID membershipId = uuidV7(6002);
+        insertTenantAndMembership(identityId, tenantId, membershipId, "权威校验", "ACTIVE", "ENABLED", null);
+
+        ValidateMembershipResponse allowed = validate(identityId, membershipId, validToken());
+        assertEquals(ValidateMembershipResponse.OutcomeCase.VALIDATED_MEMBERSHIP, allowed.getOutcomeCase());
+        assertEquals(membershipId.toString(), allowed.getValidatedMembership().getMembershipId());
+        assertEquals(tenantId.toString(), allowed.getValidatedMembership().getTenantId());
+
+        assertNotUsable(uuidV7(6099), membershipId);
+        assertNotUsable(identityId, uuidV7(6098));
+        updateMembershipStatus(membershipId, "DISABLED");
+        assertNotUsable(identityId, membershipId);
+
+        updateMembershipStatus(membershipId, "ENABLED");
+        for (String state : List.of("PENDING", "SUSPENDED", "CLOSED")) {
+            updateTenantState(tenantId, state, null);
+            assertNotUsable(identityId, membershipId);
+        }
+        updateTenantState(tenantId, "ACTIVE", NOW.minusSeconds(1));
+        assertNotUsable(identityId, membershipId);
+    }
+
+    @Test
+    void serviceAuthenticationRejectsMissingWrongClientScopeExpirySignatureAndKeyOutage() throws Exception {
+        UUID identityId = uuidV7(7000);
+        UUID membershipId = uuidV7(7001);
+        ValidateMembershipRequest request = validationRequest(identityId, membershipId);
+
+        assertStatus(Status.Code.UNAUTHENTICATED, () -> validationClient.validateMembership(request));
+        assertStatus(Status.Code.UNAUTHENTICATED,
+                () -> authorizedValidationClient(serviceToken(
+                                "tenant-access:membership:read", OTHER_CLIENT_ID, signingKey, NOW.plusSeconds(60)))
+                        .validateMembership(request));
+        assertStatus(Status.Code.PERMISSION_DENIED,
+                () -> authorizedValidationClient(serviceToken(
+                                "tenant-access:tenant:read", IAM_CLIENT_ID, signingKey, NOW.plusSeconds(60)))
+                        .validateMembership(request));
+        assertStatus(Status.Code.UNAUTHENTICATED,
+                () -> authorizedValidationClient(serviceToken(
+                                "tenant-access:membership:read", IAM_CLIENT_ID, signingKey, NOW.minusSeconds(31)))
+                        .validateMembership(request));
+        assertStatus(Status.Code.UNAUTHENTICATED,
+                () -> authorizedValidationClient(serviceToken(
+                                "tenant-access:membership:read", IAM_CLIENT_ID, otherSigningKey, NOW.plusSeconds(60)))
+                        .validateMembership(request));
+
+        keyUnavailable.set(true);
+        assertStatus(Status.Code.UNAUTHENTICATED,
+                () -> authorizedValidationClient(validToken()).validateMembership(request));
+    }
+
     private ListAccessibleMembershipsResponse list(UUID identityId) {
         return client.listAccessibleMemberships(ListAccessibleMembershipsRequest.newBuilder()
                 .setIdentityId(identityId.toString())
                 .build());
+    }
+
+    private ValidateMembershipResponse validate(UUID identityId, UUID membershipId, String token) {
+        return authorizedValidationClient(token).validateMembership(validationRequest(identityId, membershipId));
+    }
+
+    private void assertNotUsable(UUID identityId, UUID membershipId) {
+        assertEquals(
+                ValidateMembershipResponse.OutcomeCase.MEMBERSHIP_NOT_USABLE,
+                validate(identityId, membershipId, validToken()).getOutcomeCase());
+    }
+
+    private MembershipValidationServiceGrpc.MembershipValidationServiceBlockingStub authorizedValidationClient(
+            String token) {
+        Metadata metadata = new Metadata();
+        metadata.put(Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER), "Bearer " + token);
+        return validationClient.withInterceptors(MetadataUtils.newAttachHeadersInterceptor(metadata));
+    }
+
+    private static ValidateMembershipRequest validationRequest(UUID identityId, UUID membershipId) {
+        return ValidateMembershipRequest.newBuilder()
+                .setIdentityId(identityId.toString())
+                .setMembershipId(membershipId.toString())
+                .build();
+    }
+
+    private String validToken() {
+        try {
+            return serviceToken(
+                    "tenant-access:membership:read", IAM_CLIENT_ID, signingKey, NOW.plusSeconds(60));
+        } catch (Exception exception) {
+            throw new IllegalStateException(exception);
+        }
+    }
+
+    private String serviceToken(String scope, UUID clientId, RSAKey key, Instant expiresAt) throws Exception {
+        JWTClaimsSet claims = new JWTClaimsSet.Builder()
+                .issuer("https://iam.test")
+                .audience("saasforge-api")
+                .issueTime(Date.from(NOW))
+                .expirationTime(Date.from(expiresAt))
+                .jwtID(uuidV7(9100).toString())
+                .subject(clientId.toString())
+                .claim("client_id", clientId.toString())
+                .claim("scope", scope)
+                .build();
+        SignedJWT jwt = new SignedJWT(
+                new JWSHeader.Builder(JWSAlgorithm.RS256)
+                        .type(new JOSEObjectType("at+jwt"))
+                        .keyID(key.getKeyID())
+                        .build(),
+                claims);
+        jwt.sign(new RSASSASigner(key));
+        return jwt.serialize();
+    }
+
+    private Optional<ServiceJwtVerificationKey> verificationKey(String kid) {
+        if (keyUnavailable.get()) {
+            throw new IllegalStateException("JWKS unavailable");
+        }
+        if (!signingKey.getKeyID().equals(kid)) {
+            return Optional.empty();
+        }
+        return Optional.of(new ServiceJwtVerificationKey(
+                signingKey.getKeyID(),
+                signingKey.getModulus().toString(),
+                signingKey.getPublicExponent().toString()));
+    }
+
+    private static void assertStatus(Status.Code expected, org.junit.jupiter.api.function.Executable invocation) {
+        StatusRuntimeException exception = assertThrows(StatusRuntimeException.class, invocation);
+        assertEquals(expected, exception.getStatus().getCode());
     }
 
     private static void insertTenantAndMembership(
@@ -287,7 +462,12 @@ class AccessibleMembershipGrpcServiceIT {
     @MapperScan(
             basePackages = "io.saasforge.tenantaccess.infrastructure.persistence.mapper",
             sqlSessionFactoryRef = "tenantAccessSqlSessionFactory")
-    @Import({MyBatisAccessibleMembershipQuery.class, AccessibleMembershipGrpcService.class})
+    @Import({
+            MyBatisAccessibleMembershipQuery.class,
+            MyBatisMembershipValidationQuery.class,
+            AccessibleMembershipGrpcService.class,
+            MembershipValidationGrpcService.class
+    })
     static class PersistenceConfiguration {
 
         @Bean

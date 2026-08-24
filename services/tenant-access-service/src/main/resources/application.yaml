@@ -48,6 +48,7 @@ saasforge:
     iam-http-base-url: ${IAM_HTTP_BASE_URL:http://iam-service:8080}
     service-client-id-file: ${SAASFORGE_SERVICE_CLIENT_ID_FILE:?SAASFORGE_SERVICE_CLIENT_ID_FILE is required}
     service-client-secret-file: ${SAASFORGE_SERVICE_CLIENT_SECRET_FILE:?SAASFORGE_SERVICE_CLIENT_SECRET_FILE is required}
+    iam-service-client-id-file: ${IAM_SERVICE_CLIENT_ID_FILE:?IAM_SERVICE_CLIENT_ID_FILE is required}
     outbox-topic: saasforge.${saasforge.environment}.tenant-access-service.events
     outbox:
       publish-delay: PT1S

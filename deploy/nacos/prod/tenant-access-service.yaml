@@ -1,19 +1,24 @@
 saasforge:
   tenant-access:
-    configuration-revision: "2"
-
-management:
-  endpoint:
-    health:
-      probes:
-        enabled: true
-      group:
-        liveness:
-          include: livenessState
-        readiness:
-          include: readinessState,nacosRegistrationReadiness
+    configuration-revision: "3"
 
 spring:
+  ssl:
+    bundle:
+      pem:
+        tenant-access-grpc-server:
+          keystore:
+            certificate: ${TENANT_ACCESS_GRPC_SERVER_CERTIFICATE:?TENANT_ACCESS_GRPC_SERVER_CERTIFICATE is required}
+            private-key: ${TENANT_ACCESS_GRPC_SERVER_PRIVATE_KEY:?TENANT_ACCESS_GRPC_SERVER_PRIVATE_KEY is required}
+            verify-keys: true
+          truststore:
+            certificate: ${GRPC_CA_CERTIFICATE:?GRPC_CA_CERTIFICATE is required}
+  grpc:
+    server:
+      ssl:
+        enabled: true
+        bundle: tenant-access-grpc-server
+        client-auth: require
   nacos:
     config:
       health-indicator:
@@ -27,3 +32,14 @@ spring:
       client:
         health-indicator:
           use-services-query: false
+
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,nacosRegistrationReadiness

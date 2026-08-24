@@ -8,4 +8,8 @@ import org.apache.ibatis.annotations.Param;
 public interface AccessibleMembershipMapper {
 
     List<AccessibleMembershipRow> findAccessibleByIdentityId(@Param("identityId") UUID identityId);
+
+    UUID findUsableTenantId(
+            @Param("identityId") UUID identityId,
+            @Param("membershipId") UUID membershipId);
 }

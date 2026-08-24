@@ -15,4 +15,9 @@
         SELECT membership_id, tenant_id, tenant_display_name
         FROM list_accessible_memberships(#{identityId})
     </select>
+
+    <select id="findUsableTenantId" resultType="java.util.UUID">
+        SELECT tenant_id
+        FROM validate_membership(#{identityId}, #{membershipId})
+    </select>
 </mapper>
