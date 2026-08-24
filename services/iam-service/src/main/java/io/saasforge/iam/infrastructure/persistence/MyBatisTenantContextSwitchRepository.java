@@ -8,6 +8,7 @@ import io.saasforge.iam.domain.shared.Sha256Digest;
 import io.saasforge.iam.infrastructure.persistence.mapper.TenantContextSwitchMapper;
 import io.saasforge.iam.infrastructure.persistence.record.TenantContextSwitchRow;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,10 +43,14 @@ public class MyBatisTenantContextSwitchRepository implements TenantContextSwitch
                     : TenantContextSwitchClaim.Status.TARGET_CONFLICT;
             return new TenantContextSwitchClaim(status, workflow);
         }
-        TenantContextSwitchRow pending = mapper.findPendingByFamily(familyId);
-        if (pending != null) {
+        TenantContextSwitchRow blocking = mapper.findBlockingByFamily(familyId);
+        if (blocking != null) {
+            TenantContextSwitchWorkflow workflow = toDomain(blocking);
+            TenantContextSwitchClaim.Status status = workflow.status() == TenantContextSwitchStatus.AWAITING_REFRESH
+                    ? TenantContextSwitchClaim.Status.FAMILY_REFRESH_REQUIRED
+                    : TenantContextSwitchClaim.Status.FAMILY_IN_PROGRESS;
             return new TenantContextSwitchClaim(
-                    TenantContextSwitchClaim.Status.FAMILY_IN_PROGRESS, toDomain(pending));
+                    status, workflow);
         }
         TenantContextSwitchRow created = new TenantContextSwitchRow();
         created.setFamilyId(familyId);
@@ -61,11 +66,42 @@ public class MyBatisTenantContextSwitchRepository implements TenantContextSwitch
 
     @Override
     public void complete(UUID workflowId, TenantContextSwitchStatus status, Instant completedAt) {
-        if (status == TenantContextSwitchStatus.PENDING) {
-            throw new IllegalArgumentException("PENDING 工作流不能作为终结状态");
+        if (status == TenantContextSwitchStatus.PENDING
+                || status == TenantContextSwitchStatus.AWAITING_REFRESH
+                || status == TenantContextSwitchStatus.POST_SWITCH_REFRESHED
+                || status == TenantContextSwitchStatus.POST_SWITCH_REFRESH_REJECTED) {
+            throw new IllegalArgumentException("该 Tenant Context Switch 状态不能通过通用终结操作写入");
         }
-        if (mapper.complete(workflowId, status.name(), IamTime.asOffsetDateTime(completedAt)) != 1) {
+        Integer resultHttpStatus = status == TenantContextSwitchStatus.NO_OP ? 204 : null;
+        if (mapper.complete(workflowId, status.name(), resultHttpStatus,
+                IamTime.asOffsetDateTime(completedAt)) != 1) {
             throw new IllegalStateException("Tenant Context Switch 工作流终结失败");
+        }
+    }
+
+    @Override
+    public Optional<TenantContextSwitchWorkflow> findAwaitingRefresh(UUID familyId) {
+        return Optional.ofNullable(mapper.findAwaitingRefreshByFamily(familyId))
+                .map(MyBatisTenantContextSwitchRepository::toDomain);
+    }
+
+    @Override
+    public void markAwaitingRefresh(UUID workflowId, long expectedContextVersion, Instant completedAt) {
+        if (mapper.markAwaitingRefresh(
+                workflowId, expectedContextVersion, IamTime.asOffsetDateTime(completedAt)) != 1) {
+            throw new IllegalStateException("Tenant Context Switch 等待 Refresh 状态保存失败");
+        }
+    }
+
+    @Override
+    public void completePostSwitchRefresh(
+            UUID familyId, long contextVersion, boolean authorized, Instant refreshedAt) {
+        TenantContextSwitchStatus status = authorized
+                ? TenantContextSwitchStatus.POST_SWITCH_REFRESHED
+                : TenantContextSwitchStatus.POST_SWITCH_REFRESH_REJECTED;
+        if (mapper.completePostSwitchRefresh(
+                familyId, contextVersion, status.name(), IamTime.asOffsetDateTime(refreshedAt)) != 1) {
+            throw new IllegalStateException("Tenant Context Switch 的 post-switch Refresh 状态保存失败");
         }
     }
 
@@ -73,7 +109,8 @@ public class MyBatisTenantContextSwitchRepository implements TenantContextSwitch
         return new TenantContextSwitchWorkflow(
                 row.getId(), row.getFamilyId(), row.getIdempotencyKey(), row.getTargetMembershipId(),
                 Sha256Digest.of(row.getTargetFingerprint()), row.getExpectedContextVersion(),
-                TenantContextSwitchStatus.valueOf(row.getSwitchStatus()),
-                IamTime.asInstant(row.getCreatedAt()), IamTime.asInstant(row.getCompletedAt()));
+                TenantContextSwitchStatus.valueOf(row.getSwitchStatus()), row.getResultHttpStatus(),
+                IamTime.asInstant(row.getCreatedAt()), IamTime.asInstant(row.getCompletedAt()),
+                IamTime.asInstant(row.getRefreshedAt()));
     }
 }

@@ -12,8 +12,10 @@
         <result property="targetFingerprint" column="target_fingerprint"/>
         <result property="expectedContextVersion" column="expected_context_version"/>
         <result property="switchStatus" column="switch_status"/>
+        <result property="resultHttpStatus" column="result_http_status"/>
         <result property="createdAt" column="created_at"/>
         <result property="completedAt" column="completed_at"/>
+        <result property="refreshedAt" column="refreshed_at"/>
     </resultMap>
 
     <select id="lockFamilyContextVersion" resultType="long">
@@ -25,32 +27,61 @@
 
     <select id="findByFamilyAndKey" resultMap="workflowRow">
         SELECT id, family_id, idempotency_key, target_membership_id, target_fingerprint,
-               expected_context_version, switch_status, created_at, completed_at
+               expected_context_version, switch_status, result_http_status,
+               created_at, completed_at, refreshed_at
         FROM iam_tenant_context_switches
         WHERE family_id = #{familyId} AND idempotency_key = #{idempotencyKey}
     </select>
 
-    <select id="findPendingByFamily" resultMap="workflowRow">
+    <select id="findBlockingByFamily" resultMap="workflowRow">
         SELECT id, family_id, idempotency_key, target_membership_id, target_fingerprint,
-               expected_context_version, switch_status, created_at, completed_at
+               expected_context_version, switch_status, result_http_status,
+               created_at, completed_at, refreshed_at
         FROM iam_tenant_context_switches
-        WHERE family_id = #{familyId} AND switch_status = 'PENDING'
+        WHERE family_id = #{familyId} AND switch_status IN ('PENDING', 'AWAITING_REFRESH')
+    </select>
+
+    <select id="findAwaitingRefreshByFamily" resultMap="workflowRow">
+        SELECT id, family_id, idempotency_key, target_membership_id, target_fingerprint,
+               expected_context_version, switch_status, result_http_status,
+               created_at, completed_at, refreshed_at
+        FROM iam_tenant_context_switches
+        WHERE family_id = #{familyId} AND switch_status = 'AWAITING_REFRESH'
     </select>
 
     <select id="insert" resultMap="workflowRow" affectData="true" flushCache="true">
         INSERT INTO iam_tenant_context_switches
             (family_id, idempotency_key, target_membership_id, target_fingerprint,
-             expected_context_version, switch_status, created_at, completed_at)
+             expected_context_version, switch_status, result_http_status,
+             created_at, completed_at, refreshed_at)
         VALUES
             (#{row.familyId}, #{row.idempotencyKey}, #{row.targetMembershipId}, #{row.targetFingerprint},
-             #{row.expectedContextVersion}, #{row.switchStatus}, #{row.createdAt}, #{row.completedAt})
+             #{row.expectedContextVersion}, #{row.switchStatus}, #{row.resultHttpStatus},
+             #{row.createdAt}, #{row.completedAt}, #{row.refreshedAt})
         RETURNING id, family_id, idempotency_key, target_membership_id, target_fingerprint,
-                  expected_context_version, switch_status, created_at, completed_at
+                  expected_context_version, switch_status, result_http_status,
+                  created_at, completed_at, refreshed_at
     </select>
 
     <update id="complete">
         UPDATE iam_tenant_context_switches
-        SET switch_status = #{switchStatus}, completed_at = #{completedAt}
+        SET switch_status = #{switchStatus}, result_http_status = #{resultHttpStatus}, completed_at = #{completedAt}
         WHERE id = #{workflowId} AND switch_status = 'PENDING'
+    </update>
+
+    <update id="markAwaitingRefresh">
+        UPDATE iam_tenant_context_switches
+        SET switch_status = 'AWAITING_REFRESH', result_http_status = 204, completed_at = #{completedAt}
+        WHERE id = #{workflowId}
+          AND switch_status = 'PENDING'
+          AND expected_context_version = #{expectedContextVersion}
+    </update>
+
+    <update id="completePostSwitchRefresh">
+        UPDATE iam_tenant_context_switches
+        SET switch_status = #{switchStatus}, refreshed_at = #{refreshedAt}
+        WHERE family_id = #{familyId}
+          AND switch_status = 'AWAITING_REFRESH'
+          AND expected_context_version + 1 = #{contextVersion}
     </update>
 </mapper>

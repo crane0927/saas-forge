@@ -6,6 +6,7 @@ public record TenantContextSwitchClaim(Status status, TenantContextSwitchWorkflo
         REPLAY,
         TARGET_CONFLICT,
         FAMILY_IN_PROGRESS,
+        FAMILY_REFRESH_REQUIRED,
         FAMILY_CONTEXT_CHANGED
     }
 }

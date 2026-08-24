@@ -11,8 +11,10 @@ public class TenantContextSwitchRow {
     private byte[] targetFingerprint;
     private long expectedContextVersion;
     private String switchStatus;
+    private Integer resultHttpStatus;
     private OffsetDateTime createdAt;
     private OffsetDateTime completedAt;
+    private OffsetDateTime refreshedAt;
 
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
@@ -32,8 +34,12 @@ public class TenantContextSwitchRow {
     }
     public String getSwitchStatus() { return switchStatus; }
     public void setSwitchStatus(String switchStatus) { this.switchStatus = switchStatus; }
+    public Integer getResultHttpStatus() { return resultHttpStatus; }
+    public void setResultHttpStatus(Integer resultHttpStatus) { this.resultHttpStatus = resultHttpStatus; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }
     public OffsetDateTime getCompletedAt() { return completedAt; }
     public void setCompletedAt(OffsetDateTime completedAt) { this.completedAt = completedAt; }
+    public OffsetDateTime getRefreshedAt() { return refreshedAt; }
+    public void setRefreshedAt(OffsetDateTime refreshedAt) { this.refreshedAt = refreshedAt; }
 }

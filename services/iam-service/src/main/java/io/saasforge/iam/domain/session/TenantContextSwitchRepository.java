@@ -2,6 +2,7 @@ package io.saasforge.iam.domain.session;
 
 import io.saasforge.iam.domain.shared.Sha256Digest;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface TenantContextSwitchRepository {
@@ -16,4 +17,10 @@ public interface TenantContextSwitchRepository {
             Instant createdAt);
 
     void complete(UUID workflowId, TenantContextSwitchStatus status, Instant completedAt);
+
+    Optional<TenantContextSwitchWorkflow> findAwaitingRefresh(UUID familyId);
+
+    void markAwaitingRefresh(UUID workflowId, long expectedContextVersion, Instant completedAt);
+
+    void completePostSwitchRefresh(UUID familyId, long contextVersion, boolean authorized, Instant refreshedAt);
 }

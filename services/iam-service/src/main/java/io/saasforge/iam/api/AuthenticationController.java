@@ -157,7 +157,8 @@ public class AuthenticationController implements AuthenticationApi {
             TenantSwitchRequest request,
             String ignoredFetchSite) {
         browserRequestSecurity.requireControlledMutation(currentRequest(), csrfHeader);
-        tenantContextSwitchService.switchContext(idempotencyKey, refreshToken, request.getMembershipId());
+        tenantContextSwitchService.switchContext(
+                idempotencyKey, refreshToken, request.getMembershipId(), traceId(currentRequest()));
         return ResponseEntity.noContent().build();
     }
 

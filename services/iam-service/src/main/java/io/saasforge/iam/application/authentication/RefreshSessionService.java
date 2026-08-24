@@ -5,6 +5,7 @@ import io.saasforge.iam.domain.session.RefreshTokenFamily;
 import io.saasforge.iam.domain.session.RefreshTokenFamilyPurpose;
 import io.saasforge.iam.domain.session.RefreshTokenFamilyRepository;
 import io.saasforge.iam.domain.session.RefreshRotation;
+import io.saasforge.iam.domain.session.TenantContextSwitchRepository;
 import io.saasforge.iam.domain.shared.Sha256Digest;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -20,31 +21,40 @@ public final class RefreshSessionService {
     private final PlatformRoleAssignmentRepository platformRoles;
     private final AccessibleMemberships accessibleMemberships;
     private final RefreshTokenFamilyRepository refreshTokenFamilies;
+    private final TenantContextSwitchRepository contextSwitches;
+    private final MembershipValidation membershipValidation;
     private final UserAccessTokenIssuer accessTokenIssuer;
     private final RefreshTokenIssuer refreshTokenIssuer;
     private final LoginSessionService sessionService;
     private final RefreshRotationLease rotationLease;
     private final RefreshRotationTransaction rotationTransaction;
+    private final TenantContextSwitchTransaction contextSwitchTransaction;
     private final Clock clock;
 
     public RefreshSessionService(
             PlatformRoleAssignmentRepository platformRoles,
             AccessibleMemberships accessibleMemberships,
             RefreshTokenFamilyRepository refreshTokenFamilies,
+            TenantContextSwitchRepository contextSwitches,
+            MembershipValidation membershipValidation,
             UserAccessTokenIssuer accessTokenIssuer,
             RefreshTokenIssuer refreshTokenIssuer,
             LoginSessionService sessionService,
             RefreshRotationLease rotationLease,
             RefreshRotationTransaction rotationTransaction,
+            TenantContextSwitchTransaction contextSwitchTransaction,
             Clock clock) {
         this.platformRoles = platformRoles;
         this.accessibleMemberships = accessibleMemberships;
         this.refreshTokenFamilies = refreshTokenFamilies;
+        this.contextSwitches = contextSwitches;
+        this.membershipValidation = membershipValidation;
         this.accessTokenIssuer = accessTokenIssuer;
         this.refreshTokenIssuer = refreshTokenIssuer;
         this.sessionService = sessionService;
         this.rotationLease = rotationLease;
         this.rotationTransaction = rotationTransaction;
+        this.contextSwitchTransaction = contextSwitchTransaction;
         this.clock = clock;
     }
 
@@ -92,6 +102,20 @@ public final class RefreshSessionService {
             RefreshTokenMaterial presentedToken,
             Sha256Digest idempotencyKeyDigest,
             String traceId) {
+        if (contextSwitches.findAwaitingRefresh(family.id()).isPresent()) {
+            ValidatedMembership validated = membershipValidation
+                    .validate(family.identityId(), family.membershipId())
+                    .filter(candidate -> candidate.tenantId().equals(family.tenantId()))
+                    .orElse(null);
+            if (validated == null) {
+                contextSwitchTransaction.rejectPostSwitchRefresh(
+                        family.id(), family.contextVersion(), clock.instant());
+                throw new RefreshAuthorizationRejectedException();
+            }
+            return rotateWithAccessToken(
+                    family, presentedToken, idempotencyKeyDigest,
+                    validated.membershipId(), validated.tenantId(), traceId);
+        }
         AccessibleMembership membership = accessibleMemberships.findByIdentityId(family.identityId()).stream()
                 .filter(candidate -> candidate.membershipId().equals(family.membershipId()))
                 .filter(candidate -> candidate.tenantId().equals(family.tenantId()))

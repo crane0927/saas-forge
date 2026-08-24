@@ -17,8 +17,6 @@ import java.util.Optional;
 import java.util.UUID;
 
 public final class TenantContextSwitchService {
-    private static final long RETRY_AFTER_SECONDS = 1;
-
     private final RefreshTokenFamilyRepository families;
     private final TenantContextSwitchRepository workflows;
     private final MembershipValidation memberships;
@@ -41,10 +39,12 @@ public final class TenantContextSwitchService {
         this.clock = clock;
     }
 
-    /**
-     * 真实上下文变更由后续执行切片接管；本入口只在双重权威校验后保留 PENDING 根工作流。
-     */
     public void switchContext(UUID idempotencyKey, String refreshTokenValue, UUID targetMembershipId) {
+        switchContext(idempotencyKey, refreshTokenValue, targetMembershipId, null);
+    }
+
+    public void switchContext(
+            UUID idempotencyKey, String refreshTokenValue, UUID targetMembershipId, String traceId) {
         requireUuidV7(idempotencyKey, "Idempotency-Key");
         requireUuidV7(targetMembershipId, "membershipId");
         Instant inspectedAt = clock.instant();
@@ -60,10 +60,14 @@ public final class TenantContextSwitchService {
         switch (claim.status()) {
             case TARGET_CONFLICT -> throw TenantContextSwitchConflictException.idempotencyConflict();
             case FAMILY_IN_PROGRESS -> throw TenantContextSwitchConflictException.inProgress();
+            case FAMILY_REFRESH_REQUIRED -> throw TenantContextSwitchConflictException.refreshRequired();
             case FAMILY_CONTEXT_CHANGED -> throw new TenantContextSwitchSessionInvalidException();
             case REPLAY -> {
                 replay(workflow);
-                if (workflow.status() == TenantContextSwitchStatus.NO_OP) {
+                if (workflow.status() == TenantContextSwitchStatus.NO_OP
+                        || workflow.status() == TenantContextSwitchStatus.AWAITING_REFRESH
+                        || workflow.status() == TenantContextSwitchStatus.POST_SWITCH_REFRESHED
+                        || workflow.status() == TenantContextSwitchStatus.POST_SWITCH_REFRESH_REJECTED) {
                     return;
                 }
             }
@@ -86,7 +90,9 @@ public final class TenantContextSwitchService {
             transaction.complete(workflow.id(), TenantContextSwitchStatus.NO_OP, clock.instant());
             return;
         }
-        throw new TenantContextSwitchPendingException(RETRY_AFTER_SECONDS);
+        transaction.switchContext(
+                workflow.id(), family, workflow.expectedContextVersion(),
+                targetMembershipId, target.orElseThrow().tenantId(), clock.instant(), traceId);
     }
 
     private static void replay(TenantContextSwitchWorkflow workflow) {
@@ -98,6 +104,9 @@ public final class TenantContextSwitchService {
             case TARGET_REJECTED -> throw TenantContextSwitchAccessRejectedException.targetMembership();
             case PENDING -> {
                 // PENDING 会继续同步重试权威校验，不把允许结果缓存为授权事实。
+            }
+            case AWAITING_REFRESH, POST_SWITCH_REFRESHED, POST_SWITCH_REFRESH_REJECTED -> {
+                return;
             }
         }
     }

@@ -13,6 +13,9 @@ public interface RefreshTokenFamilyRepository {
 
     Optional<RefreshTokenFamily> findById(UUID familyId);
 
+    /** 调用方事务内锁定 Family，供跨 Repository 的安全变更编排。 */
+    Optional<RefreshTokenFamily> lockById(UUID familyId);
+
     Optional<RefreshTokenFamily> findUsableSelectionByTokenDigest(Sha256Digest tokenDigest, Instant at);
 
     Optional<RefreshTokenFamily> findUsableByTokenDigest(Sha256Digest tokenDigest, Instant at);
@@ -61,6 +64,8 @@ public interface RefreshTokenFamilyRepository {
             Instant at);
 
     RefreshTokenConsumption revokeForAuthorizationLoss(Sha256Digest presentedDigest, Instant at);
+
+    RefreshTokenFamily revokeById(UUID familyId, Instant at);
 
     RefreshTokenConsumption rejectSelection(Sha256Digest presentedDigest, Instant at);
 

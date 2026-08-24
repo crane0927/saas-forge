@@ -6,6 +6,7 @@ import io.saasforge.iam.domain.session.AccessTokenIssuanceRepository;
 import io.saasforge.iam.domain.session.RefreshRotation;
 import io.saasforge.iam.domain.session.RefreshTokenFamily;
 import io.saasforge.iam.domain.session.RefreshTokenFamilyRepository;
+import io.saasforge.iam.domain.session.TenantContextSwitchRepository;
 import io.saasforge.iam.domain.shared.Sha256Digest;
 import java.time.Duration;
 import java.time.Instant;
@@ -18,6 +19,7 @@ public class RefreshRotationTransaction {
     private static final Duration REFRESH_IDLE_LIFETIME = Duration.ofMinutes(30);
 
     private final RefreshTokenFamilyRepository families;
+    private final TenantContextSwitchRepository contextSwitches;
     private final AccessTokenIssuanceRepository issuances;
     private final RevocationIndex revocationIndex;
     private final OutboxEventRepository outboxEvents;
@@ -27,6 +29,7 @@ public class RefreshRotationTransaction {
 
     public RefreshRotationTransaction(
             RefreshTokenFamilyRepository families,
+            TenantContextSwitchRepository contextSwitches,
             AccessTokenIssuanceRepository issuances,
             RevocationIndex revocationIndex,
             OutboxEventRepository outboxEvents,
@@ -38,6 +41,7 @@ public class RefreshRotationTransaction {
             throw new IllegalArgumentException("Refresh 恢复窗口必须在 0 到 30 秒之间");
         }
         this.families = families;
+        this.contextSwitches = contextSwitches;
         this.issuances = issuances;
         this.revocationIndex = revocationIndex;
         this.outboxEvents = outboxEvents;
@@ -76,6 +80,9 @@ public class RefreshRotationTransaction {
                         accessToken.jti(), family.id(), family.identityId(), membershipId, tenantId,
                         accessToken.kid(), accessToken.issuedAt(), accessToken.expiresAt()));
             }
+            contextSwitches.findAwaitingRefresh(rotation.family().id()).ifPresent(workflow ->
+                    contextSwitches.completePostSwitchRefresh(
+                            rotation.family().id(), rotation.family().contextVersion(), true, at));
             return new Result(rotation.status(), OptionalLong.of(cookieMaxAge(at, rotation.family())));
         }
         if (rotation.status() == RefreshRotation.Status.REPLAYED) {

@@ -114,7 +114,7 @@ class TenantContextSwitchServiceTest {
     }
 
     @Test
-    void validatedRealChangeRemainsRecoverableAndReturnsPending() {
+    void validatedRealChangeCommitsSwitchAndReturnsStableSuccess() {
         TenantContextSwitchWorkflow workflow = workflow(TARGET_MEMBERSHIP_ID, TenantContextSwitchStatus.PENDING);
         when(workflows.claim(any(), any(Long.class), any(), any(), any(), any()))
                 .thenReturn(new TenantContextSwitchClaim(TenantContextSwitchClaim.Status.CREATED, workflow));
@@ -123,9 +123,10 @@ class TenantContextSwitchServiceTest {
         when(memberships.validate(IDENTITY_ID, TARGET_MEMBERSHIP_ID))
                 .thenReturn(Optional.of(new ValidatedMembership(TARGET_MEMBERSHIP_ID, TARGET_TENANT_ID)));
 
-        assertThrows(TenantContextSwitchPendingException.class,
-                () -> service.switchContext(IDEMPOTENCY_KEY, REFRESH_TOKEN, TARGET_MEMBERSHIP_ID));
-        verify(transaction, never()).complete(any(), any(), any());
+        assertDoesNotThrow(() -> service.switchContext(
+                IDEMPOTENCY_KEY, REFRESH_TOKEN, TARGET_MEMBERSHIP_ID));
+        verify(transaction).switchContext(
+                WORKFLOW_ID, family, 0, TARGET_MEMBERSHIP_ID, TARGET_TENANT_ID, NOW, null);
         verify(transaction, never()).rejectCurrent(any(), any(), any());
     }
 
@@ -178,7 +179,9 @@ class TenantContextSwitchServiceTest {
         Instant completedAt = status == TenantContextSwitchStatus.PENDING ? null : NOW;
         return new TenantContextSwitchWorkflow(
                 WORKFLOW_ID, FAMILY_ID, IDEMPOTENCY_KEY, targetMembershipId,
-                Sha256Digest.of(new byte[32]), 0, status, NOW, completedAt);
+                Sha256Digest.of(new byte[32]), 0, status,
+                status == TenantContextSwitchStatus.NO_OP ? 204 : null,
+                NOW, completedAt, null);
     }
 
     private static UUID uuidV7(long suffix) {

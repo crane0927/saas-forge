@@ -35,6 +35,7 @@ import io.saasforge.iam.application.authentication.UserAccessTokenIssuer;
 import io.saasforge.iam.application.authentication.ServiceAccessTokenIssuer;
 import io.saasforge.iam.application.authentication.MembershipValidation;
 import io.saasforge.iam.application.authentication.TenantContextSwitchService;
+import io.saasforge.iam.application.authentication.TenantContextSwitchedEventFactory;
 import io.saasforge.iam.application.authentication.TenantContextSwitchTransaction;
 import io.saasforge.iam.application.authentication.UuidV7Generator;
 import io.saasforge.iam.application.authorization.PlatformRoleAuthorizationService;
@@ -231,6 +232,14 @@ public class AuthenticationConfiguration {
     }
 
     @Bean
+    TenantContextSwitchedEventFactory tenantContextSwitchedEventFactory(
+            ObjectMapper objectMapper,
+            UuidV7Generator uuidV7Generator,
+            @Value("${saasforge.environment:dev}") String environment) {
+        return new TenantContextSwitchedEventFactory(objectMapper, uuidV7Generator, environment);
+    }
+
+    @Bean
     RefreshRotationLease refreshRotationLease(
             StringRedisTemplate redis,
             @Value("${saasforge.environment:dev}") String environment,
@@ -241,6 +250,7 @@ public class AuthenticationConfiguration {
     @Bean
     RefreshRotationTransaction refreshRotationTransaction(
             RefreshTokenFamilyRepository families,
+            TenantContextSwitchRepository contextSwitches,
             AccessTokenIssuanceRepository issuances,
             RevocationIndex revocationIndex,
             OutboxEventRepository outboxEvents,
@@ -248,7 +258,7 @@ public class AuthenticationConfiguration {
             SessionRevokedEventFactory revokedEventFactory,
             @Value("${security.refresh.recovery-window:PT10S}") Duration recoveryWindow) {
         return new RefreshRotationTransaction(
-                families, issuances, revocationIndex, outboxEvents,
+                families, contextSwitches, issuances, revocationIndex, outboxEvents,
                 replayEventFactory, revokedEventFactory, recoveryWindow);
     }
 
@@ -347,15 +357,19 @@ public class AuthenticationConfiguration {
             PlatformRoleAssignmentRepository platformRoles,
             AccessibleMemberships accessibleMemberships,
             RefreshTokenFamilyRepository refreshTokenFamilies,
+            TenantContextSwitchRepository contextSwitches,
+            MembershipValidation membershipValidation,
             UserAccessTokenIssuer accessTokenIssuer,
             RefreshTokenIssuer refreshTokenIssuer,
             LoginSessionService sessionService,
             RefreshRotationLease rotationLease,
             RefreshRotationTransaction rotationTransaction,
+            TenantContextSwitchTransaction contextSwitchTransaction,
             Clock clock) {
         return new RefreshSessionService(
-                platformRoles, accessibleMemberships, refreshTokenFamilies, accessTokenIssuer,
-                refreshTokenIssuer, sessionService, rotationLease, rotationTransaction, clock);
+                platformRoles, accessibleMemberships, refreshTokenFamilies, contextSwitches, membershipValidation,
+                accessTokenIssuer, refreshTokenIssuer, sessionService, rotationLease, rotationTransaction,
+                contextSwitchTransaction, clock);
     }
 
     @Bean
@@ -367,8 +381,13 @@ public class AuthenticationConfiguration {
     @Bean
     TenantContextSwitchTransaction tenantContextSwitchTransaction(
             TenantContextSwitchRepository workflows,
-            RefreshTokenFamilyRepository families) {
-        return new TenantContextSwitchTransaction(workflows, families);
+            RefreshTokenFamilyRepository families,
+            AccessTokenIssuanceRepository issuances,
+            RevocationIndex revocationIndex,
+            OutboxEventRepository outboxEvents,
+            TenantContextSwitchedEventFactory eventFactory) {
+        return new TenantContextSwitchTransaction(
+                workflows, families, issuances, revocationIndex, outboxEvents, eventFactory);
     }
 
     @Bean

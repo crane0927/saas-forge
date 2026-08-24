@@ -13,8 +13,10 @@ public record TenantContextSwitchWorkflow(
         Sha256Digest targetFingerprint,
         long expectedContextVersion,
         TenantContextSwitchStatus status,
+        Integer resultHttpStatus,
         Instant createdAt,
-        Instant completedAt) {
+        Instant completedAt,
+        Instant refreshedAt) {
 
     public TenantContextSwitchWorkflow {
         if (id == null || familyId == null || idempotencyKey == null || targetMembershipId == null
@@ -27,8 +29,23 @@ public record TenantContextSwitchWorkflow(
         if ((status == TenantContextSwitchStatus.PENDING) != (completedAt == null)) {
             throw new IllegalArgumentException("Tenant Context Switch 状态与终结时间不匹配");
         }
+        boolean successfulSwitch = status == TenantContextSwitchStatus.NO_OP
+                || status == TenantContextSwitchStatus.AWAITING_REFRESH
+                || status == TenantContextSwitchStatus.POST_SWITCH_REFRESHED
+                || status == TenantContextSwitchStatus.POST_SWITCH_REFRESH_REJECTED;
+        if (successfulSwitch != Integer.valueOf(204).equals(resultHttpStatus)) {
+            throw new IllegalArgumentException("Tenant Context Switch 状态与稳定 HTTP 结果不匹配");
+        }
+        boolean refreshFinished = status == TenantContextSwitchStatus.POST_SWITCH_REFRESHED
+                || status == TenantContextSwitchStatus.POST_SWITCH_REFRESH_REJECTED;
+        if (refreshFinished != (refreshedAt != null)) {
+            throw new IllegalArgumentException("Tenant Context Switch 状态与 Refresh 完成时间不匹配");
+        }
         if (completedAt != null && completedAt.isBefore(createdAt)) {
             throw new IllegalArgumentException("Tenant Context Switch 终结时间不能早于创建时间");
+        }
+        if (refreshedAt != null && refreshedAt.isBefore(completedAt)) {
+            throw new IllegalArgumentException("Tenant Context Switch Refresh 时间不能早于切换完成时间");
         }
     }
 

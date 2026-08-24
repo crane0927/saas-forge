@@ -473,7 +473,9 @@ class IamPersistenceRepositoryIT {
 
     private RefreshRotationTransaction refreshRotationTransaction() {
         return new RefreshRotationTransaction(
-                refreshTokenFamilies, accessTokenIssuances, null, null, null, null, Duration.ofSeconds(10));
+                refreshTokenFamilies,
+                org.mockito.Mockito.mock(io.saasforge.iam.domain.session.TenantContextSwitchRepository.class),
+                accessTokenIssuances, null, null, null, null, Duration.ofSeconds(10));
     }
 
     private static IssuedAccessToken accessToken(Instant issuedAt) {

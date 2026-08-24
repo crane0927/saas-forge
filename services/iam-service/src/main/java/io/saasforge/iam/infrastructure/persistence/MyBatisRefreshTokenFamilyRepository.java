@@ -41,6 +41,11 @@ public class MyBatisRefreshTokenFamilyRepository implements RefreshTokenFamilyRe
     }
 
     @Override
+    public Optional<RefreshTokenFamily> lockById(UUID familyId) {
+        return Optional.ofNullable(mapper.lockFamilyById(familyId)).map(MyBatisRefreshTokenFamilyRepository::toDomain);
+    }
+
+    @Override
     public Optional<RefreshTokenFamily> findUsableSelectionByTokenDigest(Sha256Digest tokenDigest, Instant at) {
         return findUsableByTokenDigest(tokenDigest, at)
                 .filter(family -> family.purpose() == RefreshTokenFamilyPurpose.USER_TENANT_SELECTION);
@@ -222,6 +227,22 @@ public class MyBatisRefreshTokenFamilyRepository implements RefreshTokenFamilyRe
         RefreshTokenFamily revoked = family.revoke(at);
         mapper.updateFamily(toRow(revoked));
         return new RefreshTokenConsumption(RefreshTokenConsumption.Status.CONSUMED, revoked);
+    }
+
+    @Override
+    @Transactional
+    public RefreshTokenFamily revokeById(UUID familyId, Instant at) {
+        RefreshTokenFamilyRow row = mapper.lockFamilyById(familyId);
+        if (row == null) {
+            throw new IllegalStateException("Refresh Token Family 不存在");
+        }
+        RefreshTokenFamily family = toDomain(row);
+        Instant revokedAt = at.isBefore(family.lastUsedAt()) ? family.lastUsedAt() : at;
+        RefreshTokenFamily revoked = family.revoke(revokedAt);
+        if (revoked != family && mapper.updateFamily(toRow(revoked)) != 1) {
+            throw new IllegalStateException("Refresh Token Family 撤销失败");
+        }
+        return revoked;
     }
 
     @Override

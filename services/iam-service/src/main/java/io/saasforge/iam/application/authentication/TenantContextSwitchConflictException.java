@@ -3,6 +3,7 @@ package io.saasforge.iam.application.authentication;
 public final class TenantContextSwitchConflictException extends RuntimeException {
     public static final String IDEMPOTENCY_CODE = "TENANT_CONTEXT_SWITCH_IDEMPOTENCY_CONFLICT";
     public static final String IN_PROGRESS_CODE = "TENANT_CONTEXT_SWITCH_IN_PROGRESS";
+    public static final String REFRESH_REQUIRED_CODE = "TENANT_CONTEXT_SWITCH_REFRESH_REQUIRED";
 
     private final String code;
 
@@ -19,6 +20,11 @@ public final class TenantContextSwitchConflictException extends RuntimeException
     public static TenantContextSwitchConflictException inProgress() {
         return new TenantContextSwitchConflictException(
                 IN_PROGRESS_CODE, "当前 Refresh Token Family 已有 Tenant Context Switch 进行中");
+    }
+
+    public static TenantContextSwitchConflictException refreshRequired() {
+        return new TenantContextSwitchConflictException(
+                REFRESH_REQUIRED_CODE, "当前 Refresh Token Family 必须先完成切换后的 Refresh");
     }
 
     public String code() {
