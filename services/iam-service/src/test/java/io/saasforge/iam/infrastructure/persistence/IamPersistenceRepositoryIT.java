@@ -16,6 +16,9 @@ import io.saasforge.iam.application.bootstrap.ReservedServiceClientBootstrapConf
 import io.saasforge.iam.application.bootstrap.ReservedServiceClientBootstrapInput;
 import io.saasforge.iam.application.bootstrap.ReservedServiceClientBootstrapResult;
 import io.saasforge.iam.application.bootstrap.ReservedServiceClientBootstrapService;
+import io.saasforge.iam.application.authentication.IssuedAccessToken;
+import io.saasforge.iam.application.authentication.RefreshRotationTransaction;
+import io.saasforge.iam.application.authentication.RefreshTokenMaterial;
 import io.saasforge.iam.domain.identity.Argon2idPasswordHash;
 import io.saasforge.iam.domain.identity.CredentialType;
 import io.saasforge.iam.domain.identity.DuplicateIdentityEmailException;
@@ -24,7 +27,11 @@ import io.saasforge.iam.domain.identity.IdentityRepository;
 import io.saasforge.iam.domain.identity.PasswordCredential;
 import io.saasforge.iam.domain.session.RefreshTokenConsumption;
 import io.saasforge.iam.domain.session.RefreshTokenFamily;
+import io.saasforge.iam.domain.session.RefreshTokenFamilyContextChange;
 import io.saasforge.iam.domain.session.RefreshTokenFamilyRepository;
+import io.saasforge.iam.domain.session.RefreshTokenFamilyPurpose;
+import io.saasforge.iam.domain.session.RefreshRotation;
+import io.saasforge.iam.domain.session.AccessTokenIssuanceRepository;
 import io.saasforge.iam.domain.shared.Sha256Digest;
 import io.saasforge.iam.domain.signing.SigningKey;
 import io.saasforge.iam.domain.signing.SigningKeyRepository;
@@ -44,6 +51,9 @@ import java.util.Set;
 import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.flywaydb.core.Flyway;
@@ -60,9 +70,11 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -105,6 +117,9 @@ class IamPersistenceRepositoryIT {
     private RefreshTokenFamilyRepository refreshTokenFamilies;
 
     @Autowired
+    private AccessTokenIssuanceRepository accessTokenIssuances;
+
+    @Autowired
     private OAuthClientRepository clients;
 
     @Autowired
@@ -115,6 +130,9 @@ class IamPersistenceRepositoryIT {
 
     @Autowired
     private DataSource dataSource;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @BeforeAll
     void migrate() {
@@ -205,6 +223,130 @@ class IamPersistenceRepositoryIT {
         assertEquals(RefreshTokenConsumption.Status.CONSUMED,
                 refreshTokenFamilies.consumeInitialPasswordChange(
                         restrictedToken, loginAt.plusSeconds(2)).status());
+    }
+
+    @Test
+    void contextChangeCommittedBeforeRefreshLeavesPreparedTokenAndPresentedTokenUnpersisted() throws Exception {
+        Instant loginAt = Instant.parse("2026-08-24T01:00:00Z");
+        Instant refreshAt = loginAt.plusSeconds(1);
+        UUID identityId = identities.create(Identity.register(
+                "context-first-" + UUID.randomUUID() + "@example.test", null, loginAt)).id();
+        UUID currentMembershipId = UUID.randomUUID();
+        UUID currentTenantId = UUID.randomUUID();
+        UUID targetMembershipId = UUID.randomUUID();
+        UUID targetTenantId = UUID.randomUUID();
+        Sha256Digest presentedDigest = digest(41);
+        Sha256Digest successorDigest = digest(42);
+        RefreshTokenFamily family = refreshTokenFamilies.create(
+                RefreshTokenFamily.start(identityId, RefreshTokenFamilyPurpose.USER_TENANT,
+                        currentMembershipId, currentTenantId, loginAt),
+                presentedDigest, loginAt);
+        IssuedAccessToken preparedAccessToken = accessToken(refreshAt);
+        RefreshRotationTransaction transaction = refreshRotationTransaction();
+        CountDownLatch contextLocked = new CountDownLatch(1);
+        CountDownLatch allowContextCommit = new CountDownLatch(1);
+
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var contextChange = executor.submit(() -> new TransactionTemplate(transactionManager).execute(status -> {
+                RefreshTokenFamilyContextChange result = refreshTokenFamilies.switchTenantContext(
+                        family.id(), family.contextVersion(), targetMembershipId, targetTenantId);
+                contextLocked.countDown();
+                await(allowContextCommit);
+                return result;
+            }));
+            assertTrue(contextLocked.await(5, TimeUnit.SECONDS));
+            var refresh = executor.submit(() -> new TransactionTemplate(transactionManager).execute(status ->
+                    transaction.commit(
+                            new RefreshTokenMaterial("presented", presentedDigest),
+                            new RefreshTokenMaterial("successor", successorDigest), digest(43),
+                            family.contextVersion(), currentMembershipId, currentTenantId,
+                            preparedAccessToken, refreshAt, null)));
+
+            allowContextCommit.countDown();
+
+            assertEquals(RefreshTokenFamilyContextChange.Status.CHANGED,
+                    contextChange.get(5, TimeUnit.SECONDS).status());
+            assertEquals(RefreshRotation.Status.CONTEXT_CHANGED,
+                    refresh.get(5, TimeUnit.SECONDS).status());
+        } finally {
+            executor.shutdownNow();
+        }
+
+        RefreshTokenFamily persisted = refreshTokenFamilies.findById(family.id()).orElseThrow();
+        assertEquals(1, persisted.contextVersion());
+        assertEquals(targetMembershipId, persisted.membershipId());
+        assertEquals(targetTenantId, persisted.tenantId());
+        assertEquals(loginAt, persisted.lastUsedAt());
+        assertTrue(accessTokenIssuances.findByJti(preparedAccessToken.jti()).isEmpty());
+        assertNull(tokenConsumedAt(presentedDigest));
+        assertEquals(0, tokenCount(successorDigest));
+    }
+
+    @Test
+    void refreshHoldingFamilyLockCommitsBeforeContextChangeWithoutOverwritingTheNewContext() throws Exception {
+        Instant loginAt = Instant.parse("2026-08-24T02:00:00Z");
+        Instant refreshAt = loginAt.plusSeconds(1);
+        UUID identityId = identities.create(Identity.register(
+                "refresh-first-" + UUID.randomUUID() + "@example.test", null, loginAt)).id();
+        UUID currentMembershipId = UUID.randomUUID();
+        UUID currentTenantId = UUID.randomUUID();
+        UUID targetMembershipId = UUID.randomUUID();
+        UUID targetTenantId = UUID.randomUUID();
+        Sha256Digest presentedDigest = digest(44);
+        Sha256Digest successorDigest = digest(45);
+        RefreshTokenFamily family = refreshTokenFamilies.create(
+                RefreshTokenFamily.start(identityId, RefreshTokenFamilyPurpose.USER_TENANT,
+                        currentMembershipId, currentTenantId, loginAt),
+                presentedDigest, loginAt);
+        String kid = "context-lock-" + UUID.randomUUID();
+        SigningKey published = signingKeys.savePublished(SigningKey.publish(
+                kid, "kms/" + kid, "modulus-" + kid, "AQAB",
+                loginAt.minus(5, ChronoUnit.MINUTES)));
+        signingKeys.activate(published.id(), loginAt);
+        IssuedAccessToken accessToken = accessToken(refreshAt, kid);
+        RefreshRotationTransaction transaction = refreshRotationTransaction();
+        CountDownLatch refreshLocked = new CountDownLatch(1);
+        CountDownLatch allowRefreshCommit = new CountDownLatch(1);
+
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var refresh = executor.submit(() -> new TransactionTemplate(transactionManager).execute(status -> {
+                RefreshRotationTransaction.Result result = transaction.commit(
+                        new RefreshTokenMaterial("presented", presentedDigest),
+                        new RefreshTokenMaterial("successor", successorDigest), digest(46),
+                        family.contextVersion(), currentMembershipId, currentTenantId,
+                        accessToken, refreshAt, null);
+                refreshLocked.countDown();
+                await(allowRefreshCommit);
+                return result;
+            }));
+            boolean locked = refreshLocked.await(5, TimeUnit.SECONDS);
+            if (!locked) {
+                refresh.get(1, TimeUnit.SECONDS);
+            }
+            assertTrue(locked);
+            var contextChange = executor.submit(() -> refreshTokenFamilies.switchTenantContext(
+                    family.id(), family.contextVersion(), targetMembershipId, targetTenantId));
+
+            allowRefreshCommit.countDown();
+
+            assertEquals(RefreshRotation.Status.ROTATED,
+                    refresh.get(5, TimeUnit.SECONDS).status());
+            assertEquals(RefreshTokenFamilyContextChange.Status.CHANGED,
+                    contextChange.get(5, TimeUnit.SECONDS).status());
+        } finally {
+            executor.shutdownNow();
+        }
+
+        RefreshTokenFamily persisted = refreshTokenFamilies.findById(family.id()).orElseThrow();
+        assertEquals(1, persisted.contextVersion());
+        assertEquals(targetMembershipId, persisted.membershipId());
+        assertEquals(targetTenantId, persisted.tenantId());
+        assertEquals(refreshAt, persisted.lastUsedAt());
+        assertTrue(accessTokenIssuances.findByJti(accessToken.jti()).isPresent());
+        assertNotNull(tokenConsumedAt(presentedDigest));
+        assertEquals(1, tokenCount(successorDigest));
     }
 
     @Test
@@ -326,6 +468,49 @@ class IamPersistenceRepositoryIT {
             assertThrows(SQLException.class, () -> connection.createStatement().execute(
                     "INSERT INTO iam_oauth_clients (display_name, allowed_scopes, client_status, created_at) "
                             + "VALUES ('invalid', ARRAY['tenant:write'], 'ACTIVE', now())"));
+        }
+    }
+
+    private RefreshRotationTransaction refreshRotationTransaction() {
+        return new RefreshRotationTransaction(
+                refreshTokenFamilies, accessTokenIssuances, null, null, null, null, Duration.ofSeconds(10));
+    }
+
+    private static IssuedAccessToken accessToken(Instant issuedAt) {
+        return accessToken(issuedAt, "test-kid");
+    }
+
+    private static IssuedAccessToken accessToken(Instant issuedAt, String kid) {
+        return new IssuedAccessToken(
+                "prepared-access-token", uuidV7(), kid,
+                issuedAt, issuedAt.plusSeconds(900), 900);
+    }
+
+    private static UUID uuidV7() {
+        long random = UUID.randomUUID().getLeastSignificantBits();
+        return new UUID(0x0198c9d50f257000L, (random & 0x3fffffffffffffffL) | 0x8000000000000000L);
+    }
+
+    private OffsetDateTime tokenConsumedAt(Sha256Digest digest) {
+        return new JdbcTemplate(dataSource).queryForObject(
+                "SELECT consumed_at FROM iam_refresh_tokens WHERE token_digest = ?",
+                OffsetDateTime.class, digest.value());
+    }
+
+    private int tokenCount(Sha256Digest digest) {
+        return new JdbcTemplate(dataSource).queryForObject(
+                "SELECT count(*) FROM iam_refresh_tokens WHERE token_digest = ?",
+                Integer.class, digest.value());
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(5, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("等待并发事务超时");
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("等待并发事务被中断", exception);
         }
     }
 

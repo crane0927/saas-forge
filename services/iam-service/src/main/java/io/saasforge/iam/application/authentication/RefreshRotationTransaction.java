@@ -52,6 +52,7 @@ public class RefreshRotationTransaction {
             RefreshTokenMaterial presentedToken,
             RefreshTokenMaterial nextToken,
             Sha256Digest idempotencyKeyDigest,
+            long expectedContextVersion,
             UUID membershipId,
             UUID tenantId,
             IssuedAccessToken accessToken,
@@ -59,6 +60,7 @@ public class RefreshRotationTransaction {
             String traceId) {
         RefreshRotation rotation = families.rotateForRefresh(
                 presentedToken.digest(), nextToken.digest(), idempotencyKeyDigest,
+                expectedContextVersion,
                 membershipId, tenantId, accessToken == null ? null : accessToken.jti(), recoveryWindow, at);
         if (rotation.status() == RefreshRotation.Status.RECOVERED && rotation.replacedAccessJti() != null) {
             AccessTokenIssuance previous = issuances.findByJti(rotation.replacedAccessJti())

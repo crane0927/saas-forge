@@ -124,12 +124,13 @@ public final class RefreshSessionService {
             RefreshTokenMaterial nextToken = refreshTokenIssuer.issue();
             long cookieMaxAge = commitRotation(
                     presentedToken, nextToken, idempotencyKeyDigest,
-                    membership.membershipId(), membership.tenantId(), accessToken, traceId);
+                    family.contextVersion(), membership.membershipId(), membership.tenantId(), accessToken, traceId);
             return new AccessTokenLoginResult(accessToken, nextToken.value(), cookieMaxAge);
         }
         RefreshTokenMaterial nextToken = refreshTokenIssuer.issue();
         long cookieMaxAge = commitRotation(
-                presentedToken, nextToken, idempotencyKeyDigest, null, null, null, traceId);
+                presentedToken, nextToken, idempotencyKeyDigest,
+                family.contextVersion(), null, null, null, traceId);
         return new ContextSelectionLoginResult(memberships, nextToken.value(), cookieMaxAge);
     }
 
@@ -146,7 +147,7 @@ public final class RefreshSessionService {
         RefreshTokenMaterial nextToken = refreshTokenIssuer.issue();
         long cookieMaxAge = commitRotation(
                 presentedToken, nextToken, idempotencyKeyDigest,
-                membershipId, tenantId, accessToken, traceId);
+                family.contextVersion(), membershipId, tenantId, accessToken, traceId);
         return new AccessTokenLoginResult(accessToken, nextToken.value(), cookieMaxAge);
     }
 
@@ -154,13 +155,17 @@ public final class RefreshSessionService {
             RefreshTokenMaterial presentedToken,
             RefreshTokenMaterial nextToken,
             Sha256Digest idempotencyKeyDigest,
+            long expectedContextVersion,
             UUID membershipId,
             UUID tenantId,
             IssuedAccessToken accessToken,
             String traceId) {
         RefreshRotationTransaction.Result result = rotationTransaction.commit(
-                presentedToken, nextToken, idempotencyKeyDigest, membershipId, tenantId,
+                presentedToken, nextToken, idempotencyKeyDigest, expectedContextVersion, membershipId, tenantId,
                 accessToken, clock.instant(), traceId);
+        if (result.status() == RefreshRotation.Status.CONTEXT_CHANGED) {
+            throw new RefreshContextChangedException();
+        }
         if (result.status() != RefreshRotation.Status.ROTATED
                 && result.status() != RefreshRotation.Status.RECOVERED) {
             throw new RefreshSessionInvalidException();

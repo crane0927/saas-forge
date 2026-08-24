@@ -2,6 +2,7 @@ package io.saasforge.iam.infrastructure.persistence;
 
 import io.saasforge.iam.domain.session.RefreshTokenConsumption;
 import io.saasforge.iam.domain.session.RefreshTokenFamily;
+import io.saasforge.iam.domain.session.RefreshTokenFamilyContextChange;
 import io.saasforge.iam.domain.session.RefreshTokenFamilyPurpose;
 import io.saasforge.iam.domain.session.RefreshTokenFamilyRepository;
 import io.saasforge.iam.domain.session.RefreshRotation;
@@ -63,10 +64,37 @@ public class MyBatisRefreshTokenFamilyRepository implements RefreshTokenFamilyRe
 
     @Override
     @Transactional
+    public RefreshTokenFamilyContextChange switchTenantContext(
+            UUID familyId, long expectedContextVersion, UUID membershipId, UUID tenantId) {
+        RefreshTokenFamilyRow locked = mapper.lockFamilyById(familyId);
+        if (locked == null) {
+            return new RefreshTokenFamilyContextChange(
+                    RefreshTokenFamilyContextChange.Status.NOT_FOUND, null);
+        }
+        RefreshTokenFamily family = toDomain(locked);
+        if (family.contextVersion() != expectedContextVersion) {
+            return new RefreshTokenFamilyContextChange(
+                    RefreshTokenFamilyContextChange.Status.VERSION_CONFLICT, family);
+        }
+        RefreshTokenFamily changed = family.switchTenantContext(membershipId, tenantId);
+        if (changed == family) {
+            return new RefreshTokenFamilyContextChange(
+                    RefreshTokenFamilyContextChange.Status.UNCHANGED, family);
+        }
+        if (mapper.updateFamily(toRow(changed)) != 1) {
+            throw new IllegalStateException("Refresh Token Family 上下文保存失败");
+        }
+        return new RefreshTokenFamilyContextChange(
+                RefreshTokenFamilyContextChange.Status.CHANGED, changed);
+    }
+
+    @Override
+    @Transactional
     public RefreshRotation rotateForRefresh(
             Sha256Digest presentedDigest,
             Sha256Digest nextDigest,
             Sha256Digest idempotencyKeyDigest,
+            long expectedContextVersion,
             UUID membershipId,
             UUID tenantId,
             UUID nextAccessJti,
@@ -77,6 +105,10 @@ public class MyBatisRefreshTokenFamilyRepository implements RefreshTokenFamilyRe
             return new RefreshRotation(RefreshRotation.Status.NOT_FOUND, null, null);
         }
         RefreshTokenFamily family = toDomain(mapper.lockFamilyById(token.getFamilyId()));
+        // 版本校验必须早于消费、恢复或插入，冲突时整个 Prepared Token 结果都可丢弃。
+        if (family.contextVersion() != expectedContextVersion) {
+            return new RefreshRotation(RefreshRotation.Status.CONTEXT_CHANGED, family, null);
+        }
         if (token.getConsumedAt() != null) {
             return recoverOrReplay(token, family, nextDigest, idempotencyKeyDigest, nextAccessJti, at);
         }
@@ -373,6 +405,7 @@ public class MyBatisRefreshTokenFamilyRepository implements RefreshTokenFamilyRe
         row.setInitialCredentialId(family.initialCredentialId());
         row.setMembershipId(family.membershipId());
         row.setTenantId(family.tenantId());
+        row.setContextVersion(family.contextVersion());
         row.setLastUsedAt(IamTime.asOffsetDateTime(family.lastUsedAt()));
         row.setAbsoluteExpiresAt(IamTime.asOffsetDateTime(family.absoluteExpiresAt()));
         row.setRevokedAt(IamTime.asOffsetDateTime(family.revokedAt()));
@@ -391,6 +424,7 @@ public class MyBatisRefreshTokenFamilyRepository implements RefreshTokenFamilyRe
         return RefreshTokenFamily.restore(row.getId(), row.getIdentityId(),
                 RefreshTokenFamilyPurpose.valueOf(row.getFamilyPurpose()), row.getInitialCredentialId(),
                 row.getMembershipId(), row.getTenantId(),
+                row.getContextVersion(),
                 IamTime.asInstant(row.getLastUsedAt()), IamTime.asInstant(row.getAbsoluteExpiresAt()),
                 IamTime.asInstant(row.getRevokedAt()));
     }

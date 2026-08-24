@@ -19,10 +19,20 @@ public interface RefreshTokenFamilyRepository {
 
     Optional<RefreshTokenFamily> findByTokenDigest(Sha256Digest tokenDigest);
 
+    /**
+     * 与 Refresh 提交锁定同一 Family 行；调用方事务提交前持续持有该互斥边界。
+     */
+    RefreshTokenFamilyContextChange switchTenantContext(
+            UUID familyId,
+            long expectedContextVersion,
+            UUID membershipId,
+            UUID tenantId);
+
     RefreshRotation rotateForRefresh(
             Sha256Digest presentedDigest,
             Sha256Digest nextDigest,
             Sha256Digest idempotencyKeyDigest,
+            long expectedContextVersion,
             UUID membershipId,
             UUID tenantId,
             UUID nextAccessJti,

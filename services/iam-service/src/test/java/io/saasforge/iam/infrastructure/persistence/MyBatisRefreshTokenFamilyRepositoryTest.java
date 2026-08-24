@@ -2,10 +2,12 @@ package io.saasforge.iam.infrastructure.persistence;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.saasforge.iam.domain.session.RefreshTokenConsumption;
+import io.saasforge.iam.domain.session.RefreshTokenFamilyContextChange;
 import io.saasforge.iam.domain.session.RefreshRotation;
 import io.saasforge.iam.domain.shared.Sha256Digest;
 import io.saasforge.iam.infrastructure.persistence.mapper.RefreshTokenMapper;
@@ -152,7 +154,7 @@ class MyBatisRefreshTokenFamilyRepositoryTest {
         MyBatisRefreshTokenFamilyRepository repository = new MyBatisRefreshTokenFamilyRepository(mapper);
 
         RefreshRotation result = repository.rotateForRefresh(
-                digest((byte) 1), digest((byte) 2), digest((byte) 3), null, null,
+                digest((byte) 1), digest((byte) 2), digest((byte) 3), 0, null, null,
                 UUID.randomUUID(), Duration.ofSeconds(5), Instant.parse("2026-08-20T16:00:00Z"));
 
         assertEquals(RefreshRotation.Status.NOT_FOUND, result.status());
@@ -192,6 +194,45 @@ class MyBatisRefreshTokenFamilyRepositoryTest {
         assertEquals(rotatedAt, mapper.consumedAt.toInstant());
         assertEquals(rotatedAt, mapper.updatedFamily.getLastUsedAt().toInstant());
         assertEquals(rotatedAt, mapper.insertedToken.getIssuedAt().toInstant());
+    }
+
+    @Test
+    void rotationLeavesTokensAndFamilyUntouchedWhenContextVersionChanged() {
+        Instant lastUsedAt = Instant.parse("2026-08-20T16:00:00Z");
+        RecordingRefreshTokenMapper mapper = mapperWithActiveToken(lastUsedAt);
+        mapper.family.setContextVersion(1);
+        MyBatisRefreshTokenFamilyRepository repository = new MyBatisRefreshTokenFamilyRepository(mapper);
+
+        RefreshRotation result = repository.rotateForRefresh(
+                digest((byte) 1), digest((byte) 2), digest((byte) 3), 0, null, null,
+                UUID.randomUUID(), Duration.ofSeconds(5), lastUsedAt.plusSeconds(1));
+
+        assertEquals(RefreshRotation.Status.CONTEXT_CHANGED, result.status());
+        assertNull(mapper.consumedAt);
+        assertNull(mapper.updatedFamily);
+        assertNull(mapper.insertedToken);
+    }
+
+    @Test
+    void tenantContextChangeAdvancesVersionAndRejectsAStaleExpectedVersion() {
+        Instant lastUsedAt = Instant.parse("2026-08-20T16:00:00Z");
+        RecordingRefreshTokenMapper mapper = mapperWithActiveToken(lastUsedAt);
+        mapper.family.setFamilyPurpose("USER_TENANT");
+        mapper.family.setMembershipId(UUID.randomUUID());
+        mapper.family.setTenantId(UUID.randomUUID());
+        MyBatisRefreshTokenFamilyRepository repository = new MyBatisRefreshTokenFamilyRepository(mapper);
+
+        RefreshTokenFamilyContextChange changed = repository.switchTenantContext(
+                mapper.family.getId(), 0, UUID.randomUUID(), UUID.randomUUID());
+        mapper.family = mapper.updatedFamily;
+        RefreshTokenFamilyContextChange conflicted = repository.switchTenantContext(
+                mapper.family.getId(), 0, UUID.randomUUID(), UUID.randomUUID());
+
+        assertEquals(RefreshTokenFamilyContextChange.Status.CHANGED, changed.status());
+        assertEquals(1, changed.family().contextVersion());
+        assertEquals(lastUsedAt, changed.family().lastUsedAt());
+        assertEquals(RefreshTokenFamilyContextChange.Status.VERSION_CONFLICT, conflicted.status());
+        assertEquals(1, conflicted.family().contextVersion());
     }
 
     @Test
@@ -248,7 +289,7 @@ class MyBatisRefreshTokenFamilyRepositoryTest {
         mapper.successor = successor;
 
         RefreshRotation result = repository.rotateForRefresh(
-                presentedDigest, nextDigest, idempotencyKeyDigest, null, null,
+                presentedDigest, nextDigest, idempotencyKeyDigest, 0, null, null,
                 UUID.randomUUID(), Duration.ofSeconds(5), staleRequestTime);
 
         assertEquals(RefreshRotation.Status.RECOVERED, result.status());
@@ -289,7 +330,7 @@ class MyBatisRefreshTokenFamilyRepositoryTest {
 
     private static RefreshRotation rotate(MyBatisRefreshTokenFamilyRepository repository, Instant at) {
         return repository.rotateForRefresh(
-                digest((byte) 1), digest((byte) 2), digest((byte) 3), null, null,
+                digest((byte) 1), digest((byte) 2), digest((byte) 3), 0, null, null,
                 UUID.randomUUID(), Duration.ofSeconds(5), at);
     }
 

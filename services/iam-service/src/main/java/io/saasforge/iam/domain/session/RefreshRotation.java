@@ -6,6 +6,7 @@ public record RefreshRotation(Status status, RefreshTokenFamily family, UUID rep
     public enum Status {
         ROTATED,
         RECOVERED,
+        CONTEXT_CHANGED,
         REPLAYED,
         EXPIRED,
         REVOKED,

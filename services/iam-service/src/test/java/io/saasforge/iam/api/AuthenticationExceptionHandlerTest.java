@@ -1,12 +1,16 @@
 package io.saasforge.iam.api;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.saasforge.iam.application.authentication.ContextSelectionSessionInvalidException;
 import io.saasforge.iam.application.authentication.PasswordChangeSessionInvalidException;
+import io.saasforge.iam.application.authentication.RefreshContextChangedException;
 import io.saasforge.iam.application.authentication.RefreshSessionInvalidException;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.web.bind.MissingRequestCookieException;
 
@@ -25,6 +29,16 @@ class AuthenticationExceptionHandlerTest {
         MissingRequestCookieException exception = new MissingRequestCookieException("other", null);
         assertThrows(MissingRequestCookieException.class,
                 () -> handler.missingRefreshCookie(exception, request("/api/v1/auth/refresh")));
+    }
+
+    @Test
+    void keepsRefreshCookieWhenLatestFamilyContextMustBeRetried() {
+        var response = handler.refreshContextChanged(
+                new RefreshContextChangedException(), request("/api/v1/auth/refresh"));
+
+        assertEquals(HttpStatus.CONFLICT, response.getStatusCode());
+        assertEquals(RefreshContextChangedException.CODE, response.getBody().code());
+        assertNull(response.getHeaders().getFirst(HttpHeaders.SET_COOKIE));
     }
 
     private void assertMissingCookieCode(String uri, String code) throws Exception {

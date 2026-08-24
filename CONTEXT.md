@@ -68,6 +68,10 @@ _Avoid_: Retired signing key, expired signing key
 为同一浏览器会话连续签发并轮换的 Refresh Token 谱系，持有该会话的 Identity、Purpose 及相应的 Platform、Membership/Tenant、待选择或首次改密上下文。它自首次登录起最长有效 8 小时、空闲最长 30 分钟，轮换不延长期限；已轮换 Token 的摘要保留至 Family 到期，任一不属于短时恢复语义的重放都会撤销整个 Family。
 _Avoid_: Access token, browser cookie
 
+**Refresh Token Family Context Version**:
+Refresh Token Family 上 Purpose、Membership 与 Tenant 上下文变化的单调版本；普通活动与 Token 轮换不改变它，读取旧版本准备的 Token 结果不能提交到已经变化的 Family。
+_Avoid_: Last used time, token version, refresh count
+
 **Refresh Rotation Lease**:
 IAM 为同一旧 Refresh Token 的一次在途轮换建立的短期并发边界，用于拒绝重复执行而不把重叠请求立即判为重放攻击；它不是会话状态，也不延长 Token 或 Family 生命周期。
 _Avoid_: Refresh token lock, session lease

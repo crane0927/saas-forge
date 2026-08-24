@@ -10,6 +10,7 @@ public class RefreshTokenFamilyRow {
     private UUID initialCredentialId;
     private UUID membershipId;
     private UUID tenantId;
+    private long contextVersion;
     private OffsetDateTime lastUsedAt;
     private OffsetDateTime absoluteExpiresAt;
     private OffsetDateTime revokedAt;
@@ -26,6 +27,8 @@ public class RefreshTokenFamilyRow {
     public void setMembershipId(UUID membershipId) { this.membershipId = membershipId; }
     public UUID getTenantId() { return tenantId; }
     public void setTenantId(UUID tenantId) { this.tenantId = tenantId; }
+    public long getContextVersion() { return contextVersion; }
+    public void setContextVersion(long contextVersion) { this.contextVersion = contextVersion; }
     public OffsetDateTime getLastUsedAt() { return lastUsedAt; }
     public void setLastUsedAt(OffsetDateTime lastUsedAt) { this.lastUsedAt = lastUsedAt; }
     public OffsetDateTime getAbsoluteExpiresAt() { return absoluteExpiresAt; }

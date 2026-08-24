@@ -17,6 +17,7 @@ import io.saasforge.iam.application.authentication.PasswordCompromisedException;
 import io.saasforge.iam.application.authentication.PasswordPolicyException;
 import io.saasforge.iam.application.authentication.PasswordSetupTokenInvalidException;
 import io.saasforge.iam.application.authentication.RefreshAuthorizationRejectedException;
+import io.saasforge.iam.application.authentication.RefreshContextChangedException;
 import io.saasforge.iam.application.authentication.RefreshSessionInvalidException;
 import io.saasforge.iam.application.authentication.RefreshRotationInProgressException;
 import io.saasforge.iam.application.authentication.RefreshRotationUnavailableException;
@@ -174,6 +175,13 @@ public class AuthenticationExceptionHandler {
                 .contentType(MediaType.APPLICATION_PROBLEM_JSON)
                 .header(HttpHeaders.RETRY_AFTER, Long.toString(exception.retryAfterSeconds()))
                 .body(body);
+    }
+
+    @ExceptionHandler(RefreshContextChangedException.class)
+    ResponseEntity<Problem> refreshContextChanged(
+            RefreshContextChangedException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, RefreshContextChangedException.CODE,
+                "Refresh context changed", exception.getMessage(), request);
     }
 
     @ExceptionHandler(RefreshRotationUnavailableException.class)

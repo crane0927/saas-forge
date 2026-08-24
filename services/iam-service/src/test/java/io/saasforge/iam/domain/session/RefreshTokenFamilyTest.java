@@ -31,6 +31,23 @@ class RefreshTokenFamilyTest {
     }
 
     @Test
+    void activityKeepsContextVersionWhileContextSelectionAdvancesIt() {
+        Instant loginAt = Instant.parse("2026-08-20T00:00:00Z");
+        RefreshTokenFamily platform = RefreshTokenFamily.start(UUID.randomUUID(), null, null, loginAt);
+        RefreshTokenFamily active = platform.recordUse(null, null, loginAt.plusSeconds(1));
+        RefreshTokenFamily selection = RefreshTokenFamily.start(
+                UUID.randomUUID(), RefreshTokenFamilyPurpose.USER_TENANT_SELECTION,
+                null, null, loginAt);
+
+        RefreshTokenFamily selected = selection.selectTenant(
+                UUID.randomUUID(), UUID.randomUUID(), loginAt.plusSeconds(1));
+
+        assertEquals(0, platform.contextVersion());
+        assertEquals(0, active.contextVersion());
+        assertEquals(1, selected.contextVersion());
+    }
+
+    @Test
     void idleFamilyCannotBeUsedOrResurrected() {
         Instant loginAt = Instant.parse("2026-08-20T00:00:00Z");
         RefreshTokenFamily family = RefreshTokenFamily.start(UUID.randomUUID(), null, null, loginAt);
@@ -62,10 +79,13 @@ class RefreshTokenFamilyTest {
                 () -> RefreshTokenFamily.start(identityId, UUID.randomUUID(), null, loginAt));
         assertThrows(IllegalArgumentException.class,
                 () -> RefreshTokenFamily.restore(null, identityId, RefreshTokenFamilyPurpose.USER_PLATFORM,
-                        null, null, null, loginAt, loginAt.plusSeconds(1), null));
+                        null, null, null, 0, loginAt, loginAt.plusSeconds(1), null));
         assertThrows(IllegalArgumentException.class,
                 () -> RefreshTokenFamily.restore(UUID.randomUUID(), identityId, RefreshTokenFamilyPurpose.USER_PLATFORM,
-                        null, null, null, loginAt, loginAt, null));
+                        null, null, null, 0, loginAt, loginAt, null));
+        assertThrows(IllegalArgumentException.class,
+                () -> RefreshTokenFamily.restore(UUID.randomUUID(), identityId, RefreshTokenFamilyPurpose.USER_PLATFORM,
+                        null, null, null, -1, loginAt, loginAt.plusSeconds(1), null));
 
         RefreshTokenFamily pending = RefreshTokenFamily.start(identityId, null, null, loginAt);
         assertThrows(IllegalStateException.class, () -> pending.identifiedBy(null));
