@@ -1,6 +1,7 @@
 package io.saasforge.tenantaccess.application.tenant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -63,6 +64,16 @@ class CreatePendingTenantServiceTest {
         assertEquals(1, events.size());
         assertEquals(created.id(), events.get(0).tenantId());
         assertTrue(events.get(0).eventSnapshot().contains("com.saasforge.tenant.created.v1"));
+    }
+
+    @Test
+    void createsTenantWithoutExpiryForPublishedV1RequestCompatibility() {
+        TenantCreationResult created = service.create(ACTOR, KEY, "No Expiry", null, null);
+        TenantCreationResult replayed = service.create(ACTOR, KEY, "No Expiry", null, null);
+
+        assertSame(created, replayed);
+        assertNull(created.expiresAt());
+        assertNull(tenants.created.get(0).expiresAt());
     }
 
     @Test

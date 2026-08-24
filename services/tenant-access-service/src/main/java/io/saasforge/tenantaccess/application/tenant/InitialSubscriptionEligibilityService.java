@@ -15,7 +15,7 @@ public class InitialSubscriptionEligibilityService {
         this.clock = clock;
     }
 
-    /** 资格只由调用时刻的 Tenant 权威状态和绝对 expiresAt 派生。 */
+    /** 资格只由调用时刻的 Tenant 权威状态和可选绝对 expiresAt 派生。 */
     @Transactional(readOnly = true)
     public InitialSubscriptionEligibility check(UUID tenantId) {
         requireUuidV7(tenantId);
@@ -25,7 +25,7 @@ public class InitialSubscriptionEligibilityService {
                     if (tenant.status() != TenantStatus.PENDING) {
                         return InitialSubscriptionEligibility.INVALID_STATE;
                     }
-                    if (!tenant.expiresAt().isAfter(clock.instant())) {
+                    if (tenant.expiresAt() != null && !tenant.expiresAt().isAfter(clock.instant())) {
                         return InitialSubscriptionEligibility.EXPIRY_REACHED;
                     }
                     return InitialSubscriptionEligibility.PENDING_ELIGIBLE;

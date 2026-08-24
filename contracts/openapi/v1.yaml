@@ -922,10 +922,14 @@ components:
       additionalProperties: false
     CreateTenantRequest:
       type: object
-      required: [displayName, expiresAt]
+      required: [displayName]
       properties:
         displayName: { type: string, minLength: 1, maxLength: 200 }
-        expiresAt: { type: string, format: date-time }
+        expiresAt:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: 'null'
       additionalProperties: false
     AdministratorInitializationRequest:
       type: object
@@ -1018,8 +1022,10 @@ components:
       properties:
         planId: { $ref: './common.yaml#/components/schemas/UuidV7' }
         endsAt:
-          type: [string, 'null']
-          format: date-time
+          oneOf:
+            - type: string
+              format: date-time
+            - type: 'null'
       additionalProperties: false
     RuntimeScope:
       type: string

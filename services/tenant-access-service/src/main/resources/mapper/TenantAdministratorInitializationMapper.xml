@@ -184,7 +184,9 @@
 
     <update id="activateTenant">
         UPDATE tenants SET tenant_status = 'ACTIVE', updated_at = #{updatedAt}
-        WHERE id = #{tenantId} AND tenant_status = 'PENDING' AND expires_at &gt; #{updatedAt}
+        WHERE id = #{tenantId}
+          AND tenant_status = 'PENDING'
+          AND (expires_at IS NULL OR expires_at &gt; #{updatedAt})
     </update>
 
     <insert id="insertPasswordDeliveryWorkItem">

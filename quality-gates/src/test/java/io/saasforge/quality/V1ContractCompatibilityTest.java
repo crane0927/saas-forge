@@ -36,7 +36,7 @@ class V1ContractCompatibilityTest {
     private static final Set<String> HTTP_METHODS = Set.of(
             "get", "put", "post", "delete", "options", "head", "patch", "trace");
     private static final List<String> EQUAL_SCHEMA_KEYWORDS = List.of(
-            "type", "format", "pattern", "const", "multipleOf", "uniqueItems");
+            "type", "format", "const", "multipleOf", "uniqueItems");
     private static final List<String> LOWER_BOUND_KEYWORDS = List.of(
             "minimum", "exclusiveMinimum", "minLength", "minItems", "minProperties");
     private static final List<String> UPPER_BOUND_KEYWORDS = List.of(
@@ -283,6 +283,9 @@ class V1ContractCompatibilityTest {
             if (baseline.containsKey(keyword)) {
                 assertEquals(baseline.get(keyword), current.get(keyword), location + " 改变了 " + keyword);
             }
+        }
+        if (current.containsKey("pattern")) {
+            assertEquals(baseline.get("pattern"), current.get("pattern"), location + " 收紧或改变了 pattern");
         }
         if (baseline.containsKey("enum")) {
             assertTrue(list(current.get("enum")).containsAll(list(baseline.get("enum"))),

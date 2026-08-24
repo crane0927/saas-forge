@@ -25,11 +25,14 @@ class InitialSubscriptionEligibilityServiceTest {
         UUID eligible = uuidV7(1);
         UUID expired = uuidV7(2);
         UUID active = uuidV7(3);
+        UUID unlimited = uuidV7(5);
         tenants.values.put(eligible, tenant(eligible, TenantStatus.PENDING, NOW.plusSeconds(1)));
         tenants.values.put(expired, tenant(expired, TenantStatus.PENDING, NOW));
         tenants.values.put(active, tenant(active, TenantStatus.ACTIVE, NOW.plusSeconds(1)));
+        tenants.values.put(unlimited, tenant(unlimited, TenantStatus.PENDING, null));
 
         assertEquals(InitialSubscriptionEligibility.PENDING_ELIGIBLE, service.check(eligible));
+        assertEquals(InitialSubscriptionEligibility.PENDING_ELIGIBLE, service.check(unlimited));
         assertEquals(InitialSubscriptionEligibility.EXPIRY_REACHED, service.check(expired));
         assertEquals(InitialSubscriptionEligibility.INVALID_STATE, service.check(active));
         assertEquals(InitialSubscriptionEligibility.NOT_FOUND, service.check(uuidV7(4)));

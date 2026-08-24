@@ -160,7 +160,7 @@ class TenantCreationPostgreSqlIT {
     void commitsTenantStableResponseAndCreatedOutboxTogether() throws SQLException {
         UUID actor = uuidV7(1);
         TenantCreationResult result = service.create(
-                actor, uuidV7(2), "Atomic Tenant", Instant.now().plusSeconds(3600),
+                actor, uuidV7(2), "Atomic Tenant", null,
                 "11111111111111111111111111111111");
         TenantCreationResult replay = service.create(
                 actor, uuidV7(2), "Atomic Tenant", result.expiresAt(),
@@ -171,6 +171,8 @@ class TenantCreationPostgreSqlIT {
         assertEquals(1, count("tenant_creation_idempotency"));
         assertEquals(1, count("tenant_access_outbox_events"));
         assertEquals("PENDING", scalar("SELECT tenant_status FROM tenants WHERE id = '" + result.id() + "'"));
+        assertNull(result.expiresAt());
+        assertNull(scalar("SELECT expires_at::text FROM tenants WHERE id = '" + result.id() + "'"));
         assertTrue(scalar("SELECT event_snapshot::text FROM tenant_access_outbox_events")
                 .contains("com.saasforge.tenant.created.v1"));
     }
@@ -196,7 +198,7 @@ class TenantCreationPostgreSqlIT {
     void activatesTenantWithOneInitialAdministratorRoleAndPendingPasswordDelivery() throws SQLException {
         UUID actor = uuidV7(60);
         TenantCreationResult tenant = service.create(
-                actor, uuidV7(61), "Admin Tenant", Instant.now().plusSeconds(3600), null);
+                actor, uuidV7(61), "Admin Tenant", null, null);
         Instant now = Instant.now();
         InitializationWorkflow workflow = new InitializationWorkflow(
                 uuidV7(62), tenant.id(), actor, uuidV7(63), "a".repeat(64),
@@ -216,6 +218,7 @@ class TenantCreationPostgreSqlIT {
                 activating, uuidV7(68), IdentityCredentialDisposition.SETUP_ALLOWED, now.plusMillis(4));
 
         assertEquals("ACTIVE", result.status().name());
+        assertNull(result.expiresAt());
         assertEquals("ACTIVE", scalar("SELECT tenant_status FROM tenants WHERE id = '" + tenant.id() + "'"));
         assertEquals(1, count("memberships"));
         assertEquals(1, count("tenant_roles"));

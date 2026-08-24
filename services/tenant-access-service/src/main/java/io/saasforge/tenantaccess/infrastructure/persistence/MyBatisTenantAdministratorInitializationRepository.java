@@ -152,7 +152,7 @@ public class MyBatisTenantAdministratorInitializationRepository
         String terminalOutcome = null;
         if (!"PENDING".equals(tenant.status())) {
             terminalOutcome = "TENANT_ALREADY_INITIALIZED";
-        } else if (!TenantAccessTime.asInstant(tenant.expiresAt()).isAfter(now)) {
+        } else if (expiryReached(tenant, now)) {
             terminalOutcome = "TENANT_EXPIRY_REACHED";
         }
         TenantAdministratorInitializationRow row = toRow(candidate, terminalOutcome, now);
@@ -211,7 +211,7 @@ public class MyBatisTenantAdministratorInitializationRepository
         if (!"PENDING".equals(tenant.status())) {
             throw failure("TENANT_ALREADY_INITIALIZED");
         }
-        if (!TenantAccessTime.asInstant(tenant.expiresAt()).isAfter(activatedAt)) {
+        if (expiryReached(tenant, activatedAt)) {
             throw failure("TENANT_EXPIRY_REACHED");
         }
 
@@ -260,6 +260,11 @@ public class MyBatisTenantAdministratorInitializationRepository
                 workflow.tenantId(), membershipId, administratorIdentityId, roleId,
                 workflow.actorIdentityId(), activatedAt, workflow.traceId()));
         return result;
+    }
+
+    private static boolean expiryReached(TenantRow tenant, Instant at) {
+        Instant expiresAt = TenantAccessTime.asInstant(tenant.expiresAt());
+        return expiresAt != null && !expiresAt.isAfter(at);
     }
 
     @Override

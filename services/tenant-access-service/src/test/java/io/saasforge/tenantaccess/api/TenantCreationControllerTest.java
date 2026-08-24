@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 import io.saasforge.sdk.auth.PlatformAuthorizationDeniedException;
 import io.saasforge.tenantaccess.application.authorization.PlatformAdminAuthorizer;
@@ -45,9 +46,25 @@ class TenantCreationControllerTest {
     }
 
     @Test
-    void requiresAbsoluteExpiryBeforeInvokingTheUseCase() throws Exception {
+    void acceptsPublishedV1RequestWithoutExpiry() throws Exception {
         PlatformAdminAuthorizer authorizer = authorization -> KEY;
-        CreatePendingTenantService creation = unusedCreation();
+        Instant createdAt = Instant.parse("2026-08-23T01:00:00Z");
+        CreatePendingTenantService creation = new CreatePendingTenantService(null, null, null, null, null, null) {
+            @Override
+            public TenantCreationResult create(
+                    UUID callerIdentityId,
+                    UUID idempotencyKey,
+                    String displayName,
+                    Instant expiresAt,
+                    String traceId) {
+                assertEquals(KEY, callerIdentityId);
+                assertEquals(KEY, idempotencyKey);
+                assertEquals("Acme", displayName);
+                assertNull(expiresAt);
+                return new TenantCreationResult(
+                        KEY, displayName, TenantStatus.PENDING, null, createdAt, createdAt);
+            }
+        };
         MockMvc mvc = mvc(authorizer, creation);
 
         mvc.perform(post("/api/v1/platform/tenants")
@@ -55,7 +72,8 @@ class TenantCreationControllerTest {
                         .header("Idempotency-Key", KEY)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"displayName\":\"Acme\"}"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.expiresAt").value(org.hamcrest.Matchers.nullValue()));
     }
 
     @Test

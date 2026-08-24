@@ -80,8 +80,8 @@ public class CreatePendingTenantService {
     }
 
     private static String fingerprint(String displayName, Instant expiresAt) {
-        if (displayName == null || expiresAt == null) {
-            throw new IllegalArgumentException("Tenant 创建请求字段不能为空");
+        if (displayName == null) {
+            throw new IllegalArgumentException("Tenant displayName 不能为空");
         }
         String canonical = "POST\n/api/v1/platform/tenants\n" + displayName + "\n" + expiresAt;
         try {

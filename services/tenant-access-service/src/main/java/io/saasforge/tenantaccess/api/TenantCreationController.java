@@ -12,6 +12,8 @@ import io.saasforge.tenantaccess.contract.model.AdministratorInitializationReque
 import io.saasforge.tenantaccess.contract.model.Tenant;
 import io.saasforge.tenantaccess.contract.model.TenantStatus;
 import jakarta.servlet.http.HttpServletRequest;
+import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.UUID;
 import java.util.regex.Matcher;
@@ -89,7 +91,7 @@ public class TenantCreationController implements PlatformTenantsApi {
                 result.id(),
                 result.displayName(),
                 TenantStatus.valueOf(result.status().name()),
-                result.expiresAt().atOffset(ZoneOffset.UTC),
+                asUtc(result.expiresAt()),
                 result.createdAt().atOffset(ZoneOffset.UTC),
                 result.updatedAt().atOffset(ZoneOffset.UTC));
     }
@@ -99,9 +101,13 @@ public class TenantCreationController implements PlatformTenantsApi {
                 result.id(),
                 result.displayName(),
                 TenantStatus.valueOf(result.status().name()),
-                result.expiresAt().atOffset(ZoneOffset.UTC),
+                asUtc(result.expiresAt()),
                 result.createdAt().atOffset(ZoneOffset.UTC),
                 result.updatedAt().atOffset(ZoneOffset.UTC));
+    }
+
+    private static OffsetDateTime asUtc(Instant value) {
+        return value == null ? null : value.atOffset(ZoneOffset.UTC);
     }
 
     private static HttpServletRequest currentRequest() {
