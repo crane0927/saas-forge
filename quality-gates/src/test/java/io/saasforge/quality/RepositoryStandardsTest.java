@@ -93,6 +93,8 @@ class RepositoryStandardsTest {
     private static final Pattern REST_CONTROLLER = Pattern.compile("@RestController\\b");
     private static final Pattern GENERATED_API_IMPLEMENTATION = Pattern.compile(
             "class\\s+[A-Za-z][A-Za-z0-9_]*\\s+implements\\s+[A-Za-z0-9_., <>?]+Api\\b");
+    private static final Pattern FINAL_REPOSITORY_CLASS = Pattern.compile(
+            "@Repository(?:\\([^)]*\\))?\\s+(?:public\\s+)?final\\s+class\\b");
 
     @Test
     void redisRegistryIsCompleteAndConsistent() throws Exception {
@@ -267,6 +269,18 @@ class RepositoryStandardsTest {
                     assertTrue(GENERATED_API_IMPLEMENTATION.matcher(source).find(), javaFile
                             + " 的 @RestController 必须实现生成的 OpenAPI Api 接口");
                 }
+            }
+        }
+    }
+
+    @Test
+    void springRepositoriesRemainProxyable() throws Exception {
+        for (String serviceArtifact : SERVICE_ARTIFACTS) {
+            Path serviceRoot = REPOSITORY.resolve("services").resolve(serviceArtifact).resolve("src/main/java");
+            for (Path javaFile : filesUnder(serviceRoot, ".java")) {
+                String source = Files.readString(javaFile, StandardCharsets.UTF_8);
+                assertFalse(FINAL_REPOSITORY_CLASS.matcher(source).find(), javaFile
+                        + " 的 Spring Repository 不能声明为 final，否则事务代理无法启动");
             }
         }
     }

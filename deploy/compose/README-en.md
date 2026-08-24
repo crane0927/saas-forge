@@ -35,6 +35,16 @@ docker compose ps --all
 
 An `Exited (0)` status for a `*-migrate` job means its migration succeeded. The services do not yet expose business routes, so a `404` from a service root path is expected.
 
+## Fresh-volume Tenant lifecycle acceptance
+
+Run the one-shot acceptance script from the repository root. Every run creates an isolated Compose project, random host ports, temporary Secrets, and fresh PostgreSQL, Redis, and Kafka volumes; it does not read or modify `deploy/compose/.env` or development-stack data:
+
+```bash
+bash scripts/verify-tenant-lifecycle-e2e.sh
+```
+
+The script builds the current source, explicitly bootstraps the Platform Admin and three reserved service clients, then verifies the initial password change, Quota/Plan setup, PENDING Tenant, Subscription, administrator initialization, Mailpit Password Setup, and Tenant-context login. It also covers missing platform role, wrong scope, unavailable IAM, exhausted quota, expired Tenant, credential conflict, cross-Tenant RLS, and plaintext-sensitive-data boundaries. The temporary Compose project, volumes, and Secrets are removed on both success and failure; never copy temporary credentials into logs or the repository.
+
 ## Explicit Platform Admin bootstrap
 
 Normal IAM startup never creates the Platform Admin. The account must be created by the explicit one-shot bootstrap task. Its random initial password is valid only for the first login and must be replaced within 24 hours of creation.

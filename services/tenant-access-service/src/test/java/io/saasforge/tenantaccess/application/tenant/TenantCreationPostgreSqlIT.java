@@ -351,7 +351,7 @@ class TenantCreationPostgreSqlIT {
 
     @Test
     void workerClaimRestoresAuthoritativeTargetAndExpiredLeaseTakeoverFencesOldExecutor() {
-        Instant now = Instant.parse("2026-08-23T09:00:00Z");
+        Instant now = Instant.now();
         UUID actor = uuidV7(90);
         TenantCreationResult tenant = service.create(
                 actor, uuidV7(91), "Lease Tenant", now.plusSeconds(3600), null);

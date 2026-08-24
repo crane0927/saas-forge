@@ -9,6 +9,9 @@ compose_arguments=(
   --file "$compose_directory/compose.yaml"
 )
 
+if [[ -n "${LOCAL_COMPOSE_ENV_FILE:-}" ]]; then
+  compose_arguments+=(--env-file "$LOCAL_COMPOSE_ENV_FILE")
+fi
 if [[ -n "${COMPOSE_PROJECT_NAME:-}" ]]; then
   compose_arguments+=(--project-name "$COMPOSE_PROJECT_NAME")
 fi

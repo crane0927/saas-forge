@@ -13,7 +13,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public final class MyBatisQuotaOperationRepository implements QuotaOperationRepository {
+public class MyBatisQuotaOperationRepository implements QuotaOperationRepository {
     private final EntitlementBootstrapMapper mapper;
 
     public MyBatisQuotaOperationRepository(EntitlementBootstrapMapper mapper) {

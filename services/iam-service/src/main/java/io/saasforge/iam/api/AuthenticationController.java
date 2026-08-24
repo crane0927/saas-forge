@@ -3,9 +3,7 @@ package io.saasforge.iam.api;
 import io.saasforge.iam.application.authentication.AccessTokenLoginResult;
 import io.saasforge.iam.application.authentication.ContextSelectionLoginResult;
 import io.saasforge.iam.application.authentication.ContextSelectionService;
-import io.saasforge.iam.application.authentication.ClientCredentialsGrantInvalidException;
 import io.saasforge.iam.application.authentication.ClientCredentialsInvalidException;
-import io.saasforge.iam.application.authentication.ClientCredentialsScopeRejectedException;
 import io.saasforge.iam.application.authentication.ClientCredentialsTokenService;
 import io.saasforge.iam.application.authentication.InitialPasswordChangeLoginResult;
 import io.saasforge.iam.application.authentication.InitialPasswordChangeService;
@@ -36,8 +34,6 @@ import java.util.regex.Pattern;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.HttpStatus;
-import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
@@ -77,21 +73,13 @@ public class AuthenticationController implements AuthenticationApi {
     public ResponseEntity<ClientCredentialsTokenResponse> issueClientCredentialsToken(
             String grantType, String scope) {
         BasicCredentials credentials = basicCredentials(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
-        try {
-            var token = clientCredentialsTokenService.issue(
-                    credentials.clientId(), credentials.clientSecret(), grantType, scope);
-            return ResponseEntity.ok(new ClientCredentialsTokenResponse()
-                    .accessToken(token.value())
-                    .tokenType(ClientCredentialsTokenResponse.TokenTypeEnum.BEARER)
-                    .expiresIn(Math.toIntExact(token.expiresInSeconds()))
-                    .scope(token.scope()));
-        } catch (ClientCredentialsGrantInvalidException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
-        } catch (ClientCredentialsInvalidException exception) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, exception.getMessage(), exception);
-        } catch (ClientCredentialsScopeRejectedException exception) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, exception.getMessage(), exception);
-        }
+        var token = clientCredentialsTokenService.issue(
+                credentials.clientId(), credentials.clientSecret(), grantType, scope);
+        return ResponseEntity.ok(new ClientCredentialsTokenResponse()
+                .accessToken(token.value())
+                .tokenType(ClientCredentialsTokenResponse.TokenTypeEnum.BEARER)
+                .expiresIn(Math.toIntExact(token.expiresInSeconds()))
+                .scope(token.scope()));
     }
 
     @Override
@@ -213,7 +201,7 @@ public class AuthenticationController implements AuthenticationApi {
 
     private static BasicCredentials basicCredentials(String authorization) {
         if (authorization == null || !authorization.startsWith("Basic ")) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "OAuth Client 认证失败");
+            throw new ClientCredentialsInvalidException();
         }
         try {
             String decoded = new String(
@@ -229,7 +217,7 @@ public class AuthenticationController implements AuthenticationApi {
             }
             return new BasicCredentials(clientId, decoded.substring(separator + 1));
         } catch (IllegalArgumentException exception) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "OAuth Client 认证失败", exception);
+            throw new ClientCredentialsInvalidException();
         }
     }
 

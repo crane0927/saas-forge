@@ -35,6 +35,16 @@ docker compose ps --all
 
 `*-migrate` 显示 `Exited (0)` 表示迁移成功。当前服务尚未提供业务路由，因此直接请求服务根路径返回 `404` 是预期行为。
 
+## Tenant 生命周期全新卷验收
+
+仓库根目录提供一次性验收脚本。它为每次运行生成独立 Compose 项目、随机宿主机端口、临时 Secret 与全新 PostgreSQL、Redis、Kafka 数据卷，不读取或修改 `deploy/compose/.env` 和开发栈数据：
+
+```bash
+bash scripts/verify-tenant-lifecycle-e2e.sh
+```
+
+脚本会构建当前源码，显式引导 Platform Admin 与三个保留服务 Client，完成首次改密、Quota/Plan、PENDING Tenant、Subscription、管理员初始化、Mailpit Password Setup 和 Tenant Context 登录，并验证无平台角色、错误 Scope、IAM 不可用、额度耗尽、Tenant 到期、凭证冲突、跨 Tenant RLS 及敏感明文边界。无论成功或失败，临时 Compose 项目、数据卷和 Secret 都会清理；不得把临时目录中的凭据复制到日志或仓库。
+
 ## 显式引导 Platform Admin
 
 Platform Admin 不随 IAM 正常启动自动创建。它必须通过一次性 bootstrap 任务显式创建，随机初始密码只能用于首次登录，并须在创建后的 24 小时内修改为正式密码。

@@ -8,7 +8,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public final class MyBatisSubscriptionRepository implements SubscriptionRepository {
+public class MyBatisSubscriptionRepository implements SubscriptionRepository {
     private final EntitlementBootstrapMapper mapper;
 
     public MyBatisSubscriptionRepository(EntitlementBootstrapMapper mapper) {

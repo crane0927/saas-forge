@@ -37,8 +37,8 @@ import org.mybatis.spring.SqlSessionTemplate;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -287,7 +287,7 @@ class AccessibleMembershipGrpcServiceIT {
     @MapperScan(
             basePackages = "io.saasforge.tenantaccess.infrastructure.persistence.mapper",
             sqlSessionFactoryRef = "tenantAccessSqlSessionFactory")
-    @ComponentScan(basePackageClasses = {MyBatisAccessibleMembershipQuery.class, AccessibleMembershipGrpcService.class})
+    @Import({MyBatisAccessibleMembershipQuery.class, AccessibleMembershipGrpcService.class})
     static class PersistenceConfiguration {
 
         @Bean

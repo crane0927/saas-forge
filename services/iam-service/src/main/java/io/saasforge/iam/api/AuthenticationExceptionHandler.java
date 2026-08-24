@@ -6,6 +6,9 @@ import io.saasforge.iam.application.authentication.AuthenticationFailedException
 import io.saasforge.iam.application.authentication.AuthenticationProtectionUnavailableException;
 import io.saasforge.iam.application.authentication.ContextSelectionRejectedException;
 import io.saasforge.iam.application.authentication.ContextSelectionSessionInvalidException;
+import io.saasforge.iam.application.authentication.ClientCredentialsGrantInvalidException;
+import io.saasforge.iam.application.authentication.ClientCredentialsInvalidException;
+import io.saasforge.iam.application.authentication.ClientCredentialsScopeRejectedException;
 import io.saasforge.iam.application.authentication.LogoutUnavailableException;
 import io.saasforge.iam.application.authentication.RevocationIndexUnavailableException;
 import io.saasforge.iam.application.authentication.TenantAccessUnavailableException;
@@ -38,6 +41,27 @@ public class AuthenticationExceptionHandler {
     private static final Pattern TRACE_PARENT = Pattern.compile(
             "^[0-9a-f]{2}-((?!0{32})[0-9a-f]{32})-(?!0{16})[0-9a-f]{16}-[0-9a-f]{2}$");
     private static final SecureRandom RANDOM = new SecureRandom();
+
+    @ExceptionHandler(ClientCredentialsGrantInvalidException.class)
+    ResponseEntity<Problem> clientCredentialsGrantInvalid(
+            ClientCredentialsGrantInvalidException exception, HttpServletRequest request) {
+        return problem(HttpStatus.BAD_REQUEST, "CLIENT_CREDENTIALS_GRANT_INVALID",
+                "Client credentials grant invalid", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(ClientCredentialsInvalidException.class)
+    ResponseEntity<Problem> clientCredentialsInvalid(
+            ClientCredentialsInvalidException exception, HttpServletRequest request) {
+        return problem(HttpStatus.UNAUTHORIZED, "CLIENT_CREDENTIALS_INVALID",
+                "Client credentials invalid", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(ClientCredentialsScopeRejectedException.class)
+    ResponseEntity<Problem> clientCredentialsScopeRejected(
+            ClientCredentialsScopeRejectedException exception, HttpServletRequest request) {
+        return problem(HttpStatus.FORBIDDEN, "CLIENT_CREDENTIALS_SCOPE_REJECTED",
+                "Client credentials scope rejected", exception.getMessage(), request);
+    }
 
     @ExceptionHandler(AuthenticationFailedException.class)
     ResponseEntity<Problem> authenticationFailed(AuthenticationFailedException exception, HttpServletRequest request) {

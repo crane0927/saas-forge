@@ -1,0 +1,6 @@
+FROM eclipse-temurin:17-jre
+RUN groupadd --system spring && useradd --system --gid spring --create-home --home-dir /app spring
+WORKDIR /app
+COPY --chown=spring:spring application.jar application.jar
+USER spring
+ENTRYPOINT ["java", "-jar", "/app/application.jar"]

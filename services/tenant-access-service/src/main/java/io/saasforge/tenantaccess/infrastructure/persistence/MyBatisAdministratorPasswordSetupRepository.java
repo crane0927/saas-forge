@@ -14,7 +14,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
-public final class MyBatisAdministratorPasswordSetupRepository
+public class MyBatisAdministratorPasswordSetupRepository
         implements AdministratorPasswordSetupRepository {
     private static final Duration IDEMPOTENCY_RETENTION = Duration.ofHours(24);
 

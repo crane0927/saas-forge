@@ -23,7 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
 @Repository
-public final class MyBatisTenantAdministratorInitializationRepository
+public class MyBatisTenantAdministratorInitializationRepository
         implements TenantAdministratorInitializationRepository {
     private static final Duration IDEMPOTENCY_RETENTION = Duration.ofHours(24);
 

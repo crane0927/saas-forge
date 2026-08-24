@@ -1,0 +1,47 @@
+# Tenant 生命周期验收使用独立 Compose 项目和随机宿主机端口，不占用或修改开发栈。
+services:
+  postgres:
+    ports: !reset []
+  redis:
+    ports: !reset []
+  kafka:
+    environment:
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx512m
+    ports: !reset []
+  mailpit:
+    ports: !override
+      - "127.0.0.1::8025"
+  otel-collector:
+    ports: !reset []
+  nacos:
+    environment:
+      JVM_XMS: 256m
+      JVM_XMX: 256m
+      JVM_XMN: 128m
+    ports: !reset []
+  iam-service:
+    build: !reset null
+    environment:
+      JAVA_TOOL_OPTIONS: -Xms64m -Xmx256m
+    ports: !reset []
+  tenant-access-service:
+    build: !reset null
+    environment:
+      JAVA_TOOL_OPTIONS: -Xms64m -Xmx256m
+    ports: !reset []
+  entitlement-service:
+    build: !reset null
+    environment:
+      JAVA_TOOL_OPTIONS: -Xms64m -Xmx256m
+    ports: !reset []
+  audit-service:
+    build: !reset null
+    environment:
+      JAVA_TOOL_OPTIONS: -Xms32m -Xmx128m
+    ports: !reset []
+  gateway:
+    build: !reset null
+    environment:
+      JAVA_TOOL_OPTIONS: -Xms32m -Xmx192m
+    ports: !override
+      - "127.0.0.1::8080"

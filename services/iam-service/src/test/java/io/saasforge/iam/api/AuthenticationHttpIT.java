@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -1247,7 +1248,9 @@ class AuthenticationHttpIT {
                         .header(HttpHeaders.AUTHORIZATION, basic(clientId, secret))
                         .param("grant_type", "client_credentials")
                         .param("scope", "iam:identity:write"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.code").value("CLIENT_CREDENTIALS_SCOPE_REJECTED"));
 
         oauthClients.revoke(clientId, Instant.now());
         mockMvc.perform(post("/oauth2/token")
