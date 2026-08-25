@@ -35,6 +35,11 @@ import io.saasforge.iam.application.authentication.SessionStartedEventFactory;
 import io.saasforge.iam.application.authentication.SessionRevokedEventFactory;
 import io.saasforge.iam.application.authentication.UserAccessTokenIssuer;
 import io.saasforge.iam.application.authentication.UserTokenIssuanceFence;
+import io.saasforge.iam.application.authentication.UserSessionRevocationRecoveryPolicy;
+import io.saasforge.iam.application.authentication.UserSessionRevocationService;
+import io.saasforge.iam.application.authentication.UserSessionRevocationWorker;
+import io.saasforge.iam.application.authentication.UserSessionRevocationTransaction;
+import io.saasforge.iam.application.authentication.UserSessionsRevokedEventFactory;
 import io.saasforge.iam.application.authentication.ServiceAccessTokenIssuer;
 import io.saasforge.iam.application.authentication.MembershipValidation;
 import io.saasforge.iam.application.authentication.TenantContextSwitchService;
@@ -57,6 +62,7 @@ import io.saasforge.iam.domain.session.AccessTokenIssuanceRepository;
 import io.saasforge.iam.domain.session.RefreshTokenFamilyRepository;
 import io.saasforge.iam.domain.session.RevocationFenceRepository;
 import io.saasforge.iam.domain.session.TenantContextSwitchRepository;
+import io.saasforge.iam.domain.session.UserSessionRevocationRepository;
 import io.saasforge.iam.domain.signing.SigningKeyRepository;
 import io.saasforge.iam.infrastructure.grpc.GrpcAccessibleMemberships;
 import io.saasforge.iam.infrastructure.security.RedisLoginProtection;
@@ -282,6 +288,51 @@ public class AuthenticationConfiguration {
     RevocationFenceOperations revocationFenceService(
             RevocationFenceRepository fences, RevocationIndex index, Clock clock) {
         return new RevocationFenceService(fences, index, clock);
+    }
+
+    @Bean
+    UserSessionsRevokedEventFactory userSessionsRevokedEventFactory(
+            ObjectMapper objectMapper,
+            UuidV7Generator uuidV7Generator,
+            @Value("${saasforge.environment:dev}") String environment) {
+        return new UserSessionsRevokedEventFactory(objectMapper, uuidV7Generator, environment);
+    }
+
+    @Bean
+    UserSessionRevocationRecoveryPolicy userSessionRevocationRecoveryPolicy(
+            @Value("${saasforge.iam.session-revocation.batch-size:1}") int batchSize,
+            @Value("${saasforge.iam.session-revocation.lease-duration:PT30S}") Duration leaseDuration,
+            @Value("${saasforge.iam.session-revocation.retry-delay:PT1S}") Duration retryDelay,
+            @Value("${saasforge.iam.session-revocation.maximum-attempts:10}") int maximumAttempts) {
+        return new UserSessionRevocationRecoveryPolicy(
+                batchSize, leaseDuration, retryDelay, maximumAttempts);
+    }
+
+    @Bean
+    UserSessionRevocationService userSessionRevocationService(
+            RevocationFenceRepository fences,
+            UserSessionRevocationRepository workflows,
+            RevocationIndex index,
+            UserSessionRevocationTransaction transaction,
+            UserSessionRevocationRecoveryPolicy policy,
+            Clock clock) {
+        return new UserSessionRevocationService(
+                fences, workflows, index, transaction, policy,
+                java.lang.management.ManagementFactory.getRuntimeMXBean().getName(), clock);
+    }
+
+    @Bean
+    UserSessionRevocationTransaction userSessionRevocationTransaction(
+            UserSessionRevocationRepository workflows,
+            OutboxEventRepository outbox,
+            UserSessionsRevokedEventFactory events,
+            RevocationFenceOperations fences) {
+        return new UserSessionRevocationTransaction(workflows, outbox, events, fences);
+    }
+
+    @Bean
+    UserSessionRevocationWorker userSessionRevocationWorker(UserSessionRevocationService service) {
+        return new UserSessionRevocationWorker(service);
     }
 
     @Bean

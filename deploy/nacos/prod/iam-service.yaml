@@ -1,6 +1,6 @@
 saasforge:
   iam:
-    configuration-revision: "4"
+    configuration-revision: "5"
     outbox:
       publish-delay: PT1S
       lease-duration: PT30S
@@ -9,6 +9,12 @@ saasforge:
       lease-duration: PT30S
       initial-backoff: PT1S
       maximum-backoff: PT1M
+      maximum-attempts: 10
+    session-revocation:
+      worker-delay: PT1S
+      batch-size: 1
+      lease-duration: PT30S
+      retry-delay: PT1S
       maximum-attempts: 10
 
 spring:

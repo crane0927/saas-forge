@@ -16,5 +16,9 @@ public interface RevocationFenceMapper {
 
     RevocationFenceRow insert(@Param("row") RevocationFenceRow row);
 
+    int release(
+            @Param("revocationRequestId") UUID revocationRequestId,
+            @Param("releasedAt") java.time.OffsetDateTime releasedAt);
+
     List<RevocationFenceRow> findActive();
 }

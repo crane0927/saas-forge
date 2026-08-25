@@ -55,4 +55,10 @@
         WHERE fence_status = 'ACTIVE'
         ORDER BY target_type, target_id
     </select>
+
+    <update id="release">
+        UPDATE iam_revocation_fences
+        SET fence_status = 'RELEASED', released_at = #{releasedAt}
+        WHERE revocation_request_id = #{revocationRequestId} AND fence_status = 'ACTIVE'
+    </update>
 </mapper>

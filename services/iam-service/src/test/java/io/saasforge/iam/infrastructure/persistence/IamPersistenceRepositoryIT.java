@@ -32,6 +32,12 @@ import io.saasforge.iam.domain.session.RefreshTokenFamilyRepository;
 import io.saasforge.iam.domain.session.RefreshTokenFamilyPurpose;
 import io.saasforge.iam.domain.session.RefreshRotation;
 import io.saasforge.iam.domain.session.AccessTokenIssuanceRepository;
+import io.saasforge.iam.domain.session.AccessTokenIssuance;
+import io.saasforge.iam.domain.session.RevocationFence;
+import io.saasforge.iam.domain.session.RevocationFenceRepository;
+import io.saasforge.iam.domain.session.RevocationFenceTarget;
+import io.saasforge.iam.domain.session.UserSessionRevocationRepository;
+import io.saasforge.iam.domain.session.UserSessionRevocationStatus;
 import io.saasforge.iam.domain.shared.Sha256Digest;
 import io.saasforge.iam.domain.signing.SigningKey;
 import io.saasforge.iam.domain.signing.SigningKeyRepository;
@@ -118,6 +124,12 @@ class IamPersistenceRepositoryIT {
 
     @Autowired
     private AccessTokenIssuanceRepository accessTokenIssuances;
+
+    @Autowired
+    private RevocationFenceRepository revocationFences;
+
+    @Autowired
+    private UserSessionRevocationRepository userSessionRevocations;
 
     @Autowired
     private OAuthClientRepository clients;
@@ -469,6 +481,117 @@ class IamPersistenceRepositoryIT {
                     "INSERT INTO iam_oauth_clients (display_name, allowed_scopes, client_status, created_at) "
                             + "VALUES ('invalid', ARRAY['tenant:write'], 'ACTIVE', now())"));
         }
+    }
+
+    @Test
+    void targetRevocationUsesStableBatchesAndPreservesSwitchedFamilyAndOtherPurposes() {
+        Instant now = Instant.parse("2026-08-25T08:00:00Z");
+        UUID targetTenant = uuidV7();
+        UUID targetMembership = uuidV7();
+        UUID otherTenant = uuidV7();
+        UUID otherMembership = uuidV7();
+        UUID identityId = identities.create(Identity.register(
+                "batch-" + UUID.randomUUID() + "@example.test", null, now)).id();
+        RefreshTokenFamily current = refreshTokenFamilies.create(
+                RefreshTokenFamily.start(identityId, RefreshTokenFamilyPurpose.USER_TENANT,
+                        targetMembership, targetTenant, now), digest(71), now);
+        RefreshTokenFamily switched = refreshTokenFamilies.create(
+                RefreshTokenFamily.start(identityId, RefreshTokenFamilyPurpose.USER_TENANT,
+                        otherMembership, otherTenant, now), digest(72), now);
+        RefreshTokenFamily platform = refreshTokenFamilies.create(
+                RefreshTokenFamily.start(identityId, RefreshTokenFamilyPurpose.USER_PLATFORM,
+                        null, null, now), digest(73), now);
+
+        String kid = "batch-revocation-" + UUID.randomUUID();
+        SigningKey published = signingKeys.savePublished(SigningKey.publish(
+                kid, "kms/" + kid, "modulus-" + kid, "AQAB", now.minusSeconds(300)));
+        signingKeys.activate(published.id(), now);
+        UUID currentJti = uuidV7();
+        UUID historicalTargetJti = uuidV7();
+        UUID switchedCurrentJti = uuidV7();
+        UUID platformJti = uuidV7();
+        accessTokenIssuances.create(new AccessTokenIssuance(currentJti, current.id(), identityId,
+                otherMembership, otherTenant, kid, now, now.plusSeconds(900)));
+        accessTokenIssuances.create(new AccessTokenIssuance(historicalTargetJti, switched.id(), identityId,
+                targetMembership, targetTenant, kid, now, now.plusSeconds(900)));
+        accessTokenIssuances.create(new AccessTokenIssuance(switchedCurrentJti, switched.id(), identityId,
+                otherMembership, otherTenant, kid, now, now.plusSeconds(900)));
+        accessTokenIssuances.create(new AccessTokenIssuance(platformJti, platform.id(), identityId,
+                null, null, kid, now, now.plusSeconds(900)));
+
+        UUID requestId = uuidV7();
+        RevocationFenceTarget target = RevocationFenceTarget.membership(targetMembership, targetTenant);
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            revocationFences.lock(target);
+            revocationFences.create(RevocationFence.establish(requestId, target, now));
+        });
+        var workflow = userSessionRevocations.create(requestId, target, now);
+
+        for (int batch = 0; batch < 3; batch++) {
+            workflow = userSessionRevocations.claim(requestId, "test-worker", now.plusSeconds(batch),
+                    now.plusSeconds(batch + 30), 10).orElseThrow();
+            var candidates = userSessionRevocations.loadBatch(workflow, 1, now.plusSeconds(batch));
+            workflow = userSessionRevocations.commitBatch(workflow, candidates, now.plusSeconds(batch));
+        }
+
+        assertEquals(UserSessionRevocationStatus.COMPLETED, workflow.status());
+        assertEquals(1, workflow.revokedFamilyCount());
+        assertEquals(2, workflow.revokedJtiCount());
+        assertNotNull(refreshTokenFamilies.findById(current.id()).orElseThrow().revokedAt());
+        assertNull(refreshTokenFamilies.findById(switched.id()).orElseThrow().revokedAt());
+        assertNull(refreshTokenFamilies.findById(platform.id()).orElseThrow().revokedAt());
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        assertNotNull(jdbc.queryForObject(
+                "SELECT revoked_at FROM iam_access_token_issuances WHERE jti = ?", OffsetDateTime.class, currentJti));
+        assertNotNull(jdbc.queryForObject(
+                "SELECT revoked_at FROM iam_access_token_issuances WHERE jti = ?", OffsetDateTime.class,
+                historicalTargetJti));
+        assertNull(jdbc.queryForObject(
+                "SELECT revoked_at FROM iam_access_token_issuances WHERE jti = ?", OffsetDateTime.class,
+                switchedCurrentJti));
+        assertNull(jdbc.queryForObject(
+                "SELECT revoked_at FROM iam_access_token_issuances WHERE jti = ?", OffsetDateTime.class, platformJti));
+    }
+
+    @Test
+    void revocationLeaseTakeoverFencesStaleWorkerAndExhaustionCanBeExplicitlyRecovered() {
+        Instant now = Instant.parse("2026-08-25T09:00:00Z");
+        RevocationFenceTarget target = RevocationFenceTarget.tenant(uuidV7());
+        UUID requestId = uuidV7();
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            revocationFences.lock(target);
+            revocationFences.create(RevocationFence.establish(requestId, target, now));
+        });
+        userSessionRevocations.create(requestId, target, now);
+        var stale = userSessionRevocations.claim(
+                requestId, "worker-a", now, now.plusSeconds(1), 10).orElseThrow();
+        var takeover = userSessionRevocations.claim(
+                requestId, "worker-b", now.plusSeconds(2), now.plusSeconds(32), 10).orElseThrow();
+        var emptyBatch = userSessionRevocations.loadBatch(takeover, 1, now.plusSeconds(2));
+
+        assertTrue(takeover.fencingToken() > stale.fencingToken());
+        assertThrows(IllegalStateException.class,
+                () -> userSessionRevocations.commitBatch(stale, emptyBatch, now.plusSeconds(2)));
+        assertEquals(UserSessionRevocationStatus.COMPLETED,
+                userSessionRevocations.commitBatch(takeover, emptyBatch, now.plusSeconds(2)).status());
+
+        RevocationFenceTarget recoveryTarget = RevocationFenceTarget.tenant(uuidV7());
+        UUID recoveryRequest = uuidV7();
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            revocationFences.lock(recoveryTarget);
+            revocationFences.create(RevocationFence.establish(recoveryRequest, recoveryTarget, now));
+        });
+        userSessionRevocations.create(recoveryRequest, recoveryTarget, now);
+        var exhausted = userSessionRevocations.claim(
+                recoveryRequest, "worker-c", now, now.plusSeconds(30), 1).orElseThrow();
+        userSessionRevocations.exhaust(exhausted, now.plusSeconds(1), "REVOCATION_INDEX_UNAVAILABLE");
+        assertEquals(UserSessionRevocationStatus.RECOVERY_REQUIRED,
+                userSessionRevocations.find(recoveryRequest).orElseThrow().status());
+        userSessionRevocations.recover(recoveryRequest, now.plusSeconds(2));
+        var recovered = userSessionRevocations.find(recoveryRequest).orElseThrow();
+        assertEquals(UserSessionRevocationStatus.PENDING, recovered.status());
+        assertEquals(0, recovered.attemptCount());
+        assertNull(recovered.lastFailure());
     }
 
     private RefreshRotationTransaction refreshRotationTransaction() {

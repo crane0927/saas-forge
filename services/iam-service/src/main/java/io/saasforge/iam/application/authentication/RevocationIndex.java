@@ -21,6 +21,9 @@ public interface RevocationIndex {
 
     void establishFence(RevocationFence fence);
 
+    /** 仅当 Redis 当前值仍是该 generation 时删除 Fence，返回 false 表示代际已变化。 */
+    boolean releaseFence(RevocationFence fence);
+
     boolean isUserTokenFenced(RevocationFenceTarget target);
 
     boolean isReady();

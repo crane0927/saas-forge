@@ -148,6 +148,7 @@ class SigningKeyLifecycleServiceTest {
             throw new UnsupportedOperationException();
         }
         @Override public void establishFence(RevocationFence fence) { throw new UnsupportedOperationException(); }
+        @Override public boolean releaseFence(RevocationFence fence) { throw new UnsupportedOperationException(); }
         @Override public boolean isUserTokenFenced(RevocationFenceTarget target) { return false; }
         @Override public boolean isReady() { return true; }
         @Override public boolean isJtiRevoked(UUID jti) { return false; }

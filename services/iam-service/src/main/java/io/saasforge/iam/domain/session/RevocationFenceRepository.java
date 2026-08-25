@@ -16,5 +16,7 @@ public interface RevocationFenceRepository {
 
     RevocationFence create(RevocationFence fence);
 
+    boolean release(UUID revocationRequestId, java.time.Instant releasedAt);
+
     List<RevocationFence> findActive();
 }

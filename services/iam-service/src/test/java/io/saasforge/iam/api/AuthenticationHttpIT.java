@@ -60,6 +60,7 @@ import io.saasforge.iam.domain.signing.SigningKeyRepository;
 import io.saasforge.iam.domain.session.AccessTokenIssuanceRepository;
 import io.saasforge.iam.domain.session.RefreshTokenFamily;
 import io.saasforge.iam.domain.session.RefreshTokenFamilyRepository;
+import io.saasforge.iam.domain.session.RevocationFence;
 import io.saasforge.iam.domain.session.RevocationFenceTarget;
 import io.saasforge.iam.domain.session.TenantContextSwitchRepository;
 import io.saasforge.iam.domain.session.TenantContextSwitchWorkflow;
@@ -2144,7 +2145,15 @@ class AuthenticationHttpIT {
         assertEquals("ACTIVE", jdbc.queryForObject(
                 "SELECT fence_status FROM iam_revocation_fences WHERE revocation_request_id = ?",
                 String.class, loginRequest));
-        redis.delete(loginFenceKey);
+        RevocationFence originalGeneration = RevocationFence.establish(
+                loginRequest, RevocationFenceTarget.membership(loginMembership, loginTenant), Instant.now());
+        UUID newerGeneration = uuidV7(93_006);
+        redis.opsForValue().set(loginFenceKey, newerGeneration.toString());
+        assertFalse(revocationIndex.releaseFence(originalGeneration));
+        assertEquals(newerGeneration.toString(), redis.opsForValue().get(loginFenceKey));
+        redis.opsForValue().set(loginFenceKey, loginRequest.toString());
+        assertTrue(revocationIndex.releaseFence(originalGeneration));
+        assertEquals(null, redis.opsForValue().get(loginFenceKey));
         redis.opsForValue().set("sf:test:iam-service:revocation-index-ready:v1:state", "0");
         revocationIndexRecovery.recover();
         assertEquals(loginRequest.toString(), redis.opsForValue().get(loginFenceKey));

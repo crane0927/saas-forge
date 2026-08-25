@@ -61,6 +61,11 @@ public class MyBatisRevocationFenceRepository implements RevocationFenceReposito
     }
 
     @Override
+    public boolean release(UUID revocationRequestId, java.time.Instant releasedAt) {
+        return mapper.release(revocationRequestId, IamTime.asOffsetDateTime(releasedAt)) == 1;
+    }
+
+    @Override
     public List<RevocationFence> findActive() {
         return mapper.findActive().stream().map(MyBatisRevocationFenceRepository::toDomain).toList();
     }

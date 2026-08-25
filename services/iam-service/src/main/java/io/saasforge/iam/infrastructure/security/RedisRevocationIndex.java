@@ -61,6 +61,14 @@ public final class RedisRevocationIndex implements RevocationIndex {
             if redis.call('EXISTS', KEYS[3]) == 1 then return 1 end
             return 0
             """, Long.class);
+    private static final DefaultRedisScript<Long> RELEASE_FENCE = new DefaultRedisScript<>("""
+            if redis.call('GET', KEYS[1]) ~= '1' then return -1 end
+            local current = redis.call('GET', KEYS[2])
+            if not current then return 1 end
+            if current ~= ARGV[1] then return 0 end
+            redis.call('DEL', KEYS[2])
+            return 1
+            """, Long.class);
 
     private final StringRedisTemplate redis;
     private final String prefix;
@@ -154,6 +162,22 @@ public final class RedisRevocationIndex implements RevocationIndex {
             if (result == 0) {
                 throw new RevocationFenceConflictException();
             }
+        } catch (DataAccessException exception) {
+            throw unavailable(exception);
+        }
+    }
+
+    @Override
+    public boolean releaseFence(RevocationFence fence) {
+        try {
+            Long result = redis.execute(
+                    RELEASE_FENCE,
+                    List.of(readyKey, fenceKey(fence.target())),
+                    fence.revocationRequestId().toString());
+            if (result == null || result < 0) {
+                throw new RevocationIndexUnavailableException();
+            }
+            return result == 1;
         } catch (DataAccessException exception) {
             throw unavailable(exception);
         }
