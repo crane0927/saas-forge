@@ -4,6 +4,7 @@
 
 - 后端依赖、仓库内部模块和 Maven 插件的版本统一由根项目 `pom.xml` 管理；Spring Boot 生态版本通过根 POM 继承的 `spring-boot-starter-parent` 管理。
 - 子模块只声明所需依赖或插件，不得声明 `<version>`；新增非 Spring Boot 第三方版本时，必须在根 POM 的版本属性与 `dependencyManagement` 中登记。
+- 如果引入某项依赖能够大幅减少实现工作量，可以向用户提出引入建议；未经用户确认不得直接引入。
 
 ### 配置与 Nacos
 
