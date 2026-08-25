@@ -114,7 +114,7 @@ flowchart TD
 - [x] 实现 Identity、Credential、Refresh Token、OAuth Client/Secret、Signing Key Metadata 的迁移、领域规则与仓储；密码使用 Argon2id，Refresh Token 和 Client Secret 仅保存哈希。
 - [x] 实现邮箱密码登录、约 15 分钟的 JWT Access Token、HttpOnly Refresh Token Cookie、登出、刷新轮换和 JWKS 发布；Token 仅携带 `identityId`、`membershipId`、`tenantId`、`jti`。
 - [x] 实现 Tenant 最小生命周期、Membership 和平台侧 Tenant 创建；当前只开放创建 `PENDING` 与管理员初始化成功后的 `PENDING → ACTIVE`，已声明的冻结/恢复接口必须等待 IAM 会话撤销与 `jti` 黑名单链路，不得先提交无安全副作用的状态切换。按已冻结的跨服务流程安全初始化 Platform Admin 与 Tenant Admin。该切片同步实现 OpenAPI 已冻结的 `max_users` Quota Definition 创建/激活、单额度 Plan 创建/激活与首个 ACTIVE Subscription 五个最小 Entitlement Bootstrap 接口，并前移流程所需的最小 Client Credentials 签发、服务 Token 校验、精确内部 Scope 与按 [ADR 0030](adr/0030-deployment-bootstraps-reserved-service-oauth-clients.md) 创建的 Compose/Testcontainers 服务身份，禁止以测试种子或未认证内部调用替代真实闭环；IAM、Tenant Access 与 Entitlement 分别以服务内 Transactional Outbox 发布本切片已冻结的提交事实，完整 Client 管理与权益生命周期仍由后续条目交付。
-- [ ] IAM 通过同步契约调用 Tenant Access 验证当前与目标 Membership，实现当前 Refresh Token Family 的 Tenant Context Switch，并将该 Family 切换前签发且未过期的全部 User Access Token 写入持久撤销事实和 Redis Revocation Index；本项只验收 IAM 撤销权威与索引，Gateway 实际拒绝及 Redis fail-closed 由后续 Gateway 条目验收。
+- [x] IAM 通过同步契约调用 Tenant Access 验证当前与目标 Membership，实现当前 Refresh Token Family 的 Tenant Context Switch，并将该 Family 切换前签发且未过期的全部 User Access Token 写入持久撤销事实和 Redis Revocation Index；本项只验收 IAM 撤销权威与索引，Gateway 实际拒绝及 Redis fail-closed 由后续 Gateway 条目验收。
 - [ ] 实现登出、成员禁用和 Tenant 冻结的 `jti` 黑名单；Redis 不可用时用户 Token 验证必须 fail-closed。邀请激活和密码重置在第 4 阶段随成员闭环完成。
 - [ ] 在已前移的最小签发与校验链路上，补全仅服务间使用的 OAuth 2.0 Client Credentials 管理：Secret 一次展示、重叠轮换和吊销；服务 Token 不建立用户 Tenant Context。
 - [ ] Gateway 接入 JWKS 验签、Token 黑名单检查、用户与服务 Token 的最小 Scope 路由策略，并接入登录、Tenant 创建和 Tenant 切换的审计事件。
