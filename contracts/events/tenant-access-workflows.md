@@ -29,4 +29,6 @@
 
 `com.saasforge.iam.sessions-revoked.v1` 是 IAM 已完成安全撤销的事实，不承诺对应 Membership 禁用或 Tenant 冻结也已提交。需要审计完整业务结果的消费者必须分别消费 Tenant Access 的领域事件，不能从会话撤销事件推导领域状态。
 
+`revokedSessionCount` 只统计该 `revocationRequestId` 首次从可用变为已撤销的 Refresh Token Family；已撤销、已过期、重复批次或幂等重放不增加计数。事件在全部批次完成后只发布一次，不增加 `jti` 数量或 Token 明细字段。
+
 Password Setup 事件不得包含邮箱、Challenge Token 或摘要、密码、链接、邮件正文或 SMTP 响应。`com.saasforge.iam.password-setup-delivered.v1` 只表示 SMTP 已明确接受最新有效 Challenge 对应的邮件；超时后可能迟到但已被替换的旧邮件不得发布该事实。Platform Admin bootstrap 没有用户操作者，不得伪造 `actorIdentityId`。

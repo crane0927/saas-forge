@@ -32,6 +32,10 @@ _Avoid_: Password, shared secret
 IAM 为从未拥有任何 Credential 的 Identity 签发的一次性、限时密码建立凭据；它只能用于首次建立 Password Credential，不能用于重置、替换或绕过既有凭据的恢复流程。
 _Avoid_: Password reset token, invitation token, initial password
 
+**Password Recovery**:
+已有 Password Credential 的 Identity 在无法继续使用当前凭据时，通过独立验证流程替换该凭据的恢复过程。它不属于 Invitation 激活或首次 Password Setup。
+_Avoid_: Password Setup, Invitation activation, initial password
+
 **User Access Token**:
 IAM 为已认证 Identity 签发的短期用户访问凭证；它可以表示 Platform 全局身份，或成对绑定一个已验证的 Membership 与 Tenant 上下文。
 _Avoid_: Refresh Token, service token, role token
@@ -43,6 +47,10 @@ _Avoid_: Access token store, session token
 **Revocation Index**:
 IAM 将尚未到期的 Access Token 与 Signing Key 撤销事实投影到 Redis 后形成的即时拒绝索引；只有索引已与持久化事实完成同步时，验证方才可依赖它作出放行决定。
 _Avoid_: Authorization database, token introspection
+
+**Revocation Fence**:
+IAM 为一个 Membership 或 Tenant 建立的安全边界，使目标范围在批量会话撤销期间不能签发或使用新的 User Access Token。它不是 Tenant 或 Membership 的领域状态，也不替代对既有 `jti` 的撤销。
+_Avoid_: Tenant Suspension, Membership status, jti blacklist
 
 **Login Context Intent**:
 浏览器登录时对 Platform 或 Tenant 工作上下文的显式选择；它只决定 IAM 校验哪类权威访问关系，不携带或证明任何 Role、Membership 或 Tenant 身份。
