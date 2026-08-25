@@ -6,7 +6,7 @@
 
 稳定业务错误码使用全大写 `UPPER_SNAKE_CASE`。领域错误必须以领域前缀命名，例如 `TENANT_INVALID_STATE_TRANSITION`、`SUBSCRIPTION_NOT_ACTIVE`、`QUOTA_EXCEEDED`；跨领域协议错误使用 `IDEMPOTENCY_*`。HTTP 状态表达错误类别，客户端以 `code` 分支，`detail` 仅供人读。
 
-对 Tenant 内的业务请求，必须先判定 Tenant 可访问性，再执行 Subscription、Feature、Quota 等后续校验。Tenant 为 `PENDING`、`SUSPENDED`、派生 `EXPIRED` 或 `CLOSED` 时，依次优先返回对应的 `TENANT_PENDING`、`TENANT_SUSPENDED`、`TENANT_EXPIRED` 或 `TENANT_CLOSED`；仅平台级 Tenant 管理操作，以及平台或内部工作流执行的 Quota `release` 清理，可跳过此顺序。
+对已通过 Gateway 安全 Token 验证的 Tenant 内业务请求，必须先判定 Tenant 可访问性，再执行 Subscription、Feature、Quota 等后续校验。Tenant 为 `PENDING`、`SUSPENDED`、派生 `EXPIRED` 或 `CLOSED` 时，依次优先返回对应的 `TENANT_PENDING`、`TENANT_SUSPENDED`、`TENANT_EXPIRED` 或 `TENANT_CLOSED`；仅平台级 Tenant 管理操作，以及平台或内部工作流执行的 Quota `release` 清理，可跳过此顺序。签名、时间、Claim、`jti`/`kid` 撤销或 Revocation Fence 检查失败属于更早的认证拒绝，统一返回 `401 / ACCESS_TOKEN_INVALID`，不再暴露 Tenant 状态。
 
 ## 外部状态变更幂等
 

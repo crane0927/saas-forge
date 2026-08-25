@@ -20,6 +20,9 @@
 
 - Access Token：验签、过期、错误 `kid`、黑名单 `jti`、Redis 不可用 fail-closed、Tenant 切换后旧 Token 失效。
 - Refresh Token：哈希存储、轮换、重放、登出、密码重置、成员禁用与 Tenant 冻结后的撤销。
+- 批量会话撤销：回归普通登出的当前 Family 边界；覆盖 Membership/Tenant 当前 Family 与历史 Issuance 匹配、多批次游标恢复、租约接管、重复批次、稳定计数、Redis 先写、部分失败和 Ready=false 重建。
+- Revocation Fence：覆盖登录、Refresh 与 Tenant Context Switch 并发，Fence 前/后重试耗尽、显式 Suspension Recovery、解除 ABA、Tenant/Membership 重叠、跨 Tenant 隔离和旧会话不复活。
+- Gateway 用户 Token 验证：分别覆盖必需、匿名和可选 Token 路由，以及 `401 / ACCESS_TOKEN_INVALID`、`503 / TOKEN_REVOCATION_STATUS_UNAVAILABLE`、`WWW-Authenticate` 和拒绝请求不转发。
 - Client Credentials：Scope 最小化、Secret 轮换与吊销、服务 Token 不可冒充用户或 Tenant。
 - RLS：以应用数据库角色连接，在 Tenant A 上下文中验证 Tenant B 数据不可读、不可写、不可更新、不可删除；无 Tenant 上下文默认拒绝。
 - 授权与权益：平台/租户角色隔离、Permission 与 Feature 的组合拒绝、Subscription 到期、Quota 并发扣减不超额、`operationId` 重试幂等。
@@ -42,6 +45,8 @@
 ```
 
 Playwright 还必须覆盖 Tenant Console Shell 登录、菜单权限、微前端 Remote 加载与拒绝路径。
+
+Tenant Suspension 安全闭环的最高集成接缝必须从 Gateway 公网请求进入，经 Tenant Access 根工作流、真实 Client Credentials 保护的 IAM gRPC、双方 PostgreSQL 与 Redis Revocation Index/Fence，再回到 Gateway 验证旧 Token 被拒绝。Happy path 不得使用内存数据库、Mock Tenant Access/IAM 或绕过服务认证；Mock 只用于无法稳定构造的超时、提交失败和重试耗尽注入。
 
 ## 质量门禁
 

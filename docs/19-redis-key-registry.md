@@ -28,6 +28,7 @@ sf:<environment>:<owner>:<purpose>:v<schema>:<identifier>
 |---|---|---|
 | JWT `jti` 黑名单 | IAM 撤销事实 | Gateway/Starter fail-closed；TTL 等于 Token 剩余有效期 |
 | 撤销 Signing Key `kid` | IAM 密钥状态 | Gateway/Starter fail-closed；TTL 覆盖最长 Access Token 有效期与 JWKS 缓存窗口 |
+| Membership/Tenant Revocation Fence | IAM Fence 持久状态 | Gateway/IAM Token 签发 fail-closed；ACTIVE 时无 TTL，仅在匹配原 `revocationRequestId` 时条件删除 |
 | Refresh Token/Session 缓存 | PostgreSQL | 受控回源数据库；缓存 TTL 不超过权威记录剩余有效期 |
 | 登录保护与认证端点限流 | IAM 安全策略 | fail-closed，避免绕过暴力破解防护 |
 | Gateway 普通业务限流 | Gateway 策略 | 使用受限的进程内降级阈值并告警，不无限制放行 |

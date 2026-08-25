@@ -17,6 +17,8 @@ Browser / Business Application
 
 API Gateway 是唯一公网入口，负责 TLS 终止、JWT 初步校验、限流、路由、CORS 与 `traceId` 透传。领域服务不直接暴露公网。
 
+Gateway 的用户 Token 强制策略由正式 OpenAPI 操作的 `security` 声明生成或校验，不另维护可漂移的路径列表。必需 `UserBearerAuth` 的操作在转发前完成验签与撤销检查；匿名操作不要求 User Token；登出等同时声明 `UserBearerAuth` 与匿名的操作必须允许请求到达下游以完成 Cookie 清理，不得因可选 Bearer 无效或已撤销而提前拒绝。
+
 ## 契约与版本
 
 - OpenAPI 3.1 是正式且受版本控制的 REST 契约；Swagger UI 只可作为查看和调试界面。
@@ -77,6 +79,8 @@ IAM 的 JWKS 响应以 `Cache-Control: max-age=300` 发布。验证方遇到未�
 - 创建和其他具有外部可见状态变更的请求必须携带规范 UUIDv7 形式的 `Idempotency-Key`，包括 `PUT`、`PATCH`、`DELETE` 和操作资源的 `POST`。键按外部调用方跨全部状态变更接口唯一：用户令牌使用 `identityId`，服务令牌使用 `client_id`；未认证的 Invitation 激活请求在验证令牌后使用 `invitationId`。同键重试完全相同的请求时，服务原样重放首次完成请求的 HTTP 状态码和响应体，而不重新执行业务操作，首个业务 `4xx` 也须重放。方法、规范化路径或规范化请求体不同的同键请求，以 `409 Conflict` 和 `IDEMPOTENCY_KEY_REUSED` 拒绝。首次请求未完成时的同键重复请求，以 `409 Conflict`、`IDEMPOTENCY_REQUEST_IN_PROGRESS` 和 `Retry-After` 拒绝。仅 `2xx` 和业务 `4xx` 是可重放稳定结果；无持久完成记录的基础设施 `5xx` 不缓存并释放键，已提交业务变更与幂等完成记录必须同一事务写入。请求格式或字段校验 `400` 不创建幂等完成记录，修正后可沿用同一键。幂等记录自首次完成起保留 24 小时，期满后同一键可视为新请求；缺失/空白和格式非法的键分别以 `400` / `IDEMPOTENCY_KEY_REQUIRED` 和 `400` / `IDEMPOTENCY_KEY_INVALID` 拒绝，且不预留键。
 - 未认证的 Password Setup Challenge 兑换在验证 Token 后以 `challengeId` 作为调用方作用域，也必须携带规范 UUIDv7 `Idempotency-Key`。创建 Password Credential、消费 Challenge 和记录稳定 `204` 结果必须在 IAM 同一事务完成；相同 Token 与相同 Key 重试时重放 `204`，使用其他 Key 重试已消费 Token 时统一返回 `PASSWORD_SETUP_TOKEN_INVALID`。幂等指纹只绑定方法、规范化路径与 Challenge Token 摘要，不保存或快速哈希新密码；未提交业务结果的 `5xx` 不缓存。
 - Tenant Administrator Initialization 在 Quota 已扣减但本地激活事务失败后保留原幂等键和根工作流；补偿未完成时返回可重试的 `503 / TENANT_ADMIN_INITIALIZATION_COMPENSATING`。补偿成功后，原键稳定重放 `409 / TENANT_ADMIN_INITIALIZATION_RETRY_REQUIRED`，客户端必须以新键启动具有全新下游子操作 ID 的根工作流；不得让原键在同一根工作流内生成无限次 Quota 尝试。
+- Tenant Suspension 和恢复是普通 `5xx` 释放幂等键规则的安全例外：Tenant Access 在远程调用前持久化根工作流和稳定内部请求 ID，同 Key 在处理中返回 `503` 与 `Retry-After`，完成后重放 `200`。Fence 已建立后自动恢复耗尽时不释放工作流或 Fence；必须由 Platform Admin 通过幂等的 Suspension Recovery 操作恢复原流程。
+- Tenant Suspension v1 只做兼容性新增：保留现有 Suspension/恢复路径、请求与 `200 Tenant`，新增 `503`、`Retry-After`、新 Problem codes 以及 `POST /api/v1/platform/tenants/{tenantId}/suspension-recoveries`。现有 `502/504` 声明不从 v1 删除，但耐久工作流中的暂时依赖失败统一映射为 `503 PENDING`。历史 compatibility baseline 必须保持逐字节不变，OpenAPI、生成接口、Gateway 路由和安全分类必须一起通过兼容性门禁。
 - Platform Admin 主动请求初始管理员 Password Setup 投递或重发时，只有 SMTP 明确接受邮件，或 IAM 确认 Identity 已有有效 Password Credential，才返回 `204 No Content`。投递尚未完成时保留根工作流并返回 `503 / PASSWORD_SETUP_DELIVERY_PENDING` 与 `Retry-After`，后台继续同一 `DeliverPasswordSetup requestId`；投递完成后相同外部 Key 稳定重放 `204`。该端点不返回 `202`，因为当前切片不创建可查询 Job 资源；`IDENTITY_CREDENTIAL_RECOVERY_REQUIRED` 是稳定 `409`，不得后台转为成功。
 - Quota 的 `consume` 与 `release` 额外要求调用方稳定生成的 `operationId`，`check` 不需要；它独立于 HTTP `Idempotency-Key`，用于绑定业务资源的计量动作并避免跨服务重试或补偿链路重复扣减、释放。其作用域与冲突规则以[核心领域契约](17-core-domain-contracts.md#quota)为准。
 

@@ -68,10 +68,26 @@ IAM 从 Family 取得 `identityId`，使用 IAM 保留服务 Client 的有效 Se
 
 IAM 在第一次调用 Tenant Access 前持久化 Family 级根工作流，同一 Family 同时最多存在一个未终结切换。暂时失败返回 `503 / TENANT_CONTEXT_SWITCH_PENDING` 与 `Retry-After`，Worker 和同 Key 重试恢复同一流程，其他 Key 返回 `409 / TENANT_CONTEXT_SWITCH_IN_PROGRESS`。自动恢复默认最多尝试 10 次并可配置；耗尽后持久化时间与脱敏失败摘要，原 Key 稳定返回 `409 / TENANT_CONTEXT_SWITCH_RETRY_REQUIRED`，解除 Family 在途限制并允许新 Key 重试。Redis 已写入而数据库未提交时允许旧 Token 提前失效，但 Family 保持原上下文，额外拒绝不回滚。
 
-## 成员禁用与 Tenant 冻结
+## 成员禁用与 Tenant Suspension
 
-成员禁用和 Tenant 冻结的根服务均为 Tenant Access。它们分别按 `membershipId` 或 `tenantId` 串行化，并持久化 `sessionRevocationId`；成员禁用另持久化 `quotaReleaseOperationId`。两条流程都先同步调用 IAM：禁用按 Membership 撤销全部匹配的 Refresh Token，并将仍有效的 Access Token `jti` 写入黑名单；冻结按 Tenant 对所有成员会话执行同样操作。IAM 成功后 Tenant Access 才能提交自己的领域变更。
+成员禁用和 Tenant Suspension 的根服务均为 Tenant Access。Tenant Access 对 Tenant 生命周期和该 Tenant 下的成员禁用共同按 `tenantId` 串行化，并为每个根工作流持久化 `sessionRevocationId`；成员禁用另持久化 `quotaReleaseOperationId`。Tenant Access 使用精确 `iam:sessions:write` Scope 调用 IAM 内部 `RevokeUserSessions`，请求以 UUIDv7 `revocationRequestId` 幂等并以 `oneof MembershipTarget { membershipId, tenantId } | TenantTarget { tenantId }` 表达撤销目标，不得同时或全部缺失。IAM 在扫描会话前先建立该目标的 Revocation Fence，使用户 Token 签发路径和 Gateway 立即拒绝该范围，然后撤销匹配的 Refresh Token 和全部仍有效 Access Token `jti`。Tenant Fence 覆盖整个 Tenant 并优先于 Membership Fence；IAM 发现同 Tenant 已有 Tenant Fence 时拒绝新 Membership Fence，不静默合并工作流或计数。IAM 按 `revocationRequestId` 稳定重放撤销结果；响应只包含被撤销的 Family 与 `jti` 数量，不返回 Token、摘要或会话明细。IAM 成功后 Tenant Access 才能提交自己的领域变更。
+
+Tenant Suspension 和恢复分别使用 Tenant Access 耐久根工作流。外部 `(actorIdentityId, Idempotency-Key)` 绑定 HTTP 方法、Tenant 与动作，工作流在首次远程调用前持久化独立 UUIDv7 内部请求 ID。同 Key 的相同请求在处理中返回 `503` 与 `Retry-After`，完成后稳定重放 `200` 及 Tenant 响应；同 Key 改变指纹返回 `409 / IDEMPOTENCY_KEY_REUSED`。同 Tenant 另一 Key 在未终结工作流存在时返回 `409 / TENANT_LIFECYCLE_CHANGE_IN_PROGRESS`。外部 Key 不跨服务传递。
+
+IAM 在 Fence 下以可配置的有界批次处理无上限的 Tenant 会话：每批先幂等写入 Redis `jti` 撤销索引，再提交该批 Family/Issuance 撤销事实、稳定游标与累计数量。中途失败不回滚已完成的额外拒绝，同一 `revocationRequestId` 从持久游标恢复；只有全部批次完成后才标记请求成功并发布唯一 `com.saasforge.iam.sessions-revoked.v1`。不得使用无上限 Lua 参数或单一超大数据库事务。
+
+`RevokeUserSessions` 不在一次 gRPC 中阻塞到整个 Tenant 撤销完成。每次调用最多协助推进一个有界批次，然后返回 `PENDING { retryAfterSeconds }` 或 `COMPLETED { revokedFamilyCount, revokedJtiCount }`；Tenant Access 始终使用同一 `revocationRequestId` 轮询，已完成请求稳定重放 `COMPLETED`。IAM Worker 通过数据库租约和 fencing token 独立推进 Fence、分页、撤销事实与最终事件；Tenant Access Worker 只推进自己的根工作流，轮询 IAM 并在完成后提交 Tenant 状态。两者都不依赖 HTTP 客户端重试，Tenant Access 不复制 IAM 分页进度，IAM 不修改 Tenant 领域状态。
+
+内部 gRPC 使用稳定状态语义：非 UUIDv7、目标缺失/冲突或 MembershipTarget 两个 ID 不完整为 `INVALID_ARGUMENT`；Service Token 缺失或无效为 `UNAUTHENTICATED`；Client 或 `iam:sessions:write` Scope 不符为 `PERMISSION_DENIED`；Tenant/Membership Fence 冲突或释放代际不匹配为 `FAILED_PRECONDITION`；Redis、PostgreSQL 或必要恢复状态暂时不可用为 `UNAVAILABLE`。正常未完成始终返回业务 `PENDING`，不以 `DEADLINE_EXCEEDED` 表示工作进度。
+
+批次大小、Worker 租约、轮询间隔与退避是按环境变化的非敏感运行策略，分别放入 IAM 和 Tenant Access 的应用专属 Nacos 资源且 `refreshEnabled=false`。实现必须校验正数、有界批次与 lease 大于单批最坏执行时间；除已确认的默认最多 10 次自动恢复外，其他环境数值必须先通过多批次 Testcontainers 夹具测量，不得臆造 staging/prod 值。
+
+IAM 最终计数只包含本请求首次产生的撤销：`revokedFamilyCount` 是本请求从可用变为已撤销的 Family 数，`revokedJtiCount` 是本请求首次写入持久撤销事实的未过期 `jti` 数。已撤销、已过期或重复批次不增加计数；终值持久化后由同一 `revocationRequestId` 稳定重放。对外事件仍只包含已白名单化的 `revokedSessionCount`，不暴露 Token 级明细。
+
+自动恢复默认最多尝试 10 次并允许配置。Fence 尚未建立时耗尽，原 Key 稳定返回 `409 / TENANT_SUSPENSION_RETRY_REQUIRED` 并允许新 Key 建立新根工作流。Fence 已建立后耗尽，Fence 保持生效且工作流进入 `RECOVERY_REQUIRED`，所有普通新 Key 都被拒绝；只有 Platform Admin 可以通过 `POST /api/v1/platform/tenants/{tenantId}/suspension-recoveries` 和新 Idempotency-Key 恢复原工作流。该操作不创建新 Fence 或撤销请求，不能取消 Fence、跳过剩余批次或直接提交 `SUSPENDED`。
+
+目标匹配同时考虑 Family 当前上下文和 Access Token Issuance 历史上下文：当前 `USER_TENANT` Family 匹配目标 Membership/Tenant 时撤销整个 Family 及其全部未过期 `jti`；Family 已切换到其他上下文时保留 Family，但仍撤销其为目标上下文签发且未过期的历史 `jti`。`USER_PLATFORM`、`USER_TENANT_SELECTION` 和 `INITIAL_PASSWORD_CHANGE` Family 不因 Membership/Tenant 目标而被撤销。已撤销或已过期记录只用于幂等重放与稳定计数，不重复产生副作用。
 
 成员禁用在 Tenant Access 的单一事务中写入 Membership 禁用事实、HTTP 幂等结果、`quotaReleasePending` 工作项和 `com.saasforge.membership.disabled.v1`。提交后立即调 Entitlement `release(max_users, quotaReleaseOperationId)`；失败时 Membership 不恢复，工作项以同一 ID 持续重试。这样最坏情况只是额度暂未释放，而不会出现额度已释放但成员仍启用的窗口。
 
-Tenant 冻结在 Tenant Access 的单一事务中完成 `ACTIVE → SUSPENDED`、HTTP 幂等结果和 `com.saasforge.tenant.suspended.v1`。它不禁用 Membership、不释放 `max_users`，恢复为 `ACTIVE` 也不恢复已撤销会话；用户必须重新登录或重新切换 Tenant。IAM 的成功会话撤销可独立发布 `com.saasforge.iam.sessions-revoked.v1`，即使后续 Tenant Access 本地提交失败也只表示已发生的安全事实。
+Tenant Suspension 在 Tenant Access 的单一事务中完成 `ACTIVE → SUSPENDED`、HTTP 幂等结果和 `com.saasforge.tenant.suspended.v1`。它不禁用 Membership、不释放 `max_users`，恢复为 `ACTIVE` 也不恢复已撤销会话；用户必须重新登录或重新切换 Tenant。恢复时 Tenant Access 使用 IAM 内部 `ReleaseUserSessionFence`：请求包含新 UUIDv7 `releaseRequestId`、原始 `revocationRequestId` 和同一强类型目标。IAM 只解除由该原始撤销请求建立的 ACTIVE Fence；同一释放请求稳定重放，Fence 已被后续撤销请求替代时必须拒绝，绝不删除新 Fence。IAM 确认对应批量撤销已完成并解除 Fence 后，Tenant Access 才提交 `SUSPENDED → ACTIVE`；解除 Fence 不得清除任何 Family 或 `jti` 撤销事实。如果本地恢复提交失败，Tenant 仍为 `SUSPENDED`，同一请求可幂等重试。对已为 `SUSPENDED` 的 Tenant 以新 Key 请求 Suspension，或对已为 `ACTIVE` 的 Tenant 以新 Key 请求恢复，都返回 `409 / TENANT_STATE_TRANSITION_NOT_ALLOWED` 且不调用 IAM；原始 Key 始终重放当时持久化的成功响应，不因后续状态变化改写历史结果。IAM 的成功会话撤销可独立发布 `com.saasforge.iam.sessions-revoked.v1`，即使后续 Tenant Access 本地提交失败也只表示已发生的安全事实。
