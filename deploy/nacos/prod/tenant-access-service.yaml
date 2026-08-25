@@ -3,16 +3,6 @@ saasforge:
     configuration-revision: "3"
 
 spring:
-  ssl:
-    bundle:
-      pem:
-        tenant-access-grpc-server:
-          keystore:
-            certificate: ${TENANT_ACCESS_GRPC_SERVER_CERTIFICATE:?TENANT_ACCESS_GRPC_SERVER_CERTIFICATE is required}
-            private-key: ${TENANT_ACCESS_GRPC_SERVER_PRIVATE_KEY:?TENANT_ACCESS_GRPC_SERVER_PRIVATE_KEY is required}
-            verify-keys: true
-          truststore:
-            certificate: ${GRPC_CA_CERTIFICATE:?GRPC_CA_CERTIFICATE is required}
   grpc:
     server:
       ssl:

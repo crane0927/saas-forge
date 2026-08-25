@@ -20,6 +20,11 @@ bash scripts/validate-nacos-config.sh
 
 该脚本校验环境和资源完整性、YAML 结构、应用专属 `configuration-revision` 标记，并拒绝密码、密钥、令牌、凭据以及 Nacos 连接参数进入清单。
 
+`staging` 和 `prod` 清单只声明 gRPC 必须启用 TLS，以及 IAM、Tenant Access 分别引用
+`tenant-access-grpc-client`、`tenant-access-grpc-server` SSL Bundle。证书、私钥和 CA
+不进入 Nacos；部署系统必须通过 Helm values 或外部 Secret 挂载的 Spring 配置提供这两个
+Bundle。Bundle 缺失时应用应启动失败，不能回退到明文通信。
+
 发布仅能从 `Publish Nacos configuration` GitHub Actions 工作流触发。工作流须选择目标 GitHub Environment（`dev`、`test`、`staging` 或 `prod`），再以该 Environment 注入的下列值运行：
 
 - `vars.NACOS_SERVER_ADDR`：目标 Nacos HTTPS 地址；

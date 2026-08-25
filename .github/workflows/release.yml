@@ -31,7 +31,8 @@ jobs:
         with:
           node-version: "24.14.1"
       - run: corepack enable
-      - run: pnpm --dir consoles install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile
+        working-directory: consoles
       - name: Verify release version
         shell: bash
         run: |
@@ -70,7 +71,8 @@ jobs:
         with:
           node-version: "24.14.1"
       - run: corepack enable
-      - run: pnpm --dir consoles install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile
+        working-directory: consoles
       - name: Publish
         env:
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}

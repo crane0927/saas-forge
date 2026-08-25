@@ -79,7 +79,8 @@ jobs:
         with:
           node-version: "24.14.1"
       - run: corepack enable
-      - run: pnpm --dir consoles install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile
+        working-directory: consoles
       - run: ./mvnw --batch-mode --no-transfer-progress verify
 
   nacos-config:

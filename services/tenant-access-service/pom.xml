@@ -126,6 +126,10 @@
                         </goals>
                         <configuration>
                             <classifier>test-fixture</classifier>
+                            <includes>
+                                <include>**/*.class</include>
+                                <include>mapper/AccessibleMembershipMapper.xml</include>
+                            </includes>
                         </configuration>
                     </execution>
                 </executions>

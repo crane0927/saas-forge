@@ -31,7 +31,7 @@ cleanup() {
   compose logs --no-color >"$compose_log" 2>/dev/null || true
   if [[ "$exit_code" -ne 0 ]]; then
     compose ps --all >&2 || true
-    compose logs --no-color --tail 10 \
+    compose logs --no-color --tail 100 \
       gateway iam-service tenant-access-service entitlement-service audit-service 2>/dev/null \
       | sed -E 's/(accessToken=)[^,}]*/\1[REDACTED]/g' >&2 || true
   fi
@@ -61,8 +61,23 @@ build_runtime_image() {
   local module="$1"
   local image="$2"
   local context_directory="$work_directory/images/${module//\//-}"
+  local candidate
+  local -a runtime_jars=()
   mkdir -p "$context_directory"
-  cp "$repository_root/$module/target/"*.jar "$context_directory/application.jar"
+  for candidate in "$repository_root/$module/target/"*.jar; do
+    [[ -e "$candidate" ]] || continue
+    [[ "$candidate" == *-test-fixture.jar ]] && continue
+    runtime_jars+=("$candidate")
+  done
+  if [[ "${#runtime_jars[@]}" -ne 1 ]]; then
+    printf 'Expected exactly one runtime JAR for %s, found %s\n' \
+      "$module" "${#runtime_jars[@]}" >&2
+    if [[ "${#runtime_jars[@]}" -gt 0 ]]; then
+      printf '  %s\n' "${runtime_jars[@]}" >&2
+    fi
+    return 1
+  fi
+  cp "${runtime_jars[0]}" "$context_directory/application.jar"
   docker build --pull=false --quiet --tag "$image" \
     --file "$compose_directory/Dockerfile.prebuilt" "$context_directory" >/dev/null
 }
