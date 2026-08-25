@@ -1,6 +1,10 @@
 saasforge:
   entitlement:
-    configuration-revision: "1"
+    configuration-revision: "2"
+
+security:
+  jwt:
+    issuer: ${IAM_JWT_ISSUER:?IAM_JWT_ISSUER is required}
 
 management:
   endpoint:
@@ -14,6 +18,13 @@ management:
           include: readinessState,nacosRegistrationReadiness
 
 spring:
+  grpc:
+    client:
+      channels:
+        iam:
+          default-deadline: PT3S
+        tenant-access:
+          default-deadline: PT3S
   nacos:
     config:
       health-indicator:

@@ -33,14 +33,8 @@ spring:
       channels:
         iam:
           address: ${IAM_GRPC_ADDRESS:static://iam-service:9090}
-          default-deadline: PT3S
         entitlement:
           address: ${ENTITLEMENT_GRPC_ADDRESS:static://entitlement-service:9090}
-          default-deadline: PT3S
-
-security:
-  jwt:
-    issuer: ${IAM_JWT_ISSUER:?IAM_JWT_ISSUER is required}
 
 saasforge:
   environment: ${SAASFORGE_ENVIRONMENT:dev}
@@ -50,17 +44,6 @@ saasforge:
     service-client-secret-file: ${SAASFORGE_SERVICE_CLIENT_SECRET_FILE:?SAASFORGE_SERVICE_CLIENT_SECRET_FILE is required}
     iam-service-client-id-file: ${IAM_SERVICE_CLIENT_ID_FILE:?IAM_SERVICE_CLIENT_ID_FILE is required}
     outbox-topic: saasforge.${saasforge.environment}.tenant-access-service.events
-    outbox:
-      publish-delay: PT1S
-      lease-duration: PT30S
-    initialization:
-      recovery-delay: PT1S
-      lease-duration: PT30S
-      initial-backoff: PT1S
-      maximum-backoff: PT1M
-      maximum-attempts: 10
-    password-setup:
-      recovery-delay: PT1S
 
 mybatis:
   mapper-locations: classpath*:mapper/**/*Mapper.xml

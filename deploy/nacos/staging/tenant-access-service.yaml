@@ -1,9 +1,30 @@
 saasforge:
   tenant-access:
-    configuration-revision: "3"
+    configuration-revision: "4"
+    outbox:
+      publish-delay: PT1S
+      lease-duration: PT30S
+    initialization:
+      recovery-delay: PT1S
+      lease-duration: PT30S
+      initial-backoff: PT1S
+      maximum-backoff: PT1M
+      maximum-attempts: 10
+    password-setup:
+      recovery-delay: PT1S
+
+security:
+  jwt:
+    issuer: ${IAM_JWT_ISSUER:?IAM_JWT_ISSUER is required}
 
 spring:
   grpc:
+    client:
+      channels:
+        iam:
+          default-deadline: PT3S
+        entitlement:
+          default-deadline: PT3S
     server:
       ssl:
         enabled: true

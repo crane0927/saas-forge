@@ -35,18 +35,6 @@ spring:
           address: ${TENANT_ACCESS_GRPC_ADDRESS:static://tenant-access-service:9090}
           default-deadline: PT3S
 
-security:
-  jwt:
-    issuer: ${IAM_JWT_ISSUER:?IAM_JWT_ISSUER is required}
-    access-token-ttl: PT15M
-    service-access-token-ttl: PT5M
-  login-protection:
-    failure-window: PT15M
-    maximum-failures: 5
-    lock-duration: PT15M
-  revocation-index:
-    recovery-delay: PT5S
-
 browser:
   rootDomain: ${BROWSER_ROOT_DOMAIN:?BROWSER_ROOT_DOMAIN is required}
 
@@ -67,16 +55,6 @@ saasforge:
         from: ${SMTP_FROM:}
         starttls: ${SMTP_STARTTLS:false}
         timeout: ${SMTP_TIMEOUT:PT5S}
-    outbox:
-      publish-delay: PT1S
-      lease-duration: PT30S
-    tenant-context-switch:
-      recovery-delay: PT1S
-      lease-duration: PT30S
-      initial-backoff: PT1S
-      maximum-backoff: PT1M
-      maximum-attempts: 10
-
 mybatis:
   mapper-locations: classpath*:mapper/**/*Mapper.xml
   type-handlers-package: io.saasforge.iam.infrastructure.persistence.type

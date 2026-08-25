@@ -27,14 +27,8 @@ spring:
       channels:
         iam:
           address: ${IAM_GRPC_ADDRESS:static://iam-service:9090}
-          default-deadline: PT3S
         tenant-access:
           address: ${TENANT_ACCESS_GRPC_ADDRESS:static://tenant-access-service:9090}
-          default-deadline: PT3S
-
-security:
-  jwt:
-    issuer: ${IAM_JWT_ISSUER:?IAM_JWT_ISSUER is required}
 
 saasforge:
   environment: ${SAASFORGE_ENVIRONMENT:dev}

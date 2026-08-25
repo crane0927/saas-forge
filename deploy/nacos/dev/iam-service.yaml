@@ -1,11 +1,21 @@
 saasforge:
   iam:
-    configuration-revision: "2"
+    configuration-revision: "3"
+    outbox:
+      publish-delay: PT1S
+      lease-duration: PT30S
+    tenant-context-switch:
+      recovery-delay: PT1S
+      lease-duration: PT30S
+      initial-backoff: PT1S
+      maximum-backoff: PT1M
+      maximum-attempts: 10
 
 security:
   jwt:
     issuer: ${IAM_JWT_ISSUER:?IAM_JWT_ISSUER is required}
     access-token-ttl: PT15M
+    service-access-token-ttl: PT5M
     signing:
       adapter: pem-jca
       pem:
@@ -15,6 +25,8 @@ security:
     failure-window: PT15M
     maximum-failures: 5
     lock-duration: PT15M
+  revocation-index:
+    recovery-delay: PT5S
 
 management:
   endpoint:
@@ -28,6 +40,11 @@ management:
           include: readinessState,nacosRegistrationReadiness
 
 spring:
+  grpc:
+    client:
+      channels:
+        tenant-access:
+          default-deadline: PT3S
   nacos:
     config:
       health-indicator:
