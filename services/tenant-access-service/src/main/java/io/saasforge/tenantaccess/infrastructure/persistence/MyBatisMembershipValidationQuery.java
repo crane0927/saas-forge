@@ -9,7 +9,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
-public final class MyBatisMembershipValidationQuery implements MembershipValidationQuery {
+public class MyBatisMembershipValidationQuery implements MembershipValidationQuery {
     private final AccessibleMembershipMapper mapper;
 
     public MyBatisMembershipValidationQuery(AccessibleMembershipMapper mapper) {

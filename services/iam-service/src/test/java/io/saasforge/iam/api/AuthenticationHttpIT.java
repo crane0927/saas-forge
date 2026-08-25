@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import io.saasforge.iam.application.signing.ActiveSigningKeyResolver;
 import io.grpc.ManagedChannel;
 import io.grpc.Server;
+import io.grpc.ServerInterceptors;
 import io.grpc.Status;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
@@ -22,8 +23,12 @@ import io.grpc.stub.StreamObserver;
 import io.saasforge.contracts.tenantaccess.membership.v1.AccessibleMembershipQueryServiceGrpc;
 import io.saasforge.contracts.tenantaccess.membership.v1.ListAccessibleMembershipsRequest;
 import io.saasforge.contracts.tenantaccess.membership.v1.ListAccessibleMembershipsResponse;
+import io.saasforge.contracts.tenantaccess.membership.v1.MembershipValidationServiceGrpc;
+import io.saasforge.contracts.tenantaccess.membership.v1.ValidateMembershipRequest;
+import io.saasforge.contracts.tenantaccess.membership.v1.ValidateMembershipResponse;
 import io.saasforge.iam.application.authentication.AccessibleMemberships;
 import io.saasforge.iam.application.authentication.InitialPasswordChangeService;
+import io.saasforge.iam.application.authentication.MembershipValidation;
 import io.saasforge.iam.application.authentication.PasswordSetupChallengeToken;
 import io.saasforge.iam.application.authentication.PasswordSetupService;
 import io.saasforge.iam.application.authentication.PresentedAccessToken;
@@ -31,11 +36,8 @@ import io.saasforge.iam.application.authentication.PresentedAccessTokenVerifier;
 import io.saasforge.iam.application.authentication.RevocationIndex;
 import io.saasforge.iam.application.authentication.RevocationIndexRecovery;
 import io.saasforge.iam.application.authentication.RevocationIndexUnavailableException;
-import io.saasforge.iam.application.authentication.MembershipValidation;
-import io.saasforge.iam.application.authentication.TenantAccessUnavailableException;
 import io.saasforge.iam.application.authentication.TenantContextSwitchService;
 import io.saasforge.iam.application.authentication.TenantContextSwitchTransaction;
-import io.saasforge.iam.application.authentication.ValidatedMembership;
 import io.saasforge.iam.application.signing.JwtSigningPort;
 import io.saasforge.iam.application.signing.JwtSigningService;
 import io.saasforge.iam.application.signing.SigningKeyLifecycleService;
@@ -61,11 +63,24 @@ import io.saasforge.iam.domain.session.TenantContextSwitchWorkflow;
 import io.saasforge.iam.infrastructure.messaging.OutboxPublisher;
 import io.saasforge.iam.infrastructure.persistence.MyBatisIdentityRepository;
 import io.saasforge.iam.infrastructure.grpc.GrpcAccessibleMemberships;
+import io.saasforge.iam.infrastructure.grpc.GrpcMembershipValidation;
+import io.saasforge.iam.infrastructure.security.ReservedIamServiceAccessTokenProvider;
+import io.saasforge.sdk.auth.ServiceAccessTokenVerifier;
+import io.saasforge.sdk.auth.ServiceJwtVerificationKey;
+import io.saasforge.tenantaccess.api.grpc.AccessibleMembershipGrpcService;
+import io.saasforge.tenantaccess.api.grpc.MembershipValidationGrpcService;
+import io.saasforge.tenantaccess.infrastructure.grpc.MembershipValidationServerInterceptor;
+import io.saasforge.tenantaccess.infrastructure.persistence.MyBatisAccessibleMembershipQuery;
+import io.saasforge.tenantaccess.infrastructure.persistence.MyBatisMembershipValidationQuery;
+import io.saasforge.tenantaccess.infrastructure.persistence.mapper.AccessibleMembershipMapper;
+import io.saasforge.tenantaccess.infrastructure.security.IamServiceClientId;
 import jakarta.servlet.http.Cookie;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.security.Signature;
+import java.sql.PreparedStatement;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.time.Duration;
@@ -78,9 +93,11 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.sql.DataSource;
@@ -125,11 +142,13 @@ import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.web.WebAppConfiguration;
+import org.springframework.test.web.client.MockMvcClientHttpRequestFactory;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -144,7 +163,13 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
+import com.nimbusds.jose.jwk.RSAKey;
+import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
 
+/**
+ * IAM HTTP 到 Tenant Access gRPC、PostgreSQL 18、Redis 与 Outbox 的进程内跨服务验收。
+ * 本用例不证明 Gateway 按 jti 拒绝、Redis 故障时公开入口 fail-closed 或浏览器多标签页协调。
+ */
 @Testcontainers
 @SpringJUnitConfig(AuthenticationHttpIT.TestConfiguration.class)
 @TestPropertySource(properties = {
@@ -168,10 +193,19 @@ class AuthenticationHttpIT {
     private static final String TRACE_ID = "0123456789abcdef0123456789abcdef";
     private static final Pattern COOKIE_VALUE = Pattern.compile("^__Host-sf_refresh=([^;]+)");
     private static final Path REPOSITORY_ROOT = repositoryRoot();
-    private static final Map<UUID, List<io.saasforge.contracts.tenantaccess.membership.v1.AccessibleMembership>>
-            ACCESSIBLE_MEMBERSHIPS = new ConcurrentHashMap<>();
+    private static final UUID IAM_SERVICE_CLIENT_ID = uuidV7(90_001);
+    private static final String IAM_SERVICE_CLIENT_SECRET = serviceClientSecret((byte) 90);
+    private static final Path IAM_SERVICE_CLIENT_ID_FILE = secretFile(
+            "iam-service-client-id", IAM_SERVICE_CLIENT_ID.toString());
+    private static final Path IAM_SERVICE_CLIENT_SECRET_FILE = secretFile(
+            "iam-service-client-secret", IAM_SERVICE_CLIENT_SECRET);
+    private static final RSAKey SIGNING_KEY = signingKey();
     private static final Set<UUID> TENANT_ACCESS_FAILURES = ConcurrentHashMap.newKeySet();
     private static final AtomicBoolean SIGNING_FAILURE = new AtomicBoolean();
+    private static final AtomicReference<ConcurrencyGate> MEMBERSHIP_VALIDATION_GATE = new AtomicReference<>();
+    private static final AtomicReference<ConcurrencyGate> SIGNING_GATE = new AtomicReference<>();
+    private static final AtomicReference<ReservedIamServiceAccessTokenProvider> SERVICE_TOKENS =
+            new AtomicReference<>();
     private static final ManagedChannel TENANT_ACCESS_CHANNEL;
 
     @Container
@@ -206,11 +240,27 @@ class AuthenticationHttpIT {
         REDIS.start();
         KAFKA.start();
         migrateAndSeedSigningKey();
+        migrateTenantAccess();
         try {
+            AccessibleMembershipMapper memberships = tenantAccessMembershipMapper();
+            AccessibleMembershipGrpcService accessibleMemberships = new AccessibleMembershipGrpcService(
+                    new MyBatisAccessibleMembershipQuery(memberships));
+            MembershipValidationGrpcService membershipValidation = new MembershipValidationGrpcService(
+                    new MyBatisMembershipValidationQuery(memberships));
+            ServiceAccessTokenVerifier tokens = new ServiceAccessTokenVerifier(
+                    AuthenticationHttpIT::verificationKey,
+                    java.time.Clock.systemUTC(),
+                    "https://iam.test.saasforge.invalid",
+                    "saasforge-api",
+                    Duration.ofSeconds(30));
+            MembershipValidationServerInterceptor authentication = new MembershipValidationServerInterceptor(
+                    tokens, new IamServiceClientId(IAM_SERVICE_CLIENT_ID));
             String serverName = InProcessServerBuilder.generateName();
             Server ignored = InProcessServerBuilder.forName(serverName)
                     .directExecutor()
-                    .addService(new TenantAccessAuthority())
+                    .addService(new FaultInjectingAccessibleMembershipService(accessibleMemberships))
+                    .addService(ServerInterceptors.intercept(
+                            new FaultInjectingMembershipValidationService(membershipValidation), authentication))
                     .build()
                     .start();
             TENANT_ACCESS_CHANNEL = InProcessChannelBuilder.forName(serverName).directExecutor().build();
@@ -270,14 +320,24 @@ class AuthenticationHttpIT {
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
+        SERVICE_TOKENS.set(new ReservedIamServiceAccessTokenProvider(
+                RestClient.builder()
+                        .baseUrl("https://iam.test.saasforge.invalid")
+                        .requestFactory(new MockMvcClientHttpRequestFactory(mockMvc))
+                        .build(),
+                IAM_SERVICE_CLIENT_ID_FILE,
+                IAM_SERVICE_CLIENT_SECRET_FILE,
+                java.time.Clock.systemUTC()));
         jdbc = new JdbcTemplate(dataSource);
         Set<String> keys = redis.keys("sf:test:iam-service:login-*:v1:*");
         if (keys != null && !keys.isEmpty()) {
             redis.delete(keys);
         }
-        ACCESSIBLE_MEMBERSHIPS.clear();
         TENANT_ACCESS_FAILURES.clear();
         SIGNING_FAILURE.set(false);
+        MEMBERSHIP_VALIDATION_GATE.set(null);
+        SIGNING_GATE.set(null);
+        ensureReservedIamServiceClient();
     }
 
     @Test
@@ -493,7 +553,8 @@ class AuthenticationHttpIT {
                         .mapToObj(index -> membership(
                                 uuidV7(10_000 + index), uuidV7(20_000 + index), "Tenant " + index))
                         .toList();
-        ACCESSIBLE_MEMBERSHIPS.put(user.identity().id(), memberships);
+        accessibleMemberships(user.identity().id(), memberships.toArray(
+                io.saasforge.contracts.tenantaccess.membership.v1.AccessibleMembership[]::new));
 
         login("membership-overflow@example.test", "correct-password", "TENANT")
                 .andExpect(status().isConflict())
@@ -1236,7 +1297,7 @@ class AuthenticationHttpIT {
     @Order(26)
     void clientCredentialsEndpointRejectsWrongSecretRevokedClientAndOverprivilegedScope() throws Exception {
         Instant now = Instant.now().minusSeconds(1);
-        UUID clientId = UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4c8f");
+        UUID clientId = uuidV7(53_100);
         String secret = serviceClientSecret((byte) 11);
         oauthClients.createWithId(
                 OAuthClient.register("iam-service", Set.of(OAuthScope.TENANT_ACCESS_MEMBERSHIP_READ), now)
@@ -1843,6 +1904,95 @@ class AuthenticationHttpIT {
     }
 
     @Test
+    @Order(34)
+    void switchAndRefreshSerializeInBothOrdersWithoutPersistingStaleContextTokens() throws Exception {
+        TestUser refreshFirst = createUser(
+                "tenant-switch-refresh-first@example.test", "correct-password", false, Credential.REGULAR);
+        UUID refreshFirstCurrentMembership = uuidV7(91_001);
+        UUID refreshFirstCurrentTenant = uuidV7(91_002);
+        UUID refreshFirstTargetMembership = uuidV7(91_003);
+        UUID refreshFirstTargetTenant = uuidV7(91_004);
+        accessibleMemberships(refreshFirst.identity().id(),
+                membership(refreshFirstCurrentMembership, refreshFirstCurrentTenant, "Current"));
+        MvcResult refreshFirstSession = login(
+                "tenant-switch-refresh-first@example.test", "correct-password", "TENANT").andReturn();
+        accessibleMemberships(refreshFirst.identity().id(),
+                membership(refreshFirstCurrentMembership, refreshFirstCurrentTenant, "Current"),
+                membership(refreshFirstTargetMembership, refreshFirstTargetTenant, "Target"));
+
+        ConcurrencyGate switchValidation = new ConcurrencyGate();
+        MEMBERSHIP_VALIDATION_GATE.set(switchValidation);
+        var refreshFirstExecutor = Executors.newSingleThreadExecutor();
+        try {
+            var switchResult = refreshFirstExecutor.submit(() -> mockMvc.perform(tenantSwitch(
+                    refreshToken(refreshFirstSession), uuidV7(91_005), refreshFirstTargetMembership)).andReturn());
+            switchValidation.awaitEntered();
+            MvcResult refreshCommittedFirst = refresh(
+                    refreshToken(refreshFirstSession), uuidV7(91_006))
+                    .andExpect(status().isOk())
+                    .andReturn();
+            assertEquals(refreshFirstCurrentMembership.toString(),
+                    tokenClaims(refreshCommittedFirst).get("membershipId").asString());
+            switchValidation.release();
+            assertEquals(204, switchResult.get().getResponse().getStatus());
+
+            MvcResult targetRefresh = refresh(refreshToken(refreshCommittedFirst), uuidV7(91_007))
+                    .andExpect(status().isOk())
+                    .andReturn();
+            assertEquals(refreshFirstTargetMembership.toString(),
+                    tokenClaims(targetRefresh).get("membershipId").asString());
+            assertEquals(refreshFirstTargetTenant.toString(), tokenClaims(targetRefresh).get("tenantId").asString());
+        } finally {
+            switchValidation.release();
+            refreshFirstExecutor.shutdownNow();
+        }
+
+        TestUser switchFirst = createUser(
+                "tenant-switch-switch-first@example.test", "correct-password", false, Credential.REGULAR);
+        UUID switchFirstCurrentMembership = uuidV7(92_001);
+        UUID switchFirstCurrentTenant = uuidV7(92_002);
+        UUID switchFirstTargetMembership = uuidV7(92_003);
+        UUID switchFirstTargetTenant = uuidV7(92_004);
+        accessibleMemberships(switchFirst.identity().id(),
+                membership(switchFirstCurrentMembership, switchFirstCurrentTenant, "Current"));
+        MvcResult switchFirstSession = login(
+                "tenant-switch-switch-first@example.test", "correct-password", "TENANT").andReturn();
+        accessibleMemberships(switchFirst.identity().id(),
+                membership(switchFirstCurrentMembership, switchFirstCurrentTenant, "Current"),
+                membership(switchFirstTargetMembership, switchFirstTargetTenant, "Target"));
+
+        ConcurrencyGate refreshSigning = new ConcurrencyGate();
+        SIGNING_GATE.set(refreshSigning);
+        var switchFirstExecutor = Executors.newSingleThreadExecutor();
+        try {
+            var staleRefresh = switchFirstExecutor.submit(() -> refresh(
+                    refreshToken(switchFirstSession), uuidV7(92_005)).andReturn());
+            refreshSigning.awaitEntered();
+            mockMvc.perform(tenantSwitch(
+                            refreshToken(switchFirstSession), uuidV7(92_006), switchFirstTargetMembership))
+                    .andExpect(status().isNoContent());
+            refreshSigning.release();
+            MvcResult staleResult = staleRefresh.get();
+            assertEquals(409, staleResult.getResponse().getStatus());
+            assertEquals("REFRESH_CONTEXT_CHANGED",
+                    json(staleResult.getResponse().getContentAsByteArray()).get("code").asString());
+            assertEquals(null, staleResult.getResponse().getHeader(HttpHeaders.SET_COOKIE));
+            assertEquals(1, accessTokenIssuanceCount(switchFirst.identity().id()));
+
+            MvcResult switchedRefresh = refresh(refreshToken(switchFirstSession), uuidV7(92_005))
+                    .andExpect(status().isOk())
+                    .andReturn();
+            assertEquals(switchFirstTargetMembership.toString(),
+                    tokenClaims(switchedRefresh).get("membershipId").asString());
+            assertEquals(switchFirstTargetTenant.toString(),
+                    tokenClaims(switchedRefresh).get("tenantId").asString());
+        } finally {
+            refreshSigning.release();
+            switchFirstExecutor.shutdownNow();
+        }
+    }
+
+    @Test
     @Order(35)
     void redisUnavailabilityFailsClosedThroughPublicContract() throws Exception {
         TestUser user = createUser("logout-redis-down@example.test", "correct-password", true, Credential.REGULAR);
@@ -2104,7 +2254,42 @@ class AuthenticationHttpIT {
     private static void accessibleMemberships(
             UUID identityId,
             io.saasforge.contracts.tenantaccess.membership.v1.AccessibleMembership... memberships) {
-        ACCESSIBLE_MEMBERSHIPS.put(identityId, List.of(memberships));
+        try (Connection connection = tenantAccessMigratorConnection()) {
+            try (PreparedStatement delete = connection.prepareStatement(
+                    "DELETE FROM memberships WHERE identity_id = ?")) {
+                delete.setObject(1, identityId);
+                delete.executeUpdate();
+            }
+            for (var membership : memberships) {
+                UUID tenantId = UUID.fromString(membership.getTenantId());
+                try (PreparedStatement deleteReusedId = connection.prepareStatement(
+                        "DELETE FROM memberships WHERE id = ?")) {
+                    deleteReusedId.setObject(1, UUID.fromString(membership.getMembershipId()));
+                    deleteReusedId.executeUpdate();
+                }
+                try (PreparedStatement tenant = connection.prepareStatement("""
+                        INSERT INTO tenants (id, display_name, tenant_status)
+                        VALUES (?, ?, 'ACTIVE')
+                        ON CONFLICT (id) DO UPDATE
+                        SET display_name = EXCLUDED.display_name, tenant_status = 'ACTIVE', expires_at = NULL
+                        """)) {
+                    tenant.setObject(1, tenantId);
+                    tenant.setString(2, membership.getTenantDisplayName());
+                    tenant.executeUpdate();
+                }
+                try (PreparedStatement storedMembership = connection.prepareStatement("""
+                        INSERT INTO memberships (id, tenant_id, identity_id, membership_status)
+                        VALUES (?, ?, ?, 'ENABLED')
+                        """)) {
+                    storedMembership.setObject(1, UUID.fromString(membership.getMembershipId()));
+                    storedMembership.setObject(2, tenantId);
+                    storedMembership.setObject(3, identityId);
+                    storedMembership.executeUpdate();
+                }
+            }
+        } catch (Exception exception) {
+            throw new IllegalStateException("无法准备 Tenant Access Membership 权威数据", exception);
+        }
     }
 
     private static io.saasforge.contracts.tenantaccess.membership.v1.AccessibleMembership membership(
@@ -2213,24 +2398,106 @@ class AuthenticationHttpIT {
     private static void migrateAndSeedSigningKey() {
         Flyway.configure()
                 .dataSource(iamJdbcUrl(), "iam_migrator", "iam-migrator-password")
-                .locations("classpath:db/migration")
+                .locations("filesystem:" + REPOSITORY_ROOT
+                        .resolve("services/iam-service/src/main/resources/db/migration"))
                 .load()
                 .migrate();
-        try (Connection connection = DriverManager.getConnection(iamJdbcUrl(), "iam_migrator", "iam-migrator-password")) {
-            connection.createStatement().execute("""
+        try (Connection connection = DriverManager.getConnection(
+                iamJdbcUrl(), "iam_migrator", "iam-migrator-password");
+                PreparedStatement statement = connection.prepareStatement("""
                     INSERT INTO iam_signing_keys
                         (kid, key_version_reference, public_jwk_modulus, public_jwk_exponent,
                          key_status, published_at, activated_at)
-                    VALUES ('active-login-kid', 'fake/key/1', 'test-modulus', 'AQAB',
+                    VALUES ('active-login-kid', 'test/key/1', ?, ?,
                             'ACTIVE', now() - interval '10 minutes', now() - interval '5 minutes')
-                    """);
+                    """)) {
+            statement.setString(1, SIGNING_KEY.getModulus().toString());
+            statement.setString(2, SIGNING_KEY.getPublicExponent().toString());
+            statement.executeUpdate();
         } catch (Exception exception) {
             throw new IllegalStateException("无法准备 IAM 登录集成测试", exception);
         }
     }
 
+    private static void migrateTenantAccess() {
+        Flyway.configure()
+                .dataSource(tenantAccessJdbcUrl(), "tenant_access_migrator", "tenant-access-migrator-password")
+                .locations("filesystem:" + REPOSITORY_ROOT
+                        .resolve("services/tenant-access-service/src/main/resources/db/migration"))
+                .load()
+                .migrate();
+    }
+
+    private static AccessibleMembershipMapper tenantAccessMembershipMapper() {
+        try {
+            DriverManagerDataSource dataSource = new DriverManagerDataSource(
+                    tenantAccessJdbcUrl(), "tenant_access_app", "tenant-access-app-password");
+            SqlSessionFactoryBean factory = new SqlSessionFactoryBean();
+            factory.setDataSource(dataSource);
+            factory.setMapperLocations(new PathMatchingResourcePatternResolver()
+                    .getResources("classpath*:mapper/AccessibleMembershipMapper.xml"));
+            factory.setTypeHandlersPackage("io.saasforge.tenantaccess.infrastructure.persistence.type");
+            return new SqlSessionTemplate(factory.getObject()).getMapper(AccessibleMembershipMapper.class);
+        } catch (Exception exception) {
+            throw new IllegalStateException("无法装配 Tenant Access Membership Repository", exception);
+        }
+    }
+
+    private static Optional<ServiceJwtVerificationKey> verificationKey(String kid) {
+        if (!SIGNING_KEY.getKeyID().equals(kid)) {
+            return Optional.empty();
+        }
+        return Optional.of(new ServiceJwtVerificationKey(
+                SIGNING_KEY.getKeyID(),
+                SIGNING_KEY.getModulus().toString(),
+                SIGNING_KEY.getPublicExponent().toString()));
+    }
+
+    private static RSAKey signingKey() {
+        try {
+            return new RSAKeyGenerator(2048).keyID("active-login-kid").generate();
+        } catch (Exception exception) {
+            throw new IllegalStateException("无法生成集成测试签名密钥", exception);
+        }
+    }
+
+    private static Path secretFile(String prefix, String value) {
+        try {
+            Path path = Files.createTempFile(prefix, ".secret");
+            Files.writeString(path, value, StandardCharsets.UTF_8);
+            path.toFile().deleteOnExit();
+            return path;
+        } catch (Exception exception) {
+            throw new IllegalStateException("无法准备集成测试外部 Secret 文件", exception);
+        }
+    }
+
+    private void ensureReservedIamServiceClient() {
+        if (oauthClients.findById(IAM_SERVICE_CLIENT_ID).isPresent()) {
+            return;
+        }
+        Instant issuedAt = Instant.now().minusSeconds(1);
+        oauthClients.createWithId(
+                OAuthClient.register(
+                                "iam-service",
+                                Set.of(OAuthScope.TENANT_ACCESS_MEMBERSHIP_READ),
+                                issuedAt)
+                        .identifiedBy(IAM_SERVICE_CLIENT_ID),
+                ClientSecretDigest.fromPlaintext(IAM_SERVICE_CLIENT_SECRET),
+                issuedAt);
+    }
+
     private static String iamJdbcUrl() {
         return POSTGRES.getJdbcUrl().replace("/saasforge", "/iam_db");
+    }
+
+    private static String tenantAccessJdbcUrl() {
+        return POSTGRES.getJdbcUrl().replace("/saasforge", "/tenant_access_db");
+    }
+
+    private static Connection tenantAccessMigratorConnection() throws Exception {
+        return DriverManager.getConnection(
+                tenantAccessJdbcUrl(), "tenant_access_migrator", "tenant-access-migrator-password");
     }
 
     private static Path repositoryRoot() {
@@ -2248,7 +2515,46 @@ class AuthenticationHttpIT {
 
     record TestUser(Identity identity) { }
 
-    static final class TenantAccessAuthority extends AccessibleMembershipQueryServiceGrpc.AccessibleMembershipQueryServiceImplBase {
+    static final class ConcurrencyGate {
+        private final CountDownLatch entered = new CountDownLatch(1);
+        private final CountDownLatch released = new CountDownLatch(1);
+
+        void pause() {
+            entered.countDown();
+            try {
+                if (!released.await(10, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("并发验收栅栏等待超时");
+                }
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("并发验收栅栏被中断", exception);
+            }
+        }
+
+        void awaitEntered() {
+            try {
+                if (!entered.await(10, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("并发验收请求未进入预期接缝");
+                }
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("等待并发验收请求时被中断", exception);
+            }
+        }
+
+        void release() {
+            released.countDown();
+        }
+    }
+
+    static final class FaultInjectingAccessibleMembershipService
+            extends AccessibleMembershipQueryServiceGrpc.AccessibleMembershipQueryServiceImplBase {
+        private final AccessibleMembershipGrpcService delegate;
+
+        FaultInjectingAccessibleMembershipService(AccessibleMembershipGrpcService delegate) {
+            this.delegate = delegate;
+        }
+
         @Override
         public void listAccessibleMemberships(
                 ListAccessibleMembershipsRequest request,
@@ -2258,10 +2564,32 @@ class AuthenticationHttpIT {
                 responseObserver.onError(Status.UNAVAILABLE.asRuntimeException());
                 return;
             }
-            responseObserver.onNext(ListAccessibleMembershipsResponse.newBuilder()
-                    .addAllMemberships(ACCESSIBLE_MEMBERSHIPS.getOrDefault(identityId, List.of()))
-                    .build());
-            responseObserver.onCompleted();
+            delegate.listAccessibleMemberships(request, responseObserver);
+        }
+    }
+
+    static final class FaultInjectingMembershipValidationService
+            extends MembershipValidationServiceGrpc.MembershipValidationServiceImplBase {
+        private final MembershipValidationGrpcService delegate;
+
+        FaultInjectingMembershipValidationService(MembershipValidationGrpcService delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public void validateMembership(
+                ValidateMembershipRequest request,
+                StreamObserver<ValidateMembershipResponse> responseObserver) {
+            UUID identityId = UUID.fromString(request.getIdentityId());
+            if (TENANT_ACCESS_FAILURES.contains(identityId)) {
+                responseObserver.onError(Status.UNAVAILABLE.asRuntimeException());
+                return;
+            }
+            ConcurrencyGate gate = MEMBERSHIP_VALIDATION_GATE.getAndSet(null);
+            if (gate != null) {
+                gate.pause();
+            }
+            delegate.validateMembership(request, responseObserver);
         }
     }
 
@@ -2356,16 +2684,9 @@ class AuthenticationHttpIT {
 
         @Bean
         MembershipValidation membershipValidation() {
-            return (identityId, membershipId) -> {
-                if (TENANT_ACCESS_FAILURES.contains(identityId)) {
-                    throw new TenantAccessUnavailableException(new IllegalStateException("injected outage"));
-                }
-                return ACCESSIBLE_MEMBERSHIPS.getOrDefault(identityId, List.of()).stream()
-                        .filter(candidate -> membershipId.toString().equals(candidate.getMembershipId()))
-                        .findFirst()
-                        .map(candidate -> new ValidatedMembership(
-                                membershipId, UUID.fromString(candidate.getTenantId())));
-            };
+            return new GrpcMembershipValidation(
+                    MembershipValidationServiceGrpc.newBlockingStub(TENANT_ACCESS_CHANNEL),
+                    () -> SERVICE_TOKENS.get().membershipReadToken());
         }
 
         @Bean
@@ -2375,7 +2696,14 @@ class AuthenticationHttpIT {
                     if (SIGNING_FAILURE.get()) {
                         throw new IllegalStateException("injected signing failure");
                     }
-                    return MessageDigest.getInstance("SHA-256").digest(signingInput.bytes());
+                    ConcurrencyGate gate = SIGNING_GATE.getAndSet(null);
+                    if (gate != null) {
+                        gate.pause();
+                    }
+                    Signature signature = Signature.getInstance("SHA256withRSA");
+                    signature.initSign(SIGNING_KEY.toPrivateKey());
+                    signature.update(signingInput.bytes());
+                    return signature.sign();
                 } catch (Exception exception) {
                     throw new IllegalStateException(exception);
                 }

@@ -171,6 +171,12 @@
             </dependency>
             <dependency>
                 <groupId>${project.groupId}</groupId>
+                <artifactId>tenant-access-service</artifactId>
+                <version>${project.version}</version>
+                <classifier>test-fixture</classifier>
+            </dependency>
+            <dependency>
+                <groupId>${project.groupId}</groupId>
                 <artifactId>saas-forge-protobuf-contracts</artifactId>
                 <version>${project.version}</version>
             </dependency>
