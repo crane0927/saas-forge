@@ -56,7 +56,7 @@ class GatewayProblemDetailsTest {
                 GatewayTestDiscoveryConfiguration.TENANT_ACCESS_SERVICE_ID, URI.create("http://127.0.0.1:1"));
         GatewayTestDiscoveryConfiguration.discoverAt(
                 GatewayTestDiscoveryConfiguration.ENTITLEMENT_SERVICE_ID, ENTITLEMENT_URI);
-        registry.add("spring.http.clients.read-timeout", () -> "100ms");
+        registry.add("spring.http.clients.read-timeout", () -> "1s");
     }
 
     @AfterAll
@@ -116,7 +116,7 @@ class GatewayProblemDetailsTest {
 
     @Test
     void mapsTheConfiguredUpstreamReadTimeoutWithoutRetrying() throws IOException, InterruptedException {
-        IAM_RESPONSE.set(new DownstreamResponse(200, "application/json", "late", 500));
+        IAM_RESPONSE.set(new DownstreamResponse(200, "application/json", "late", 2000));
 
         HttpResponse<String> response = send("GET", "/.well-known/jwks.json");
 

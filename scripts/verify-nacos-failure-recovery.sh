@@ -4,6 +4,15 @@ set -euo pipefail
 readonly repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly compose_directory="$repository_root/deploy/compose"
 readonly project_name="saas-forge-nacos-recovery-$$"
+readonly work_directory="$(mktemp -d)"
+readonly secret_directory="$work_directory/secrets"
+
+export IAM_SERVICE_CLIENT_ID_FILE="$secret_directory/iam-client-id"
+export IAM_SERVICE_CLIENT_SECRET_FILE="$secret_directory/iam-client-secret"
+export TENANT_ACCESS_SERVICE_CLIENT_ID_FILE="$secret_directory/tenant-access-client-id"
+export TENANT_ACCESS_SERVICE_CLIENT_SECRET_FILE="$secret_directory/tenant-access-client-secret"
+export ENTITLEMENT_SERVICE_CLIENT_ID_FILE="$secret_directory/entitlement-client-id"
+export ENTITLEMENT_SERVICE_CLIENT_SECRET_FILE="$secret_directory/entitlement-client-secret"
 
 compose() {
   docker compose --ansi never --project-name "$project_name" \
@@ -14,6 +23,7 @@ compose() {
 
 cleanup() {
   compose down --volumes --remove-orphans >/dev/null 2>&1 || true
+  rm -rf "$work_directory"
 }
 
 on_interrupt() {
@@ -56,6 +66,8 @@ wait_for_gateway_unavailable() {
 
 trap cleanup EXIT
 trap on_interrupt INT TERM
+
+"$compose_directory/generate-service-client-secrets.sh" "$secret_directory" >/dev/null
 
 COMPOSE_PROJECT_NAME="$project_name" \
 LOCAL_COMPOSE_OVERRIDE_FILE="$compose_directory/failure-recovery.override.yaml" \

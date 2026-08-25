@@ -82,6 +82,18 @@ build_runtime_image() {
     --file "$compose_directory/Dockerfile.prebuilt" "$context_directory" >/dev/null
 }
 
+run_bootstrap() {
+  local profile="$1"
+  local service="$2"
+  local log_file="$work_directory/$service.log"
+  if ! compose --profile "$profile" run --rm "$service" >"$log_file" 2>&1; then
+    printf 'Bootstrap service failed: %s\n' "$service" >&2
+    tail -n 120 "$log_file" \
+      | sed -E 's/((accessToken|password|token|secret)[=: ]+)[^, }]+/\1[REDACTED]/Ig' >&2
+    return 1
+  fi
+}
+
 uuid_v7() {
   local timestamp_ms timestamp_hex random_hex random_a variant_source variant random_b_head random_b_tail
   timestamp_ms="$(ruby -e 'puts (Time.now.to_r * 1000).to_i')"
@@ -347,8 +359,8 @@ build_runtime_image services/iam-service saasforge/iam-service:local
 build_runtime_image services/tenant-access-service saasforge/tenant-access-service:local
 build_runtime_image services/entitlement-service saasforge/entitlement-service:local
 build_runtime_image services/audit-service saasforge/audit-service:local
-compose --profile bootstrap run --rm iam-platform-admin-bootstrap >/dev/null
-compose --profile service-client-bootstrap run --rm iam-reserved-service-client-bootstrap >/dev/null
+run_bootstrap bootstrap iam-platform-admin-bootstrap
+run_bootstrap service-client-bootstrap iam-reserved-service-client-bootstrap
 initial_password="$(<"$secret_directory/platform-admin-password")"
 conflicting_password="$(openssl rand -base64 32 | tr -d '\n')"
 printf '%s\n' "$conflicting_password" >"$secret_directory/platform-admin-password-conflict"

@@ -778,9 +778,9 @@ class AuthenticationHttpIT {
                 .andExpect(jsonPath("$.accessToken").doesNotExist())
                 .andExpect(jsonPath("$.memberships").doesNotExist())
                 .andReturn();
-        String setCookie = login.getResponse().getHeader("Set-Cookie");
-        assertNotNull(setCookie);
-        assertTrue(setCookie.contains("Max-Age=600"));
+        Cookie refreshCookie = login.getResponse().getCookie("__Host-sf_refresh");
+        assertNotNull(refreshCookie);
+        assertEquals(600, refreshCookie.getMaxAge());
         String refreshToken = refreshToken(login);
 
         Map<String, Object> initialFacts = jdbc.queryForMap("""
