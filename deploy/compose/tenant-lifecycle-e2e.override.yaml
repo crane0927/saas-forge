@@ -21,16 +21,22 @@ services:
     ports: !reset []
   iam-service:
     build: !reset null
+    group_add:
+      - "${E2E_HOST_GID:?E2E_HOST_GID is required}"
     environment:
       JAVA_TOOL_OPTIONS: -Xms64m -Xmx256m
     ports: !reset []
   tenant-access-service:
     build: !reset null
+    group_add:
+      - "${E2E_HOST_GID:?E2E_HOST_GID is required}"
     environment:
       JAVA_TOOL_OPTIONS: -Xms64m -Xmx256m
     ports: !reset []
   entitlement-service:
     build: !reset null
+    group_add:
+      - "${E2E_HOST_GID:?E2E_HOST_GID is required}"
     environment:
       JAVA_TOOL_OPTIONS: -Xms64m -Xmx256m
     ports: !reset []
@@ -45,3 +51,15 @@ services:
       JAVA_TOOL_OPTIONS: -Xms32m -Xmx192m
     ports: !override
       - "127.0.0.1::8080"
+  iam-platform-admin-bootstrap:
+    build: !reset null
+    group_add:
+      - "${E2E_HOST_GID:?E2E_HOST_GID is required}"
+  iam-platform-admin-credential-reset:
+    build: !reset null
+    group_add:
+      - "${E2E_HOST_GID:?E2E_HOST_GID is required}"
+  iam-reserved-service-client-bootstrap:
+    build: !reset null
+    group_add:
+      - "${E2E_HOST_GID:?E2E_HOST_GID is required}"

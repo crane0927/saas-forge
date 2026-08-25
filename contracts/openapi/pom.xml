@@ -53,9 +53,8 @@
                         </goals>
                         <configuration>
                             <executable>pnpm</executable>
+                            <workingDirectory>${maven.multiModuleProjectDirectory}/consoles</workingDirectory>
                             <arguments>
-                                <argument>--dir</argument>
-                                <argument>${maven.multiModuleProjectDirectory}/consoles</argument>
                                 <argument>--filter</argument>
                                 <argument>@saas-forge/api-client</argument>
                                 <argument>run</argument>

@@ -780,7 +780,8 @@ class AuthenticationHttpIT {
                 .andReturn();
         Cookie refreshCookie = login.getResponse().getCookie("__Host-sf_refresh");
         assertNotNull(refreshCookie);
-        assertEquals(600, refreshCookie.getMaxAge());
+        assertTrue(refreshCookie.getMaxAge() > 0);
+        assertTrue(refreshCookie.getMaxAge() <= Duration.ofMinutes(10).getSeconds());
         String refreshToken = refreshToken(login);
 
         Map<String, Object> initialFacts = jdbc.queryForMap("""

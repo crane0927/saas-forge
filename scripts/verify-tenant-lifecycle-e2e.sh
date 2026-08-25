@@ -94,6 +94,12 @@ run_bootstrap() {
   fi
 }
 
+grant_container_secret_access() {
+  local -a secret_files=("$secret_directory"/*)
+  # Linux bind mount 保留宿主权限；仅向容器补充的宿主主组开放读取，避免改用 root 或全局可读。
+  chmod 0640 "${secret_files[@]}"
+}
+
 uuid_v7() {
   local timestamp_ms timestamp_hex random_hex random_a variant_source variant random_b_head random_b_tail
   timestamp_ms="$(ruby -e 'puts (Time.now.to_r * 1000).to_i')"
@@ -147,6 +153,7 @@ write_environment() {
     printf 'NACOS_AUTH_IDENTITY_KEY=identity-key-e2e\n'
     printf 'NACOS_AUTH_IDENTITY_VALUE=%s\n' "$(random_text)"
     printf 'NACOS_AUTH_TOKEN=%s\n' "$(printf '%s' "$nacos_token_source" | openssl base64 -A)"
+    printf 'E2E_HOST_GID=%s\n' "$(id -g)"
     printf 'IAM_JWT_ISSUER=https://api.saasforge.test\n'
     printf 'IAM_JWT_PEM_KEY_VERSION_REF=local/e2e/pem/1\n'
     printf 'IAM_JWT_PEM_PRIVATE_KEY_FILE=%s\n' "$secret_directory/iam-jwt-private-key.pem"
@@ -338,6 +345,9 @@ compose config --quiet
 compose --profile bootstrap --profile service-client-bootstrap config --format json | jq --exit-status '
   .services["iam-platform-admin-bootstrap"].profiles == ["bootstrap"] and
   .services["iam-reserved-service-client-bootstrap"].profiles == ["service-client-bootstrap"] and
+  ([.services["iam-platform-admin-bootstrap"], .services["iam-reserved-service-client-bootstrap"],
+    .services["iam-service"], .services["tenant-access-service"], .services["entitlement-service"]]
+    | all(.group_add | any(test("^[0-9]+$")))) and
   ([.services["iam-reserved-service-client-bootstrap"].volumes[] | select(.read_only == true)] | length == 6) and
   ([.services["iam-service"].volumes[], .services["tenant-access-service"].volumes[],
     .services["entitlement-service"].volumes[] | select(.read_only == true)] | length >= 7) and
@@ -349,6 +359,7 @@ COMPOSE_PROJECT_NAME="$project_name" \
 LOCAL_COMPOSE_ENV_FILE="$environment_file" \
 LOCAL_COMPOSE_OVERRIDE_FILE="$override_file" \
   bash "$repository_root/scripts/initialize-local-iam-signing-key.sh" >/dev/null
+grant_container_secret_access
 
 echo "[3/10] 显式引导 Platform Admin 与三个保留服务 Client"
 "$repository_root/mvnw" --batch-mode --no-transfer-progress \
@@ -364,6 +375,7 @@ run_bootstrap service-client-bootstrap iam-reserved-service-client-bootstrap
 initial_password="$(<"$secret_directory/platform-admin-password")"
 conflicting_password="$(openssl rand -base64 32 | tr -d '\n')"
 printf '%s\n' "$conflicting_password" >"$secret_directory/platform-admin-password-conflict"
+grant_container_secret_access
 if IAM_PLATFORM_ADMIN_PASSWORD_FILE="$secret_directory/platform-admin-password-conflict" \
   compose --profile bootstrap run --rm iam-platform-admin-bootstrap >/dev/null 2>&1; then
   echo "不同 Platform Admin 初始凭证不应被引导任务覆盖" >&2
