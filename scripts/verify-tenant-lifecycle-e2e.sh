@@ -470,7 +470,8 @@ password_setup_link="$(printf '%s' "$mail_message" | ruby -rjson -rcgi -e '
 password_setup_token="${password_setup_link#*#token=}"
 curl --silent --show-error --fail --dump-header "$response_headers" "$gateway_base/password-setup" \
   --output "$work_directory/password-setup-page.html"
-grep -Eiq '^Referrer-Policy: no-referrer\r?$' "$response_headers"
+# curl 按 HTTP CRLF 写入 Header；先标准化换行，避免 BSD grep 与 GNU grep 对 \r 转义解释不同。
+tr -d '\r' <"$response_headers" | grep -Fiqx 'Referrer-Policy: no-referrer'
 tenant_password="Tenant-$(openssl rand -hex 16)"
 request 204 POST /api/v1/auth/password-setups \
   "$(jq -cn --arg token "$password_setup_token" --arg password "$tenant_password" \
