@@ -24,6 +24,8 @@ import io.saasforge.iam.application.authentication.PasswordSetupService;
 import io.saasforge.iam.application.authentication.RefreshTokenIssuer;
 import io.saasforge.iam.application.authentication.RevocationIndex;
 import io.saasforge.iam.application.authentication.RevocationIndexRecovery;
+import io.saasforge.iam.application.authentication.RevocationFenceService;
+import io.saasforge.iam.application.authentication.RevocationFenceOperations;
 import io.saasforge.iam.application.authentication.PresentedAccessTokenVerifier;
 import io.saasforge.iam.application.authentication.RefreshSessionService;
 import io.saasforge.iam.application.authentication.RefreshRotationLease;
@@ -32,6 +34,7 @@ import io.saasforge.iam.application.authentication.RefreshReplayDetectedEventFac
 import io.saasforge.iam.application.authentication.SessionStartedEventFactory;
 import io.saasforge.iam.application.authentication.SessionRevokedEventFactory;
 import io.saasforge.iam.application.authentication.UserAccessTokenIssuer;
+import io.saasforge.iam.application.authentication.UserTokenIssuanceFence;
 import io.saasforge.iam.application.authentication.ServiceAccessTokenIssuer;
 import io.saasforge.iam.application.authentication.MembershipValidation;
 import io.saasforge.iam.application.authentication.TenantContextSwitchService;
@@ -52,6 +55,7 @@ import io.saasforge.iam.domain.outbox.OutboxEventRepository;
 import io.saasforge.iam.domain.client.OAuthClientRepository;
 import io.saasforge.iam.domain.session.AccessTokenIssuanceRepository;
 import io.saasforge.iam.domain.session.RefreshTokenFamilyRepository;
+import io.saasforge.iam.domain.session.RevocationFenceRepository;
 import io.saasforge.iam.domain.session.TenantContextSwitchRepository;
 import io.saasforge.iam.domain.signing.SigningKeyRepository;
 import io.saasforge.iam.infrastructure.grpc.GrpcAccessibleMemberships;
@@ -131,8 +135,10 @@ public class AuthenticationConfiguration {
             UuidV7Generator uuidV7Generator,
             Clock clock,
             @Value("${security.jwt.issuer}") String issuer,
-            @Value("${security.jwt.access-token-ttl:PT15M}") Duration ttl) {
-        return new UserAccessTokenIssuer(signingService, objectMapper, uuidV7Generator, clock, issuer, ttl);
+            @Value("${security.jwt.access-token-ttl:PT15M}") Duration ttl,
+            UserTokenIssuanceFence issuanceFence) {
+        return new UserAccessTokenIssuer(
+                signingService, objectMapper, uuidV7Generator, clock, issuer, ttl, issuanceFence);
     }
 
     @Bean
@@ -258,10 +264,11 @@ public class AuthenticationConfiguration {
             OutboxEventRepository outboxEvents,
             RefreshReplayDetectedEventFactory replayEventFactory,
             SessionRevokedEventFactory revokedEventFactory,
-            @Value("${security.refresh.recovery-window:PT10S}") Duration recoveryWindow) {
+            @Value("${security.refresh.recovery-window:PT10S}") Duration recoveryWindow,
+            UserTokenIssuanceFence issuanceFence) {
         return new RefreshRotationTransaction(
                 families, contextSwitches, issuances, revocationIndex, outboxEvents,
-                replayEventFactory, revokedEventFactory, recoveryWindow);
+                replayEventFactory, revokedEventFactory, recoveryWindow, issuanceFence);
     }
 
     @Bean
@@ -272,9 +279,18 @@ public class AuthenticationConfiguration {
     }
 
     @Bean
+    RevocationFenceOperations revocationFenceService(
+            RevocationFenceRepository fences, RevocationIndex index, Clock clock) {
+        return new RevocationFenceService(fences, index, clock);
+    }
+
+    @Bean
     RevocationIndexRecovery revocationIndexRecovery(
-            RevocationIndex index, AccessTokenIssuanceRepository issuances, Clock clock) {
-        return new RevocationIndexRecovery(index, issuances, clock);
+            RevocationIndex index,
+            AccessTokenIssuanceRepository issuances,
+            RevocationFenceRepository fences,
+            Clock clock) {
+        return new RevocationIndexRecovery(index, issuances, fences, clock);
     }
 
     @Bean
@@ -312,9 +328,10 @@ public class AuthenticationConfiguration {
             RefreshTokenFamilyRepository refreshTokenFamilies,
             AccessTokenIssuanceRepository accessTokenIssuances,
             OutboxEventRepository outboxEvents,
-            SessionStartedEventFactory eventFactory) {
+            SessionStartedEventFactory eventFactory,
+            UserTokenIssuanceFence issuanceFence) {
         return new LoginSessionService(
-                platformRoles, refreshTokenFamilies, accessTokenIssuances, outboxEvents, eventFactory);
+                platformRoles, refreshTokenFamilies, accessTokenIssuances, outboxEvents, eventFactory, issuanceFence);
     }
 
     @Bean

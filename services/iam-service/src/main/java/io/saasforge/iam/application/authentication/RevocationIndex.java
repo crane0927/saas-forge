@@ -2,6 +2,8 @@ package io.saasforge.iam.application.authentication;
 
 import io.saasforge.iam.domain.session.DurableRevocation;
 import io.saasforge.iam.domain.session.AccessTokenIssuance;
+import io.saasforge.iam.domain.session.RevocationFence;
+import io.saasforge.iam.domain.session.RevocationFenceTarget;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -15,7 +17,11 @@ public interface RevocationIndex {
 
     void markNotReady();
 
-    void rebuild(List<DurableRevocation> revocations, Instant at);
+    void rebuild(List<DurableRevocation> revocations, List<RevocationFence> fences, Instant at);
+
+    void establishFence(RevocationFence fence);
+
+    boolean isUserTokenFenced(RevocationFenceTarget target);
 
     boolean isReady();
 

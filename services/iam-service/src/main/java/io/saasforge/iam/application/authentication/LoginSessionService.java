@@ -23,18 +23,21 @@ public class LoginSessionService {
     private final AccessTokenIssuanceRepository accessTokenIssuances;
     private final OutboxEventRepository outboxEvents;
     private final SessionStartedEventFactory eventFactory;
+    private final UserTokenIssuanceFence issuanceFence;
 
     public LoginSessionService(
             PlatformRoleAssignmentRepository platformRoles,
             RefreshTokenFamilyRepository refreshTokenFamilies,
             AccessTokenIssuanceRepository accessTokenIssuances,
             OutboxEventRepository outboxEvents,
-            SessionStartedEventFactory eventFactory) {
+            SessionStartedEventFactory eventFactory,
+            UserTokenIssuanceFence issuanceFence) {
         this.platformRoles = platformRoles;
         this.refreshTokenFamilies = refreshTokenFamilies;
         this.accessTokenIssuances = accessTokenIssuances;
         this.outboxEvents = outboxEvents;
         this.eventFactory = eventFactory;
+        this.issuanceFence = issuanceFence;
     }
 
     /** Platform Role 复核以及 Family、Issuance、Outbox 写入必须共享这一事务边界。 */
@@ -58,6 +61,7 @@ public class LoginSessionService {
                 && !platformRoles.hasActiveAssignment(identityId, PLATFORM_ADMIN_ROLE, accessToken.issuedAt())) {
             throw new AccessContextUnavailableException();
         }
+        issuanceFence.assertIssuable(membershipId, tenantId);
         RefreshTokenFamily family = refreshTokenFamilies.create(
                 RefreshTokenFamily.start(identityId, purpose, membershipId, tenantId, accessToken.issuedAt()),
                 refreshToken.digest(), accessToken.issuedAt());
@@ -107,6 +111,7 @@ public class LoginSessionService {
             UUID tenantId,
             IssuedAccessToken accessToken,
             Instant selectedAt) {
+        issuanceFence.assertIssuable(membershipId, tenantId);
         var selection = refreshTokenFamilies.selectTenantContext(
                 presentedToken.digest(), nextToken.digest(), membershipId, tenantId, selectedAt);
         if (selection.status() != RefreshTokenConsumption.Status.CONSUMED) {
@@ -128,6 +133,7 @@ public class LoginSessionService {
             UUID tenantId,
             IssuedAccessToken accessToken,
             Instant refreshedAt) {
+        issuanceFence.assertIssuable(membershipId, tenantId);
         RefreshTokenConsumption rotation = refreshTokenFamilies.rotate(
                 presentedToken.digest(), nextToken.digest(), membershipId, tenantId, refreshedAt);
         if (rotation.status() != RefreshTokenConsumption.Status.CONSUMED) {

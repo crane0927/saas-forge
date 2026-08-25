@@ -49,7 +49,7 @@ class AuthenticationSecurityTest {
         Clock clock = Clock.fixed(NOW.plusMillis(999), ZoneOffset.UTC);
         UserAccessTokenIssuer issuer = new UserAccessTokenIssuer(
                 signing, new ObjectMapper(), new UuidV7Generator(clock, new SecureRandom()), clock,
-                "https://iam.example.test", Duration.ofMinutes(15));
+                "https://iam.example.test", Duration.ofMinutes(15), (membershipId, tenantId) -> { });
 
         UUID identityId = UUID.randomUUID();
         IssuedAccessToken token = issuer.issueUserToken(identityId, null, null);
@@ -81,7 +81,7 @@ class AuthenticationSecurityTest {
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
         UserAccessTokenIssuer issuer = new UserAccessTokenIssuer(
                 signing, new ObjectMapper(), new UuidV7Generator(clock, new SecureRandom()), clock,
-                "https://iam.example.test", Duration.ofMinutes(15));
+                "https://iam.example.test", Duration.ofMinutes(15), (membershipId, tenantId) -> { });
 
         UUID identityId = UUID.randomUUID();
         UUID membershipId = UUID.randomUUID();

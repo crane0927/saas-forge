@@ -26,6 +26,7 @@ public class RefreshRotationTransaction {
     private final RefreshReplayDetectedEventFactory replayEventFactory;
     private final SessionRevokedEventFactory revokedEventFactory;
     private final Duration recoveryWindow;
+    private final UserTokenIssuanceFence issuanceFence;
 
     public RefreshRotationTransaction(
             RefreshTokenFamilyRepository families,
@@ -35,7 +36,8 @@ public class RefreshRotationTransaction {
             OutboxEventRepository outboxEvents,
             RefreshReplayDetectedEventFactory replayEventFactory,
             SessionRevokedEventFactory revokedEventFactory,
-            Duration recoveryWindow) {
+            Duration recoveryWindow,
+            UserTokenIssuanceFence issuanceFence) {
         if (recoveryWindow == null || recoveryWindow.isZero() || recoveryWindow.isNegative()
                 || recoveryWindow.compareTo(Duration.ofSeconds(30)) > 0) {
             throw new IllegalArgumentException("Refresh 恢复窗口必须在 0 到 30 秒之间");
@@ -48,6 +50,7 @@ public class RefreshRotationTransaction {
         this.replayEventFactory = replayEventFactory;
         this.revokedEventFactory = revokedEventFactory;
         this.recoveryWindow = recoveryWindow;
+        this.issuanceFence = issuanceFence;
     }
 
     /** Token 轮换、恢复撤销、Issuance 和安全事件必须共享数据库事务。 */
@@ -62,6 +65,9 @@ public class RefreshRotationTransaction {
             IssuedAccessToken accessToken,
             Instant at,
             String traceId) {
+        if (accessToken != null) {
+            issuanceFence.assertIssuable(membershipId, tenantId);
+        }
         RefreshRotation rotation = families.rotateForRefresh(
                 presentedToken.digest(), nextToken.digest(), idempotencyKeyDigest,
                 expectedContextVersion,

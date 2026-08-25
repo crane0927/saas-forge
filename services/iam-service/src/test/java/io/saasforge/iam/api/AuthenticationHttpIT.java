@@ -36,6 +36,8 @@ import io.saasforge.iam.application.authentication.PresentedAccessTokenVerifier;
 import io.saasforge.iam.application.authentication.RevocationIndex;
 import io.saasforge.iam.application.authentication.RevocationIndexRecovery;
 import io.saasforge.iam.application.authentication.RevocationIndexUnavailableException;
+import io.saasforge.iam.application.authentication.RevocationFenceConflictException;
+import io.saasforge.iam.application.authentication.RevocationFenceOperations;
 import io.saasforge.iam.application.authentication.TenantContextSwitchService;
 import io.saasforge.iam.application.authentication.TenantContextSwitchTransaction;
 import io.saasforge.iam.application.signing.JwtSigningPort;
@@ -58,6 +60,7 @@ import io.saasforge.iam.domain.signing.SigningKeyRepository;
 import io.saasforge.iam.domain.session.AccessTokenIssuanceRepository;
 import io.saasforge.iam.domain.session.RefreshTokenFamily;
 import io.saasforge.iam.domain.session.RefreshTokenFamilyRepository;
+import io.saasforge.iam.domain.session.RevocationFenceTarget;
 import io.saasforge.iam.domain.session.TenantContextSwitchRepository;
 import io.saasforge.iam.domain.session.TenantContextSwitchWorkflow;
 import io.saasforge.iam.infrastructure.messaging.OutboxPublisher;
@@ -298,6 +301,9 @@ class AuthenticationHttpIT {
 
     @Autowired
     RevocationIndexRecovery revocationIndexRecovery;
+
+    @Autowired
+    RevocationFenceOperations revocationFenceService;
 
     @Autowired
     SigningKeyLifecycleService signingKeyLifecycleService;
@@ -2004,7 +2010,7 @@ class AuthenticationHttpIT {
     }
 
     @Test
-    @Order(35)
+    @Order(99)
     void redisUnavailabilityFailsClosedThroughPublicContract() throws Exception {
         TestUser user = createUser("logout-redis-down@example.test", "correct-password", true, Credential.REGULAR);
         MvcResult session = login("logout-redis-down@example.test", "correct-password", "PLATFORM").andReturn();
@@ -2069,6 +2075,137 @@ class AuthenticationHttpIT {
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value("AUTHENTICATION_PROTECTION_UNAVAILABLE"))
                 .andExpect(header().doesNotExist("Set-Cookie"));
+    }
+
+    @Test
+    @Order(36)
+    void revocationFencesAreDurableGenerationBoundAndBlockEveryTenantTokenIssuancePath() throws Exception {
+        revocationIndexRecovery.recover();
+
+        TestUser concurrentUser = createUser(
+                "fence-race-login@example.test", "correct-password", false, Credential.REGULAR);
+        UUID concurrentMembership = uuidV7(93_041);
+        UUID concurrentTenant = uuidV7(93_042);
+        accessibleMemberships(concurrentUser.identity().id(),
+                membership(concurrentMembership, concurrentTenant, "Concurrent"));
+        MvcResult concurrentSession = login(
+                "fence-race-login@example.test", "correct-password", "TENANT").andReturn();
+        ConcurrencyGate signing = new ConcurrencyGate();
+        SIGNING_GATE.set(signing);
+        var executor = Executors.newSingleThreadExecutor();
+        try {
+            var concurrentRefresh = executor.submit(() -> refresh(
+                    refreshToken(concurrentSession), uuidV7(93_044)).andReturn());
+            signing.awaitEntered();
+            revocationFenceService.establish(
+                    uuidV7(93_043), RevocationFenceTarget.membership(concurrentMembership, concurrentTenant));
+            signing.release();
+            MvcResult blocked = concurrentRefresh.get();
+            assertEquals(403, blocked.getResponse().getStatus());
+            assertEquals("ACCESS_CONTEXT_UNAVAILABLE",
+                    json(blocked.getResponse().getContentAsByteArray()).get("code").asString());
+            assertSessionUnchanged(concurrentUser.identity().id(), 1);
+        } finally {
+            signing.release();
+            SIGNING_GATE.set(null);
+            executor.shutdownNow();
+        }
+
+        TestUser loginUser = createUser("fenced-login@example.test", "correct-password", false, Credential.REGULAR);
+        UUID loginMembership = uuidV7(93_001);
+        UUID loginTenant = uuidV7(93_002);
+        UUID loginRequest = uuidV7(93_003);
+        accessibleMemberships(loginUser.identity().id(), membership(loginMembership, loginTenant, "Login"));
+        TestUser platformUser = createUser(
+                "fence-ready-platform@example.test", "correct-password", true, Credential.REGULAR);
+
+        redis.opsForValue().set("sf:test:iam-service:revocation-index-ready:v1:state", "0");
+        login("fence-ready-platform@example.test", "correct-password", "PLATFORM")
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("REVOCATION_INDEX_UNAVAILABLE"));
+        assertEquals(0, sessionFactCount(platformUser.identity().id()));
+        login("fenced-login@example.test", "correct-password", "TENANT")
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("REVOCATION_INDEX_UNAVAILABLE"));
+        assertEquals(0, sessionFactCount(loginUser.identity().id()));
+        revocationIndexRecovery.recover();
+
+        revocationFenceService.establish(loginRequest, RevocationFenceTarget.membership(loginMembership, loginTenant));
+
+        login("fenced-login@example.test", "correct-password", "TENANT")
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_CONTEXT_UNAVAILABLE"))
+                .andExpect(header().doesNotExist("Set-Cookie"));
+        assertEquals(0, sessionFactCount(loginUser.identity().id()));
+        String loginFenceKey = "sf:test:iam-service:user-session-revocation-fence:v1:membership:"
+                + loginMembership;
+        assertEquals(loginRequest.toString(), redis.opsForValue().get(loginFenceKey));
+        assertEquals(-1L, redis.getExpire(loginFenceKey));
+        assertEquals("ACTIVE", jdbc.queryForObject(
+                "SELECT fence_status FROM iam_revocation_fences WHERE revocation_request_id = ?",
+                String.class, loginRequest));
+        redis.delete(loginFenceKey);
+        redis.opsForValue().set("sf:test:iam-service:revocation-index-ready:v1:state", "0");
+        revocationIndexRecovery.recover();
+        assertEquals(loginRequest.toString(), redis.opsForValue().get(loginFenceKey));
+        assertEquals("1", redis.opsForValue().get("sf:test:iam-service:revocation-index-ready:v1:state"));
+        assertThrows(RevocationFenceConflictException.class, () -> revocationFenceService.establish(
+                loginRequest, RevocationFenceTarget.tenant(uuidV7(93_004))));
+        assertThrows(RevocationFenceConflictException.class, () -> revocationFenceService.establish(
+                uuidV7(93_005), RevocationFenceTarget.membership(loginMembership, loginTenant)));
+        assertEquals(loginRequest.toString(), redis.opsForValue().get(loginFenceKey));
+
+        TestUser selectionUser = createUser(
+                "fenced-selection@example.test", "correct-password", false, Credential.REGULAR);
+        UUID selectedMembership = uuidV7(93_011);
+        UUID selectedTenant = uuidV7(93_012);
+        UUID otherMembership = uuidV7(93_013);
+        UUID otherTenant = uuidV7(93_014);
+        accessibleMemberships(selectionUser.identity().id(),
+                membership(selectedMembership, selectedTenant, "Selected"),
+                membership(otherMembership, otherTenant, "Other"));
+        MvcResult selection = login(
+                "fenced-selection@example.test", "correct-password", "TENANT").andReturn();
+        revocationFenceService.establish(
+                uuidV7(93_015), RevocationFenceTarget.membership(selectedMembership, selectedTenant));
+        selectContext(refreshToken(selection), selectedMembership)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_CONTEXT_UNAVAILABLE"));
+        assertEquals(0, accessTokenIssuanceCount(selectionUser.identity().id()));
+
+        TestUser refreshUser = createUser(
+                "fenced-refresh@example.test", "correct-password", false, Credential.REGULAR);
+        UUID refreshMembership = uuidV7(93_021);
+        UUID refreshTenant = uuidV7(93_022);
+        accessibleMemberships(refreshUser.identity().id(), membership(refreshMembership, refreshTenant, "Refresh"));
+        MvcResult refreshSession = login(
+                "fenced-refresh@example.test", "correct-password", "TENANT").andReturn();
+        revocationFenceService.establish(uuidV7(93_023), RevocationFenceTarget.tenant(refreshTenant));
+        refresh(refreshToken(refreshSession), uuidV7(93_024))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_CONTEXT_UNAVAILABLE"));
+        assertSessionUnchanged(refreshUser.identity().id(), 1);
+
+        TestUser switchUser = createUser(
+                "fenced-switch@example.test", "correct-password", false, Credential.REGULAR);
+        UUID currentMembership = uuidV7(93_031);
+        UUID currentTenant = uuidV7(93_032);
+        UUID targetMembership = uuidV7(93_033);
+        UUID targetTenant = uuidV7(93_034);
+        accessibleMemberships(switchUser.identity().id(), membership(currentMembership, currentTenant, "Current"));
+        MvcResult switchSession = login(
+                "fenced-switch@example.test", "correct-password", "TENANT").andReturn();
+        accessibleMemberships(switchUser.identity().id(),
+                membership(currentMembership, currentTenant, "Current"),
+                membership(targetMembership, targetTenant, "Target"));
+        mockMvc.perform(tenantSwitch(refreshToken(switchSession), uuidV7(93_035), targetMembership))
+                .andExpect(status().isNoContent());
+        revocationFenceService.establish(
+                uuidV7(93_036), RevocationFenceTarget.membership(targetMembership, targetTenant));
+        refresh(refreshToken(switchSession), uuidV7(93_037))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_CONTEXT_UNAVAILABLE"));
+        assertEquals(1, accessTokenIssuanceCount(switchUser.identity().id()));
     }
 
     @Test

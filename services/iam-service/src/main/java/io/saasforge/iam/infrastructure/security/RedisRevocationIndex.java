@@ -2,8 +2,11 @@ package io.saasforge.iam.infrastructure.security;
 
 import io.saasforge.iam.application.authentication.RevocationIndex;
 import io.saasforge.iam.application.authentication.RevocationIndexUnavailableException;
+import io.saasforge.iam.application.authentication.RevocationFenceConflictException;
 import io.saasforge.iam.domain.session.DurableRevocation;
 import io.saasforge.iam.domain.session.AccessTokenIssuance;
+import io.saasforge.iam.domain.session.RevocationFence;
+import io.saasforge.iam.domain.session.RevocationFenceTarget;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -43,6 +46,19 @@ public final class RedisRevocationIndex implements RevocationIndex {
     private static final DefaultRedisScript<Long> CHECK_TOKEN = new DefaultRedisScript<>("""
             if redis.call('GET', KEYS[1]) ~= '1' then return -1 end
             if redis.call('EXISTS', KEYS[2]) == 1 or redis.call('EXISTS', KEYS[3]) == 1 then return 1 end
+            return 0
+            """, Long.class);
+    private static final DefaultRedisScript<Long> ESTABLISH_FENCE = new DefaultRedisScript<>("""
+            if redis.call('GET', KEYS[1]) ~= '1' then return -1 end
+            local current = redis.call('GET', KEYS[2])
+            if current and current ~= ARGV[1] then return 0 end
+            redis.call('SET', KEYS[2], ARGV[1])
+            return 1
+            """, Long.class);
+    private static final DefaultRedisScript<Long> CHECK_FENCE = new DefaultRedisScript<>("""
+            if redis.call('GET', KEYS[1]) ~= '1' then return -1 end
+            if redis.call('EXISTS', KEYS[2]) == 1 then return 1 end
+            if redis.call('EXISTS', KEYS[3]) == 1 then return 1 end
             return 0
             """, Long.class);
 
@@ -101,7 +117,7 @@ public final class RedisRevocationIndex implements RevocationIndex {
     }
 
     @Override
-    public void rebuild(List<DurableRevocation> revocations, Instant at) {
+    public void rebuild(List<DurableRevocation> revocations, List<RevocationFence> fences, Instant at) {
         try {
             for (DurableRevocation revocation : revocations) {
                 if (revocation.jtiRevoked()) {
@@ -115,8 +131,45 @@ public final class RedisRevocationIndex implements RevocationIndex {
                             DurableRevocation::expiresAt,
                             (left, right) -> Comparator.<Instant>naturalOrder().compare(left, right) >= 0 ? left : right));
             kidExpiries.forEach((kid, expiresAt) -> write(kidKey(kid), expiresAt.plus(CLOCK_SKEW), at));
+            for (RevocationFence fence : fences) {
+                redis.opsForValue().set(fenceKey(fence.target()), fence.revocationRequestId().toString());
+            }
             redis.opsForValue().set(readyKey, "1");
             recoveryRequired = false;
+        } catch (DataAccessException exception) {
+            throw unavailable(exception);
+        }
+    }
+
+    @Override
+    public void establishFence(RevocationFence fence) {
+        try {
+            Long result = redis.execute(
+                    ESTABLISH_FENCE,
+                    List.of(readyKey, fenceKey(fence.target())),
+                    fence.revocationRequestId().toString());
+            if (result == null || result < 0) {
+                throw new RevocationIndexUnavailableException();
+            }
+            if (result == 0) {
+                throw new RevocationFenceConflictException();
+            }
+        } catch (DataAccessException exception) {
+            throw unavailable(exception);
+        }
+    }
+
+    @Override
+    public boolean isUserTokenFenced(RevocationFenceTarget target) {
+        try {
+            Long result = redis.execute(CHECK_FENCE, List.of(
+                    readyKey,
+                    fenceKey(RevocationFenceTarget.tenant(target.tenantId())),
+                    fenceKey(target)));
+            if (result == null || result < 0) {
+                throw new RevocationIndexUnavailableException();
+            }
+            return result == 1;
         } catch (DataAccessException exception) {
             throw unavailable(exception);
         }
@@ -180,6 +233,11 @@ public final class RedisRevocationIndex implements RevocationIndex {
 
     private String kidKey(String kid) {
         return prefix + "signing-kid-revocation:v1:" + digest(kid);
+    }
+
+    private String fenceKey(RevocationFenceTarget target) {
+        return prefix + "user-session-revocation-fence:v1:"
+                + target.type().keySegment() + ":" + target.targetId();
     }
 
     private static String digest(String value) {

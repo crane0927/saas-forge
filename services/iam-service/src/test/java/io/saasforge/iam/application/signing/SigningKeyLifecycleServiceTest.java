@@ -8,6 +8,8 @@ import io.saasforge.iam.application.authentication.RevocationIndexUnavailableExc
 import io.saasforge.iam.domain.session.AccessTokenIssuance;
 import io.saasforge.iam.domain.session.AccessTokenIssuanceRepository;
 import io.saasforge.iam.domain.session.DurableRevocation;
+import io.saasforge.iam.domain.session.RevocationFence;
+import io.saasforge.iam.domain.session.RevocationFenceTarget;
 import io.saasforge.iam.domain.signing.SigningKey;
 import io.saasforge.iam.domain.signing.SigningKeyRepository;
 import io.saasforge.iam.domain.signing.SigningKeyStatus;
@@ -141,7 +143,12 @@ class SigningKeyLifecycleServiceTest {
             this.issuances = List.copyOf(issuances);
         }
         @Override public void markNotReady() { throw new UnsupportedOperationException(); }
-        @Override public void rebuild(List<DurableRevocation> revocations, Instant at) { throw new UnsupportedOperationException(); }
+        @Override public void rebuild(
+                List<DurableRevocation> revocations, List<RevocationFence> fences, Instant at) {
+            throw new UnsupportedOperationException();
+        }
+        @Override public void establishFence(RevocationFence fence) { throw new UnsupportedOperationException(); }
+        @Override public boolean isUserTokenFenced(RevocationFenceTarget target) { return false; }
         @Override public boolean isReady() { return true; }
         @Override public boolean isJtiRevoked(UUID jti) { return false; }
         @Override public boolean isKidRevoked(String kid) { return false; }

@@ -24,6 +24,7 @@ public final class UserAccessTokenIssuer {
     private final Clock clock;
     private final String issuer;
     private final Duration ttl;
+    private final UserTokenIssuanceFence issuanceFence;
 
     public UserAccessTokenIssuer(
             JwtSigningService signingService,
@@ -31,7 +32,8 @@ public final class UserAccessTokenIssuer {
             UuidV7Generator uuidV7Generator,
             Clock clock,
             String issuer,
-            Duration ttl) {
+            Duration ttl,
+            UserTokenIssuanceFence issuanceFence) {
         if (issuer == null || issuer.isBlank()) {
             throw new IllegalArgumentException("JWT issuer 必须显式配置");
         }
@@ -44,12 +46,14 @@ public final class UserAccessTokenIssuer {
         this.clock = clock;
         this.issuer = issuer;
         this.ttl = ttl;
+        this.issuanceFence = issuanceFence;
     }
 
     public IssuedAccessToken issueUserToken(UUID identityId, UUID membershipId, UUID tenantId) {
         if ((membershipId == null) != (tenantId == null)) {
             throw new IllegalArgumentException("Membership 与 Tenant 声明必须成对出现");
         }
+        issuanceFence.assertIssuable(membershipId, tenantId);
         Instant issuedAt = clock.instant().truncatedTo(ChronoUnit.SECONDS);
         Instant expiresAt = issuedAt.plus(ttl);
         UUID jti = uuidV7Generator.next();
