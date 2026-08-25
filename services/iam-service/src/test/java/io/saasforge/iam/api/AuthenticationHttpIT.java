@@ -1301,7 +1301,9 @@ class AuthenticationHttpIT {
         UUID clientId = uuidV7(53_100);
         String secret = serviceClientSecret((byte) 11);
         oauthClients.createWithId(
-                OAuthClient.register("iam-service", Set.of(OAuthScope.TENANT_ACCESS_MEMBERSHIP_READ), now)
+                OAuthClient.register("iam-service", Set.of(
+                                OAuthScope.TENANT_ACCESS_MEMBERSHIP_READ,
+                                OAuthScope.IAM_SESSIONS_WRITE), now)
                         .identifiedBy(clientId),
                 ClientSecretDigest.fromPlaintext(secret), now);
 
@@ -1322,6 +1324,14 @@ class AuthenticationHttpIT {
         assertEquals(clientId.toString(), claims.get("client_id").asString());
         assertEquals(Set.of("iss", "aud", "iat", "exp", "jti", "sub", "client_id", "scope"),
                 claims.propertyNames());
+
+        mockMvc.perform(post("/oauth2/token")
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .header(HttpHeaders.AUTHORIZATION, basic(clientId, secret))
+                        .param("grant_type", "client_credentials")
+                        .param("scope", "iam:sessions:write"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.scope").value("iam:sessions:write"));
 
         mockMvc.perform(post("/oauth2/token")
                         .contentType(MediaType.APPLICATION_FORM_URLENCODED)

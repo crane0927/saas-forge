@@ -10,6 +10,7 @@ public enum ReservedServiceClient {
             OAuthScope.IAM_IDENTITY_WRITE,
             OAuthScope.IAM_PASSWORD_SETUP_WRITE,
             OAuthScope.IAM_PLATFORM_ROLE_READ,
+            OAuthScope.IAM_SESSIONS_WRITE,
             OAuthScope.ENTITLEMENT_QUOTA_WRITE)),
     ENTITLEMENT("entitlement-service", Set.of(
             OAuthScope.TENANT_ACCESS_TENANT_READ,

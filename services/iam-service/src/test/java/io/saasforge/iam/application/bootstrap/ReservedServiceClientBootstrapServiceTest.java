@@ -2,6 +2,7 @@ package io.saasforge.iam.application.bootstrap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -13,6 +14,7 @@ import io.saasforge.iam.domain.client.OAuthClient;
 import io.saasforge.iam.domain.client.OAuthClientBootstrapState;
 import io.saasforge.iam.domain.client.OAuthClientRepository;
 import io.saasforge.iam.domain.client.OAuthClientStatus;
+import io.saasforge.iam.domain.client.OAuthScope;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -43,6 +45,7 @@ class ReservedServiceClientBootstrapServiceTest {
         assertEquals(3, result.clients().size());
         assertEquals(ReservedServiceClientBootstrapResult.Outcome.INITIALIZED,
                 result.clients().get(ReservedServiceClient.IAM).outcome());
+        assertTrue(ReservedServiceClient.TENANT_ACCESS.allowedScopes().contains(OAuthScope.IAM_SESSIONS_WRITE));
     }
 
     @Test

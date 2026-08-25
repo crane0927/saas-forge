@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package io.saasforge.contracts.iam.session.v1;
+
+option java_multiple_files = true;
+option java_package = "io.saasforge.contracts.iam.session.v1";
+
+// IAM owns durable User session revocation and its fail-closed Revocation Fence.
+// Callers must use an authorized Service Access Token with the exact
+// iam:sessions:write scope. Authentication and scope failures use gRPC
+// UNAUTHENTICATED and PERMISSION_DENIED respectively. Malformed UUIDv7 or target
+// values use INVALID_ARGUMENT; overlapping Fence generations use
+// FAILED_PRECONDITION; transient PostgreSQL, Redis, or recovery-state uncertainty
+// uses UNAVAILABLE. PENDING is a business outcome rather than DEADLINE_EXCEEDED.
+service UserSessionRevocationService {
+  // Establishes the target Fence before advancing at most one bounded
+  // revocation batch. Normal unfinished work is returned as PENDING.
+  rpc RevokeUserSessions(RevokeUserSessionsRequest) returns (RevokeUserSessionsResponse);
+
+  // Releases only the Fence generation established by revocation_request_id.
+  // A generation mismatch uses FAILED_PRECONDITION and must not delete a newer Fence.
+  rpc ReleaseUserSessionFence(ReleaseUserSessionFenceRequest) returns (ReleaseUserSessionFenceResponse);
+}
+
+message RevokeUserSessionsRequest {
+  // Canonical lowercase, hyphenated UUIDv7 kept stable across retries.
+  string request_id = 1;
+
+  oneof target {
+    MembershipTarget membership_target = 2;
+    TenantTarget tenant_target = 3;
+  }
+}
+
+message ReleaseUserSessionFenceRequest {
+  // Canonical lowercase, hyphenated UUIDv7 kept stable across release retries.
+  string release_request_id = 1;
+
+  // The UUIDv7 request that established the Fence generation being released.
+  string revocation_request_id = 2;
+
+  oneof target {
+    MembershipTarget membership_target = 3;
+    TenantTarget tenant_target = 4;
+  }
+}
+
+message MembershipTarget {
+  // Both IDs are required and must be canonical lowercase, hyphenated UUIDv7 values.
+  string membership_id = 1;
+  string tenant_id = 2;
+}
+
+message TenantTarget {
+  // Canonical lowercase, hyphenated UUIDv7 Tenant ID.
+  string tenant_id = 1;
+}
+
+message RevokeUserSessionsResponse {
+  oneof outcome {
+    SessionRevocationPending pending = 1;
+    SessionRevocationCompleted completed = 2;
+  }
+}
+
+message SessionRevocationPending {
+  // Minimum whole seconds before polling with the same request_id.
+  uint32 retry_after_seconds = 1;
+}
+
+message SessionRevocationCompleted {
+  // Counts only Families first revoked by this request_id.
+  uint64 revoked_family_count = 1;
+
+  // Counts only unexpired jti revocation facts first persisted by this request_id.
+  uint64 revoked_jti_count = 2;
+}
+
+message ReleaseUserSessionFenceResponse {}

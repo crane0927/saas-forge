@@ -10,6 +10,7 @@ public enum OAuthScope {
     IAM_IDENTITY_WRITE("iam:identity:write"),
     IAM_PASSWORD_SETUP_WRITE("iam:password-setup:write"),
     IAM_PLATFORM_ROLE_READ("iam:platform-role:read"),
+    IAM_SESSIONS_WRITE("iam:sessions:write"),
     ENTITLEMENT_QUOTA_WRITE("entitlement:quota:write");
 
     private final String value;

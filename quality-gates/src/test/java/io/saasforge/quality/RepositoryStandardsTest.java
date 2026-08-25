@@ -88,6 +88,11 @@ class RepositoryStandardsTest {
     private static final Pattern OPENAPI_METHOD = Pattern.compile("^    (get|post|put|patch|delete|head|options|trace):$");
     private static final Pattern OPENAPI_TAGS = Pattern.compile("^      tags: \\[([^]]+)]$");
     private static final Pattern OPENAPI_SERVICE_OWNER = Pattern.compile("^      x-saasforge-service: ([a-z-]+)$");
+    private static final Pattern OPENAPI_OPERATION_ID = Pattern.compile("^      operationId: ([A-Za-z][A-Za-z0-9]*)$");
+    private static final Pattern OPENAPI_SECURITY = Pattern.compile("^      security:(.*)$");
+    private static final Pattern GATEWAY_OPENAPI_ROUTE = Pattern.compile(
+            "(?s)\\b(none|optional|required)\\(\\s*\"([^\"]+)\"\\s*,\\s*HttpMethod\\.([A-Z]+)\\s*,"
+                    + "\\s*\"([^\"]+)\"\\s*,\\s*Target\\.([A-Z_]+)\\s*\\)");
     private static final Pattern SPRING_HTTP_MAPPING = Pattern.compile(
             "@(RequestMapping|GetMapping|PostMapping|PutMapping|PatchMapping|DeleteMapping)\\b");
     private static final Pattern REST_CONTROLLER = Pattern.compile("@RestController\\b");
@@ -254,6 +259,39 @@ class RepositoryStandardsTest {
                 assertNotNull(generatorName, "缺少 tag " + tag + " 的 OpenAPI Generator 名称");
                 assertTrue(pomSource.contains(generatorName), pom + " 必须为 tag " + tag + " 生成服务端接口");
             }
+        }
+    }
+
+    @Test
+    void gatewayRoutesMatchOpenApiOwnershipAndUserTokenSecurity() throws Exception {
+        List<OpenApiOperation> operations = parseOpenApiOperations(
+                REPOSITORY.resolve("contracts/openapi/v1.yaml"));
+        String gatewaySource = Files.readString(
+                REPOSITORY.resolve("gateway/src/main/java/io/saasforge/gateway/config/GatewayOpenApiRoutes.java"),
+                StandardCharsets.UTF_8);
+        Matcher matcher = GATEWAY_OPENAPI_ROUTE.matcher(gatewaySource);
+        Map<String, GatewayRoute> routes = new HashMap<>();
+        while (matcher.find()) {
+            String operationId = matcher.group(2);
+            GatewayRoute route = new GatewayRoute(
+                    matcher.group(3), matcher.group(4), matcher.group(5), matcher.group(1).toUpperCase());
+            assertTrue(routes.put(operationId, route) == null,
+                    "Gateway 重复登记 operationId: " + operationId);
+        }
+
+        assertEquals(operations.size(), routes.size(), "Gateway 路由数量必须与 OpenAPI operation 数量一致");
+        for (OpenApiOperation operation : operations) {
+            assertNotNull(operation.operationId(), operation.displayName() + " 缺少 operationId");
+            GatewayRoute route = routes.get(operation.operationId());
+            assertNotNull(route, operation.displayName() + " 未登记到 Gateway 路由白名单");
+            assertEquals(operation.method().toUpperCase(), route.method(),
+                    operation.operationId() + " 的 Gateway HTTP method 与 OpenAPI 不一致");
+            assertEquals(operation.path(), route.path(),
+                    operation.operationId() + " 的 Gateway path 与 OpenAPI 不一致");
+            assertEquals(gatewayTarget(operation.owner()), route.target(),
+                    operation.operationId() + " 的 Gateway owner 与 OpenAPI 不一致");
+            assertEquals(operation.userTokenRequirement(), route.userTokenRequirement(),
+                    operation.operationId() + " 的 User Token security 分类与 OpenAPI 不一致");
         }
     }
 
@@ -534,18 +572,30 @@ class RepositoryStandardsTest {
         String method = null;
         Set<String> tags = Set.of();
         String owner = null;
+        String operationId = null;
         int ownerDeclarations = 0;
+        boolean explicitSecurity = false;
+        boolean userBearer = false;
+        boolean anonymousAlternative = false;
+        boolean readingSecurity = false;
         List<OpenApiOperation> operations = new ArrayList<>();
 
         for (String line : Files.readAllLines(spec, StandardCharsets.UTF_8)) {
             Matcher pathMatcher = OPENAPI_PATH.matcher(line);
             if (pathMatcher.matches()) {
                 if (method != null) {
-                    operations.add(new OpenApiOperation(path, method, tags, owner, ownerDeclarations));
+                    operations.add(new OpenApiOperation(
+                            path, method, tags, owner, operationId, ownerDeclarations,
+                            userTokenRequirement(explicitSecurity, userBearer, anonymousAlternative)));
                     method = null;
                     tags = Set.of();
                     owner = null;
+                    operationId = null;
                     ownerDeclarations = 0;
+                    explicitSecurity = false;
+                    userBearer = false;
+                    anonymousAlternative = false;
+                    readingSecurity = false;
                 }
                 path = pathMatcher.group(1);
                 continue;
@@ -554,16 +604,36 @@ class RepositoryStandardsTest {
             Matcher methodMatcher = OPENAPI_METHOD.matcher(line);
             if (methodMatcher.matches()) {
                 if (method != null) {
-                    operations.add(new OpenApiOperation(path, method, tags, owner, ownerDeclarations));
+                    operations.add(new OpenApiOperation(
+                            path, method, tags, owner, operationId, ownerDeclarations,
+                            userTokenRequirement(explicitSecurity, userBearer, anonymousAlternative)));
                 }
                 method = methodMatcher.group(1);
                 tags = Set.of();
                 owner = null;
+                operationId = null;
                 ownerDeclarations = 0;
+                explicitSecurity = false;
+                userBearer = false;
+                anonymousAlternative = false;
+                readingSecurity = false;
                 continue;
             }
 
             if (method == null) {
+                continue;
+            }
+            if (readingSecurity) {
+                if (line.startsWith("        - ")) {
+                    userBearer |= line.contains("UserBearerAuth");
+                    anonymousAlternative |= line.trim().equals("- {}");
+                    continue;
+                }
+                readingSecurity = false;
+            }
+            Matcher operationIdMatcher = OPENAPI_OPERATION_ID.matcher(line);
+            if (operationIdMatcher.matches()) {
+                operationId = operationIdMatcher.group(1);
                 continue;
             }
             Matcher tagsMatcher = OPENAPI_TAGS.matcher(line);
@@ -579,12 +649,40 @@ class RepositoryStandardsTest {
             if (ownerMatcher.matches()) {
                 owner = ownerMatcher.group(1);
                 ownerDeclarations++;
+                continue;
+            }
+            Matcher securityMatcher = OPENAPI_SECURITY.matcher(line);
+            if (securityMatcher.matches()) {
+                explicitSecurity = true;
+                String inlineSecurity = securityMatcher.group(1);
+                userBearer |= inlineSecurity.contains("UserBearerAuth");
+                anonymousAlternative |= inlineSecurity.contains("{}");
+                readingSecurity = inlineSecurity.isBlank();
             }
         }
         if (method != null) {
-            operations.add(new OpenApiOperation(path, method, tags, owner, ownerDeclarations));
+            operations.add(new OpenApiOperation(
+                    path, method, tags, owner, operationId, ownerDeclarations,
+                    userTokenRequirement(explicitSecurity, userBearer, anonymousAlternative)));
         }
         return operations;
+    }
+
+    private static String userTokenRequirement(
+            boolean explicitSecurity, boolean userBearer, boolean anonymousAlternative) {
+        if (!explicitSecurity || !userBearer) {
+            return "NONE";
+        }
+        return anonymousAlternative ? "OPTIONAL" : "REQUIRED";
+    }
+
+    private static String gatewayTarget(String serviceOwner) {
+        return switch (serviceOwner) {
+            case "iam-service" -> "IAM";
+            case "tenant-access-service" -> "TENANT_ACCESS";
+            case "entitlement-service" -> "ENTITLEMENT";
+            default -> throw new IllegalArgumentException("没有 Gateway Target 的服务 owner: " + serviceOwner);
+        };
     }
 
     private static List<Path> filesUnder(Path root, String suffix) throws IOException {
@@ -668,10 +766,15 @@ class RepositoryStandardsTest {
             String method,
             Set<String> tags,
             String owner,
-            int ownerDeclarations) {
+            String operationId,
+            int ownerDeclarations,
+            String userTokenRequirement) {
 
         private String displayName() {
             return method.toUpperCase() + " " + path;
         }
+    }
+
+    private record GatewayRoute(String method, String path, String target, String userTokenRequirement) {
     }
 }

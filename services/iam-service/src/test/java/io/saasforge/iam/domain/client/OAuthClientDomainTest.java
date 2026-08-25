@@ -19,6 +19,7 @@ class OAuthClientDomainTest {
         OAuthClient client = OAuthClient.register("runtime worker", Set.of(OAuthScope.RUNTIME_READ), Instant.now());
 
         assertTrue(client.allowedScopes().contains(OAuthScope.RUNTIME_READ));
+        assertSame(OAuthScope.IAM_SESSIONS_WRITE, OAuthScope.fromValue("iam:sessions:write"));
         assertThrows(IllegalArgumentException.class, () -> OAuthScope.fromValue("tenant:write"));
     }
 

@@ -41,6 +41,25 @@
       "containsRawSensitiveData": false
     },
     {
+      "id": "iam.user-session-revocation-fence.v1",
+      "schemaVersion": 1,
+      "keyPattern": "sf:<environment>:iam-service:user-session-revocation-fence:v1:<target_type>:<target_uuid>",
+      "purpose": "在按 Membership 或 Tenant 批量撤销期间拒绝目标范围的 User Access Token 签发和使用",
+      "writer": "iam-service",
+      "readers": ["iam-service", "gateway", "saas-forge-spring-boot-starter"],
+      "valueFormat": "string",
+      "ttl": {
+        "mode": "authority-expiry",
+        "expression": "ACTIVE Fence 无 TTL，仅在持久 Fence 解除且 revocationRequestId 匹配时条件删除"
+      },
+      "maxCardinality": "当前处于 ACTIVE 状态的 Membership 和 Tenant Fence 数量",
+      "identifierPolicy": "target_type 只允许 membership 或 tenant；target_uuid 与值都使用规范 UUIDv7，不包含 Token、邮箱或 Secret",
+      "invalidation": "IAM 仅在校验原 revocationRequestId 后使用 Lua 条件删除；Redis 恢复时从 PostgreSQL 重建 ACTIVE Fence",
+      "failurePolicy": "fail-closed",
+      "migrationStrategy": "不兼容变更创建新 schemaVersion，所有签发与验证方完成并行读取后才解除旧版 Fence",
+      "containsRawSensitiveData": false
+    },
+    {
       "id": "iam.signing-kid-revocation.v1",
       "schemaVersion": 1,
       "keyPattern": "sf:<environment>:iam-service:signing-kid-revocation:v1:<kid_sha256>",
