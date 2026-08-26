@@ -74,15 +74,33 @@ public class UserSessionRevocationService {
     /** Platform Admin 恢复入口复用原 requestId，不建立新 Fence 或跳过游标。 */
     public void recover(UUID requestId) {
         requireUuidV7(requestId, "revocationRequestId");
-        UserSessionRevocationWorkflow workflow = workflows.find(requestId).orElseThrow();
+        UserSessionRevocationWorkflow workflow = workflows.find(requestId).orElseThrow(
+                RevocationFenceConflictException::new);
+        if (workflow.status() == UserSessionRevocationStatus.PENDING) {
+            return;
+        }
         if (workflow.status() != UserSessionRevocationStatus.RECOVERY_REQUIRED) {
             throw new IllegalStateException("撤销请求不需要显式恢复");
         }
-        RevocationFence fence = fences.findByRequestId(requestId).orElseThrow();
+        RevocationFence fence = fences.findByRequestId(requestId).orElseThrow(
+                RevocationFenceConflictException::new);
         if (fence.status() != RevocationFenceStatus.ACTIVE) {
             throw new RevocationFenceConflictException();
         }
         workflows.recover(requestId, clock.instant());
+    }
+
+    public void assertTarget(UUID requestId, RevocationFenceTarget target) {
+        requireUuidV7(requestId, "revocationRequestId");
+        if (target == null) throw new IllegalArgumentException("撤销目标不能为空");
+        UserSessionRevocationWorkflow workflow = workflows.find(requestId).orElseThrow(
+                RevocationFenceConflictException::new);
+        assertTarget(workflow.target(), target);
+    }
+
+    public void recover(UUID requestId, RevocationFenceTarget target) {
+        assertTarget(requestId, target);
+        recover(requestId);
     }
 
     /** Redis compare-and-delete 与 PostgreSQL generation 校验处于同一调用事务。 */

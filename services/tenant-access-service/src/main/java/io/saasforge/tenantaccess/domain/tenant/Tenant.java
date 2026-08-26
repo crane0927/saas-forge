@@ -25,4 +25,18 @@ public record Tenant(
         }
         return new Tenant(id, displayName, TenantStatus.PENDING, expiresAt, now, now);
     }
+
+    public Tenant suspend(Instant now) {
+        if (status != TenantStatus.ACTIVE) {
+            throw new TenantStateTransitionNotAllowedException();
+        }
+        return new Tenant(id, displayName, TenantStatus.SUSPENDED, expiresAt, createdAt, now);
+    }
+
+    public Tenant resume(Instant now) {
+        if (status != TenantStatus.SUSPENDED) {
+            throw new TenantStateTransitionNotAllowedException();
+        }
+        return new Tenant(id, displayName, TenantStatus.ACTIVE, expiresAt, createdAt, now);
+    }
 }

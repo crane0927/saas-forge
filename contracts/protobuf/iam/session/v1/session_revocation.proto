@@ -17,6 +17,10 @@ service UserSessionRevocationService {
   // revocation batch. Normal unfinished work is returned as PENDING.
   rpc RevokeUserSessions(RevokeUserSessionsRequest) returns (RevokeUserSessionsResponse);
 
+  // Re-enables the original exhausted workflow without replacing its Fence
+  // generation. This is only called after Platform Admin explicit recovery.
+  rpc RecoverUserSessionRevocation(RecoverUserSessionRevocationRequest) returns (RecoverUserSessionRevocationResponse);
+
   // Releases only the Fence generation established by revocation_request_id.
   // A generation mismatch uses FAILED_PRECONDITION and must not delete a newer Fence.
   rpc ReleaseUserSessionFence(ReleaseUserSessionFenceRequest) returns (ReleaseUserSessionFenceResponse);
@@ -42,6 +46,16 @@ message ReleaseUserSessionFenceRequest {
   oneof target {
     MembershipTarget membership_target = 3;
     TenantTarget tenant_target = 4;
+  }
+}
+
+message RecoverUserSessionRevocationRequest {
+  // The original UUIDv7 request whose ACTIVE Fence remains fail closed.
+  string revocation_request_id = 1;
+
+  oneof target {
+    MembershipTarget membership_target = 2;
+    TenantTarget tenant_target = 3;
   }
 }
 
@@ -77,3 +91,5 @@ message SessionRevocationCompleted {
 }
 
 message ReleaseUserSessionFenceResponse {}
+
+message RecoverUserSessionRevocationResponse {}

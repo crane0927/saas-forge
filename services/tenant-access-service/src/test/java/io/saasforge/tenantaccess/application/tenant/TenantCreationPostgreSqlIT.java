@@ -29,6 +29,7 @@ import io.saasforge.tenantaccess.infrastructure.persistence.MyBatisAdministrator
 import io.saasforge.tenantaccess.infrastructure.persistence.MyBatisTenantAdministratorInitializationRepository;
 import io.saasforge.tenantaccess.infrastructure.persistence.MyBatisTenantCreationIdempotency;
 import io.saasforge.tenantaccess.infrastructure.persistence.MyBatisTenantRepository;
+import io.saasforge.tenantaccess.infrastructure.persistence.MyBatisTenantLifecycleRepository;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
@@ -53,6 +54,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import javax.sql.DataSource;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -136,6 +139,15 @@ class TenantCreationPostgreSqlIT {
     @Autowired
     private TenantAccessOutboxPublisher outboxPublisher;
 
+    @Autowired
+    private TenantLifecycleService tenantLifecycle;
+
+    @Autowired
+    private TenantLifecycleRepository tenantLifecycleWorkflows;
+
+    @Autowired
+    private ScriptedSessionRevocationGateway sessionRevocations;
+
     @BeforeAll
     void migrate() {
         Flyway.configure()
@@ -148,6 +160,102 @@ class TenantCreationPostgreSqlIT {
     @BeforeEach
     void clean() throws SQLException {
         executeAsMigrator("TRUNCATE tenant_access_outbox_events, tenant_creation_idempotency, memberships, tenants CASCADE");
+        sessionRevocations.reset();
+    }
+
+    @Test
+    void suspendsResumesAndReplaysHistoricalResultWithOriginalFenceGeneration() throws SQLException {
+        UUID actor = uuidV7(900);
+        TenantCreationResult created = service.create(actor, uuidV7(901), "Lifecycle Tenant", null, null);
+        executeAsMigrator("UPDATE tenants SET tenant_status = 'ACTIVE' WHERE id = '" + created.id() + "'");
+        sessionRevocations.results.add(SessionRevocationGateway.Result.completed(3, 7));
+
+        TenantLifecycleResult suspended = tenantLifecycle.suspend(actor, uuidV7(902), created.id(), null);
+        UUID revocationRequestId = sessionRevocations.lastRevocationRequestId;
+        TenantLifecycleResult resumed = tenantLifecycle.resume(actor, uuidV7(903), created.id());
+        TenantLifecycleResult replay = tenantLifecycle.suspend(actor, uuidV7(902), created.id(), null);
+
+        assertEquals(TenantStatus.SUSPENDED, suspended.status());
+        assertEquals(TenantStatus.ACTIVE, resumed.status());
+        assertEquals(suspended, replay);
+        assertEquals(revocationRequestId, sessionRevocations.lastReleasedRevocationRequestId);
+        String event = scalar("SELECT event_snapshot::text FROM tenant_access_outbox_events "
+                + "WHERE event_snapshot->>'type' = 'com.saasforge.tenant.suspended.v1'");
+        assertTrue(event.contains("\"revokedSessionCount\": 3"));
+        assertFalse(event.contains("revokedJtiCount"));
+    }
+
+    @Test
+    void bindsExternalKeyRejectsOtherInFlightKeyAndReturnsPendingRetry() throws SQLException {
+        UUID actor = uuidV7(910);
+        TenantCreationResult created = service.create(actor, uuidV7(911), "Pending Tenant", null, null);
+        executeAsMigrator("UPDATE tenants SET tenant_status = 'ACTIVE' WHERE id = '" + created.id() + "'");
+        sessionRevocations.results.add(SessionRevocationGateway.Result.pending(4));
+
+        TenantLifecycleException pending = assertThrows(TenantLifecycleException.class,
+                () -> tenantLifecycle.suspend(actor, uuidV7(912), created.id(), null));
+        TenantLifecycleException replayPending = assertThrows(TenantLifecycleException.class,
+                () -> tenantLifecycle.suspend(actor, uuidV7(912), created.id(), null));
+        TenantLifecycleException otherKey = assertThrows(TenantLifecycleException.class,
+                () -> tenantLifecycle.suspend(actor, uuidV7(913), created.id(), null));
+        assertThrows(IdempotencyKeyReusedException.class,
+                () -> tenantLifecycle.resume(actor, uuidV7(912), created.id()));
+
+        assertEquals("TENANT_SUSPENSION_PENDING", pending.code());
+        assertTrue(pending.retryAfterSeconds() >= 1);
+        assertEquals("TENANT_SUSPENSION_PENDING", replayPending.code());
+        assertEquals("TENANT_LIFECYCLE_CHANGE_IN_PROGRESS", otherKey.code());
+    }
+
+    @Test
+    void distinguishesPreFenceRetryFromFailClosedExplicitRecovery() throws SQLException {
+        UUID actor = uuidV7(920);
+        TenantCreationResult first = service.create(actor, uuidV7(921), "Pre Fence", null, null);
+        executeAsMigrator("UPDATE tenants SET tenant_status = 'ACTIVE' WHERE id = '" + first.id() + "'");
+        sessionRevocations.failures.add(new SessionRevocationRejectedException());
+        TenantLifecycleException preFence = assertThrows(TenantLifecycleException.class,
+                () -> tenantLifecycle.suspend(actor, uuidV7(922), first.id(), null));
+        assertEquals("TENANT_SUSPENSION_RETRY_REQUIRED", preFence.code());
+
+        sessionRevocations.results.add(SessionRevocationGateway.Result.completed(0, 0));
+        assertEquals(TenantStatus.SUSPENDED,
+                tenantLifecycle.suspend(actor, uuidV7(923), first.id(), null).status());
+
+        TenantCreationResult second = service.create(actor, uuidV7(924), "Post Fence", null, null);
+        executeAsMigrator("UPDATE tenants SET tenant_status = 'ACTIVE' WHERE id = '" + second.id() + "'");
+        sessionRevocations.failures.add(new SessionRevocationUnavailableException(new RuntimeException()));
+        TenantLifecycleException failClosed = assertThrows(TenantLifecycleException.class,
+                () -> tenantLifecycle.suspend(actor, uuidV7(925), second.id(), null));
+        assertEquals("TENANT_SUSPENSION_RECOVERY_REQUIRED", failClosed.code());
+        UUID originalRequestId = sessionRevocations.lastRevocationRequestId;
+        assertThrows(TenantLifecycleException.class,
+                () -> tenantLifecycle.suspend(actor, uuidV7(926), second.id(), null));
+
+        sessionRevocations.results.add(SessionRevocationGateway.Result.completed(2, 5));
+        TenantLifecycleResult recovered = tenantLifecycle.recoverSuspension(
+                actor, uuidV7(927), second.id(), null);
+        assertEquals(TenantStatus.SUSPENDED, recovered.status());
+        assertEquals(originalRequestId, sessionRevocations.lastRecoveredRevocationRequestId);
+        assertEquals(originalRequestId, sessionRevocations.lastRevocationRequestId);
+    }
+
+    @Test
+    void expiredLeaseCanBeTakenOverAndStaleFencingTokenCannotComplete() throws SQLException {
+        UUID actor = uuidV7(930);
+        TenantCreationResult created = service.create(actor, uuidV7(931), "Lease Tenant", null, null);
+        executeAsMigrator("UPDATE tenants SET tenant_status = 'ACTIVE' WHERE id = '" + created.id() + "'");
+        Instant now = Instant.now();
+        TenantLifecycleWorkflow workflow = tenantLifecycleWorkflows.prepare(
+                actor, uuidV7(932), created.id(), TenantLifecycleAction.SUSPEND,
+                "a".repeat(64), uuidV7(933), uuidV7(934), null, now).workflow();
+        TenantLifecycleWorkflow first = tenantLifecycleWorkflows.claim(
+                workflow.workflowId(), "worker-a", now, now.plusMillis(1), 10).orElseThrow();
+        TenantLifecycleWorkflow takeover = tenantLifecycleWorkflows.claimNext(
+                "worker-b", now.plusSeconds(1), now.plusSeconds(31), 10).orElseThrow();
+
+        assertTrue(takeover.fencingToken() > first.fencingToken());
+        assertThrows(IllegalStateException.class,
+                () -> tenantLifecycleWorkflows.schedulePending(first, now.plusSeconds(2)));
     }
 
     @AfterAll
@@ -814,7 +922,8 @@ class TenantCreationPostgreSqlIT {
     @Import({MyBatisTenantRepository.class, MyBatisTenantCreationIdempotency.class,
             MyBatisTenantAccessOutboxEventRepository.class,
             MyBatisTenantAdministratorInitializationRepository.class,
-            MyBatisAdministratorPasswordSetupRepository.class})
+            MyBatisAdministratorPasswordSetupRepository.class,
+            MyBatisTenantLifecycleRepository.class})
     static class PersistenceConfiguration {
         @Bean
         DataSource dataSource() {
@@ -880,6 +989,29 @@ class TenantCreationPostgreSqlIT {
         }
 
         @Bean
+        TenantSuspendedEventFactory tenantSuspendedEventFactory(ObjectMapper objectMapper, UuidV7Generator ids) {
+            return new TenantSuspendedEventFactory(
+                    objectMapper, ids, "saasforge.test.tenant-access-service.events");
+        }
+
+        @Bean
+        ScriptedSessionRevocationGateway sessionRevocations() {
+            return new ScriptedSessionRevocationGateway();
+        }
+
+        @Bean
+        TenantLifecycleService tenantLifecycleService(
+                TenantLifecycleRepository workflows,
+                ScriptedSessionRevocationGateway revocations,
+                TenantSuspendedEventFactory events,
+                UuidV7Generator ids,
+                Clock clock) {
+            return new TenantLifecycleService(workflows, revocations, events, ids,
+                    new TenantLifecycleRecoveryPolicy(Duration.ofSeconds(30), Duration.ofSeconds(1), 1),
+                    clock, "postgres-it");
+        }
+
+        @Bean
         TenantAdministratorInitializedEventFactory administratorInitializedEventFactory(
                 ObjectMapper objectMapper, UuidV7Generator ids) {
             return new TenantAdministratorInitializedEventFactory(
@@ -901,6 +1033,39 @@ class TenantCreationPostgreSqlIT {
         InitialSubscriptionEligibilityService eligibility(
                 MyBatisTenantRepository tenants, Clock clock) {
             return new InitialSubscriptionEligibilityService(tenants, clock);
+        }
+    }
+
+    static final class ScriptedSessionRevocationGateway implements SessionRevocationGateway {
+        private final Deque<Result> results = new ArrayDeque<>();
+        private final Deque<RuntimeException> failures = new ArrayDeque<>();
+        private UUID lastRevocationRequestId;
+        private UUID lastRecoveredRevocationRequestId;
+        private UUID lastReleasedRevocationRequestId;
+
+        @Override
+        public Result revoke(UUID revocationRequestId, UUID tenantId) {
+            lastRevocationRequestId = revocationRequestId;
+            if (!failures.isEmpty()) throw failures.removeFirst();
+            return results.isEmpty() ? Result.completed(0, 0) : results.removeFirst();
+        }
+
+        @Override
+        public void recover(UUID revocationRequestId, UUID tenantId) {
+            lastRecoveredRevocationRequestId = revocationRequestId;
+        }
+
+        @Override
+        public void release(UUID releaseRequestId, UUID revocationRequestId, UUID tenantId) {
+            lastReleasedRevocationRequestId = revocationRequestId;
+        }
+
+        void reset() {
+            results.clear();
+            failures.clear();
+            lastRevocationRequestId = null;
+            lastRecoveredRevocationRequestId = null;
+            lastReleasedRevocationRequestId = null;
         }
     }
 }

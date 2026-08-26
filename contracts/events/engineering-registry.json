@@ -128,6 +128,20 @@
       ]
     },
     {
+      "type": "com.saasforge.tenant.suspended.v1",
+      "producerService": "tenant-access-service",
+      "source": "urn:saasforge:tenant-access-service",
+      "schema": "contracts/events/tenant-suspended.v1.schema.json",
+      "topic": "saasforge.<environment>.tenant-access-service.events",
+      "orderingKey": "tenantId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.tenant-events"
+        }
+      ]
+    },
+    {
       "type": "com.saasforge.quota-definition.created.v1",
       "producerService": "entitlement-service",
       "source": "urn:saasforge:entitlement-service",

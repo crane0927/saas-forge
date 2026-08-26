@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.saasforge.tenantaccess.infrastructure.persistence.mapper.TenantLifecycleMapper">
+    <resultMap id="workflowRow" type="io.saasforge.tenantaccess.infrastructure.persistence.record.TenantLifecycleRow">
+        <id property="workflowId" column="workflow_id"/>
+        <result property="tenantId" column="tenant_id"/>
+        <result property="actorIdentityId" column="actor_identity_id"/>
+        <result property="idempotencyKey" column="idempotency_key"/>
+        <result property="requestFingerprint" column="request_fingerprint"/>
+        <result property="lifecycleAction" column="lifecycle_action"/>
+        <result property="revocationRequestId" column="revocation_request_id"/>
+        <result property="releaseRequestId" column="release_request_id"/>
+        <result property="workflowStatus" column="workflow_status"/>
+        <result property="fenceEstablished" column="fence_established"/>
+        <result property="revocationCallStarted" column="revocation_call_started"/>
+        <result property="revokedFamilyCount" column="revoked_family_count"/>
+        <result property="revokedJtiCount" column="revoked_jti_count"/>
+        <result property="attemptCount" column="attempt_count"/>
+        <result property="nextAttemptAt" column="next_attempt_at"/>
+        <result property="leaseOwner" column="lease_owner"/>
+        <result property="leaseUntil" column="lease_until"/>
+        <result property="fencingToken" column="fencing_token"/>
+        <result property="recoveryStartedAt" column="recovery_started_at"/>
+        <result property="iamRecoveryConfirmedAt" column="iam_recovery_confirmed_at"/>
+        <result property="completedAt" column="completed_at"/>
+        <result property="responseBody" column="response_body"/>
+    </resultMap>
+
+    <sql id="columns">
+        workflow_id, tenant_id, actor_identity_id, idempotency_key, request_fingerprint,
+        lifecycle_action, revocation_request_id, release_request_id, workflow_status,
+        fence_established, revocation_call_started, revoked_family_count, revoked_jti_count, attempt_count,
+        next_attempt_at, lease_owner, lease_until, fencing_token, recovery_started_at,
+        iam_recovery_confirmed_at, completed_at, response_body::TEXT AS response_body
+    </sql>
+
+    <select id="setOperationTarget" resultType="string">
+        SELECT set_config('app.tenant_id', CAST(#{tenantId} AS TEXT), true)
+    </select>
+
+    <select id="setWorkflowTarget" resultType="java.util.UUID">
+        SELECT set_tenant_lifecycle_workflow_target(#{workflowId})
+    </select>
+
+    <select id="lockTenant" resultType="io.saasforge.tenantaccess.infrastructure.persistence.record.TenantRow">
+        SELECT id, display_name AS displayName, tenant_status AS status, expires_at AS expiresAt,
+               created_at AS createdAt, updated_at AS updatedAt
+        FROM tenants WHERE id = #{tenantId} FOR UPDATE
+    </select>
+
+    <select id="findTenant" resultType="io.saasforge.tenantaccess.infrastructure.persistence.record.TenantRow">
+        SELECT id, display_name AS displayName, tenant_status AS status, expires_at AS expiresAt,
+               created_at AS createdAt, updated_at AS updatedAt
+        FROM tenants WHERE id = #{tenantId}
+    </select>
+
+    <select id="find" resultMap="workflowRow">
+        SELECT <include refid="columns"/> FROM tenant_lifecycle_workflows WHERE workflow_id = #{workflowId}
+    </select>
+
+    <select id="findByExternalKey" resultMap="workflowRow">
+        SELECT <include refid="columns"/> FROM tenant_lifecycle_workflows
+        WHERE actor_identity_id = #{actorIdentityId} AND idempotency_key = #{idempotencyKey}
+    </select>
+
+    <select id="findActive" resultMap="workflowRow">
+        SELECT <include refid="columns"/> FROM tenant_lifecycle_workflows
+        WHERE tenant_id = #{tenantId} AND workflow_status IN ('PENDING', 'RECOVERY_REQUIRED')
+        ORDER BY created_at DESC LIMIT 1
+    </select>
+
+    <select id="findLatestSuspensionRequest" resultType="java.util.UUID">
+        SELECT revocation_request_id FROM tenant_lifecycle_workflows
+        WHERE tenant_id = #{tenantId} AND lifecycle_action = 'SUSPEND' AND workflow_status = 'COMPLETED'
+        ORDER BY completed_at DESC LIMIT 1
+    </select>
+
+    <insert id="insert">
+        INSERT INTO tenant_lifecycle_workflows
+            (workflow_id, tenant_id, actor_identity_id, idempotency_key, request_fingerprint,
+             lifecycle_action, revocation_request_id, release_request_id, next_attempt_at, created_at)
+        VALUES
+            (#{row.workflowId}, #{row.tenantId}, #{row.actorIdentityId}, #{row.idempotencyKey},
+             #{row.requestFingerprint}, #{row.lifecycleAction}, #{row.revocationRequestId},
+             #{row.releaseRequestId}, #{at}, #{at})
+    </insert>
+
+    <select id="claim" resultType="java.util.UUID" affectData="true" flushCache="true">
+        SELECT claim_tenant_lifecycle_workflow(
+            #{workflowId}, #{claimant}, #{at}, #{leaseUntil}, #{maximumAttempts})
+    </select>
+
+    <select id="claimNext" resultType="java.util.UUID" affectData="true" flushCache="true">
+        SELECT claim_next_tenant_lifecycle_workflow(
+            #{claimant}, #{at}, #{leaseUntil}, #{maximumAttempts})
+    </select>
+
+    <update id="markRevocationAttempt">
+        UPDATE tenant_lifecycle_workflows SET revocation_call_started = TRUE
+        WHERE workflow_id = #{workflowId} AND workflow_status = 'PENDING'
+          AND fencing_token = #{fencingToken}
+    </update>
+
+    <update id="confirmFence">
+        UPDATE tenant_lifecycle_workflows SET fence_established = TRUE, revocation_call_started = TRUE
+        WHERE workflow_id = #{workflowId} AND workflow_status = 'PENDING'
+          AND fencing_token = #{fencingToken}
+    </update>
+
+    <update id="confirmIamRecovery">
+        UPDATE tenant_lifecycle_workflows SET iam_recovery_confirmed_at = #{at}
+        WHERE workflow_id = #{workflowId} AND workflow_status = 'PENDING'
+          AND recovery_started_at IS NOT NULL AND fencing_token = #{fencingToken}
+    </update>
+
+    <update id="schedulePending">
+        UPDATE tenant_lifecycle_workflows
+        SET attempt_count = 0, next_attempt_at = #{retryAt}, lease_owner = NULL, lease_until = NULL,
+            last_failure = NULL
+        WHERE workflow_id = #{workflowId} AND workflow_status = 'PENDING'
+          AND fencing_token = #{fencingToken}
+    </update>
+
+    <update id="scheduleFailure">
+        UPDATE tenant_lifecycle_workflows
+        SET fence_established = fence_established OR #{fenceMayExist},
+            revocation_call_started = CASE WHEN #{fenceMayExist} THEN TRUE ELSE FALSE END,
+            workflow_status = CASE
+                WHEN lifecycle_action = 'SUSPEND' AND attempt_count &gt;= #{maximumAttempts}
+                    THEN CASE WHEN fence_established OR #{fenceMayExist}
+                              THEN 'RECOVERY_REQUIRED' ELSE 'RETRY_REQUIRED' END
+                ELSE 'PENDING' END,
+            recovery_exhausted_at = CASE
+                WHEN lifecycle_action = 'SUSPEND' AND attempt_count &gt;= #{maximumAttempts} THEN #{at}
+                ELSE recovery_exhausted_at END,
+            next_attempt_at = #{retryAt}, lease_owner = NULL, lease_until = NULL, last_failure = #{failure}
+        WHERE workflow_id = #{workflowId} AND workflow_status = 'PENDING'
+          AND fencing_token = #{fencingToken}
+    </update>
+
+    <update id="transitionTenant">
+        UPDATE tenants SET tenant_status = #{nextStatus}, updated_at = #{updatedAt}
+        WHERE id = #{tenantId} AND tenant_status = #{expectedStatus}
+    </update>
+
+    <update id="complete">
+        UPDATE tenant_lifecycle_workflows
+        SET workflow_status = 'COMPLETED', revoked_family_count = #{revokedFamilyCount},
+            revoked_jti_count = #{revokedJtiCount}, response_body = CAST(#{responseBody} AS JSONB),
+            completed_at = #{at}, attempt_count = 0, next_attempt_at = #{at},
+            lease_owner = NULL, lease_until = NULL, last_failure = NULL
+        WHERE workflow_id = #{workflowId} AND workflow_status = 'PENDING'
+          AND fencing_token = #{fencingToken}
+    </update>
+
+    <select id="findRecovery"
+            resultType="io.saasforge.tenantaccess.infrastructure.persistence.record.TenantSuspensionRecoveryRow">
+        SELECT workflow_id AS workflowId, request_fingerprint AS requestFingerprint
+        FROM tenant_suspension_recovery_idempotency
+        WHERE actor_identity_id = #{actorIdentityId} AND idempotency_key = #{idempotencyKey}
+    </select>
+
+    <insert id="insertRecovery">
+        INSERT INTO tenant_suspension_recovery_idempotency
+            (actor_identity_id, idempotency_key, tenant_id, workflow_id, request_fingerprint, created_at)
+        VALUES (#{actorIdentityId}, #{idempotencyKey}, #{tenantId}, #{workflowId}, #{fingerprint}, #{at})
+    </insert>
+
+    <update id="startRecovery">
+        UPDATE tenant_lifecycle_workflows
+        SET workflow_status = 'PENDING', attempt_count = 0, next_attempt_at = #{at},
+            lease_owner = NULL, lease_until = NULL, recovery_started_at = #{at},
+            iam_recovery_confirmed_at = NULL, recovery_exhausted_at = NULL, last_failure = NULL
+        WHERE workflow_id = #{workflowId} AND lifecycle_action = 'SUSPEND'
+          AND workflow_status = 'RECOVERY_REQUIRED'
+    </update>
+
+    <update id="completeRecoveries">
+        UPDATE tenant_suspension_recovery_idempotency
+        SET response_body = CAST(#{responseBody} AS JSONB), completed_at = #{at}
+        WHERE workflow_id = #{workflowId} AND completed_at IS NULL
+    </update>
+</mapper>

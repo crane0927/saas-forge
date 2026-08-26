@@ -17,6 +17,7 @@ public final class IamServiceAccessTokenProvider {
     private static final String PLATFORM_ROLE_SCOPE = "iam:platform-role:read";
     private static final String IDENTITY_WRITE_SCOPE = "iam:identity:write";
     private static final String PASSWORD_SETUP_WRITE_SCOPE = "iam:password-setup:write";
+    private static final String SESSION_WRITE_SCOPE = "iam:sessions:write";
     private static final String QUOTA_WRITE_SCOPE = "entitlement:quota:write";
 
     private final RestClient iam;
@@ -47,6 +48,10 @@ public final class IamServiceAccessTokenProvider {
 
     public synchronized String quotaWriteToken() {
         return token(QUOTA_WRITE_SCOPE);
+    }
+
+    public synchronized String sessionWriteToken() {
+        return token(SESSION_WRITE_SCOPE);
     }
 
     private String token(String scope) {

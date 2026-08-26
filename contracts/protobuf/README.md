@@ -12,7 +12,7 @@
 
 [Identity Provisioning v1](iam/identity/v1/identity_provisioning.proto) 定义 Tenant Access 在配额副作用前创建或复用 IAM Identity 的写边界。`request_id` 必须是重试中保持稳定的 UUIDv7；调用必须使用保留的 Tenant Access Service Access Token 和 `iam:identity:write` Scope。IAM 按规范化邮箱去重，只返回 Identity ID 与稳定的凭证处置结论，不创建或重置 Credential。
 
-[User Session Revocation v1](iam/session/v1/session_revocation.proto) 定义 Tenant Access 以稳定 UUIDv7 请求按 Membership 或 Tenant 建立 Revocation Fence、分批撤销 User Session，并按原撤销 generation 条件释放 Fence 的写边界。调用必须使用保留的 Tenant Access Service Access Token 和精确 `iam:sessions:write` Scope；正常未完成返回业务 `PENDING`，基础设施不可用使用 gRPC `UNAVAILABLE`，目标冲突或释放代际不匹配使用 `FAILED_PRECONDITION`。
+[User Session Revocation v1](iam/session/v1/session_revocation.proto) 定义 Tenant Access 以稳定 UUIDv7 请求按 Membership 或 Tenant 建立 Revocation Fence、分批撤销 User Session，显式恢复原耗尽工作流，并按原撤销 generation 条件释放 Fence 的写边界。调用必须使用保留的 Tenant Access Service Access Token 和精确 `iam:sessions:write` Scope；正常未完成返回业务 `PENDING`，基础设施不可用使用 gRPC `UNAVAILABLE`，目标冲突或释放代际不匹配使用 `FAILED_PRECONDITION`。
 
 ## IAM ↔ Tenant Access Membership 校验
 

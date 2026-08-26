@@ -4,6 +4,8 @@ import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import io.saasforge.contracts.iam.session.v1.ReleaseUserSessionFenceRequest;
 import io.saasforge.contracts.iam.session.v1.ReleaseUserSessionFenceResponse;
+import io.saasforge.contracts.iam.session.v1.RecoverUserSessionRevocationRequest;
+import io.saasforge.contracts.iam.session.v1.RecoverUserSessionRevocationResponse;
 import io.saasforge.contracts.iam.session.v1.RevokeUserSessionsRequest;
 import io.saasforge.contracts.iam.session.v1.RevokeUserSessionsResponse;
 import io.saasforge.contracts.iam.session.v1.SessionRevocationCompleted;
@@ -57,6 +59,25 @@ public final class UserSessionRevocationGrpcService
     }
 
     @Override
+    public void recoverUserSessionRevocation(
+            RecoverUserSessionRevocationRequest request,
+            StreamObserver<RecoverUserSessionRevocationResponse> observer) {
+        try {
+            revocations.recover(canonicalUuidV7(request.getRevocationRequestId()), target(request));
+            observer.onNext(RecoverUserSessionRevocationResponse.getDefaultInstance());
+            observer.onCompleted();
+        } catch (IllegalArgumentException exception) {
+            observer.onError(Status.INVALID_ARGUMENT.asRuntimeException());
+        } catch (RevocationFenceConflictException | UserSessionRevocationRecoveryRequiredException exception) {
+            observer.onError(Status.FAILED_PRECONDITION.asRuntimeException());
+        } catch (RevocationIndexUnavailableException | DataAccessException exception) {
+            observer.onError(Status.UNAVAILABLE.asRuntimeException());
+        } catch (RuntimeException exception) {
+            observer.onError(Status.INTERNAL.asRuntimeException());
+        }
+    }
+
+    @Override
     public void releaseUserSessionFence(
             ReleaseUserSessionFenceRequest request, StreamObserver<ReleaseUserSessionFenceResponse> observer) {
         try {
@@ -87,6 +108,17 @@ public final class UserSessionRevocationGrpcService
     }
 
     private static RevocationFenceTarget target(ReleaseUserSessionFenceRequest request) {
+        return switch (request.getTargetCase()) {
+            case MEMBERSHIP_TARGET -> RevocationFenceTarget.membership(
+                    canonicalUuidV7(request.getMembershipTarget().getMembershipId()),
+                    canonicalUuidV7(request.getMembershipTarget().getTenantId()));
+            case TENANT_TARGET -> RevocationFenceTarget.tenant(
+                    canonicalUuidV7(request.getTenantTarget().getTenantId()));
+            case TARGET_NOT_SET -> throw new IllegalArgumentException("target is required");
+        };
+    }
+
+    private static RevocationFenceTarget target(RecoverUserSessionRevocationRequest request) {
         return switch (request.getTargetCase()) {
             case MEMBERSHIP_TARGET -> RevocationFenceTarget.membership(
                     canonicalUuidV7(request.getMembershipTarget().getMembershipId()),

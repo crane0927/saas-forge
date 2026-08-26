@@ -3,10 +3,12 @@ package io.saasforge.tenantaccess.api;
 import io.saasforge.sdk.auth.PlatformAuthorizationDeniedException;
 import io.saasforge.tenantaccess.application.tenant.IdempotencyKeyInvalidException;
 import io.saasforge.tenantaccess.application.tenant.IdempotencyKeyReusedException;
+import io.saasforge.tenantaccess.application.tenant.TenantLifecycleException;
 import io.saasforge.tenantaccess.application.administrator.RemoteWorkflowUnavailableException;
 import io.saasforge.tenantaccess.application.administrator.AdministratorPasswordSetupException;
 import io.saasforge.tenantaccess.application.administrator.TenantAdministratorInitializationException;
 import io.saasforge.tenantaccess.domain.tenant.TenantExpiryInvalidException;
+import io.saasforge.tenantaccess.domain.tenant.TenantStateTransitionNotAllowedException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
 import java.util.UUID;
@@ -31,6 +33,12 @@ public class TenantCreationExceptionHandler {
                 "Invalid Tenant expiry", exception.getMessage(), request);
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    ResponseEntity<Problem> invalidArgument(IllegalArgumentException exception, HttpServletRequest request) {
+        return problem(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED",
+                "Request validation failed", exception.getMessage(), request);
+    }
+
     @ExceptionHandler(IdempotencyKeyInvalidException.class)
     ResponseEntity<Problem> invalidIdempotencyKey(
             IdempotencyKeyInvalidException exception, HttpServletRequest request) {
@@ -43,6 +51,33 @@ public class TenantCreationExceptionHandler {
             IdempotencyKeyReusedException exception, HttpServletRequest request) {
         return problem(HttpStatus.CONFLICT, IdempotencyKeyReusedException.CODE,
                 "Idempotency key reused", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(TenantStateTransitionNotAllowedException.class)
+    ResponseEntity<Problem> stateTransitionNotAllowed(
+            TenantStateTransitionNotAllowedException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, TenantStateTransitionNotAllowedException.CODE,
+                "Tenant state transition not allowed", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(TenantLifecycleException.class)
+    ResponseEntity<Problem> tenantLifecycleFailure(
+            TenantLifecycleException exception, HttpServletRequest request) {
+        HttpStatus status = switch (exception.code()) {
+            case "TENANT_NOT_FOUND" -> HttpStatus.NOT_FOUND;
+            case "TENANT_SUSPENSION_PENDING", "TENANT_RESUME_PENDING",
+                    "TENANT_SUSPENSION_RECOVERY_PENDING" -> HttpStatus.SERVICE_UNAVAILABLE;
+            default -> HttpStatus.CONFLICT;
+        };
+        ResponseEntity<Problem> response = problem(status, exception.code(),
+                "Tenant lifecycle change failed", exception.getMessage(), request);
+        if (status == HttpStatus.SERVICE_UNAVAILABLE) {
+            return ResponseEntity.status(status)
+                    .header("Retry-After", Long.toString(Math.max(1, exception.retryAfterSeconds())))
+                    .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                    .body(response.getBody());
+        }
+        return response;
     }
 
     @ExceptionHandler(TenantAdministratorInitializationException.class)

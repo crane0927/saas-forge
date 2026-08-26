@@ -22,7 +22,7 @@
 | `com.saasforge.invitation.accepted.v1` | Tenant Access | `invitationId`、`tenantId`、`membershipId`、`identityId`、`actorIdentityId` |
 | `com.saasforge.iam.tenant-context-switched.v1` | IAM | `identityId`、`previousMembershipId`、`membershipId`、`tenantId` |
 | `com.saasforge.membership.disabled.v1` | Tenant Access | `membershipId`、`tenantId`、`identityId`、`actorIdentityId`、`quotaReleasePending` |
-| `com.saasforge.tenant.suspended.v1` | Tenant Access | `tenantId`、`actorIdentityId` |
+| `com.saasforge.tenant.suspended.v1` | Tenant Access | `tenantId`、`actorIdentityId`、`revokedSessionCount` |
 | `com.saasforge.iam.sessions-revoked.v1` | IAM | `revocationRequestId`、`scope`、`membershipId` 或 `tenantId`、`revokedSessionCount` |
 | `com.saasforge.quota.consumed.v1` | Entitlement | `tenantId`、`quotaDefinitionId`、`operationId`、`amount`、`purpose` |
 | `com.saasforge.quota.released.v1` | Entitlement | `tenantId`、`quotaDefinitionId`、`operationId`、`amount`、`purpose` |

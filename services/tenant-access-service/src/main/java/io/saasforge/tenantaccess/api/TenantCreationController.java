@@ -6,6 +6,8 @@ import io.saasforge.tenantaccess.application.administrator.ResendAdministratorPa
 import io.saasforge.tenantaccess.application.administrator.TenantAdministratorInitializationResult;
 import io.saasforge.tenantaccess.application.tenant.CreatePendingTenantService;
 import io.saasforge.tenantaccess.application.tenant.TenantCreationResult;
+import io.saasforge.tenantaccess.application.tenant.TenantLifecycleResult;
+import io.saasforge.tenantaccess.application.tenant.TenantLifecycleService;
 import io.saasforge.tenantaccess.contract.api.PlatformTenantsApi;
 import io.saasforge.tenantaccess.contract.model.CreateTenantRequest;
 import io.saasforge.tenantaccess.contract.model.AdministratorInitializationRequest;
@@ -20,6 +22,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
@@ -33,16 +36,51 @@ public class TenantCreationController implements PlatformTenantsApi {
     private final CreatePendingTenantService tenantCreation;
     private final InitializeTenantAdministratorService administratorInitialization;
     private final ResendAdministratorPasswordSetupService administratorPasswordSetup;
+    private final TenantLifecycleService tenantLifecycle;
 
+    @Autowired
     public TenantCreationController(
             PlatformAdminAuthorizer authorizer,
             CreatePendingTenantService tenantCreation,
             InitializeTenantAdministratorService administratorInitialization,
-            ResendAdministratorPasswordSetupService administratorPasswordSetup) {
+            ResendAdministratorPasswordSetupService administratorPasswordSetup,
+            TenantLifecycleService tenantLifecycle) {
         this.authorizer = authorizer;
         this.tenantCreation = tenantCreation;
         this.administratorInitialization = administratorInitialization;
         this.administratorPasswordSetup = administratorPasswordSetup;
+        this.tenantLifecycle = tenantLifecycle;
+    }
+
+    TenantCreationController(
+            PlatformAdminAuthorizer authorizer,
+            CreatePendingTenantService tenantCreation,
+            InitializeTenantAdministratorService administratorInitialization,
+            ResendAdministratorPasswordSetupService administratorPasswordSetup) {
+        this(authorizer, tenantCreation, administratorInitialization, administratorPasswordSetup, null);
+    }
+
+    @Override
+    public ResponseEntity<Tenant> suspendTenant(UUID tenantId, UUID idempotencyKey) {
+        HttpServletRequest httpRequest = currentRequest();
+        UUID actorIdentityId = authorizer.authorize(httpRequest.getHeader(HttpHeaders.AUTHORIZATION));
+        return ResponseEntity.ok(toResponse(tenantLifecycle.suspend(
+                actorIdentityId, idempotencyKey, tenantId, traceId(httpRequest))));
+    }
+
+    @Override
+    public ResponseEntity<Tenant> resumeTenant(UUID tenantId, UUID idempotencyKey) {
+        HttpServletRequest httpRequest = currentRequest();
+        UUID actorIdentityId = authorizer.authorize(httpRequest.getHeader(HttpHeaders.AUTHORIZATION));
+        return ResponseEntity.ok(toResponse(tenantLifecycle.resume(actorIdentityId, idempotencyKey, tenantId)));
+    }
+
+    @Override
+    public ResponseEntity<Tenant> recoverTenantSuspension(UUID tenantId, UUID idempotencyKey) {
+        HttpServletRequest httpRequest = currentRequest();
+        UUID actorIdentityId = authorizer.authorize(httpRequest.getHeader(HttpHeaders.AUTHORIZATION));
+        return ResponseEntity.ok(toResponse(tenantLifecycle.recoverSuspension(
+                actorIdentityId, idempotencyKey, tenantId, traceId(httpRequest))));
     }
 
     @Override
@@ -103,6 +141,13 @@ public class TenantCreationController implements PlatformTenantsApi {
                 TenantStatus.valueOf(result.status().name()),
                 asUtc(result.expiresAt()),
                 result.createdAt().atOffset(ZoneOffset.UTC),
+                result.updatedAt().atOffset(ZoneOffset.UTC));
+    }
+
+    private static Tenant toResponse(TenantLifecycleResult result) {
+        return new Tenant(
+                result.id(), result.displayName(), TenantStatus.valueOf(result.status().name()),
+                asUtc(result.expiresAt()), result.createdAt().atOffset(ZoneOffset.UTC),
                 result.updatedAt().atOffset(ZoneOffset.UTC));
     }
 
