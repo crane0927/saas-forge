@@ -21,6 +21,7 @@ public class TenantContextSwitchTransaction {
     private final RevocationIndex revocationIndex;
     private final OutboxEventRepository outboxEvents;
     private final TenantContextSwitchedEventFactory eventFactory;
+    private final UserTokenIssuanceFence issuanceFence;
 
     public TenantContextSwitchTransaction(
             TenantContextSwitchRepository workflows,
@@ -28,13 +29,15 @@ public class TenantContextSwitchTransaction {
             AccessTokenIssuanceRepository issuances,
             RevocationIndex revocationIndex,
             OutboxEventRepository outboxEvents,
-            TenantContextSwitchedEventFactory eventFactory) {
+            TenantContextSwitchedEventFactory eventFactory,
+            UserTokenIssuanceFence issuanceFence) {
         this.workflows = workflows;
         this.families = families;
         this.issuances = issuances;
         this.revocationIndex = revocationIndex;
         this.outboxEvents = outboxEvents;
         this.eventFactory = eventFactory;
+        this.issuanceFence = issuanceFence;
     }
 
     @Transactional
@@ -60,6 +63,7 @@ public class TenantContextSwitchTransaction {
         if (locked.contextVersion() != expectedContextVersion) {
             throw new IllegalStateException("Tenant Context Switch 的 Family Context 已变化");
         }
+        issuanceFence.assertIssuable(targetMembershipId, targetTenantId);
         List<AccessTokenIssuance> active = issuances.findUnexpiredByFamilyId(locked.id(), switchedAt);
         indexAccessTokens(active, switchedAt);
         RefreshTokenFamilyContextChange contextChange = families.switchTenantContext(

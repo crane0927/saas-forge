@@ -40,6 +40,8 @@ import io.saasforge.iam.application.authentication.RevocationFenceConflictExcept
 import io.saasforge.iam.application.authentication.RevocationFenceOperations;
 import io.saasforge.iam.application.authentication.TenantContextSwitchService;
 import io.saasforge.iam.application.authentication.TenantContextSwitchTransaction;
+import io.saasforge.iam.application.authentication.UserSessionRevocationResult;
+import io.saasforge.iam.application.authentication.UserSessionRevocationService;
 import io.saasforge.iam.application.signing.JwtSigningPort;
 import io.saasforge.iam.application.signing.JwtSigningService;
 import io.saasforge.iam.application.signing.SigningKeyLifecycleService;
@@ -64,6 +66,8 @@ import io.saasforge.iam.domain.session.RevocationFence;
 import io.saasforge.iam.domain.session.RevocationFenceTarget;
 import io.saasforge.iam.domain.session.TenantContextSwitchRepository;
 import io.saasforge.iam.domain.session.TenantContextSwitchWorkflow;
+import io.saasforge.iam.domain.session.UserSessionRevocationRepository;
+import io.saasforge.iam.domain.session.UserSessionRevocationStatus;
 import io.saasforge.iam.infrastructure.messaging.OutboxPublisher;
 import io.saasforge.iam.infrastructure.persistence.MyBatisIdentityRepository;
 import io.saasforge.iam.infrastructure.grpc.GrpcAccessibleMemberships;
@@ -317,6 +321,12 @@ class AuthenticationHttpIT {
 
     @Autowired
     TenantContextSwitchTransaction tenantContextSwitchTransaction;
+
+    @Autowired
+    UserSessionRevocationService userSessionRevocationService;
+
+    @Autowired
+    UserSessionRevocationRepository userSessionRevocations;
 
     @Autowired
     RefreshTokenFamilyRepository refreshTokenFamilies;
@@ -2008,6 +2018,210 @@ class AuthenticationHttpIT {
             refreshSigning.release();
             switchFirstExecutor.shutdownNow();
         }
+    }
+
+    @Test
+    @Order(35)
+    void loginSelectionAndContextSwitchLoseTheRaceToANewFenceWithoutPersistingTokens() throws Exception {
+        revocationIndexRecovery.recover();
+
+        TestUser loginUser = createUser(
+                "fence-race-login-complete@example.test", "correct-password", false, Credential.REGULAR);
+        UUID loginMembership = uuidV7(94_001);
+        UUID loginTenant = uuidV7(94_002);
+        accessibleMemberships(loginUser.identity().id(), membership(loginMembership, loginTenant, "Login Race"));
+        ConcurrencyGate loginSigning = new ConcurrencyGate();
+        SIGNING_GATE.set(loginSigning);
+        var loginExecutor = Executors.newSingleThreadExecutor();
+        try {
+            var loginResult = loginExecutor.submit(() -> login(
+                    "fence-race-login-complete@example.test", "correct-password", "TENANT").andReturn());
+            loginSigning.awaitEntered();
+            revocationFenceService.establish(
+                    uuidV7(94_003), RevocationFenceTarget.membership(loginMembership, loginTenant));
+            loginSigning.release();
+
+            MvcResult blocked = loginResult.get();
+            assertEquals(403, blocked.getResponse().getStatus());
+            assertEquals("ACCESS_CONTEXT_UNAVAILABLE",
+                    json(blocked.getResponse().getContentAsByteArray()).get("code").asString());
+            assertEquals(0, sessionFactCount(loginUser.identity().id()));
+        } finally {
+            loginSigning.release();
+            SIGNING_GATE.set(null);
+            loginExecutor.shutdownNow();
+        }
+
+        TestUser selectionUser = createUser(
+                "fence-race-selection@example.test", "correct-password", false, Credential.REGULAR);
+        UUID selectedMembership = uuidV7(94_011);
+        UUID selectedTenant = uuidV7(94_012);
+        UUID alternateMembership = uuidV7(94_013);
+        UUID alternateTenant = uuidV7(94_014);
+        accessibleMemberships(selectionUser.identity().id(),
+                membership(selectedMembership, selectedTenant, "Selected"),
+                membership(alternateMembership, alternateTenant, "Alternate"));
+        MvcResult selectionSession = login(
+                "fence-race-selection@example.test", "correct-password", "TENANT").andReturn();
+        ConcurrencyGate selectionSigning = new ConcurrencyGate();
+        SIGNING_GATE.set(selectionSigning);
+        var selectionExecutor = Executors.newSingleThreadExecutor();
+        try {
+            var selectionResult = selectionExecutor.submit(
+                    () -> selectContext(refreshToken(selectionSession), selectedMembership).andReturn());
+            selectionSigning.awaitEntered();
+            revocationFenceService.establish(
+                    uuidV7(94_015), RevocationFenceTarget.membership(selectedMembership, selectedTenant));
+            selectionSigning.release();
+
+            MvcResult blocked = selectionResult.get();
+            assertEquals(403, blocked.getResponse().getStatus());
+            assertEquals("ACCESS_CONTEXT_UNAVAILABLE",
+                    json(blocked.getResponse().getContentAsByteArray()).get("code").asString());
+            assertEquals(0, accessTokenIssuanceCount(selectionUser.identity().id()));
+        } finally {
+            selectionSigning.release();
+            SIGNING_GATE.set(null);
+            selectionExecutor.shutdownNow();
+        }
+
+        TestUser switchUser = createUser(
+                "fence-race-switch@example.test", "correct-password", false, Credential.REGULAR);
+        UUID currentMembership = uuidV7(94_021);
+        UUID currentTenant = uuidV7(94_022);
+        UUID targetMembership = uuidV7(94_023);
+        UUID targetTenant = uuidV7(94_024);
+        accessibleMemberships(switchUser.identity().id(),
+                membership(currentMembership, currentTenant, "Current"));
+        MvcResult switchSession = login(
+                "fence-race-switch@example.test", "correct-password", "TENANT").andReturn();
+        accessibleMemberships(switchUser.identity().id(),
+                membership(currentMembership, currentTenant, "Current"),
+                membership(targetMembership, targetTenant, "Target"));
+        ConcurrencyGate switchValidation = new ConcurrencyGate();
+        MEMBERSHIP_VALIDATION_GATE.set(switchValidation);
+        var switchExecutor = Executors.newSingleThreadExecutor();
+        try {
+            var switchResult = switchExecutor.submit(() -> mockMvc.perform(tenantSwitch(
+                    refreshToken(switchSession), uuidV7(94_025), targetMembership)).andReturn());
+            switchValidation.awaitEntered();
+            revocationFenceService.establish(
+                    uuidV7(94_026), RevocationFenceTarget.membership(targetMembership, targetTenant));
+            switchValidation.release();
+
+            MvcResult blocked = switchResult.get();
+            assertEquals(403, blocked.getResponse().getStatus());
+            assertEquals("ACCESS_CONTEXT_UNAVAILABLE",
+                    json(blocked.getResponse().getContentAsByteArray()).get("code").asString());
+            Map<String, Object> family = jdbc.queryForMap(
+                    "SELECT membership_id, tenant_id FROM iam_refresh_token_families WHERE identity_id = ?",
+                    switchUser.identity().id());
+            assertEquals(currentMembership, family.get("membership_id"));
+            assertEquals(currentTenant, family.get("tenant_id"));
+            assertEquals(1, accessTokenIssuanceCount(switchUser.identity().id()));
+        } finally {
+            switchValidation.release();
+            MEMBERSHIP_VALIDATION_GATE.set(null);
+            switchExecutor.shutdownNow();
+        }
+    }
+
+    @Test
+    @Order(37)
+    void batchRevocationRecoversAfterPostgresFailureAndReleaseNeverRevivesOldTokens() throws Exception {
+        revocationIndexRecovery.recover();
+        UUID targetTenant = uuidV7(95_001);
+        UUID firstMembership = uuidV7(95_002);
+        UUID secondMembership = uuidV7(95_003);
+        TestUser first = createUser("batch-first@example.test", "correct-password", false, Credential.REGULAR);
+        TestUser second = createUser("batch-second@example.test", "correct-password", false, Credential.REGULAR);
+        accessibleMemberships(first.identity().id(), membership(firstMembership, targetTenant, "First"));
+        accessibleMemberships(second.identity().id(), membership(secondMembership, targetTenant, "Second"));
+        MvcResult firstSession = login("batch-first@example.test", "correct-password", "TENANT").andReturn();
+        MvcResult secondSession = login("batch-second@example.test", "correct-password", "TENANT").andReturn();
+        UUID firstJti = UUID.fromString(tokenClaims(firstSession).get("jti").asString());
+        UUID secondJti = UUID.fromString(tokenClaims(secondSession).get("jti").asString());
+
+        UUID isolatedTenant = uuidV7(95_011);
+        UUID isolatedMembership = uuidV7(95_012);
+        TestUser isolated = createUser("batch-isolated@example.test", "correct-password", false, Credential.REGULAR);
+        accessibleMemberships(isolated.identity().id(),
+                membership(isolatedMembership, isolatedTenant, "Isolated"));
+        MvcResult isolatedSession = login(
+                "batch-isolated@example.test", "correct-password", "TENANT").andReturn();
+        UUID isolatedJti = UUID.fromString(tokenClaims(isolatedSession).get("jti").asString());
+
+        UUID revocationRequestId = uuidV7(95_021);
+        RevocationFenceTarget target = RevocationFenceTarget.tenant(targetTenant);
+        setIamAppIssuanceUpdatePrivilege(false);
+        try {
+            assertThrows(RuntimeException.class,
+                    () -> userSessionRevocationService.revoke(revocationRequestId, target));
+        } finally {
+            setIamAppIssuanceUpdatePrivilege(true);
+        }
+
+        assertEquals(null, jdbc.queryForObject(
+                "SELECT revoked_at FROM iam_access_token_issuances WHERE jti = ?", Object.class, firstJti));
+        assertEquals(null, jdbc.queryForObject(
+                "SELECT revoked_at FROM iam_access_token_issuances WHERE jti = ?", Object.class, secondJti));
+        int redisRejections = ("1".equals(redis.opsForValue().get(jtiRevocationKey(firstJti))) ? 1 : 0)
+                + ("1".equals(redis.opsForValue().get(jtiRevocationKey(secondJti))) ? 1 : 0);
+        assertEquals(1, redisRejections);
+        var failed = userSessionRevocations.find(revocationRequestId).orElseThrow();
+        assertEquals(UserSessionRevocationStatus.PENDING, failed.status());
+        assertEquals("INTERNAL_RECOVERY_FAILURE", failed.lastFailure());
+        assertEquals(1, failed.attemptCount());
+
+        UserSessionRevocationResult completed = null;
+        for (int attempt = 0; attempt < 5; attempt++) {
+            jdbc.update("UPDATE iam_user_session_revocations SET next_attempt_at = now() - interval '1 second' "
+                    + "WHERE revocation_request_id = ?", revocationRequestId);
+            completed = userSessionRevocationService.revoke(revocationRequestId, target);
+            if (completed.status() == UserSessionRevocationResult.Status.COMPLETED) {
+                break;
+            }
+        }
+        assertNotNull(completed);
+        assertEquals(UserSessionRevocationResult.Status.COMPLETED, completed.status());
+        assertEquals(2, completed.revokedFamilyCount());
+        assertEquals(2, completed.revokedJtiCount());
+        assertEquals("1", redis.opsForValue().get(jtiRevocationKey(firstJti)));
+        assertEquals("1", redis.opsForValue().get(jtiRevocationKey(secondJti)));
+        assertEquals(null, redis.opsForValue().get(jtiRevocationKey(isolatedJti)));
+        assertEquals(null, jdbc.queryForObject(
+                "SELECT revoked_at FROM iam_access_token_issuances WHERE jti = ?", Object.class, isolatedJti));
+        assertEquals(1, jdbc.queryForObject(
+                "SELECT count(*) FROM iam_outbox_events WHERE event_snapshot ->> 'type' = "
+                        + "'com.saasforge.iam.sessions-revoked.v1' AND ordering_key = ?",
+                Integer.class, revocationRequestId.toString()));
+
+        UserSessionRevocationResult replay = userSessionRevocationService.revoke(revocationRequestId, target);
+        assertEquals(completed, replay);
+        assertEquals(1, jdbc.queryForObject(
+                "SELECT count(*) FROM iam_outbox_events WHERE event_snapshot ->> 'type' = "
+                        + "'com.saasforge.iam.sessions-revoked.v1' AND ordering_key = ?",
+                Integer.class, revocationRequestId.toString()));
+
+        UUID releaseRequestId = uuidV7(95_022);
+        userSessionRevocationService.release(releaseRequestId, revocationRequestId, target);
+        assertEquals(null, redis.opsForValue().get(
+                "sf:test:iam-service:user-session-revocation-fence:v1:tenant:" + targetTenant));
+        assertEquals("1", redis.opsForValue().get(jtiRevocationKey(firstJti)));
+        assertEquals("1", redis.opsForValue().get(jtiRevocationKey(secondJti)));
+
+        UUID newerGeneration = uuidV7(95_023);
+        revocationFenceService.establish(newerGeneration, target);
+        userSessionRevocationService.release(releaseRequestId, revocationRequestId, target);
+        assertEquals(newerGeneration.toString(), redis.opsForValue().get(
+                "sf:test:iam-service:user-session-revocation-fence:v1:tenant:" + targetTenant));
+
+        assertThrows(RevocationFenceConflictException.class, () -> revocationFenceService.establish(
+                uuidV7(95_024), RevocationFenceTarget.membership(firstMembership, targetTenant)));
+        assertTrue(revocationIndex.isUserTokenFenced(
+                RevocationFenceTarget.membership(firstMembership, targetTenant)));
+        assertFalse(revocationIndex.isUserTokenFenced(
+                RevocationFenceTarget.membership(isolatedMembership, isolatedTenant)));
     }
 
     @Test

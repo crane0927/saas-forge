@@ -6,6 +6,27 @@ readonly nacos_root="$repository_root/deploy/nacos"
 readonly applications=(gateway iam-service tenant-access-service entitlement-service audit-service)
 readonly environments=(dev test staging prod)
 
+validate_refresh_boundaries() {
+  ruby - "$repository_root" <<'RUBY'
+repository_root = ARGV.fetch(0)
+imports = {
+  "gateway/src/main/resources/application.yaml" => "gateway.yaml",
+  "services/iam-service/src/main/resources/application.yaml" => "iam-service.yaml",
+  "services/tenant-access-service/src/main/resources/application.yaml" => "tenant-access-service.yaml",
+  "services/entitlement-service/src/main/resources/application.yaml" => "entitlement-service.yaml",
+  "services/audit-service/src/main/resources/application.yaml" => "audit-service.yaml"
+}.freeze
+
+imports.each do |relative_path, resource|
+  application_file = File.join(repository_root, relative_path)
+  expected = "nacos:#{resource}?group=SAAS_FORGE&refreshEnabled=false"
+  content = File.read(application_file)
+  abort "#{application_file}: 必须以 refreshEnabled=false 导入应用专属 Nacos 资源" unless content.include?(expected)
+  abort "#{application_file}: 禁止启用 Nacos 动态刷新" if content.include?("refreshEnabled=true")
+end
+RUBY
+}
+
 usage() {
   echo "用法: $0 [dev|test|staging|prod]" >&2
   exit 64
@@ -110,6 +131,8 @@ validate_environment() {
 if [[ $# -gt 1 ]]; then
   usage
 fi
+
+validate_refresh_boundaries
 
 if [[ $# -eq 1 ]]; then
   is_known_environment "$1" || usage

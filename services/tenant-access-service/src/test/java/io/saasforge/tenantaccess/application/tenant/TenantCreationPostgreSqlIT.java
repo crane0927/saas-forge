@@ -205,6 +205,14 @@ class TenantCreationPostgreSqlIT {
         assertTrue(pending.retryAfterSeconds() >= 1);
         assertEquals("TENANT_SUSPENSION_PENDING", replayPending.code());
         assertEquals("TENANT_LIFECYCLE_CHANGE_IN_PROGRESS", otherKey.code());
+
+        executeAsMigrator("UPDATE tenant_lifecycle_workflows SET next_attempt_at = now() - interval '1 second' "
+                + "WHERE tenant_id = '" + created.id() + "'");
+        sessionRevocations.failures.add(new SessionRevocationUnavailableException(new RuntimeException()));
+        TenantLifecycleWorker worker = new TenantLifecycleWorker(tenantLifecycle);
+        TenantLifecycleException recoveryRequired = assertThrows(
+                TenantLifecycleException.class, worker::recoverNext);
+        assertEquals("TENANT_SUSPENSION_RECOVERY_REQUIRED", recoveryRequired.code());
     }
 
     @Test

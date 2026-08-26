@@ -455,9 +455,10 @@ public class AuthenticationConfiguration {
             AccessTokenIssuanceRepository issuances,
             RevocationIndex revocationIndex,
             OutboxEventRepository outboxEvents,
-            TenantContextSwitchedEventFactory eventFactory) {
+            TenantContextSwitchedEventFactory eventFactory,
+            UserTokenIssuanceFence issuanceFence) {
         return new TenantContextSwitchTransaction(
-                workflows, families, issuances, revocationIndex, outboxEvents, eventFactory);
+                workflows, families, issuances, revocationIndex, outboxEvents, eventFactory, issuanceFence);
     }
 
     @Bean

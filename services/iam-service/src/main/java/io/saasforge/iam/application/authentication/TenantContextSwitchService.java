@@ -156,6 +156,16 @@ public final class TenantContextSwitchService {
             transaction.switchContext(
                     workflow, family, workflow.expectedContextVersion(),
                     workflow.targetMembershipId(), target.orElseThrow().tenantId(), clock.instant(), traceId);
+        } catch (AccessContextUnavailableException exception) {
+            try {
+                transaction.complete(workflow, TenantContextSwitchStatus.TARGET_REJECTED, clock.instant());
+            } catch (RuntimeException completionFailure) {
+                handleFailure(workflow, completionFailure, interactive);
+                return;
+            }
+            if (interactive) {
+                throw TenantContextSwitchAccessRejectedException.targetMembership();
+            }
         } catch (RuntimeException exception) {
             handleFailure(workflow, exception, interactive);
         }
