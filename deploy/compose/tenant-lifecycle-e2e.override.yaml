@@ -25,6 +25,7 @@ services:
       - "${E2E_HOST_GID:?E2E_HOST_GID is required}"
     environment:
       JAVA_TOOL_OPTIONS: -Xms64m -Xmx256m
+      SAASFORGE_IAM_SESSION_REVOCATION_WORKER_DELAY: PT1H
     ports: !reset []
   tenant-access-service:
     build: !reset null
@@ -32,6 +33,7 @@ services:
       - "${E2E_HOST_GID:?E2E_HOST_GID is required}"
     environment:
       JAVA_TOOL_OPTIONS: -Xms64m -Xmx256m
+      SAASFORGE_TENANT_ACCESS_LIFECYCLE_RECOVERY_DELAY: PT1H
     ports: !reset []
   entitlement-service:
     build: !reset null

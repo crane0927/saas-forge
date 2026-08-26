@@ -200,6 +200,65 @@ wait_for_service_started() {
   return 1
 }
 
+wait_for_redis_revocation_ready() {
+  local ready
+  for _ in $(seq 1 60); do
+    ready="$(compose exec -T redis sh -eu -c '
+      redis-cli --no-auth-warning -a "$REDIS_PASSWORD" GET \
+        sf:dev:iam-service:revocation-index-ready:v1:state
+    ' 2>/dev/null | tr -d '\r')"
+    if [[ "$ready" == "1" ]]; then
+      return 0
+    fi
+    sleep 1
+  done
+  echo "IAM Revocation Index 未在预期时间内恢复 Ready" >&2
+  return 1
+}
+
+postgres_value() {
+  local database="$1"
+  local query="$2"
+  compose exec -T postgres sh -eu -c '
+    psql --username "$POSTGRES_USER" --dbname "$1" --tuples-only --no-align --command "$2"
+  ' sh "$database" "$query" | tr -d '[:space:]'
+}
+
+wait_for_revocation_worker_completion() {
+  local tenant_id="$1"
+  local completed
+  for _ in $(seq 1 60); do
+    completed="$(postgres_value iam_db \
+      "SELECT EXISTS (SELECT 1 FROM iam_user_session_revocations workflow
+       JOIN iam_revocation_fences fence USING (revocation_request_id)
+       WHERE fence.target_type = 'TENANT' AND fence.target_id = '$tenant_id'
+         AND workflow.revocation_status = 'COMPLETED')")"
+    if [[ "$completed" == "t" ]]; then
+      return 0
+    fi
+    sleep 1
+  done
+  echo "IAM Session Revocation 未在预期时间内由重启后的 Worker 完成" >&2
+  return 1
+}
+
+wait_for_tenant_suspension_worker_completion() {
+  local tenant_id="$1"
+  local completed
+  for _ in $(seq 1 60); do
+    completed="$(postgres_value tenant_access_db \
+      "SELECT EXISTS (SELECT 1 FROM tenant_lifecycle_workflows
+       WHERE tenant_id = '$tenant_id' AND lifecycle_action = 'SUSPEND'
+         AND workflow_status = 'COMPLETED')")"
+    if [[ "$completed" == "t" ]]; then
+      return 0
+    fi
+    sleep 1
+  done
+  echo "Tenant Suspension 未在预期时间内由重启后的 Worker 完成" >&2
+  return 1
+}
+
 start_service() {
   local service="$1"
   local attempt
@@ -251,6 +310,36 @@ request() {
     jq '{status,code,title,detail,traceId}' "$response_body" >&2 2>/dev/null || true
     return 1
   fi
+}
+
+wait_for_suspension_completion_losing_response() {
+  local tenant_id="$1"
+  local bearer="$2"
+  local idempotency_key="$3"
+  local status
+  for _ in $(seq 1 60); do
+    status="$(curl --silent --show-error \
+      --request POST \
+      --output /dev/null \
+      --write-out '%{http_code}' \
+      --header 'Content-Type: application/json' \
+      --header 'X-SF-CSRF: 1' \
+      --header 'Origin: https://console.saasforge.test' \
+      --header 'Sec-Fetch-Site: same-site' \
+      --header "Authorization: Bearer $bearer" \
+      --header "Idempotency-Key: $idempotency_key" \
+      "$gateway_base/api/v1/platform/tenants/$tenant_id/suspensions")"
+    if [[ "$status" == "200" ]]; then
+      return 0
+    fi
+    if [[ "$status" != "503" ]]; then
+      echo "等待 Tenant Suspension 时预期 HTTP 200/503，实际为 $status" >&2
+      return 1
+    fi
+    sleep 1
+  done
+  echo "Tenant Suspension 未在预期时间内由 Worker 完成" >&2
+  return 1
 }
 
 assert_json() {
@@ -340,7 +429,7 @@ touch "$cookie_jar"
 business_response_log="$work_directory/business-responses.jsonl"
 touch "$business_response_log"
 
-echo "[1/10] 校验隔离 Compose、挂载 Secret 与显式引导任务"
+echo "[1/11] 校验隔离 Compose、挂载 Secret 与显式引导任务"
 compose config --quiet
 compose --profile bootstrap --profile service-client-bootstrap config --format json | jq --exit-status '
   .services["iam-platform-admin-bootstrap"].profiles == ["bootstrap"] and
@@ -354,14 +443,14 @@ compose --profile bootstrap --profile service-client-bootstrap config --format j
   (.services.mailpit.image | startswith("axllent/mailpit:"))
 ' >/dev/null
 
-echo "[2/10] 在全新 PostgreSQL 数据卷迁移并初始化 IAM Signing Key"
+echo "[2/11] 在全新 PostgreSQL 数据卷迁移并初始化 IAM Signing Key"
 COMPOSE_PROJECT_NAME="$project_name" \
 LOCAL_COMPOSE_ENV_FILE="$environment_file" \
 LOCAL_COMPOSE_OVERRIDE_FILE="$override_file" \
   bash "$repository_root/scripts/initialize-local-iam-signing-key.sh" >/dev/null
 grant_container_secret_access
 
-echo "[3/10] 显式引导 Platform Admin 与三个保留服务 Client"
+echo "[3/11] 显式引导 Platform Admin 与三个保留服务 Client"
 "$repository_root/mvnw" --batch-mode --no-transfer-progress \
   -pl gateway,services/iam-service,services/tenant-access-service,services/entitlement-service,services/audit-service \
   -am package -DskipTests >"$work_directory/maven-package.log"
@@ -383,7 +472,7 @@ if IAM_PLATFORM_ADMIN_PASSWORD_FILE="$secret_directory/platform-admin-password-c
 fi
 unset conflicting_password
 
-echo "[4/10] 启动真实拓扑并完成 Platform Admin 首次改密"
+echo "[4/11] 启动真实拓扑并完成 Platform Admin 首次改密"
 for service in iam-service tenant-access-service entitlement-service audit-service gateway; do
   start_service "$service"
 done
@@ -401,7 +490,7 @@ login 'platform-admin@saasforge.test' "$platform_password" PLATFORM
 assert_json '.contextState == "ACCESS_TOKEN_ISSUED" and (.accessToken | length > 100)'
 platform_token="$(jq -r '.accessToken' "$response_body")"
 
-echo "[5/10] 通过平台 API 创建并激活 max_users Quota Definition 与 Plan"
+echo "[5/11] 通过平台 API 创建并激活 max_users Quota Definition 与 Plan"
 request 201 POST /api/v1/platform/quota-definitions '{"code":"max_users"}' \
   "$platform_token" "$(uuid_v7)"
 quota_definition_id="$(jq -r '.id' "$response_body")"
@@ -419,7 +508,7 @@ request 200 POST "/api/v1/platform/plans/$plan_id/activations" '' \
   "$platform_token" "$(uuid_v7)"
 cat "$response_body" >>"$business_response_log"
 
-echo "[6/10] 创建 PENDING Tenant、首个 ACTIVE Subscription 并初始化管理员"
+echo "[6/11] 创建 PENDING Tenant、首个 ACTIVE Subscription 并初始化管理员"
 tenant_expires_at="$(ruby -rtime -e 'puts (Time.now.utc + 86400).iso8601')"
 request 201 POST /api/v1/platform/tenants \
   "$(jq -cn --arg expiresAt "$tenant_expires_at" \
@@ -458,7 +547,7 @@ compose exec -T postgres sh -eu -c '
 SQL
 ' >/dev/null
 
-echo "[7/10] 从 Mailpit Fragment 链接完成 Password Setup 并验证 Tenant Context"
+echo "[7/11] 从 Mailpit Fragment 链接完成 Password Setup 并验证 Tenant Context"
 mail_message="$(wait_for_mail "$tenant_admin_email")"
 password_setup_link="$(printf '%s' "$mail_message" | ruby -rjson -rcgi -e '
   message = JSON.parse(STDIN.read)
@@ -485,11 +574,137 @@ tenant_claims="$(decode_jwt_claims "$tenant_token")"
 printf '%s' "$tenant_claims" | jq --exit-status --arg tenantId "$tenant_id" \
   '.tenantId == $tenantId and (.membershipId | length > 0)' >/dev/null
 
-echo "[8/10] 验证无平台角色、错误 Scope 与依赖不可用"
+echo "[8/11] 验证 Suspension、Fence、Worker 接管与 Gateway fail-closed 闭环"
+login "$tenant_admin_email" "$tenant_password" TENANT
+assert_json '.contextState == "ACCESS_TOKEN_ISSUED" and (.accessToken | length > 100)'
+tenant_token_second_family="$(jq -r '.accessToken' "$response_body")"
+
+probe_body="$(jq -cn --arg expiresAt "$tenant_expires_at" \
+  '{displayName:"Revocation Forwarding Probe",expiresAt:$expiresAt}')"
+request 403 POST /api/v1/platform/tenants "$probe_body" "$tenant_token" "$(uuid_v7)"
+assert_json '.code == "PLATFORM_AUTHORIZATION_DENIED"'
+request 403 POST /api/v1/platform/tenants "$probe_body" "$tenant_token_second_family" "$(uuid_v7)"
+assert_json '.code == "PLATFORM_AUTHORIZATION_DENIED"'
+
+suspension_key="$(uuid_v7)"
+request 503 POST "/api/v1/platform/tenants/$tenant_id/suspensions" '' \
+  "$platform_token" "$suspension_key"
+assert_json '.code == "TENANT_SUSPENSION_PENDING"'
+
+# 首个有界批次返回 PENDING 时 Fence 已提交；此时既有 Token 和新签发都必须先于 Tenant 状态变更被阻断。
+login_status="$(curl --silent --show-error --output "$response_body" --write-out '%{http_code}' \
+  --request POST \
+  --header 'Content-Type: application/json' \
+  --header 'X-SF-CSRF: 1' \
+  --header 'Origin: https://console.saasforge.test' \
+  --header 'Sec-Fetch-Site: same-site' \
+  --data-binary "$(jq -cn --arg email "$tenant_admin_email" --arg password "$tenant_password" \
+    '{email:$email,password:$password,contextType:"TENANT"}')" \
+  "$gateway_base/api/v1/auth/login")"
+[[ "$login_status" == "403" ]]
+assert_json '.code == "ACCESS_CONTEXT_UNAVAILABLE"'
+request 401 POST /api/v1/platform/tenants "$probe_body" "$tenant_token" "$(uuid_v7)"
+assert_json '.code == "ACCESS_TOKEN_INVALID"'
+request 401 POST /api/v1/platform/tenants "$probe_body" "$tenant_token_second_family" "$(uuid_v7)"
+assert_json '.code == "ACCESS_TOKEN_INVALID"'
+
+# 一小时测试延迟保证旧进程不会抢跑；重启后新进程的首次调度从 PostgreSQL 租约与游标接管。
+compose restart iam-service >/dev/null
+wait_for_redis_revocation_ready
+wait_for_revocation_worker_completion "$tenant_id"
+compose restart tenant-access-service >/dev/null
+wait_for_tenant_suspension_worker_completion "$tenant_id"
+# 客户端丢弃首次 200，再以同一 Idempotency-Key 重放并比较持久化历史响应。
+wait_for_suspension_completion_losing_response "$tenant_id" "$platform_token" "$suspension_key"
+request 200 POST "/api/v1/platform/tenants/$tenant_id/suspensions" '' \
+  "$platform_token" "$suspension_key"
+assert_json '.status == "SUSPENDED"'
+suspension_response="$(jq -cS . "$response_body")"
+
+tenant_revocation_snapshot="$(postgres_value tenant_access_db \
+  "SELECT tenant.tenant_status || ':' || workflow.workflow_status || ':'
+       || workflow.attempt_count || ':' || workflow.revoked_family_count || ':'
+       || workflow.revoked_jti_count || ':' || (SELECT count(*) FROM tenant_access_outbox_events
+          WHERE event_snapshot->>'type' = 'com.saasforge.tenant.suspended.v1'
+            AND event_snapshot->'data'->>'tenantId' = '$tenant_id')
+   FROM tenants tenant
+   JOIN tenant_lifecycle_workflows workflow ON workflow.tenant_id = tenant.id
+   WHERE tenant.id = '$tenant_id' AND workflow.lifecycle_action = 'SUSPEND'")"
+iam_revocation_snapshot="$(postgres_value iam_db \
+  "SELECT workflow.revocation_status || ':' || workflow.attempt_count || ':'
+       || workflow.revoked_family_count || ':' || workflow.revoked_jti_count
+   FROM iam_user_session_revocations workflow
+   JOIN iam_revocation_fences fence USING (revocation_request_id)
+   WHERE fence.target_type = 'TENANT' AND fence.target_id = '$tenant_id'")"
+printf 'Tenant Access 撤销快照：%s；IAM 撤销快照：%s\n' \
+  "$tenant_revocation_snapshot" "$iam_revocation_snapshot"
+[[ "$tenant_revocation_snapshot" =~ ^SUSPENDED:COMPLETED:0:[2-9][0-9]*:[2-9][0-9]*:1$ ]]
+[[ "$iam_revocation_snapshot" =~ ^COMPLETED:0:[2-9][0-9]*:[2-9][0-9]*$ ]]
+tenant_revocation_counts="$(printf '%s' "$tenant_revocation_snapshot" | cut -d: -f4-5)"
+iam_revocation_counts="$(printf '%s' "$iam_revocation_snapshot" | cut -d: -f3-4)"
+[[ "$tenant_revocation_counts" == "$iam_revocation_counts" ]]
+
+tenant_count_before_fail_closed="$(compose exec -T postgres sh -eu -c '
+  psql --username "$POSTGRES_USER" --dbname tenant_access_db --tuples-only --no-align \
+    --command "SELECT count(*) FROM tenants"
+' | tr -d '[:space:]')"
+compose stop redis >/dev/null
+request 503 POST /api/v1/platform/tenants "$probe_body" "$platform_token" "$(uuid_v7)"
+assert_json '.code == "TOKEN_REVOCATION_STATUS_UNAVAILABLE"'
+compose start redis >/dev/null
+wait_for_redis_revocation_ready
+
+compose exec -T redis sh -eu -c '
+  redis-cli --no-auth-warning -a "$REDIS_PASSWORD" SET \
+    sf:dev:iam-service:revocation-index-ready:v1:state 0 >/dev/null
+'
+request 503 POST /api/v1/platform/tenants "$probe_body" "$platform_token" "$(uuid_v7)"
+assert_json '.code == "TOKEN_REVOCATION_STATUS_UNAVAILABLE"'
+compose exec -T redis sh -eu -c '
+  redis-cli --no-auth-warning -a "$REDIS_PASSWORD" SET \
+    sf:dev:iam-service:revocation-index-ready:v1:state 1 >/dev/null
+'
+wait_for_redis_revocation_ready
+
+tenant_count_after_fail_closed="$(compose exec -T postgres sh -eu -c '
+  psql --username "$POSTGRES_USER" --dbname tenant_access_db --tuples-only --no-align \
+    --command "SELECT count(*) FROM tenants"
+' | tr -d '[:space:]')"
+[[ "$tenant_count_after_fail_closed" == "$tenant_count_before_fail_closed" ]]
+
+resume_key="$(uuid_v7)"
+request 200 DELETE "/api/v1/platform/tenants/$tenant_id/suspensions" '' \
+  "$platform_token" "$resume_key"
+assert_json '.status == "ACTIVE"'
+login "$tenant_admin_email" "$tenant_password" TENANT
+assert_json '.contextState == "ACCESS_TOKEN_ISSUED" and (.accessToken | length > 100)'
+tenant_token_after_resume="$(jq -r '.accessToken' "$response_body")"
+request 403 POST /api/v1/platform/tenants "$probe_body" "$tenant_token_after_resume" "$(uuid_v7)"
+assert_json '.code == "PLATFORM_AUTHORIZATION_DENIED"'
+request 401 POST /api/v1/platform/tenants "$probe_body" "$tenant_token" "$(uuid_v7)"
+assert_json '.code == "ACCESS_TOKEN_INVALID"'
+request 401 POST /api/v1/platform/tenants "$probe_body" "$tenant_token_second_family" "$(uuid_v7)"
+assert_json '.code == "ACCESS_TOKEN_INVALID"'
+request 200 POST "/api/v1/platform/tenants/$tenant_id/suspensions" '' \
+  "$platform_token" "$suspension_key"
+[[ "$(jq -cS . "$response_body")" == "$suspension_response" ]]
+
+compose exec -T postgres sh -eu -c '
+  psql --username "$POSTGRES_USER" --dbname tenant_access_db --tuples-only --no-align \
+    --set=tenant_id="'"$tenant_id"'" <<SQL | grep -qx t
+      SELECT (SELECT tenant_status = '\''ACTIVE'\'' FROM tenants WHERE id = :'"'"'tenant_id'"'"')
+         AND (SELECT count(*) = 2 FROM tenant_lifecycle_workflows WHERE tenant_id = :'"'"'tenant_id'"'"')
+         AND (SELECT count(*) = 1 FROM tenant_access_outbox_events
+              WHERE event_snapshot->>'\''type'\'' = '\''com.saasforge.tenant.suspended.v1'\''
+                AND event_snapshot->'\''data'\''->>'\''tenantId'\'' = :'"'"'tenant_id'"'"');
+SQL
+' >/dev/null
+
+echo "[9/11] 验证无平台角色与错误 Scope"
 request 403 POST /api/v1/platform/tenants \
   "$(jq -cn --arg expiresAt "$tenant_expires_at" \
     '{displayName:"Unauthorized Tenant",expiresAt:$expiresAt}')" \
-  "$tenant_token" "$(uuid_v7)"
+  "$tenant_token_after_resume" "$(uuid_v7)"
 cat "$response_body" >>"$business_response_log"
 iam_client_id="$(<"$secret_directory/iam-client-id")"
 iam_client_secret="$(<"$secret_directory/iam-client-secret")"
@@ -502,17 +717,8 @@ wrong_scope_status="$(curl --silent --show-error --output "$response_body" --wri
 printf '错误 Scope 响应状态：%s\n' "$wrong_scope_status"
 [[ "$wrong_scope_status" == "403" ]]
 cat "$response_body" >>"$business_response_log"
-compose stop iam-service >/dev/null
-request 403 POST /api/v1/platform/tenants \
-  "$(jq -cn --arg expiresAt "$tenant_expires_at" \
-    '{displayName:"Unavailable Tenant",expiresAt:$expiresAt}')" \
-  "$platform_token" "$(uuid_v7)"
-cat "$response_body" >>"$business_response_log"
-assert_json '.code == "PLATFORM_AUTHORIZATION_DENIED"'
-compose up --detach iam-service >/dev/null
-wait_for_gateway
 
-echo "[9/10] 验证额度耗尽、Tenant 到期与跨 Tenant RLS"
+echo "[10/11] 验证额度耗尽、Tenant 到期与跨 Tenant RLS"
 request 201 POST /api/v1/platform/plans \
   "$(jq -cn --arg id "$quota_definition_id" \
     '{code:"tenant-zero",displayName:"Tenant Zero",quotaLimits:[{quotaDefinitionId:$id,limit:0}]}')" \
@@ -564,7 +770,7 @@ compose exec -T postgres sh -eu -c '
 SQL
 ' >/dev/null
 
-echo "[10/10] 扫描数据库、领域事件、业务 API 响应与应用日志的敏感明文"
+echo "[11/11] 扫描数据库、领域事件、业务 API 响应与应用日志的敏感明文"
 assert_sensitive_material_absent
 
 echo "Tenant 生命周期 Compose E2E 验收通过：全新卷、显式引导、平台主链、Tenant 登录及关键负向边界均已验证。"
