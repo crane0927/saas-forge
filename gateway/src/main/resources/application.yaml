@@ -17,6 +17,9 @@ spring:
         fail-fast: true
 browser:
   rootDomain: ${BROWSER_ROOT_DOMAIN:saasforge.test}
+
+saasforge:
+  environment: ${SAASFORGE_ENVIRONMENT:dev}
 ---
 spring:
   config:

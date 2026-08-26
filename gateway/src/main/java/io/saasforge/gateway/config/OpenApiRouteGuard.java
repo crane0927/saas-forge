@@ -7,6 +7,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.List;
 import java.util.Set;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -15,6 +17,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * 路由函数只匹配合法方法；该守卫将其余请求转换为公开契约承诺的错误响应。
  */
 @Component
+@Order(Ordered.HIGHEST_PRECEDENCE + 3)
 class OpenApiRouteGuard extends OncePerRequestFilter {
 
     private static final Set<String> PASSWORD_SETUP_PAGE_RESOURCES = Set.of(

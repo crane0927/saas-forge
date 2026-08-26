@@ -8,9 +8,11 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import io.saasforge.gateway.config.GatewayUserTokenTestConfiguration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
@@ -19,6 +21,7 @@ import org.springframework.test.context.ActiveProfiles;
         "saasforge.gateway.configuration-revision=test"
 })
 @ActiveProfiles("gateway-test")
+@Import(GatewayUserTokenTestConfiguration.class)
 class PasswordSetupPageTest {
     @LocalServerPort private int port;
 

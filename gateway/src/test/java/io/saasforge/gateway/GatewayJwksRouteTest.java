@@ -2,9 +2,11 @@ package io.saasforge.gateway;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.sun.net.httpserver.HttpServer;
+import io.saasforge.gateway.config.GatewayUserTokenTestConfiguration;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -33,7 +35,7 @@ import org.springframework.test.context.DynamicPropertySource;
         "spring.cloud.loadbalancer.cache.enabled=false",
         "saasforge.gateway.configuration-revision=test"
 })
-@Import(GatewayTestDiscoveryConfiguration.class)
+@Import({GatewayTestDiscoveryConfiguration.class, GatewayUserTokenTestConfiguration.class})
 @ActiveProfiles("gateway-test")
 class GatewayJwksRouteTest {
 
@@ -90,7 +92,12 @@ class GatewayJwksRouteTest {
             GatewayTestDiscoveryConfiguration.clearInstances(route.serviceId());
             HttpResponse<String> response;
             try {
-                response = send(route.method(), route.path());
+                HttpRequest.Builder request = HttpRequest.newBuilder(gatewayUri(route.path()))
+                        .method(route.method(), HttpRequest.BodyPublishers.noBody());
+                if (route.path().startsWith("/api/v1/platform/")) {
+                    request.header("Authorization", GatewayUserTokenTestConfiguration.VALID_BEARER);
+                }
+                response = send(request.build());
             } finally {
                 GatewayTestDiscoveryConfiguration.discoverAt(route.serviceId(), route.uri());
             }
@@ -100,6 +107,58 @@ class GatewayJwksRouteTest {
                     .startsWith("application/problem+json"));
             assertTrue(response.body().contains("\"code\":\"UPSTREAM_UNAVAILABLE\""));
         }
+    }
+
+    @Test
+    void enforcesOpenApiUserTokenRequirementBeforeForwarding() throws IOException, InterruptedException {
+        resetObservedRequest("tenant-access");
+        HttpResponse<String> missingRequired = send("POST", "/api/v1/platform/tenants");
+        assertEquals(401, missingRequired.statusCode());
+        assertEquals("Bearer", missingRequired.headers().firstValue("WWW-Authenticate").orElseThrow());
+        assertTrue(missingRequired.body().contains("\"code\":\"ACCESS_TOKEN_INVALID\""));
+        assertNull(OBSERVED_REQUESTS.get("tenant-access").get());
+
+        resetObservedRequest("iam");
+        HttpResponse<String> anonymous = send(HttpRequest.newBuilder(gatewayUri("/.well-known/jwks.json"))
+                .header("Authorization", "Bearer malformed")
+                .GET()
+                .build());
+        assertEquals(200, anonymous.statusCode());
+        assertEquals("iam", anonymous.body());
+
+        resetObservedRequest("iam");
+        HttpResponse<String> optional = send("POST", "/api/v1/auth/logout");
+        assertEquals(200, optional.statusCode());
+        assertEquals("iam", optional.body());
+
+        resetObservedRequest("iam");
+        HttpResponse<String> optionalInvalid = send(HttpRequest.newBuilder(gatewayUri("/api/v1/auth/logout"))
+                .header("Authorization", "Bearer malformed")
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build());
+        assertEquals(200, optionalInvalid.statusCode());
+        assertEquals("iam", optionalInvalid.body());
+        assertEquals("Bearer malformed", observedRequest("iam").firstHeader("Authorization"));
+
+        resetObservedRequest("iam");
+        HttpResponse<String> optionalUnavailable = send(HttpRequest.newBuilder(gatewayUri("/api/v1/auth/logout"))
+                .header("Authorization", GatewayUserTokenTestConfiguration.UNAVAILABLE_BEARER)
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build());
+        assertEquals(503, optionalUnavailable.statusCode());
+        assertTrue(optionalUnavailable.headers().firstValue("WWW-Authenticate").isEmpty());
+        assertTrue(optionalUnavailable.body().contains("\"code\":\"TOKEN_REVOCATION_STATUS_UNAVAILABLE\""));
+        assertNull(OBSERVED_REQUESTS.get("iam").get());
+
+        resetObservedRequest("tenant-access");
+        HttpResponse<String> unavailable = send(HttpRequest.newBuilder(gatewayUri("/api/v1/platform/tenants"))
+                .header("Authorization", GatewayUserTokenTestConfiguration.UNAVAILABLE_BEARER)
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build());
+        assertEquals(503, unavailable.statusCode());
+        assertTrue(unavailable.headers().firstValue("WWW-Authenticate").isEmpty());
+        assertTrue(unavailable.body().contains("\"code\":\"TOKEN_REVOCATION_STATUS_UNAVAILABLE\""));
+        assertNull(OBSERVED_REQUESTS.get("tenant-access").get());
     }
 
     @Test
@@ -135,6 +194,9 @@ class GatewayJwksRouteTest {
             String query = "acceptanceOperation=" + route.path().substring(route.path().lastIndexOf('/') + 1);
             String body = "POST".equals(route.method()) ? "{\"operation\":\"" + route.service() + "\"}" : "";
             HttpRequest.Builder request = HttpRequest.newBuilder(gatewayUri(route.path() + "?" + query));
+            if (route.path().startsWith("/api/v1/platform/")) {
+                request.header("Authorization", GatewayUserTokenTestConfiguration.VALID_BEARER);
+            }
             if (body.isEmpty()) {
                 request.method(route.method(), HttpRequest.BodyPublishers.noBody());
             } else {

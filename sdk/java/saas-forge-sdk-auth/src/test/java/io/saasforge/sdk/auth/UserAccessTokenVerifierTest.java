@@ -44,6 +44,23 @@ class UserAccessTokenVerifierTest {
     }
 
     @Test
+    void signatureVerifierReturnsPlatformOrTenantContextWithoutApplyingRevocationPolicy() throws Exception {
+        UserAccessTokenSignatureVerifier verifier = signatureVerifier();
+
+        VerifiedUserAccessTokenClaims platform = verifier.verify(
+                "Bearer " + token(Map.of(), NOW.minusSeconds(1), NOW.plusSeconds(899)));
+        VerifiedUserAccessTokenClaims tenant = verifier.verify("Bearer " + token(Map.of(
+                "membershipId", IDENTITY_ID.toString(),
+                "tenantId", JTI.toString()), NOW.minusSeconds(1), NOW.plusSeconds(899)));
+
+        assertEquals(IDENTITY_ID, platform.identityId());
+        assertEquals(null, platform.membershipId());
+        assertEquals(null, platform.tenantId());
+        assertEquals(IDENTITY_ID, tenant.membershipId());
+        assertEquals(JTI, tenant.tenantId());
+    }
+
+    @Test
     void rejectsTenantRoleAndPermissionClaims() throws Exception {
         UserAccessTokenVerifier verifier = verifier((jti, kid) -> false);
 
@@ -138,11 +155,14 @@ class UserAccessTokenVerifierTest {
     }
 
     private static UserAccessTokenVerifier verifier(UserAccessTokenRevocationChecker revocations) {
+        return new UserAccessTokenVerifier(signatureVerifier(), revocations);
+    }
+
+    private static UserAccessTokenSignatureVerifier signatureVerifier() {
         ServiceJwtVerificationKey publicKey = new ServiceJwtVerificationKey(
                 key.getKeyID(), key.getModulus().toString(), key.getPublicExponent().toString());
-        return new UserAccessTokenVerifier(
+        return new UserAccessTokenSignatureVerifier(
                 kid -> key.getKeyID().equals(kid) ? Optional.of(publicKey) : Optional.empty(),
-                revocations,
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 "https://iam.test",
                 "saasforge-api",

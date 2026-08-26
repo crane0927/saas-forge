@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.sun.net.httpserver.HttpServer;
+import io.saasforge.gateway.config.GatewayUserTokenTestConfiguration;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -29,7 +30,7 @@ import org.springframework.test.context.DynamicPropertySource;
         "spring.cloud.loadbalancer.cache.enabled=false",
         "saasforge.gateway.configuration-revision=test"
 })
-@Import(GatewayTestDiscoveryConfiguration.class)
+@Import({GatewayTestDiscoveryConfiguration.class, GatewayUserTokenTestConfiguration.class})
 @ActiveProfiles("gateway-test")
 class GatewayProblemDetailsTest {
 
@@ -126,7 +127,10 @@ class GatewayProblemDetailsTest {
 
     @Test
     void normalizesAnUpstreamConnectionFailure() throws IOException, InterruptedException {
-        assertGatewayProblem(send("POST", "/api/v1/platform/tenants"), 502, "UPSTREAM_INVALID_RESPONSE", null);
+        assertGatewayProblem(send(HttpRequest.newBuilder(gatewayUri("/api/v1/platform/tenants"))
+                .header("Authorization", GatewayUserTokenTestConfiguration.VALID_BEARER)
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build()), 502, "UPSTREAM_INVALID_RESPONSE", null);
     }
 
     @Test

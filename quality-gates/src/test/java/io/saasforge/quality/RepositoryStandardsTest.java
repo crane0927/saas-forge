@@ -90,9 +90,6 @@ class RepositoryStandardsTest {
     private static final Pattern OPENAPI_SERVICE_OWNER = Pattern.compile("^      x-saasforge-service: ([a-z-]+)$");
     private static final Pattern OPENAPI_OPERATION_ID = Pattern.compile("^      operationId: ([A-Za-z][A-Za-z0-9]*)$");
     private static final Pattern OPENAPI_SECURITY = Pattern.compile("^      security:(.*)$");
-    private static final Pattern GATEWAY_OPENAPI_ROUTE = Pattern.compile(
-            "(?s)\\b(none|optional|required)\\(\\s*\"([^\"]+)\"\\s*,\\s*HttpMethod\\.([A-Z]+)\\s*,"
-                    + "\\s*\"([^\"]+)\"\\s*,\\s*Target\\.([A-Z_]+)\\s*\\)");
     private static final Pattern SPRING_HTTP_MAPPING = Pattern.compile(
             "@(RequestMapping|GetMapping|PostMapping|PutMapping|PatchMapping|DeleteMapping)\\b");
     private static final Pattern REST_CONTROLLER = Pattern.compile("@RestController\\b");
@@ -266,15 +263,19 @@ class RepositoryStandardsTest {
     void gatewayRoutesMatchOpenApiOwnershipAndUserTokenSecurity() throws Exception {
         List<OpenApiOperation> operations = parseOpenApiOperations(
                 REPOSITORY.resolve("contracts/openapi/v1.yaml"));
-        String gatewaySource = Files.readString(
-                REPOSITORY.resolve("gateway/src/main/java/io/saasforge/gateway/config/GatewayOpenApiRoutes.java"),
-                StandardCharsets.UTF_8);
-        Matcher matcher = GATEWAY_OPENAPI_ROUTE.matcher(gatewaySource);
+        Path generatedMetadata = REPOSITORY.resolve(
+                "gateway/target/generated-resources/openapi/META-INF/saasforge/gateway-openapi-routes.tsv");
+        assertTrue(Files.isRegularFile(generatedMetadata), "缺少从 OpenAPI 生成的 Gateway 路由元数据");
         Map<String, GatewayRoute> routes = new HashMap<>();
-        while (matcher.find()) {
-            String operationId = matcher.group(2);
+        for (String line : Files.readAllLines(generatedMetadata, StandardCharsets.UTF_8)) {
+            if (line.isBlank() || line.startsWith("#")) {
+                continue;
+            }
+            String[] fields = line.split("\\t", -1);
+            assertEquals(5, fields.length, "Gateway 路由元数据字段数不合法: " + line);
+            String operationId = fields[0];
             GatewayRoute route = new GatewayRoute(
-                    matcher.group(3), matcher.group(4), matcher.group(5), matcher.group(1).toUpperCase());
+                    fields[1], fields[2], fields[3], fields[4]);
             assertTrue(routes.put(operationId, route) == null,
                     "Gateway 重复登记 operationId: " + operationId);
         }

@@ -2,9 +2,11 @@ package io.saasforge.gateway;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import io.saasforge.gateway.config.GatewayUserTokenTestConfiguration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest(properties = {
@@ -13,6 +15,7 @@ import org.springframework.test.context.ActiveProfiles;
         "saasforge.gateway.configuration-revision=test"
 })
 @ActiveProfiles("gateway-test")
+@Import(GatewayUserTokenTestConfiguration.class)
 class GatewayApplicationTest {
 
     @Test

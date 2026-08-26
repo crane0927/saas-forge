@@ -51,6 +51,8 @@ class GatewayProblemDetailsWriter {
             case "UPSTREAM_TIMEOUT" -> "Upstream timeout";
             case "UPSTREAM_UNAVAILABLE" -> "Upstream service unavailable";
             case "BROWSER_REQUEST_REJECTED" -> "Browser request rejected";
+            case "ACCESS_TOKEN_INVALID" -> "Access Token invalid";
+            case "TOKEN_REVOCATION_STATUS_UNAVAILABLE" -> "Token revocation status unavailable";
             default -> throw new IllegalArgumentException("Unsupported Gateway Problem Details code: " + code);
         };
     }

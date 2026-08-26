@@ -1,6 +1,10 @@
 saasforge:
   gateway:
-    configuration-revision: "1"
+    configuration-revision: "2"
+
+security:
+  jwt:
+    issuer: ${IAM_JWT_ISSUER:?IAM_JWT_ISSUER is required}
 
 management:
   endpoint:
