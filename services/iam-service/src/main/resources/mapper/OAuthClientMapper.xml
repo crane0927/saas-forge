@@ -112,6 +112,12 @@
         WHERE id = #{clientId} AND client_status = 'ACTIVE'
     </update>
 
+    <update id="revokeSecret">
+        UPDATE iam_oauth_client_secrets
+        SET revoked_at = #{revokedAt}
+        WHERE id = #{secretId} AND client_id = #{clientId} AND revoked_at IS NULL
+    </update>
+
     <update id="revokeClient">
         UPDATE iam_oauth_clients
         SET client_status = 'REVOKED', revoked_at = #{revokedAt}, updated_at = #{revokedAt}

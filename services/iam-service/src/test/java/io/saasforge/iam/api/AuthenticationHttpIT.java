@@ -684,6 +684,115 @@ class AuthenticationHttpIT {
 
     @Test
     @Order(4)
+    void platformAdminRecoversLostRotationOnceAndPreservesTheStableSecretDeadline() throws Exception {
+        createUser("oauth-recovery-admin@example.test", "correct-password", true, Credential.REGULAR);
+        String platformToken = accessToken(login(
+                "oauth-recovery-admin@example.test", "correct-password", "PLATFORM").andReturn());
+        UUID createKey = uuidV7(69_001);
+        MvcResult created = mockMvc.perform(post("/api/v1/platform/oauth-clients")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + platformToken)
+                        .header("Idempotency-Key", createKey.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsBytes(Map.of(
+                                "displayName", "recovering-runtime",
+                                "allowedScopes", List.of("runtime:read")))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        JsonNode createdBody = json(created.getResponse().getContentAsByteArray());
+        UUID clientId = UUID.fromString(createdBody.get("clientId").asString());
+        String stableSecret = createdBody.get("clientSecret").asString();
+
+        mockMvc.perform(post("/api/v1/platform/oauth-clients")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + platformToken)
+                        .header("Idempotency-Key", createKey.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsBytes(Map.of(
+                                "displayName", "recovering-runtime",
+                                "allowedScopes", List.of("runtime:read")))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CLIENT_SECRET_ALREADY_REVEALED"))
+                .andExpect(jsonPath("$.clientId").value(clientId.toString()));
+
+        UUID rotationKey = uuidV7(69_002);
+        JsonNode rotatedBody = json(rotateClient(platformToken, clientId, rotationKey)
+                .andReturn().getResponse().getContentAsByteArray());
+        String lostRotatedSecret = rotatedBody.get("clientSecret").asString();
+        java.sql.Timestamp stableDeadline = jdbc.queryForObject(
+                "SELECT valid_until FROM iam_oauth_client_secrets WHERE client_id = ? AND valid_until IS NOT NULL",
+                java.sql.Timestamp.class, clientId);
+
+        UUID recoveryKey = uuidV7(69_003);
+        byte[] recoveryRequest = new ObjectMapper().writeValueAsBytes(Map.of(
+                "originalIdempotencyKey", rotationKey));
+        MvcResult recovered = mockMvc.perform(post(
+                        "/api/v1/platform/oauth-clients/{clientId}/secret-issuance-recoveries", clientId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + platformToken)
+                        .header("Idempotency-Key", recoveryKey.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(recoveryRequest))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(jsonPath("$.clientSecret").isString())
+                .andReturn();
+        String replacementSecret = json(recovered.getResponse().getContentAsByteArray())
+                .get("clientSecret").asString();
+        assertFalse(lostRotatedSecret.equals(replacementSecret));
+        assertEquals(stableDeadline, jdbc.queryForObject(
+                "SELECT valid_until FROM iam_oauth_client_secrets WHERE client_id = ? AND valid_until IS NOT NULL",
+                java.sql.Timestamp.class, clientId));
+
+        for (String validSecret : List.of(stableSecret, replacementSecret)) {
+            mockMvc.perform(post("/oauth2/token")
+                            .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                            .header(HttpHeaders.AUTHORIZATION, basic(clientId, validSecret))
+                            .param("grant_type", "client_credentials"))
+                    .andExpect(status().isOk());
+        }
+        mockMvc.perform(post("/oauth2/token")
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .header(HttpHeaders.AUTHORIZATION, basic(clientId, lostRotatedSecret))
+                        .param("grant_type", "client_credentials"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post(
+                        "/api/v1/platform/oauth-clients/{clientId}/secret-issuance-recoveries", clientId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + platformToken)
+                        .header("Idempotency-Key", recoveryKey.toString())
+                        .contentType(MediaType.APPLICATION_JSON).content(recoveryRequest))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CLIENT_SECRET_RECOVERY_NOT_ALLOWED"));
+        mockMvc.perform(post(
+                        "/api/v1/platform/oauth-clients/{clientId}/secret-issuance-recoveries", clientId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + platformToken)
+                        .header("Idempotency-Key", uuidV7(69_004).toString())
+                        .contentType(MediaType.APPLICATION_JSON).content(recoveryRequest))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CLIENT_SECRET_RECOVERY_NOT_ALLOWED"));
+
+        Map<String, Object> terminal = jdbc.queryForMap("""
+                SELECT recovery.original_operation_id, recovery.secret_record_id,
+                       original.secret_record_id AS original_secret_record_id,
+                       event.event_snapshot::TEXT AS event_snapshot
+                FROM iam_oauth_client_management_operations recovery
+                JOIN iam_oauth_client_management_operations original ON original.id = recovery.original_operation_id
+                JOIN iam_outbox_events event ON event.ordering_key = recovery.client_id::TEXT
+                    AND event.event_snapshot->>'type' =
+                        'com.saasforge.iam.client-secret.issuance-recovered.v1'
+                WHERE recovery.actor_identity_id = ? AND recovery.idempotency_key = ?
+                """, UUID.fromString(json(Base64.getUrlDecoder().decode(platformToken.split("\\.")[1]))
+                .get("identityId").asString()), recoveryKey);
+        assertNotNull(terminal.get("original_operation_id"));
+        assertNotNull(terminal.get("secret_record_id"));
+        assertNotNull(terminal.get("original_secret_record_id"));
+        String event = (String) terminal.get("event_snapshot");
+        assertTrue(event.contains("CLIENT_SECRET_ISSUANCE_RECOVERED"));
+        assertFalse(event.contains(replacementSecret));
+        assertFalse(event.toLowerCase().contains("digest"));
+        assertFalse(event.contains("secretRecordId"));
+    }
+
+    @Test
+    @Order(4)
     void clientRevocationIsRedisFirstIdempotentAndRecoveredFromPostgresql() throws Exception {
         TestUser admin = createUser(
                 "oauth-revocation-admin@example.test", "correct-password", true, Credential.REGULAR);

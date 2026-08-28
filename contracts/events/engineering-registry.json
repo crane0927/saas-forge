@@ -114,6 +114,20 @@
       ]
     },
     {
+      "type": "com.saasforge.iam.client-secret.issuance-recovered.v1",
+      "producerService": "iam-service",
+      "source": "urn:saasforge:iam-service",
+      "schema": "contracts/events/iam-client-secret-issuance-recovered.v1.schema.json",
+      "topic": "saasforge.<environment>.iam-service.events",
+      "orderingKey": "clientId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.iam-oauth-client-events"
+        }
+      ]
+    },
+    {
       "type": "com.saasforge.iam.platform-admin-initial-credential-reset.v1",
       "producerService": "iam-service",
       "source": "urn:saasforge:iam-service",

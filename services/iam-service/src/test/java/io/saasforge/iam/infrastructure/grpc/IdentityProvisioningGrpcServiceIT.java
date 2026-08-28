@@ -202,7 +202,8 @@ class IdentityProvisioningGrpcServiceIT {
 
     private record FakeOAuthClientRepository(Map<UUID, OAuthClient> clients) implements OAuthClientRepository {
         @Override
-        public OAuthClient create(OAuthClient client, Sha256Digest initialSecretDigest, Instant issuedAt) {
+        public io.saasforge.iam.domain.client.OAuthClientCreation create(
+                OAuthClient client, Sha256Digest initialSecretDigest, Instant issuedAt) {
             throw new UnsupportedOperationException();
         }
 
@@ -233,6 +234,12 @@ class IdentityProvisioningGrpcServiceIT {
 
         @Override
         public ClientSecret rotate(UUID clientId, Sha256Digest nextSecretDigest, Instant at) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public ClientSecret recover(
+                UUID clientId, UUID originalSecretId, Sha256Digest replacementDigest, Instant at) {
             throw new UnsupportedOperationException();
         }
 

@@ -3,7 +3,9 @@ package io.saasforge.iam.infrastructure.persistence;
 import io.saasforge.iam.domain.client.ClientSecret;
 import io.saasforge.iam.domain.client.OAuthClient;
 import io.saasforge.iam.domain.client.OAuthClientBootstrapState;
+import io.saasforge.iam.domain.client.OAuthClientCreation;
 import io.saasforge.iam.domain.client.OAuthClientRepository;
+import io.saasforge.iam.domain.client.OAuthClientSecretRecoveryException;
 import io.saasforge.iam.domain.client.OAuthClientSecretRotationException;
 import io.saasforge.iam.domain.client.OAuthClientStatus;
 import io.saasforge.iam.domain.client.OAuthClientType;
@@ -33,10 +35,11 @@ public class MyBatisOAuthClientRepository implements OAuthClientRepository {
 
     @Override
     @Transactional
-    public OAuthClient create(OAuthClient client, Sha256Digest initialSecretDigest, Instant issuedAt) {
+    public OAuthClientCreation create(OAuthClient client, Sha256Digest initialSecretDigest, Instant issuedAt) {
         OAuthClient persisted = toDomain(mapper.insertClient(toRow(client)));
-        mapper.insertSecret(secretRow(persisted.id(), initialSecretDigest, issuedAt));
-        return persisted;
+        ClientSecret initialSecret = toDomain(mapper.insertSecret(
+                secretRow(persisted.id(), initialSecretDigest, issuedAt)));
+        return new OAuthClientCreation(persisted, initialSecret);
     }
 
     @Override
@@ -101,6 +104,30 @@ public class MyBatisOAuthClientRepository implements OAuthClientRepository {
             throw new IllegalStateException("OAuth Client 轮换时间更新失败");
         }
         return toDomain(mapper.insertSecret(secretRow(clientId, nextSecretDigest, at)));
+    }
+
+    @Override
+    @Transactional
+    public ClientSecret recover(
+            UUID clientId, UUID originalSecretId, Sha256Digest replacementDigest, Instant at) {
+        OAuthClientRow row = mapper.lockClientById(clientId);
+        if (row == null) {
+            throw new OAuthClientSecretRecoveryException(
+                    OAuthClientSecretRecoveryException.Reason.CLIENT_NOT_FOUND, "OAuth Client 不存在");
+        }
+        if (toDomain(row).status() == OAuthClientStatus.REVOKED) {
+            throw new OAuthClientSecretRecoveryException(
+                    OAuthClientSecretRecoveryException.Reason.CLIENT_REVOKED, "OAuth Client 已被吊销");
+        }
+        if (mapper.revokeSecret(clientId, originalSecretId, IamTime.asOffsetDateTime(at)) != 1) {
+            throw new OAuthClientSecretRecoveryException(
+                    OAuthClientSecretRecoveryException.Reason.SECRET_NOT_RECOVERABLE,
+                    "原签发操作的 Client Secret 已不可恢复");
+        }
+        if (mapper.touchClient(clientId, IamTime.asOffsetDateTime(at)) != 1) {
+            throw new IllegalStateException("OAuth Client 恢复时间更新失败");
+        }
+        return toDomain(mapper.insertSecret(secretRow(clientId, replacementDigest, at)));
     }
 
     @Override

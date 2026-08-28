@@ -751,6 +751,37 @@ paths:
         '502': { $ref: './common.yaml#/components/responses/Problem' }
         '504': { $ref: './common.yaml#/components/responses/Problem' }
 
+  /api/v1/platform/oauth-clients/{clientId}/secret-issuance-recoveries:
+    post:
+      tags: [OAuth clients]
+      operationId: recoverOAuthClientSecret
+      x-saasforge-service: iam-service
+      summary: Replace one lost OAuth Client Secret issuance result
+      description: The original successful create or rotation can be recovered once by its original actor within ten minutes. No prior plaintext is retained or replayed.
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ClientId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SecretIssuanceRecoveryRequest' }
+      responses:
+        '200':
+          description: The possibly undelivered Secret was invalidated and its replacement is revealed once.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OAuthClientSecretResult' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
   /api/v1/platform/oauth-clients/{clientId}/revocations:
     post:
       tags: [OAuth clients]
@@ -1168,6 +1199,12 @@ components:
           minItems: 1
           uniqueItems: true
           items: { $ref: '#/components/schemas/RuntimeScope' }
+      additionalProperties: false
+    SecretIssuanceRecoveryRequest:
+      type: object
+      required: [originalIdempotencyKey]
+      properties:
+        originalIdempotencyKey: { $ref: './common.yaml#/components/schemas/UuidV7' }
       additionalProperties: false
     OAuthClientSecretResult:
       type: object

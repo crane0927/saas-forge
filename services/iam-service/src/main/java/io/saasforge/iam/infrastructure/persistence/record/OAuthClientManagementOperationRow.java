@@ -10,6 +10,8 @@ public class OAuthClientManagementOperationRow {
     private String operationType;
     private UUID clientId;
     private byte[] requestFingerprint;
+    private UUID originalOperationId;
+    private UUID secretRecordId;
     private String outcome;
     private int httpStatus;
     private OffsetDateTime completedAt;
@@ -28,6 +30,10 @@ public class OAuthClientManagementOperationRow {
     public void setRequestFingerprint(byte[] requestFingerprint) {
         this.requestFingerprint = requestFingerprint == null ? null : requestFingerprint.clone();
     }
+    public UUID getOriginalOperationId() { return originalOperationId; }
+    public void setOriginalOperationId(UUID originalOperationId) { this.originalOperationId = originalOperationId; }
+    public UUID getSecretRecordId() { return secretRecordId; }
+    public void setSecretRecordId(UUID secretRecordId) { this.secretRecordId = secretRecordId; }
     public String getOutcome() { return outcome; }
     public void setOutcome(String outcome) { this.outcome = outcome; }
     public int getHttpStatus() { return httpStatus; }

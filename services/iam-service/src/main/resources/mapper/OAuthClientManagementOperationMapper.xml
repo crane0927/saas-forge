@@ -10,6 +10,8 @@
         <result property="operationType" column="operation_type"/>
         <result property="clientId" column="client_id"/>
         <result property="requestFingerprint" column="request_fingerprint"/>
+        <result property="originalOperationId" column="original_operation_id"/>
+        <result property="secretRecordId" column="secret_record_id"/>
         <result property="outcome" column="outcome"/>
         <result property="httpStatus" column="http_status"/>
         <result property="completedAt" column="completed_at"/>
@@ -21,17 +23,29 @@
 
     <select id="find" resultMap="operationRow">
         SELECT id, actor_identity_id, idempotency_key, operation_type, client_id,
-               request_fingerprint, outcome, http_status, completed_at
+               request_fingerprint, original_operation_id, secret_record_id,
+               outcome, http_status, completed_at
         FROM iam_oauth_client_management_operations
         WHERE actor_identity_id = #{actorIdentityId} AND idempotency_key = #{idempotencyKey}
+    </select>
+
+    <select id="findSuccessfulRecovery" resultMap="operationRow">
+        SELECT id, actor_identity_id, idempotency_key, operation_type, client_id,
+               request_fingerprint, original_operation_id, secret_record_id,
+               outcome, http_status, completed_at
+        FROM iam_oauth_client_management_operations
+        WHERE original_operation_id = #{originalOperationId}
+          AND operation_type = 'RECOVER' AND outcome = 'SUCCEEDED'
     </select>
 
     <insert id="insert">
         INSERT INTO iam_oauth_client_management_operations
             (id, actor_identity_id, idempotency_key, operation_type, client_id,
-             request_fingerprint, outcome, http_status, completed_at)
+             request_fingerprint, original_operation_id, secret_record_id,
+             outcome, http_status, completed_at)
         VALUES
             (#{row.id}, #{row.actorIdentityId}, #{row.idempotencyKey}, #{row.operationType}, #{row.clientId},
-             #{row.requestFingerprint}, #{row.outcome}, #{row.httpStatus}, #{row.completedAt})
+             #{row.requestFingerprint}, #{row.originalOperationId}, #{row.secretRecordId},
+             #{row.outcome}, #{row.httpStatus}, #{row.completedAt})
     </insert>
 </mapper>

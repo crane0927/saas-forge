@@ -9,7 +9,7 @@ import java.util.UUID;
 /** OAuth Client 与其 Secret 生命周期的持久化边界。 */
 public interface OAuthClientRepository {
 
-    OAuthClient create(OAuthClient client, Sha256Digest initialSecretDigest, Instant issuedAt);
+    OAuthClientCreation create(OAuthClient client, Sha256Digest initialSecretDigest, Instant issuedAt);
 
     OAuthClient createWithId(OAuthClient client, Sha256Digest initialSecretDigest, Instant issuedAt);
 
@@ -22,6 +22,9 @@ public interface OAuthClientRepository {
     Optional<OAuthClient> findActiveBySecretDigest(Sha256Digest secretDigest, Instant at);
 
     ClientSecret rotate(UUID clientId, Sha256Digest nextSecretDigest, Instant at);
+
+    /** 原子替代原签发操作产生的 Secret，并保留其他 Secret 的既有截止时间。 */
+    ClientSecret recover(UUID clientId, UUID originalSecretId, Sha256Digest replacementDigest, Instant at);
 
     /** 返回 true 表示本次固定了首次不可逆吊销事实。 */
     boolean revoke(UUID clientId, Instant at);

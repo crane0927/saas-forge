@@ -10,6 +10,7 @@ import io.saasforge.iam.contract.model.OAuthClientStatus;
 import io.saasforge.iam.contract.model.OAuthClientType;
 import io.saasforge.iam.contract.model.ReservedServiceKey;
 import io.saasforge.iam.contract.model.RuntimeScope;
+import io.saasforge.iam.contract.model.SecretIssuanceRecoveryRequest;
 import io.saasforge.iam.domain.client.OAuthClient;
 import io.saasforge.iam.domain.client.OAuthScope;
 import jakarta.servlet.http.HttpServletRequest;
@@ -69,6 +70,17 @@ public class OAuthClientsController implements OAuthClientsApi {
         HttpServletRequest httpRequest = currentRequest();
         UUID actorIdentityId = authorizer.authorize(httpRequest.getHeader(HttpHeaders.AUTHORIZATION));
         var result = management.rotate(actorIdentityId, idempotencyKey, clientId, traceId(httpRequest));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(toSecretResult(result.client(), result.clientSecret()));
+    }
+
+    @Override
+    public ResponseEntity<OAuthClientSecretResult> recoverOAuthClientSecret(
+            UUID clientId, UUID idempotencyKey, SecretIssuanceRecoveryRequest request) {
+        HttpServletRequest httpRequest = currentRequest();
+        UUID actorIdentityId = authorizer.authorize(httpRequest.getHeader(HttpHeaders.AUTHORIZATION));
+        var result = management.recover(actorIdentityId, idempotencyKey, clientId,
+                request.getOriginalIdempotencyKey(), traceId(httpRequest));
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(toSecretResult(result.client(), result.clientSecret()));
     }

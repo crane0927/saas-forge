@@ -8,5 +8,10 @@ public interface OAuthClientManagementOperationRepository {
 
     Optional<OAuthClientManagementOperation> find(UUID actorIdentityId, UUID idempotencyKey);
 
+    /** 以原操作锁串行化不同恢复幂等键对同一个一次性恢复资格的竞争。 */
+    boolean tryLockRecovery(UUID originalOperationId);
+
+    Optional<OAuthClientManagementOperation> findSuccessfulRecovery(UUID originalOperationId);
+
     void append(OAuthClientManagementOperation operation);
 }

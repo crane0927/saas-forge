@@ -31,6 +31,11 @@ public interface OAuthClientMapper {
 
     int touchClient(@Param("clientId") UUID clientId, @Param("updatedAt") OffsetDateTime updatedAt);
 
+    int revokeSecret(
+            @Param("clientId") UUID clientId,
+            @Param("secretId") UUID secretId,
+            @Param("revokedAt") OffsetDateTime revokedAt);
+
     int revokeClient(@Param("clientId") UUID clientId, @Param("revokedAt") OffsetDateTime revokedAt);
 
     int revokeSecrets(@Param("clientId") UUID clientId, @Param("revokedAt") OffsetDateTime revokedAt);

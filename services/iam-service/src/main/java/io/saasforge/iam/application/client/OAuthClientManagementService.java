@@ -9,6 +9,7 @@ import io.saasforge.iam.domain.client.OAuthClientManagementOperation;
 import io.saasforge.iam.domain.client.OAuthClientManagementOperationRepository;
 import io.saasforge.iam.domain.client.OAuthClientRepository;
 import io.saasforge.iam.domain.client.OAuthClientSecretRotationException;
+import io.saasforge.iam.domain.client.OAuthClientSecretRecoveryException;
 import io.saasforge.iam.domain.client.OAuthScope;
 import io.saasforge.iam.domain.outbox.OutboxEventRepository;
 import io.saasforge.iam.domain.shared.Sha256Digest;
@@ -24,11 +25,13 @@ import java.util.UUID;
 import org.springframework.transaction.annotation.Transactional;
 
 public class OAuthClientManagementService {
+    private static final java.time.Duration RECOVERY_WINDOW = java.time.Duration.ofMinutes(10);
     private final OAuthClientRepository clients;
     private final OAuthClientManagementOperationRepository operations;
     private final OutboxEventRepository outbox;
     private final OAuthClientCreatedEventFactory events;
     private final ClientSecretRotatedEventFactory rotationEvents;
+    private final ClientSecretIssuanceRecoveredEventFactory recoveryEvents;
     private final OAuthClientRevokedEventFactory revocationEvents;
     private final RevocationIndex revocations;
     private final ClientSecretIssuer secrets;
@@ -41,6 +44,7 @@ public class OAuthClientManagementService {
             OutboxEventRepository outbox,
             OAuthClientCreatedEventFactory events,
             ClientSecretRotatedEventFactory rotationEvents,
+            ClientSecretIssuanceRecoveredEventFactory recoveryEvents,
             OAuthClientRevokedEventFactory revocationEvents,
             RevocationIndex revocations,
             ClientSecretIssuer secrets,
@@ -51,6 +55,7 @@ public class OAuthClientManagementService {
         this.outbox = outbox;
         this.events = events;
         this.rotationEvents = rotationEvents;
+        this.recoveryEvents = recoveryEvents;
         this.revocationEvents = revocationEvents;
         this.revocations = revocations;
         this.secrets = secrets;
@@ -75,15 +80,17 @@ public class OAuthClientManagementService {
             if (!existing.requestFingerprint().equals(fingerprint)) {
                 throw OAuthClientManagementException.keyReused();
             }
-            throw OAuthClientManagementException.secretAlreadyRevealed();
+            throw OAuthClientManagementException.secretAlreadyRevealed(existing.clientId());
         });
 
         Instant createdAt = clock.instant().truncatedTo(ChronoUnit.MILLIS);
         OAuthClient prepared = OAuthClient.registerRuntime(displayName, allowedScopes, createdAt);
         ClientSecretIssuer.IssuedClientSecret issued = secrets.issue();
-        OAuthClient client = clients.create(prepared, issued.digest(), createdAt);
+        var creation = clients.create(prepared, issued.digest(), createdAt);
+        OAuthClient client = creation.client();
         OAuthClientManagementOperation operation = new OAuthClientManagementOperation(
                 ids.next(), actorIdentityId, idempotencyKey, "CREATE", client.id(), fingerprint,
+                null, creation.initialSecret().id(),
                 "SUCCEEDED", 201, createdAt);
         operations.append(operation);
         outbox.append(events.create(client, operation, actorIdentityId, createdAt, traceId));
@@ -108,13 +115,21 @@ public class OAuthClientManagementService {
             if (!existing.requestFingerprint().equals(fingerprint)) {
                 throw OAuthClientManagementException.keyReused();
             }
-            throw OAuthClientManagementException.secretAlreadyRevealed();
+            throw OAuthClientManagementException.secretAlreadyRevealed(existing.clientId());
         });
 
         Instant rotatedAt = clock.instant().truncatedTo(ChronoUnit.MILLIS);
         ClientSecretIssuer.IssuedClientSecret issued = secrets.issue();
         try {
-            clients.rotate(clientId, issued.digest(), rotatedAt);
+            var rotatedSecret = clients.rotate(clientId, issued.digest(), rotatedAt);
+            OAuthClient client = clients.findById(clientId)
+                    .orElseThrow(() -> new IllegalStateException("OAuth Client 轮换后查询失败"));
+            OAuthClientManagementOperation operation = new OAuthClientManagementOperation(
+                    ids.next(), actorIdentityId, idempotencyKey, "ROTATE", client.id(), fingerprint,
+                    null, rotatedSecret.id(), "SUCCEEDED", 200, rotatedAt);
+            operations.append(operation);
+            outbox.append(rotationEvents.create(client, operation, actorIdentityId, rotatedAt, traceId));
+            return new OAuthClientSecretResult(client, issued.plaintext());
         } catch (OAuthClientSecretRotationException exception) {
             throw switch (exception.reason()) {
                 case CLIENT_NOT_FOUND -> OAuthClientManagementException.notFound();
@@ -122,14 +137,68 @@ public class OAuthClientManagementService {
                 case OVERLAP_ACTIVE -> OAuthClientManagementException.rotationOverlapActive();
             };
         }
-        OAuthClient client = clients.findById(clientId)
-                .orElseThrow(() -> new IllegalStateException("OAuth Client 轮换后查询失败"));
-        OAuthClientManagementOperation operation = new OAuthClientManagementOperation(
-                ids.next(), actorIdentityId, idempotencyKey, "ROTATE", client.id(), fingerprint,
-                "SUCCEEDED", 200, rotatedAt);
-        operations.append(operation);
-        outbox.append(rotationEvents.create(client, operation, actorIdentityId, rotatedAt, traceId));
-        return new OAuthClientSecretResult(client, issued.plaintext());
+    }
+
+    /** 原操作资格、Secret 替代、永久终态与恢复事实必须共享同一事务。 */
+    @Transactional
+    public OAuthClientSecretResult recover(
+            UUID actorIdentityId,
+            UUID idempotencyKey,
+            UUID clientId,
+            UUID originalIdempotencyKey,
+            String traceId) {
+        requireUuidV7(idempotencyKey);
+        if (originalIdempotencyKey == null || originalIdempotencyKey.version() != 7
+                || originalIdempotencyKey.equals(idempotencyKey)) {
+            throw OAuthClientManagementException.recoveryRequestInvalid();
+        }
+        Sha256Digest fingerprint = fingerprint(
+                "RECOVER", clientId + "\n" + originalIdempotencyKey);
+        if (!operations.tryLock(actorIdentityId, idempotencyKey)) {
+            throw OAuthClientManagementException.inProgress();
+        }
+        operations.find(actorIdentityId, idempotencyKey).ifPresent(existing -> {
+            if (!existing.requestFingerprint().equals(fingerprint)) {
+                throw OAuthClientManagementException.keyReused();
+            }
+            throw OAuthClientManagementException.recoveryNotAllowed();
+        });
+
+        Instant recoveredAt = clock.instant().truncatedTo(ChronoUnit.MILLIS);
+        OAuthClientManagementOperation original = operations
+                .find(actorIdentityId, originalIdempotencyKey)
+                .filter(value -> ("CREATE".equals(value.operationType()) || "ROTATE".equals(value.operationType()))
+                        && "SUCCEEDED".equals(value.outcome())
+                        && value.clientId().equals(clientId)
+                        && value.secretRecordId() != null
+                        && !recoveredAt.isBefore(value.completedAt())
+                        && !recoveredAt.isAfter(value.completedAt().plus(RECOVERY_WINDOW)))
+                .orElseThrow(OAuthClientManagementException::recoveryNotAllowed);
+        if (!operations.tryLockRecovery(original.id())) {
+            throw OAuthClientManagementException.inProgress();
+        }
+        if (operations.findSuccessfulRecovery(original.id()).isPresent()) {
+            throw OAuthClientManagementException.recoveryNotAllowed();
+        }
+
+        ClientSecretIssuer.IssuedClientSecret issued = secrets.issue();
+        try {
+            var replacement = clients.recover(clientId, original.secretRecordId(), issued.digest(), recoveredAt);
+            OAuthClient client = clients.findById(clientId)
+                    .orElseThrow(() -> new IllegalStateException("OAuth Client 恢复后查询失败"));
+            OAuthClientManagementOperation operation = new OAuthClientManagementOperation(
+                    ids.next(), actorIdentityId, idempotencyKey, "RECOVER", client.id(), fingerprint,
+                    original.id(), replacement.id(), "SUCCEEDED", 200, recoveredAt);
+            operations.append(operation);
+            outbox.append(recoveryEvents.create(client, operation, actorIdentityId, recoveredAt, traceId));
+            return new OAuthClientSecretResult(client, issued.plaintext());
+        } catch (OAuthClientSecretRecoveryException exception) {
+            throw switch (exception.reason()) {
+                case CLIENT_NOT_FOUND -> OAuthClientManagementException.notFound();
+                case CLIENT_REVOKED -> OAuthClientManagementException.revoked();
+                case SECRET_NOT_RECOVERABLE -> OAuthClientManagementException.recoveryNotAllowed();
+            };
+        }
     }
 
     /** Redis 必须先拒绝 Client；数据库失败时保留额外拒绝，重试继续固定权威事实。 */
@@ -164,6 +233,7 @@ public class OAuthClientManagementService {
                 .orElseThrow(() -> new IllegalStateException("OAuth Client 吊销后查询失败"));
         OAuthClientManagementOperation operation = new OAuthClientManagementOperation(
                 ids.next(), actorIdentityId, idempotencyKey, "REVOKE", client.id(), fingerprint,
+                null, null,
                 "SUCCEEDED", 204, revokedAt);
         operations.append(operation);
         outbox.append(revocationEvents.create(client, operation, actorIdentityId, revokedAt, traceId));

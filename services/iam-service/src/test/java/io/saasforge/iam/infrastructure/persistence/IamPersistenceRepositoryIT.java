@@ -9,8 +9,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.saasforge.iam.domain.client.OAuthClient;
 import io.saasforge.iam.domain.client.ClientSecretDigest;
+import io.saasforge.iam.domain.client.OAuthClientManagementOperationRepository;
 import io.saasforge.iam.domain.client.OAuthClientRepository;
 import io.saasforge.iam.domain.client.OAuthClientSecretRotationException;
+import io.saasforge.iam.domain.client.OAuthClientSecretRecoveryException;
 import io.saasforge.iam.domain.client.OAuthClientType;
 import io.saasforge.iam.domain.client.OAuthScope;
 import io.saasforge.iam.application.bootstrap.ReservedServiceClient;
@@ -136,6 +138,9 @@ class IamPersistenceRepositoryIT {
 
     @Autowired
     private OAuthClientRepository clients;
+
+    @Autowired
+    private OAuthClientManagementOperationRepository clientOperations;
 
     @Autowired
     private ReservedServiceClientBootstrapService reservedClientBootstrap;
@@ -371,7 +376,8 @@ class IamPersistenceRepositoryIT {
         Sha256Digest initialSecret = digest(4);
         Sha256Digest rotatedSecret = digest(5);
         Sha256Digest secondRotatedSecret = digest(6);
-        OAuthClient client = clients.create(OAuthClient.register("worker", Set.of(OAuthScope.RUNTIME_READ), now), initialSecret, now);
+        OAuthClient client = clients.create(
+                OAuthClient.register("worker", Set.of(OAuthScope.RUNTIME_READ), now), initialSecret, now).client();
 
         assertTrue(clients.findActiveBySecretDigest(initialSecret, now).isPresent());
         clients.rotate(client.id(), rotatedSecret, rotatedAt);
@@ -399,7 +405,7 @@ class IamPersistenceRepositoryIT {
     void concurrentClientSecretRotationsKeepOnlyOneOverlapWindow() throws Exception {
         Instant now = Instant.parse("2026-08-20T03:00:00Z");
         OAuthClient client = clients.create(
-                OAuthClient.register("concurrent-worker", Set.of(OAuthScope.RUNTIME_READ), now), digest(31), now);
+                OAuthClient.register("concurrent-worker", Set.of(OAuthScope.RUNTIME_READ), now), digest(31), now).client();
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
         var executor = Executors.newFixedThreadPool(2);
@@ -412,6 +418,71 @@ class IamPersistenceRepositoryIT {
                     java.util.stream.Stream.of(first.get(5, TimeUnit.SECONDS), second.get(5, TimeUnit.SECONDS))
                             .sorted().toList());
         } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void recoveryRevokesOnlyTheLostSecretAndPreservesTheStableOverlapDeadline() throws SQLException {
+        Instant createdAt = Instant.parse("2026-08-20T03:30:00Z");
+        Instant rotatedAt = createdAt.plusSeconds(1);
+        Instant recoveredAt = rotatedAt.plusSeconds(30);
+        Sha256Digest stableDigest = digest(34);
+        Sha256Digest lostDigest = digest(35);
+        Sha256Digest replacementDigest = digest(36);
+        var creation = clients.create(
+                OAuthClient.register("recovery-worker", Set.of(OAuthScope.RUNTIME_READ), createdAt),
+                stableDigest, createdAt);
+        var lostSecret = clients.rotate(creation.client().id(), lostDigest, rotatedAt);
+        Instant stableDeadline = secretValidUntil(creation.initialSecret().id());
+
+        var replacement = clients.recover(
+                creation.client().id(), lostSecret.id(), replacementDigest, recoveredAt);
+
+        assertEquals(rotatedAt.plus(24, ChronoUnit.HOURS), stableDeadline);
+        assertEquals(stableDeadline, secretValidUntil(creation.initialSecret().id()));
+        assertTrue(clients.findActiveBySecretDigest(stableDigest, recoveredAt).isPresent());
+        assertFalse(clients.findActiveBySecretDigest(lostDigest, recoveredAt).isPresent());
+        assertTrue(clients.findActiveBySecretDigest(replacementDigest, recoveredAt).isPresent());
+        assertEquals(recoveredAt, clients.findById(creation.client().id()).orElseThrow().updatedAt());
+        assertEquals(7, replacement.id().version());
+
+        OAuthClientSecretRecoveryException second = assertThrows(
+                OAuthClientSecretRecoveryException.class,
+                () -> clients.recover(creation.client().id(), lostSecret.id(), digest(37), recoveredAt.plusSeconds(1)));
+        assertEquals(OAuthClientSecretRecoveryException.Reason.SECRET_NOT_RECOVERABLE, second.reason());
+    }
+
+    @Test
+    void concurrentRecoveriesForTheSameOriginalOperationAreSerialized() throws Exception {
+        UUID originalOperationId = UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4c90");
+        CountDownLatch locked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var first = executor.submit(() -> new TransactionTemplate(transactionManager).execute(status -> {
+                assertTrue(clientOperations.tryLockRecovery(originalOperationId));
+                locked.countDown();
+                try {
+                    assertTrue(release.await(5, TimeUnit.SECONDS));
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("等待并发恢复验证被中断", exception);
+                }
+                return true;
+            }));
+            assertTrue(locked.await(5, TimeUnit.SECONDS));
+
+            var second = executor.submit(() -> new TransactionTemplate(transactionManager).execute(
+                    status -> clientOperations.tryLockRecovery(originalOperationId)));
+            assertFalse(second.get(5, TimeUnit.SECONDS));
+            release.countDown();
+            assertTrue(first.get(5, TimeUnit.SECONDS));
+
+            assertEquals(Boolean.TRUE, new TransactionTemplate(transactionManager).execute(
+                    status -> clientOperations.tryLockRecovery(originalOperationId)));
+        } finally {
+            release.countDown();
             executor.shutdownNow();
         }
     }
@@ -506,6 +577,18 @@ class IamPersistenceRepositoryIT {
         } catch (OAuthClientSecretRotationException exception) {
             assertEquals(OAuthClientSecretRotationException.Reason.OVERLAP_ACTIVE, exception.reason());
             return "OVERLAP_ACTIVE";
+        }
+    }
+
+    private Instant secretValidUntil(UUID secretId) throws SQLException {
+        try (Connection connection = dataSource.getConnection();
+                PreparedStatement statement = connection.prepareStatement(
+                        "SELECT valid_until FROM iam_oauth_client_secrets WHERE id = ?")) {
+            statement.setObject(1, secretId);
+            try (var result = statement.executeQuery()) {
+                assertTrue(result.next());
+                return result.getTimestamp(1).toInstant();
+            }
         }
     }
 

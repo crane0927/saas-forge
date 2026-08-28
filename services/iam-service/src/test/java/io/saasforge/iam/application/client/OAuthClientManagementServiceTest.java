@@ -13,6 +13,7 @@ import io.saasforge.iam.domain.client.OAuthClient;
 import io.saasforge.iam.domain.client.OAuthClientBootstrapState;
 import io.saasforge.iam.domain.client.OAuthClientManagementOperation;
 import io.saasforge.iam.domain.client.OAuthClientManagementOperationRepository;
+import io.saasforge.iam.domain.client.OAuthClientCreation;
 import io.saasforge.iam.domain.client.OAuthClientRepository;
 import io.saasforge.iam.domain.client.OAuthClientScopeGrantForbiddenException;
 import io.saasforge.iam.domain.client.OAuthClientSecretRotationException;
@@ -42,6 +43,9 @@ class OAuthClientManagementServiceTest {
     private static final UUID KEY = UUID.fromString("0198f240-0000-7000-8000-000000000002");
     private static final UUID CLIENT = UUID.fromString("0198f240-0000-7000-8000-000000000003");
     private static final UUID ROTATION_KEY = UUID.fromString("0198f240-0000-7000-8000-000000000004");
+    private static final UUID RECOVERY_KEY = UUID.fromString("0198f240-0000-7000-8000-000000000009");
+    private static final UUID SECOND_RECOVERY_KEY = UUID.fromString("0198f240-0000-7000-8000-00000000000a");
+    private static final UUID INITIAL_SECRET_ID = UUID.fromString("0198f240-0000-7000-8000-00000000000b");
 
     private final InMemoryClients clients = new InMemoryClients();
     private final InMemoryOperations operations = new InMemoryOperations();
@@ -57,6 +61,7 @@ class OAuthClientManagementServiceTest {
                 clients, operations, outbox,
                 new OAuthClientCreatedEventFactory(new ObjectMapper(), ids, "test"),
                 new ClientSecretRotatedEventFactory(new ObjectMapper(), ids, "test"),
+                new ClientSecretIssuanceRecoveredEventFactory(new ObjectMapper(), ids, "test"),
                 new OAuthClientRevokedEventFactory(new ObjectMapper(), ids, "test"),
                 revocations,
                 new ClientSecretIssuer(new SecureRandom()), ids, clock);
@@ -88,6 +93,7 @@ class OAuthClientManagementServiceTest {
         OAuthClientManagementException replay = assertThrows(OAuthClientManagementException.class,
                 () -> service.create(ACTOR, KEY, "worker", Set.of(OAuthScope.RUNTIME_READ), null));
         assertEquals("CLIENT_SECRET_ALREADY_REVEALED", replay.code());
+        assertEquals(CLIENT, replay.clientId());
 
         OAuthClientManagementException conflict = assertThrows(OAuthClientManagementException.class,
                 () -> service.create(ACTOR, KEY, "other", Set.of(OAuthScope.RUNTIME_READ), null));
@@ -180,6 +186,68 @@ class OAuthClientManagementServiceTest {
     }
 
     @Test
+    void recoversCreationOnceForTheOriginalActorAndClientWithoutPersistingSecret() {
+        String initial = service.create(ACTOR, KEY, "worker", Set.of(OAuthScope.RUNTIME_READ), null).clientSecret();
+
+        var recovered = service.recover(ACTOR, RECOVERY_KEY, CLIENT, KEY, null);
+
+        assertEquals(43, recovered.clientSecret().length());
+        assertFalse(initial.equals(recovered.clientSecret()));
+        assertEquals(INITIAL_SECRET_ID, clients.recoveredOriginalSecretId);
+        assertEquals("RECOVER", operations.operation.operationType());
+        assertEquals(operations.stored.get(ACTOR + ":" + KEY).id(), operations.operation.originalOperationId());
+        assertTrue(outbox.event.eventSnapshot().contains("CLIENT_SECRET_ISSUANCE_RECOVERED"));
+        assertTrue(outbox.event.eventSnapshot().contains("originalOperationId"));
+        assertFalse(outbox.event.eventSnapshot().contains(recovered.clientSecret()));
+
+        assertRecoveryRejected(SECOND_RECOVERY_KEY, ACTOR, CLIENT, KEY);
+        assertRecoveryRejected(RECOVERY_KEY, ACTOR, CLIENT, KEY);
+    }
+
+    @Test
+    void rejectsRecoveryForAnotherActorClientInvalidOriginalKeyAndExpiredWindow() {
+        service.create(ACTOR, KEY, "worker", Set.of(OAuthScope.RUNTIME_READ), null);
+
+        assertRecoveryRejected(RECOVERY_KEY,
+                UUID.fromString("0198f240-0000-7000-8000-00000000000c"), CLIENT, KEY);
+        assertRecoveryRejected(RECOVERY_KEY, ACTOR,
+                UUID.fromString("0198f240-0000-7000-8000-00000000000d"), KEY);
+        OAuthClientManagementException invalid = assertThrows(OAuthClientManagementException.class,
+                () -> service.recover(ACTOR, RECOVERY_KEY, CLIENT, UUID.randomUUID(), null));
+        assertEquals("CLIENT_SECRET_RECOVERY_REQUEST_INVALID", invalid.code());
+
+        Clock expired = Clock.fixed(NOW.plusSeconds(601), ZoneOffset.UTC);
+        UuidV7Generator ids = new UuidV7Generator(expired, new SecureRandom());
+        service = managementService(ids, expired);
+        assertRecoveryRejected(RECOVERY_KEY, ACTOR, CLIENT, KEY);
+    }
+
+    @Test
+    void allowsRecoveryAtTheExactTenMinuteBoundaryAndRejectsKeyFingerprintConflict() {
+        service.create(ACTOR, KEY, "worker", Set.of(OAuthScope.RUNTIME_READ), null);
+        Clock boundary = Clock.fixed(NOW.plusSeconds(600), ZoneOffset.UTC);
+        UuidV7Generator ids = new UuidV7Generator(boundary, new SecureRandom());
+        service = managementService(ids, boundary);
+
+        service.recover(ACTOR, RECOVERY_KEY, CLIENT, KEY, null);
+        OAuthClientManagementException conflict = assertThrows(OAuthClientManagementException.class,
+                () -> service.recover(ACTOR, RECOVERY_KEY, CLIENT, ROTATION_KEY, null));
+        assertEquals("IDEMPOTENCY_KEY_REUSED", conflict.code());
+    }
+
+    @Test
+    void rejectsConcurrentRecoveryWhileTheOriginalOperationIsLocked() {
+        service.create(ACTOR, KEY, "worker", Set.of(OAuthScope.RUNTIME_READ), null);
+        operations.recoveryLockAvailable = false;
+
+        OAuthClientManagementException concurrent = assertThrows(OAuthClientManagementException.class,
+                () -> service.recover(ACTOR, RECOVERY_KEY, CLIENT, KEY, null));
+
+        assertEquals("IDEMPOTENCY_REQUEST_IN_PROGRESS", concurrent.code());
+        assertEquals(null, clients.recoveredOriginalSecretId);
+    }
+
+    @Test
     void revokesOnceAfterRedisAndPreservesTheFirstTerminalFacts() {
         service.create(ACTOR, KEY, "worker", Set.of(OAuthScope.RUNTIME_READ), null);
 
@@ -203,15 +271,17 @@ class OAuthClientManagementServiceTest {
         private OAuthClient client;
         private Sha256Digest digest;
         private boolean overlapActive;
+        private UUID recoveredOriginalSecretId;
 
         @Override
-        public OAuthClient create(OAuthClient value, Sha256Digest initialSecretDigest, Instant issuedAt) {
+        public OAuthClientCreation create(OAuthClient value, Sha256Digest initialSecretDigest, Instant issuedAt) {
             client = value.identifiedBy(CLIENT);
             digest = initialSecretDigest;
-            return client;
+            return new OAuthClientCreation(client,
+                    ClientSecret.issued(CLIENT, issuedAt).identifiedBy(INITIAL_SECRET_ID));
         }
         @Override public OAuthClient createWithId(OAuthClient value, Sha256Digest digest, Instant at) {
-            return create(value, digest, at);
+            return create(value, digest, at).client();
         }
         @Override public void lockReservedClientBootstrap() { }
         @Override public Optional<OAuthClientBootstrapState> findBootstrapState(UUID id) { return Optional.empty(); }
@@ -242,6 +312,20 @@ class OAuthClientManagementServiceTest {
             return ClientSecret.issued(id, at)
                     .identifiedBy(UUID.fromString("0198f240-0000-7000-8000-000000000006"));
         }
+        @Override public ClientSecret recover(UUID id, UUID originalSecretId, Sha256Digest digest, Instant at) {
+            if (client == null || !client.id().equals(id) || recoveredOriginalSecretId != null) {
+                throw new io.saasforge.iam.domain.client.OAuthClientSecretRecoveryException(
+                        io.saasforge.iam.domain.client.OAuthClientSecretRecoveryException.Reason.SECRET_NOT_RECOVERABLE,
+                        "not recoverable");
+            }
+            recoveredOriginalSecretId = originalSecretId;
+            this.digest = digest;
+            client = OAuthClient.restore(client.id(), client.displayName(), client.clientType(),
+                    client.reservedServiceKey(), client.allowedScopes(), client.status(),
+                    client.createdAt(), at, client.revokedAt());
+            return ClientSecret.issued(id, at)
+                    .identifiedBy(UUID.fromString("0198f240-0000-7000-8000-00000000000e"));
+        }
         @Override public boolean revoke(UUID id, Instant at) {
             if (client == null || !client.id().equals(id)) throw new IllegalArgumentException("not found");
             if (client.status() == OAuthClientStatus.REVOKED) return false;
@@ -256,16 +340,38 @@ class OAuthClientManagementServiceTest {
 
     private static final class InMemoryOperations implements OAuthClientManagementOperationRepository {
         private boolean lockAvailable = true;
+        private boolean recoveryLockAvailable = true;
         private OAuthClientManagementOperation operation;
         private final Map<String, OAuthClientManagementOperation> stored = new HashMap<>();
         @Override public boolean tryLock(UUID actor, UUID key) { return lockAvailable; }
         @Override public Optional<OAuthClientManagementOperation> find(UUID actor, UUID key) {
             return Optional.ofNullable(stored.get(actor + ":" + key));
         }
+        @Override public boolean tryLockRecovery(UUID originalId) { return recoveryLockAvailable; }
+        @Override public Optional<OAuthClientManagementOperation> findSuccessfulRecovery(UUID originalId) {
+            return stored.values().stream().filter(value -> "RECOVER".equals(value.operationType())
+                    && originalId.equals(value.originalOperationId())).findFirst();
+        }
         @Override public void append(OAuthClientManagementOperation value) {
             operation = value;
             stored.put(value.actorIdentityId() + ":" + value.idempotencyKey(), value);
         }
+    }
+
+    private OAuthClientManagementService managementService(UuidV7Generator ids, Clock clock) {
+        return new OAuthClientManagementService(
+                clients, operations, outbox,
+                new OAuthClientCreatedEventFactory(new ObjectMapper(), ids, "test"),
+                new ClientSecretRotatedEventFactory(new ObjectMapper(), ids, "test"),
+                new ClientSecretIssuanceRecoveredEventFactory(new ObjectMapper(), ids, "test"),
+                new OAuthClientRevokedEventFactory(new ObjectMapper(), ids, "test"),
+                revocations, new ClientSecretIssuer(new SecureRandom()), ids, clock);
+    }
+
+    private void assertRecoveryRejected(UUID key, UUID actor, UUID clientId, UUID originalKey) {
+        OAuthClientManagementException exception = assertThrows(OAuthClientManagementException.class,
+                () -> service.recover(actor, key, clientId, originalKey, null));
+        assertEquals("CLIENT_SECRET_RECOVERY_NOT_ALLOWED", exception.code());
     }
 
     private static final class InMemoryOutbox implements OutboxEventRepository {

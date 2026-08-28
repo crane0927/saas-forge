@@ -11,5 +11,8 @@ public interface OAuthClientManagementOperationMapper {
             @Param("actorIdentityId") UUID actorIdentityId,
             @Param("idempotencyKey") UUID idempotencyKey);
 
+    OAuthClientManagementOperationRow findSuccessfulRecovery(
+            @Param("originalOperationId") UUID originalOperationId);
+
     int insert(@Param("row") OAuthClientManagementOperationRow row);
 }
