@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.saasforge.iam.domain.client.OAuthClient;
 import io.saasforge.iam.domain.client.ClientSecretDigest;
 import io.saasforge.iam.domain.client.OAuthClientRepository;
+import io.saasforge.iam.domain.client.OAuthClientType;
 import io.saasforge.iam.domain.client.OAuthScope;
 import io.saasforge.iam.application.bootstrap.ReservedServiceClient;
 import io.saasforge.iam.application.bootstrap.ReservedServiceClientBootstrapConflictException;
@@ -63,6 +64,7 @@ import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.FlywayException;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
@@ -378,20 +380,23 @@ class IamPersistenceRepositoryIT {
     }
 
     @Test
-    void persistsFixedReservedClientIdInternalScopesAndSecretDigestOnly() throws SQLException {
+    void persistsFixedRuntimeClientIdAndSecretDigestOnly() throws SQLException {
         Instant now = Instant.parse("2026-08-21T02:00:00Z");
         UUID clientId = UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4c8f");
         String secret = Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[32]);
         Sha256Digest digest = ClientSecretDigest.fromPlaintext(secret);
         OAuthClient client = OAuthClient.register(
-                        "iam-service", Set.of(OAuthScope.TENANT_ACCESS_MEMBERSHIP_READ), now)
+                        "runtime-worker", Set.of(OAuthScope.RUNTIME_READ), now)
                 .identifiedBy(clientId);
 
         OAuthClient persisted = clients.createWithId(client, digest, now);
         var state = clients.findBootstrapState(clientId).orElseThrow();
 
         assertEquals(clientId, persisted.id());
-        assertEquals(Set.of(OAuthScope.TENANT_ACCESS_MEMBERSHIP_READ), state.client().allowedScopes());
+        assertEquals(OAuthClientType.RUNTIME_SERVICE, persisted.clientType());
+        assertNull(persisted.reservedServiceKey());
+        assertEquals(now, persisted.updatedAt());
+        assertEquals(Set.of(OAuthScope.RUNTIME_READ), state.client().allowedScopes());
         assertTrue(state.exactlyMatches(digest));
         try (Connection connection = dataSource.getConnection();
                 PreparedStatement statement = connection.prepareStatement(
@@ -425,10 +430,55 @@ class IamPersistenceRepositoryIT {
         assertTrue(replayed.clients().values().stream()
                 .allMatch(value -> value.outcome() == ReservedServiceClientBootstrapResult.Outcome.ALREADY_INITIALIZED));
         new org.springframework.jdbc.core.JdbcTemplate(dataSource).update(
-                "UPDATE iam_oauth_clients SET allowed_scopes = ARRAY['runtime:read'] WHERE id = ?",
+                "UPDATE iam_oauth_clients SET display_name = 'drifted-service' WHERE id = ?",
                 inputs.get(0).clientId());
         assertThrows(ReservedServiceClientBootstrapConflictException.class,
                 () -> reservedClientBootstrap.bootstrap(inputs));
+    }
+
+    @Test
+    void databaseRejectsRuntimeInternalScopesAndReservedScopeMismatches() {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("""
+                INSERT INTO iam_oauth_clients
+                    (display_name, client_type, reserved_service_key, allowed_scopes,
+                     client_status, created_at, updated_at)
+                VALUES ('invalid-runtime', 'RUNTIME_SERVICE', NULL, ARRAY['iam:identity:write'],
+                        'ACTIVE', now(), now())
+                """));
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("""
+                INSERT INTO iam_oauth_clients
+                    (display_name, client_type, reserved_service_key, allowed_scopes,
+                     client_status, created_at, updated_at)
+                VALUES ('invalid-reserved', 'RESERVED_SERVICE', 'IAM', ARRAY['runtime:read'],
+                        'ACTIVE', now(), now())
+                """));
+    }
+
+    @Test
+    void migrationFailsClosedForUnknownHistoricScopeCombination() {
+        String schema = "oauth_backfill_" + UUID.randomUUID().toString().replace("-", "");
+        Flyway.configure()
+                .dataSource(iamJdbcUrl(), "saasforge_admin", "admin-password")
+                .schemas(schema)
+                .locations("classpath:db/migration")
+                .target("20")
+                .load()
+                .migrate();
+        JdbcTemplate legacy = new JdbcTemplate(new DriverManagerDataSource(
+                iamJdbcUrl(), "saasforge_admin", "admin-password"));
+        legacy.update("""
+                INSERT INTO %s.iam_oauth_clients
+                    (display_name, allowed_scopes, client_status, created_at)
+                VALUES ('unknown-historic-client', ARRAY['iam:identity:write'], 'ACTIVE', now())
+                """.formatted(schema));
+
+        Flyway migration = Flyway.configure()
+                .dataSource(iamJdbcUrl(), "saasforge_admin", "admin-password")
+                .schemas(schema)
+                .locations("classpath:db/migration")
+                .load();
+        assertThrows(FlywayException.class, migration::migrate);
     }
 
     @Test

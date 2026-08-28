@@ -43,7 +43,12 @@ class ClientCredentialsTokenServiceTest {
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
         activeClient = OAuthClient.register(
                         "tenant-access-service",
-                        Set.of(OAuthScope.IAM_IDENTITY_WRITE, OAuthScope.IAM_PLATFORM_ROLE_READ),
+                        Set.of(
+                                OAuthScope.IAM_IDENTITY_WRITE,
+                                OAuthScope.IAM_PASSWORD_SETUP_WRITE,
+                                OAuthScope.IAM_PLATFORM_ROLE_READ,
+                                OAuthScope.IAM_SESSIONS_WRITE,
+                                OAuthScope.ENTITLEMENT_QUOTA_WRITE),
                         NOW.minusSeconds(60))
                 .identifiedBy(CLIENT_ID);
         StubSigningKeyRepository keys = new StubSigningKeyRepository();
@@ -93,6 +98,6 @@ class ClientCredentialsTokenServiceTest {
         assertThrows(ClientCredentialsGrantInvalidException.class,
                 () -> service.issue(CLIENT_ID, SECRET, "password", null));
         assertThrows(ClientCredentialsScopeRejectedException.class,
-                () -> service.issue(CLIENT_ID, SECRET, "client_credentials", "entitlement:quota:write"));
+                () -> service.issue(CLIENT_ID, SECRET, "client_credentials", "runtime:read"));
     }
 }

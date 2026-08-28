@@ -703,6 +703,28 @@ paths:
         '502': { $ref: './common.yaml#/components/responses/Problem' }
         '504': { $ref: './common.yaml#/components/responses/Problem' }
 
+  /api/v1/platform/oauth-clients/{clientId}:
+    get:
+      tags: [OAuth clients]
+      operationId: getOAuthClient
+      x-saasforge-service: iam-service
+      summary: Read non-sensitive OAuth Client details
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ClientId'
+      responses:
+        '200':
+          description: Non-sensitive immutable configuration and lifecycle state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OAuthClientDetail' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
   /api/v1/platform/oauth-clients/{clientId}/secret-rotations:
     post:
       tags: [OAuth clients]
@@ -1102,7 +1124,22 @@ components:
       additionalProperties: false
     RuntimeScope:
       type: string
-      enum: ['runtime:read', 'runtime:quota:write']
+      enum:
+        - 'runtime:read'
+        - 'runtime:quota:write'
+        - 'tenant-access:membership:read'
+        - 'tenant-access:tenant:read'
+        - 'iam:identity:write'
+        - 'iam:password-setup:write'
+        - 'iam:platform-role:read'
+        - 'iam:sessions:write'
+        - 'entitlement:quota:write'
+    OAuthClientType:
+      type: string
+      enum: [RUNTIME_SERVICE, RESERVED_SERVICE]
+    ReservedServiceKey:
+      type: string
+      enum: [IAM, TENANT_ACCESS, ENTITLEMENT]
     OAuthClientStatus:
       type: string
       enum: [ACTIVE, REVOKED]
@@ -1151,4 +1188,28 @@ components:
           minLength: 1
           writeOnly: true
           description: Returned exactly once. Store it in a controlled secret manager.
+      additionalProperties: false
+    OAuthClientDetail:
+      type: object
+      required: [clientId, displayName, clientType, allowedScopes, status, createdAt, updatedAt]
+      properties:
+        clientId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        displayName: { type: string, minLength: 1, maxLength: 200 }
+        clientType: { $ref: '#/components/schemas/OAuthClientType' }
+        reservedServiceKey:
+          oneOf:
+            - $ref: '#/components/schemas/ReservedServiceKey'
+            - type: 'null'
+        allowedScopes:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/RuntimeScope' }
+        status: { $ref: '#/components/schemas/OAuthClientStatus' }
+        createdAt: { $ref: '#/components/schemas/Timestamp' }
+        updatedAt: { $ref: '#/components/schemas/Timestamp' }
+        revokedAt:
+          oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
       additionalProperties: false

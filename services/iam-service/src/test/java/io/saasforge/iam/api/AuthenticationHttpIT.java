@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -436,6 +437,129 @@ class AuthenticationHttpIT {
 
     @Test
     @Order(2)
+    void platformAdminCreatesAndReadsRuntimeOAuthClientWithOneTimeSecretAndIndependentIamAuthorization()
+            throws Exception {
+        TestUser admin = createUser(
+                "oauth-client-admin@example.test", "correct-password", true, Credential.REGULAR);
+        String platformToken = accessToken(login(
+                "oauth-client-admin@example.test", "correct-password", "PLATFORM").andReturn());
+        UUID key = uuidV7(66_001);
+        byte[] request = new ObjectMapper().writeValueAsBytes(Map.of(
+                "displayName", "reporting-worker",
+                "allowedScopes", List.of("runtime:read", "runtime:quota:write")));
+
+        MvcResult created = mockMvc.perform(post("/api/v1/platform/oauth-clients")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + platformToken)
+                        .header("Idempotency-Key", key.toString())
+                        .header("X-Identity-Id", uuidV7(66_099).toString())
+                        .header("traceparent", "00-" + TRACE_ID + "-0123456789abcdef-01")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isCreated())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(header().exists(HttpHeaders.LOCATION))
+                .andExpect(jsonPath("$.clientSecret").isString())
+                .andReturn();
+
+        JsonNode createdBody = json(created.getResponse().getContentAsByteArray());
+        String clientSecret = createdBody.get("clientSecret").asString();
+        UUID clientId = UUID.fromString(createdBody.get("clientId").asString());
+        String location = created.getResponse().getHeader(HttpHeaders.LOCATION);
+        assertEquals(43, clientSecret.length());
+        assertEquals("/api/v1/platform/oauth-clients/" + clientId, location);
+
+        MvcResult detail = mockMvc.perform(get(location)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + platformToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.clientType").value("RUNTIME_SERVICE"))
+                .andExpect(jsonPath("$.reservedServiceKey").doesNotExist())
+                .andExpect(jsonPath("$.clientSecret").doesNotExist())
+                .andExpect(jsonPath("$.secretId").doesNotExist())
+                .andReturn();
+        String detailJson = detail.getResponse().getContentAsString();
+        assertFalse(detailJson.toLowerCase().contains("secret"));
+        assertFalse(detailJson.toLowerCase().contains("digest"));
+
+        Map<String, Object> persisted = jdbc.queryForMap("""
+                SELECT client.client_type, client.reserved_service_key, client.created_at, client.updated_at,
+                       secret.secret_digest, operation.request_fingerprint, operation.http_status,
+                       event.event_snapshot::TEXT AS event_snapshot
+                FROM iam_oauth_clients client
+                JOIN iam_oauth_client_secrets secret ON secret.client_id = client.id
+                JOIN iam_oauth_client_management_operations operation ON operation.client_id = client.id
+                JOIN iam_outbox_events event ON event.ordering_key = client.id::TEXT
+                WHERE client.id = ?
+                """, clientId);
+        assertEquals("RUNTIME_SERVICE", persisted.get("client_type"));
+        assertEquals(null, persisted.get("reserved_service_key"));
+        assertEquals(persisted.get("created_at"), persisted.get("updated_at"));
+        assertEquals(32, ((byte[]) persisted.get("secret_digest")).length);
+        assertEquals(32, ((byte[]) persisted.get("request_fingerprint")).length);
+        assertEquals(201, persisted.get("http_status"));
+        assertFalse(((String) persisted.get("event_snapshot")).contains(clientSecret));
+        assertFalse(((String) persisted.get("event_snapshot")).toLowerCase().contains("secret"));
+
+        mockMvc.perform(post("/api/v1/platform/oauth-clients")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + platformToken)
+                        .header("Idempotency-Key", key.toString())
+                        .contentType(MediaType.APPLICATION_JSON).content(request))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CLIENT_SECRET_ALREADY_REVEALED"));
+        mockMvc.perform(post("/api/v1/platform/oauth-clients")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + platformToken)
+                        .header("Idempotency-Key", key.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsBytes(Map.of(
+                                "displayName", "different", "allowedScopes", List.of("runtime:read")))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_REUSED"));
+        mockMvc.perform(post("/api/v1/platform/oauth-clients")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + platformToken)
+                        .header("Idempotency-Key", uuidV7(66_002).toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsBytes(Map.of(
+                                "displayName", "forbidden", "allowedScopes", List.of("iam:identity:write")))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("OAUTH_CLIENT_SCOPE_GRANT_FORBIDDEN"));
+
+        mockMvc.perform(get(location).header("X-Identity-Id", admin.identity().id().toString()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("ACCESS_TOKEN_INVALID"));
+        mockMvc.perform(get(location).header(
+                        HttpHeaders.AUTHORIZATION, "Bearer " + SERVICE_TOKENS.get().membershipReadToken()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("ACCESS_TOKEN_INVALID"));
+
+        TestUser tenantUser = createUser(
+                "oauth-client-tenant@example.test", "correct-password", false, Credential.REGULAR);
+        accessibleMemberships(tenantUser.identity().id(),
+                membership(uuidV7(66_010), uuidV7(66_011), "Tenant OAuth"));
+        String tenantToken = accessToken(login(
+                "oauth-client-tenant@example.test", "correct-password", "TENANT").andReturn());
+        mockMvc.perform(get(location).header(HttpHeaders.AUTHORIZATION, "Bearer " + tenantToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("PLATFORM_CONTEXT_REQUIRED"));
+
+        TestUser staleRole = createUser(
+                "oauth-client-stale-role@example.test", "correct-password", true, Credential.REGULAR);
+        String staleRoleToken = accessToken(login(
+                "oauth-client-stale-role@example.test", "correct-password", "PLATFORM").andReturn());
+        jdbc.update("UPDATE iam_platform_role_assignments SET revoked_at = now() WHERE identity_id = ?",
+                staleRole.identity().id());
+        mockMvc.perform(get(location).header(HttpHeaders.AUTHORIZATION, "Bearer " + staleRoleToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("PLATFORM_ADMIN_REQUIRED"));
+
+        String jti = json(Base64.getUrlDecoder().decode(platformToken.split("\\.")[1]))
+                .get("jti").asString();
+        redis.opsForValue().set(jtiRevocationKey(UUID.fromString(jti)), "1");
+        mockMvc.perform(get(location).header(HttpHeaders.AUTHORIZATION, "Bearer " + platformToken))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("ACCESS_TOKEN_INVALID"));
+    }
+
+    @Test
+    @Order(3)
     void credentialFailuresAreUniformAndFifthFailureLocksWithoutCreatingSessionFacts() throws Exception {
         TestUser wrongPassword = createUser("wrong-password@example.test", "correct-password", true, Credential.REGULAR);
         TestUser noCredential = createUser("no-credential@example.test", "unused", true, Credential.NONE);
@@ -2975,7 +3099,8 @@ class AuthenticationHttpIT {
             AuthenticationController.class,
             OutboxPublisher.class
     })
-    @Import({AuthenticationConfiguration.class, PasswordSetupMailConfiguration.class})
+    @Import({AuthenticationConfiguration.class, PasswordSetupMailConfiguration.class,
+            io.saasforge.iam.config.OAuthClientManagementConfiguration.class})
     static class TestConfiguration {
         @Bean
         static ConversionService conversionService() {

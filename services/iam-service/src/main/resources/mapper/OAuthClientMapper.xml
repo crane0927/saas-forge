@@ -7,10 +7,13 @@
     <resultMap id="clientRow" type="io.saasforge.iam.infrastructure.persistence.record.OAuthClientRow">
         <id property="id" column="id"/>
         <result property="displayName" column="display_name"/>
+        <result property="clientType" column="client_type"/>
+        <result property="reservedServiceKey" column="reserved_service_key"/>
         <result property="allowedScopes" column="allowed_scopes"
                 typeHandler="io.saasforge.iam.infrastructure.persistence.type.StringArrayTypeHandler"/>
         <result property="clientStatus" column="client_status"/>
         <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
         <result property="revokedAt" column="revoked_at"/>
     </resultMap>
 
@@ -24,19 +27,23 @@
     </resultMap>
 
     <select id="insertClient" resultMap="clientRow" affectData="true" flushCache="true">
-        INSERT INTO iam_oauth_clients (display_name, allowed_scopes, client_status, created_at, revoked_at)
-        VALUES (#{row.displayName},
+        INSERT INTO iam_oauth_clients (display_name, client_type, reserved_service_key,
+                allowed_scopes, client_status, created_at, updated_at, revoked_at)
+        VALUES (#{row.displayName}, #{row.clientType}, #{row.reservedServiceKey},
                 #{row.allowedScopes, typeHandler=io.saasforge.iam.infrastructure.persistence.type.StringArrayTypeHandler},
-                #{row.clientStatus}, #{row.createdAt}, #{row.revokedAt})
-        RETURNING id, display_name, allowed_scopes, client_status, created_at, revoked_at
+                #{row.clientStatus}, #{row.createdAt}, #{row.updatedAt}, #{row.revokedAt})
+        RETURNING id, display_name, client_type, reserved_service_key, allowed_scopes,
+                client_status, created_at, updated_at, revoked_at
     </select>
 
     <select id="insertClientWithId" resultMap="clientRow" affectData="true" flushCache="true">
-        INSERT INTO iam_oauth_clients (id, display_name, allowed_scopes, client_status, created_at, revoked_at)
-        VALUES (#{row.id}, #{row.displayName},
+        INSERT INTO iam_oauth_clients (id, display_name, client_type, reserved_service_key,
+                allowed_scopes, client_status, created_at, updated_at, revoked_at)
+        VALUES (#{row.id}, #{row.displayName}, #{row.clientType}, #{row.reservedServiceKey},
                 #{row.allowedScopes, typeHandler=io.saasforge.iam.infrastructure.persistence.type.StringArrayTypeHandler},
-                #{row.clientStatus}, #{row.createdAt}, #{row.revokedAt})
-        RETURNING id, display_name, allowed_scopes, client_status, created_at, revoked_at
+                #{row.clientStatus}, #{row.createdAt}, #{row.updatedAt}, #{row.revokedAt})
+        RETURNING id, display_name, client_type, reserved_service_key, allowed_scopes,
+                client_status, created_at, updated_at, revoked_at
     </select>
 
     <select id="insertSecret" resultMap="secretRow" affectData="true" flushCache="true">
@@ -46,7 +53,8 @@
     </select>
 
     <select id="findActiveClientBySecretDigest" resultMap="clientRow">
-        SELECT client.id, client.display_name, client.allowed_scopes, client.client_status, client.created_at, client.revoked_at
+        SELECT client.id, client.display_name, client.client_type, client.reserved_service_key,
+               client.allowed_scopes, client.client_status, client.created_at, client.updated_at, client.revoked_at
         FROM iam_oauth_clients client
         JOIN iam_oauth_client_secrets secret ON secret.client_id = client.id
         WHERE secret.secret_digest = #{secretDigest}
@@ -56,14 +64,16 @@
     </select>
 
     <select id="lockClientById" resultMap="clientRow">
-        SELECT id, display_name, allowed_scopes, client_status, created_at, revoked_at
+        SELECT id, display_name, client_type, reserved_service_key, allowed_scopes,
+               client_status, created_at, updated_at, revoked_at
         FROM iam_oauth_clients
         WHERE id = #{clientId}
         FOR UPDATE
     </select>
 
     <select id="findClientById" resultMap="clientRow">
-        SELECT id, display_name, allowed_scopes, client_status, created_at, revoked_at
+        SELECT id, display_name, client_type, reserved_service_key, allowed_scopes,
+               client_status, created_at, updated_at, revoked_at
         FROM iam_oauth_clients
         WHERE id = #{clientId}
     </select>
@@ -98,7 +108,7 @@
 
     <update id="revokeClient">
         UPDATE iam_oauth_clients
-        SET client_status = 'REVOKED', revoked_at = #{revokedAt}
+        SET client_status = 'REVOKED', revoked_at = #{revokedAt}, updated_at = #{revokedAt}
         WHERE id = #{clientId} AND client_status = 'ACTIVE'
     </update>
 

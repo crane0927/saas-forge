@@ -5,7 +5,9 @@ import io.saasforge.iam.domain.client.OAuthClient;
 import io.saasforge.iam.domain.client.OAuthClientBootstrapState;
 import io.saasforge.iam.domain.client.OAuthClientRepository;
 import io.saasforge.iam.domain.client.OAuthClientStatus;
+import io.saasforge.iam.domain.client.OAuthClientType;
 import io.saasforge.iam.domain.client.OAuthScope;
+import io.saasforge.iam.domain.client.ReservedServiceKey;
 import io.saasforge.iam.domain.shared.Sha256Digest;
 import io.saasforge.iam.infrastructure.persistence.mapper.OAuthClientMapper;
 import io.saasforge.iam.infrastructure.persistence.record.OAuthClientRow;
@@ -113,9 +115,12 @@ public class MyBatisOAuthClientRepository implements OAuthClientRepository {
         OAuthClientRow row = new OAuthClientRow();
         row.setId(client.id());
         row.setDisplayName(client.displayName());
+        row.setClientType(client.clientType().name());
+        row.setReservedServiceKey(client.reservedServiceKey() == null ? null : client.reservedServiceKey().name());
         row.setAllowedScopes(client.allowedScopes().stream().map(OAuthScope::value).toArray(String[]::new));
         row.setClientStatus(client.status().name());
         row.setCreatedAt(IamTime.asOffsetDateTime(client.createdAt()));
+        row.setUpdatedAt(IamTime.asOffsetDateTime(client.updatedAt()));
         row.setRevokedAt(IamTime.asOffsetDateTime(client.revokedAt()));
         return row;
     }
@@ -132,8 +137,10 @@ public class MyBatisOAuthClientRepository implements OAuthClientRepository {
         LinkedHashSet<OAuthScope> scopes = Arrays.stream(row.getAllowedScopes())
                 .map(OAuthScope::fromValue)
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        return OAuthClient.restore(row.getId(), row.getDisplayName(), scopes, OAuthClientStatus.valueOf(row.getClientStatus()),
-                IamTime.asInstant(row.getCreatedAt()), IamTime.asInstant(row.getRevokedAt()));
+        return OAuthClient.restore(row.getId(), row.getDisplayName(), OAuthClientType.valueOf(row.getClientType()),
+                row.getReservedServiceKey() == null ? null : ReservedServiceKey.valueOf(row.getReservedServiceKey()),
+                scopes, OAuthClientStatus.valueOf(row.getClientStatus()), IamTime.asInstant(row.getCreatedAt()),
+                IamTime.asInstant(row.getUpdatedAt()), IamTime.asInstant(row.getRevokedAt()));
     }
 
     private static ClientSecret toDomain(OAuthClientSecretRow row) {

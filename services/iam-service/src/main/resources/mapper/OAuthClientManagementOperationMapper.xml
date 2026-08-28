@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.saasforge.iam.infrastructure.persistence.mapper.OAuthClientManagementOperationMapper">
+    <resultMap id="operationRow" type="io.saasforge.iam.infrastructure.persistence.record.OAuthClientManagementOperationRow">
+        <id property="id" column="id"/>
+        <result property="actorIdentityId" column="actor_identity_id"/>
+        <result property="idempotencyKey" column="idempotency_key"/>
+        <result property="operationType" column="operation_type"/>
+        <result property="clientId" column="client_id"/>
+        <result property="requestFingerprint" column="request_fingerprint"/>
+        <result property="outcome" column="outcome"/>
+        <result property="httpStatus" column="http_status"/>
+        <result property="completedAt" column="completed_at"/>
+    </resultMap>
+
+    <select id="tryLock" resultType="boolean">
+        SELECT pg_try_advisory_xact_lock(hashtextextended(#{lockKey}, 0))
+    </select>
+
+    <select id="find" resultMap="operationRow">
+        SELECT id, actor_identity_id, idempotency_key, operation_type, client_id,
+               request_fingerprint, outcome, http_status, completed_at
+        FROM iam_oauth_client_management_operations
+        WHERE actor_identity_id = #{actorIdentityId} AND idempotency_key = #{idempotencyKey}
+    </select>
+
+    <insert id="insert">
+        INSERT INTO iam_oauth_client_management_operations
+            (id, actor_identity_id, idempotency_key, operation_type, client_id,
+             request_fingerprint, outcome, http_status, completed_at)
+        VALUES
+            (#{row.id}, #{row.actorIdentityId}, #{row.idempotencyKey}, #{row.operationType}, #{row.clientId},
+             #{row.requestFingerprint}, #{row.outcome}, #{row.httpStatus}, #{row.completedAt})
+    </insert>
+</mapper>
