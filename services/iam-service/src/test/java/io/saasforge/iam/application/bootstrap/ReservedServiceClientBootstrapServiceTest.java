@@ -61,6 +61,65 @@ class ReservedServiceClientBootstrapServiceTest {
     }
 
     @Test
+    void rotatedClientAcceptsAnyCurrentlyValidMountedSecretWithoutWriting() {
+        ReservedServiceClientBootstrapInput iam = inputs().get(0);
+        OAuthClient client = OAuthClient.register(
+                        iam.service().displayName(), iam.service().allowedScopes(), NOW.minusSeconds(10))
+                .identifiedBy(iam.clientId());
+        when(clients.findBootstrapState(iam.clientId())).thenReturn(Optional.of(new OAuthClientBootstrapState(
+                client,
+                List.of(
+                        new OAuthClientBootstrapState.SecretState(
+                                ClientSecretDigest.fromPlaintext(iam.clientSecret()), NOW.plusSeconds(60), null),
+                        new OAuthClientBootstrapState.SecretState(
+                                ClientSecretDigest.fromPlaintext(secret((byte) 9)), null, null)))));
+        inputs().stream().skip(1).forEach(input -> when(clients.findBootstrapState(input.clientId()))
+                .thenReturn(Optional.of(state(input))));
+
+        ReservedServiceClientBootstrapResult result = service.bootstrap(inputs());
+
+        verify(clients, never()).createWithId(any(), any(), any());
+        assertEquals(ReservedServiceClientBootstrapResult.Outcome.ALREADY_INITIALIZED,
+                result.clients().get(ReservedServiceClient.IAM).outcome());
+    }
+
+    @Test
+    void expiredMountedSecretRequiresExternalSecretUpdate() {
+        ReservedServiceClientBootstrapInput iam = inputs().get(0);
+        OAuthClient client = OAuthClient.register(
+                        iam.service().displayName(), iam.service().allowedScopes(), NOW.minusSeconds(10))
+                .identifiedBy(iam.clientId());
+        when(clients.findBootstrapState(iam.clientId())).thenReturn(Optional.of(new OAuthClientBootstrapState(
+                client,
+                List.of(new OAuthClientBootstrapState.SecretState(
+                        ClientSecretDigest.fromPlaintext(iam.clientSecret()), NOW, null)))));
+
+        ReservedServiceClientBootstrapConflictException exception = assertThrows(
+                ReservedServiceClientBootstrapConflictException.class, () -> service.bootstrap(inputs()));
+
+        assertEquals(ReservedServiceClientBootstrapConflictException.Reason.MOUNTED_SECRET_NOT_CURRENT,
+                exception.reason());
+        verify(clients, never()).createWithId(any(), any(), any());
+    }
+
+    @Test
+    void differentIdCannotBootstrapOverRevokedServiceIdentity() {
+        ReservedServiceClientBootstrapInput iam = inputs().get(0);
+        OAuthClient revoked = OAuthClient.restore(
+                UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4ca0"),
+                iam.service().displayName(), iam.service().allowedScopes(),
+                OAuthClientStatus.REVOKED, NOW.minusSeconds(10), NOW.minusSeconds(1));
+        when(clients.findBootstrapState(iam.clientId())).thenReturn(Optional.empty());
+        when(clients.findAnyByReservedServiceKey(iam.service().serviceKey())).thenReturn(Optional.of(revoked));
+
+        ReservedServiceClientBootstrapConflictException exception = assertThrows(
+                ReservedServiceClientBootstrapConflictException.class, () -> service.bootstrap(inputs()));
+
+        assertEquals(ReservedServiceClientBootstrapConflictException.Reason.CLIENT_REVOKED, exception.reason());
+        verify(clients, never()).createWithId(any(), any(), any());
+    }
+
+    @Test
     void secretStatusScopeOrExtraSecretDriftFailsWithoutReconciliation() {
         ReservedServiceClientBootstrapInput iam = inputs().get(0);
         OAuthClient expected = OAuthClient.restore(
@@ -74,7 +133,9 @@ class ReservedServiceClientBootstrapServiceTest {
                         new OAuthClientBootstrapState.SecretState(
                                 ClientSecretDigest.fromPlaintext(secret((byte) 9)), null, null)))));
 
-        assertThrows(ReservedServiceClientBootstrapConflictException.class, () -> service.bootstrap(inputs()));
+        ReservedServiceClientBootstrapConflictException exception = assertThrows(
+                ReservedServiceClientBootstrapConflictException.class, () -> service.bootstrap(inputs()));
+        assertEquals(ReservedServiceClientBootstrapConflictException.Reason.CLIENT_REVOKED, exception.reason());
         verify(clients, never()).createWithId(any(), any(), any());
     }
 

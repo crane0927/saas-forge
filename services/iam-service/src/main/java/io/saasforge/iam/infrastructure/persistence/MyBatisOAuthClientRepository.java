@@ -75,6 +75,20 @@ public class MyBatisOAuthClientRepository implements OAuthClientRepository {
     }
 
     @Override
+    public Optional<OAuthClient> findActiveByReservedServiceKey(ReservedServiceKey serviceKey) {
+        if (serviceKey == null) throw new IllegalArgumentException("Reserved Service Key 不能为空");
+        return Optional.ofNullable(mapper.findActiveByReservedServiceKey(serviceKey.name()))
+                .map(MyBatisOAuthClientRepository::toDomain);
+    }
+
+    @Override
+    public Optional<OAuthClient> findAnyByReservedServiceKey(ReservedServiceKey serviceKey) {
+        if (serviceKey == null) throw new IllegalArgumentException("Reserved Service Key 不能为空");
+        return Optional.ofNullable(mapper.findAnyByReservedServiceKey(serviceKey.name()))
+                .map(MyBatisOAuthClientRepository::toDomain);
+    }
+
+    @Override
     public Optional<OAuthClient> findActiveBySecretDigest(Sha256Digest secretDigest, Instant at) {
         return Optional.ofNullable(mapper.findActiveClientBySecretDigest(secretDigest.value(), IamTime.asOffsetDateTime(at)))
                 .map(MyBatisOAuthClientRepository::toDomain);

@@ -245,6 +245,23 @@ class IdentityProvisioningGrpcServiceIT {
         }
 
         @Override
+        public Optional<OAuthClient> findActiveByReservedServiceKey(
+                io.saasforge.iam.domain.client.ReservedServiceKey serviceKey) {
+            return clients.values().stream()
+                    .filter(client -> client.status() == io.saasforge.iam.domain.client.OAuthClientStatus.ACTIVE)
+                    .filter(client -> client.reservedServiceKey() == serviceKey)
+                    .findFirst();
+        }
+
+        @Override
+        public Optional<OAuthClient> findAnyByReservedServiceKey(
+                io.saasforge.iam.domain.client.ReservedServiceKey serviceKey) {
+            return clients.values().stream()
+                    .filter(client -> client.reservedServiceKey() == serviceKey)
+                    .findFirst();
+        }
+
+        @Override
         public Optional<OAuthClient> findActiveBySecretDigest(Sha256Digest secretDigest, Instant at) {
             return Optional.empty();
         }

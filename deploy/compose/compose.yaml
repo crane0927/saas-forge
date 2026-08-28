@@ -279,6 +279,40 @@ services:
         read_only: true
         bind: { create_host_path: false }
 
+  iam-reserved-service-client-replacement:
+    profiles: ["service-client-replacement"]
+    image: saasforge/iam-service:local
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile
+      args:
+        MODULE: services/iam-service
+    depends_on:
+      iam-migrate:
+        condition: service_completed_successfully
+    entrypoint:
+      - java
+      - -Dloader.main=io.saasforge.iambootstrap.ReservedServiceClientReplacementApplication
+      - -jar
+      - /app/application.jar
+    command:
+      - --saasforge.iam.replacement.reserved-client.replacement-request-id=${IAM_RESERVED_CLIENT_REPLACEMENT_REQUEST_ID:-}
+      - --saasforge.iam.replacement.reserved-client.service-key=${IAM_RESERVED_CLIENT_REPLACEMENT_SERVICE_KEY:-}
+      - --saasforge.iam.replacement.reserved-client.old-client-id=${IAM_RESERVED_CLIENT_REPLACEMENT_OLD_CLIENT_ID:-}
+      - --saasforge.iam.replacement.reserved-client.new-client-id=${IAM_RESERVED_CLIENT_REPLACEMENT_NEW_CLIENT_ID:-}
+      - --saasforge.iam.replacement.reserved-client.new-secret-file=/run/secrets/replacement-client-secret
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/iam_db
+      SPRING_DATASOURCE_USERNAME: iam_app
+      SPRING_DATASOURCE_PASSWORD: ${IAM_APP_PASSWORD:?IAM_APP_PASSWORD is required}
+      SAASFORGE_ENVIRONMENT: dev
+    volumes:
+      - type: bind
+        source: ${IAM_RESERVED_CLIENT_REPLACEMENT_SECRET_FILE:-.secrets/replacement-client-secret}
+        target: /run/secrets/replacement-client-secret
+        read_only: true
+        bind: { create_host_path: false }
+
   tenant-access-migrate:
     image: flyway/flyway:12
     depends_on:

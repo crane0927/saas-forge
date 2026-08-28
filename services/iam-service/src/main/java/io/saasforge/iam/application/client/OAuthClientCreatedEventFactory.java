@@ -54,4 +54,33 @@ public final class OAuthClientCreatedEventFactory {
         return new OutboxEvent(eventId, occurredAt, topic, client.id().toString(), traceId,
                 objectMapper.writeValueAsString(snapshot));
     }
+
+    public OutboxEvent createForDeployment(
+            OAuthClient client,
+            UUID deploymentOperationId,
+            Instant occurredAt,
+            String traceId) {
+        UUID eventId = ids.next();
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("clientId", client.id().toString());
+        data.put("operationId", deploymentOperationId.toString());
+        data.put("result", "OAUTH_CLIENT_CREATED");
+        data.put("actorType", "DEPLOYMENT");
+        data.put("deploymentOperationId", deploymentOperationId.toString());
+        data.put("occurredAt", occurredAt.toString());
+
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("specversion", "1.0");
+        snapshot.put("id", eventId.toString());
+        snapshot.put("source", SOURCE);
+        snapshot.put("type", EVENT_TYPE);
+        snapshot.put("subject", client.id().toString());
+        snapshot.put("time", occurredAt.toString());
+        snapshot.put("datacontenttype", "application/json");
+        snapshot.put("dataschema", "https://saasforge.io/contracts/events/iam-oauth-client-created.v1.schema.json");
+        if (traceId != null) snapshot.put("traceId", traceId);
+        snapshot.put("data", data);
+        return new OutboxEvent(eventId, occurredAt, topic, client.id().toString(), traceId,
+                objectMapper.writeValueAsString(snapshot));
+    }
 }

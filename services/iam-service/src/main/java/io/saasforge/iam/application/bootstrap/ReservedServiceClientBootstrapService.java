@@ -35,11 +35,18 @@ public class ReservedServiceClientBootstrapService {
             Sha256Digest digest = ClientSecretDigest.fromPlaintext(input.clientSecret());
             var existing = clients.findBootstrapState(input.clientId());
             if (existing.isPresent()) {
-                requireExactMatch(input, digest, existing.get());
+                requireCurrentMatch(input, digest, existing.get(), initializedAt);
                 results.put(input.service(), new ReservedServiceClientBootstrapResult.ClientResult(
                         input.clientId(), ReservedServiceClientBootstrapResult.Outcome.ALREADY_INITIALIZED));
                 continue;
             }
+            clients.findAnyByReservedServiceKey(input.service().serviceKey()).ifPresent(found -> {
+                ReservedServiceClientBootstrapConflictException.Reason reason =
+                        found.status() == io.saasforge.iam.domain.client.OAuthClientStatus.REVOKED
+                                ? ReservedServiceClientBootstrapConflictException.Reason.CLIENT_REVOKED
+                                : ReservedServiceClientBootstrapConflictException.Reason.CLIENT_CONFIGURATION_MISMATCH;
+                throw new ReservedServiceClientBootstrapConflictException(input.service(), reason);
+            });
             OAuthClient client = OAuthClient.register(
                     input.service().displayName(), input.service().allowedScopes(), initializedAt)
                     .identifiedBy(input.clientId());
@@ -70,16 +77,27 @@ public class ReservedServiceClientBootstrapService {
         }
     }
 
-    private static void requireExactMatch(
+    private static void requireCurrentMatch(
             ReservedServiceClientBootstrapInput input,
             Sha256Digest digest,
-            OAuthClientBootstrapState state) {
+            OAuthClientBootstrapState state,
+            Instant at) {
+        if (state.client().status() == io.saasforge.iam.domain.client.OAuthClientStatus.REVOKED) {
+            throw new ReservedServiceClientBootstrapConflictException(
+                    input.service(), ReservedServiceClientBootstrapConflictException.Reason.CLIENT_REVOKED);
+        }
         boolean matches = state.client().id().equals(input.clientId())
                 && state.client().displayName().equals(input.service().displayName())
+                && state.client().clientType() == io.saasforge.iam.domain.client.OAuthClientType.RESERVED_SERVICE
+                && state.client().reservedServiceKey() == input.service().serviceKey()
                 && state.client().allowedScopes().equals(input.service().allowedScopes())
-                && state.exactlyMatches(digest);
+                && state.client().revokedAt() == null;
         if (!matches) {
             throw new ReservedServiceClientBootstrapConflictException(input.service());
+        }
+        if (!state.hasCurrentSecret(digest, at)) {
+            throw new ReservedServiceClientBootstrapConflictException(
+                    input.service(), ReservedServiceClientBootstrapConflictException.Reason.MOUNTED_SECRET_NOT_CURRENT);
         }
     }
 }

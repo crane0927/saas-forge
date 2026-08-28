@@ -19,6 +19,10 @@ public interface OAuthClientRepository {
 
     Optional<OAuthClient> findById(UUID clientId);
 
+    Optional<OAuthClient> findActiveByReservedServiceKey(ReservedServiceKey serviceKey);
+
+    Optional<OAuthClient> findAnyByReservedServiceKey(ReservedServiceKey serviceKey);
+
     Optional<OAuthClient> findActiveBySecretDigest(Sha256Digest secretDigest, Instant at);
 
     ClientSecret rotate(UUID clientId, Sha256Digest nextSecretDigest, Instant at);

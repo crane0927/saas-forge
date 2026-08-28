@@ -122,7 +122,22 @@ The script uses `openssl` to generate UUIDv7 Client IDs and 256-bit random Secre
 docker compose --profile service-client-bootstrap run --rm iam-reserved-service-client-bootstrap
 ```
 
-Replay succeeds only when all three Client IDs, Secret digests, ACTIVE states, and fixed internal scopes match exactly. Drift fails without reconciliation. Normal startup does not execute this task, and each runtime service mounts only its own Client ID and Secret. No Secret value is stored in source, images, Compose values, or Nacos configuration.
+The first run creates all three fixed service identities atomically. After formal rotation, reruns only validate Client ID, service key, fixed scopes, and a mounted Secret matching any currently valid Secret. Expired or revoked mounted Secrets require the external file to be updated; a revoked Client requires the Replacement Job and is never modified or restored by bootstrap. Normal startup does not execute this task, and each runtime service mounts only its own Client ID and Secret. No Secret value is stored in source, images, Compose values, or Nacos configuration.
+
+### Replace a revoked reserved Client
+
+Write a newly generated 256-bit Secret to a restricted single-line file, then provide a canonical UUIDv7 request ID, service key, old Client ID, and new UUIDv7 Client ID:
+
+```bash
+export IAM_RESERVED_CLIENT_REPLACEMENT_REQUEST_ID=<uuidv7>
+export IAM_RESERVED_CLIENT_REPLACEMENT_SERVICE_KEY=IAM
+export IAM_RESERVED_CLIENT_REPLACEMENT_OLD_CLIENT_ID=<revoked-client-uuidv7>
+export IAM_RESERVED_CLIENT_REPLACEMENT_NEW_CLIENT_ID=<new-client-uuidv7>
+export IAM_RESERVED_CLIENT_REPLACEMENT_SECRET_FILE=.secrets/replacement-client-secret
+docker compose --profile service-client-replacement run --rm iam-reserved-service-client-replacement
+```
+
+The service key is limited to `IAM`, `TENANT_ACCESS`, or `ENTITLEMENT`; name and scopes are derived from it and cannot be supplied. An exact replay returns `ALREADY_REPLACED`; rebinding the same request ID to different inputs fails for manual handling.
 
 ### 4. Log in with the initial password
 

@@ -122,7 +122,22 @@ echo "Platform Admin Secret 文件已准备"
 docker compose --profile service-client-bootstrap run --rm iam-reserved-service-client-bootstrap
 ```
 
-任务只在三个 Client 的 ID、Secret 摘要、ACTIVE 状态和固定内部 Scope 完全一致时允许幂等重放；配置漂移会失败且不会自动修正。正常服务启动不会执行引导任务，三个运行时服务分别只挂载自己的 Client ID 和 Secret。Secret 不写入源码、镜像、Compose 值或 Nacos 配置。
+首次执行会在同一事务中创建三个固定服务身份。正式轮换后重跑只读校验 Client ID、服务键、固定 Scope，并接受匹配任一当前有效 Secret 的挂载值；过期或吊销的挂载 Secret 要先更新外部文件，已吊销 Client 必须执行 Replacement Job，bootstrap 不会修改或复活它。正常服务启动不会执行引导任务，三个运行时服务分别只挂载自己的 Client ID 和 Secret。Secret 不写入源码、镜像、Compose 值或 Nacos 配置。
+
+### 替换已吊销的保留 Client
+
+先将新生成的 256 位 Secret 写入权限受限的单行文件，再提供规范 UUIDv7 请求 ID、服务键、旧 Client ID 和新 UUIDv7 Client ID：
+
+```bash
+export IAM_RESERVED_CLIENT_REPLACEMENT_REQUEST_ID=<uuidv7>
+export IAM_RESERVED_CLIENT_REPLACEMENT_SERVICE_KEY=IAM
+export IAM_RESERVED_CLIENT_REPLACEMENT_OLD_CLIENT_ID=<revoked-client-uuidv7>
+export IAM_RESERVED_CLIENT_REPLACEMENT_NEW_CLIENT_ID=<new-client-uuidv7>
+export IAM_RESERVED_CLIENT_REPLACEMENT_SECRET_FILE=.secrets/replacement-client-secret
+docker compose --profile service-client-replacement run --rm iam-reserved-service-client-replacement
+```
+
+服务键只允许 `IAM`、`TENANT_ACCESS` 或 `ENTITLEMENT`；名称和 Scope 由服务键固定推导，不能作为输入。完全相同重放返回 `ALREADY_REPLACED`，相同请求 ID 绑定不同输入时任务失败并要求人工处理。
 
 ### 4. 使用初始密码登录
 

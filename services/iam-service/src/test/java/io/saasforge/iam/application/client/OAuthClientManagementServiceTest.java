@@ -288,6 +288,16 @@ class OAuthClientManagementServiceTest {
         @Override public Optional<OAuthClient> findById(UUID id) {
             return Optional.ofNullable(client).filter(value -> value.id().equals(id));
         }
+        @Override public Optional<OAuthClient> findActiveByReservedServiceKey(
+                io.saasforge.iam.domain.client.ReservedServiceKey serviceKey) {
+            return Optional.ofNullable(client)
+                    .filter(value -> value.status() == OAuthClientStatus.ACTIVE)
+                    .filter(value -> value.reservedServiceKey() == serviceKey);
+        }
+        @Override public Optional<OAuthClient> findAnyByReservedServiceKey(
+                io.saasforge.iam.domain.client.ReservedServiceKey serviceKey) {
+            return Optional.ofNullable(client).filter(value -> value.reservedServiceKey() == serviceKey);
+        }
         @Override public Optional<OAuthClient> findActiveBySecretDigest(Sha256Digest digest, Instant at) {
             return Optional.empty();
         }

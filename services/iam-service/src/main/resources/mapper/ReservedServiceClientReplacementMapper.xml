@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.saasforge.iam.infrastructure.persistence.mapper.ReservedServiceClientReplacementMapper">
+
+    <resultMap id="replacementRow"
+               type="io.saasforge.iam.infrastructure.persistence.record.ReservedServiceClientReplacementRow">
+        <id property="replacementRequestId" column="replacement_request_id"/>
+        <result property="serviceKey" column="service_key"/>
+        <result property="oldClientId" column="old_client_id"/>
+        <result property="newClientId" column="new_client_id"/>
+        <result property="requestFingerprint" column="request_fingerprint"/>
+        <result property="completedAt" column="completed_at"/>
+    </resultMap>
+
+    <select id="find" resultMap="replacementRow">
+        SELECT replacement_request_id, service_key, old_client_id, new_client_id,
+               request_fingerprint, completed_at
+        FROM iam_reserved_service_client_replacements
+        WHERE replacement_request_id = #{replacementRequestId}
+    </select>
+
+    <insert id="insert">
+        INSERT INTO iam_reserved_service_client_replacements
+            (replacement_request_id, service_key, old_client_id, new_client_id,
+             request_fingerprint, completed_at)
+        VALUES
+            (#{row.replacementRequestId}, #{row.serviceKey}, #{row.oldClientId}, #{row.newClientId},
+             #{row.requestFingerprint}, #{row.completedAt})
+    </insert>
+</mapper>

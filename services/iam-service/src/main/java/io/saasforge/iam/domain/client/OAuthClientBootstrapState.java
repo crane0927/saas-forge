@@ -10,13 +10,10 @@ public record OAuthClientBootstrapState(OAuthClient client, List<SecretState> se
         secrets = List.copyOf(secrets);
     }
 
-    public boolean exactlyMatches(Sha256Digest expectedDigest) {
-        return client.status() == OAuthClientStatus.ACTIVE
-                && client.revokedAt() == null
-                && secrets.size() == 1
-                && secrets.get(0).digest().equals(expectedDigest)
-                && secrets.get(0).validUntil() == null
-                && secrets.get(0).revokedAt() == null;
+    public boolean hasCurrentSecret(Sha256Digest expectedDigest, Instant at) {
+        return secrets.stream().anyMatch(secret -> secret.digest().equals(expectedDigest)
+                && secret.revokedAt() == null
+                && (secret.validUntil() == null || secret.validUntil().isAfter(at)));
     }
 
     public record SecretState(Sha256Digest digest, Instant validUntil, Instant revokedAt) {

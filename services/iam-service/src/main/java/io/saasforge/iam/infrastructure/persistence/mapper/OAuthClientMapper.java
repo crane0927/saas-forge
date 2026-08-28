@@ -21,6 +21,10 @@ public interface OAuthClientMapper {
 
     OAuthClientRow findClientById(@Param("clientId") UUID clientId);
 
+    OAuthClientRow findActiveByReservedServiceKey(@Param("serviceKey") String serviceKey);
+
+    OAuthClientRow findAnyByReservedServiceKey(@Param("serviceKey") String serviceKey);
+
     int lockReservedClientBootstrap();
 
     java.util.List<OAuthClientSecretRow> findSecretsByClientId(@Param("clientId") UUID clientId);

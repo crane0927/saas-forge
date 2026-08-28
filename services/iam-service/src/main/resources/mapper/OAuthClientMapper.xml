@@ -78,6 +78,25 @@
         WHERE id = #{clientId}
     </select>
 
+    <select id="findActiveByReservedServiceKey" resultMap="clientRow">
+        SELECT id, display_name, client_type, reserved_service_key, allowed_scopes,
+               client_status, created_at, updated_at, revoked_at
+        FROM iam_oauth_clients
+        WHERE client_type = 'RESERVED_SERVICE'
+          AND reserved_service_key = #{serviceKey}
+          AND client_status = 'ACTIVE'
+    </select>
+
+    <select id="findAnyByReservedServiceKey" resultMap="clientRow">
+        SELECT id, display_name, client_type, reserved_service_key, allowed_scopes,
+               client_status, created_at, updated_at, revoked_at
+        FROM iam_oauth_clients
+        WHERE client_type = 'RESERVED_SERVICE'
+          AND reserved_service_key = #{serviceKey}
+        ORDER BY (client_status = 'ACTIVE') DESC, updated_at DESC, id DESC
+        LIMIT 1
+    </select>
+
     <select id="lockReservedClientBootstrap" resultType="int">
         SELECT 1
         FROM pg_advisory_xact_lock(1935762249, 3)

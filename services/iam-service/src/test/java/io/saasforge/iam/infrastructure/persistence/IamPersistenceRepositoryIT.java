@@ -14,12 +14,21 @@ import io.saasforge.iam.domain.client.OAuthClientRepository;
 import io.saasforge.iam.domain.client.OAuthClientSecretRotationException;
 import io.saasforge.iam.domain.client.OAuthClientSecretRecoveryException;
 import io.saasforge.iam.domain.client.OAuthClientType;
+import io.saasforge.iam.domain.client.OAuthClientStatus;
 import io.saasforge.iam.domain.client.OAuthScope;
 import io.saasforge.iam.application.bootstrap.ReservedServiceClient;
 import io.saasforge.iam.application.bootstrap.ReservedServiceClientBootstrapConflictException;
 import io.saasforge.iam.application.bootstrap.ReservedServiceClientBootstrapInput;
 import io.saasforge.iam.application.bootstrap.ReservedServiceClientBootstrapResult;
 import io.saasforge.iam.application.bootstrap.ReservedServiceClientBootstrapService;
+import io.saasforge.iam.application.bootstrap.ReservedServiceClientReplacementException;
+import io.saasforge.iam.application.bootstrap.ReservedServiceClientReplacementInput;
+import io.saasforge.iam.application.bootstrap.ReservedServiceClientReplacementResult;
+import io.saasforge.iam.application.bootstrap.ReservedServiceClientReplacementService;
+import io.saasforge.iam.application.authentication.UuidV7Generator;
+import io.saasforge.iam.application.client.OAuthClientCreatedEventFactory;
+import io.saasforge.iam.domain.client.ReservedServiceClientReplacementRepository;
+import io.saasforge.iam.domain.outbox.OutboxEventRepository;
 import io.saasforge.iam.application.authentication.IssuedAccessToken;
 import io.saasforge.iam.application.authentication.RefreshRotationTransaction;
 import io.saasforge.iam.application.authentication.RefreshTokenMaterial;
@@ -64,6 +73,7 @@ import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.security.SecureRandom;
 import javax.sql.DataSource;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.flywaydb.core.Flyway;
@@ -144,6 +154,9 @@ class IamPersistenceRepositoryIT {
 
     @Autowired
     private ReservedServiceClientBootstrapService reservedClientBootstrap;
+
+    @Autowired
+    private ReservedServiceClientReplacementService reservedClientReplacement;
 
     @Autowired
     private SigningKeyRepository signingKeys;
@@ -505,7 +518,7 @@ class IamPersistenceRepositoryIT {
         assertNull(persisted.reservedServiceKey());
         assertEquals(now, persisted.updatedAt());
         assertEquals(Set.of(OAuthScope.RUNTIME_READ), state.client().allowedScopes());
-        assertTrue(state.exactlyMatches(digest));
+        assertTrue(state.hasCurrentSecret(digest, now));
         try (Connection connection = dataSource.getConnection();
                 PreparedStatement statement = connection.prepareStatement(
                         "SELECT secret_digest::text FROM iam_oauth_client_secrets WHERE client_id = ?")) {
@@ -542,6 +555,96 @@ class IamPersistenceRepositoryIT {
                 inputs.get(0).clientId());
         assertThrows(ReservedServiceClientBootstrapConflictException.class,
                 () -> reservedClientBootstrap.bootstrap(inputs));
+        deleteReservedClientTestData(inputs.stream().map(ReservedServiceClientBootstrapInput::clientId).toList());
+    }
+
+    @Test
+    void reservedClientBootstrapAndReplacementUseCurrentSecretsAndStrictDeploymentIdempotency()
+            throws Exception {
+        Instant bootstrapAt = Instant.parse("2026-08-21T08:00:00Z");
+        UUID oldClientId = UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4ca2");
+        UUID newClientId = UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4ca3");
+        UUID requestId = UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4ca4");
+        String oldSecret = serviceClientSecret((byte) 31);
+        String rotatedSecret = serviceClientSecret((byte) 32);
+        List<ReservedServiceClientBootstrapInput> initial = List.of(
+                new ReservedServiceClientBootstrapInput(
+                        ReservedServiceClient.IAM, oldClientId, oldSecret),
+                new ReservedServiceClientBootstrapInput(
+                        ReservedServiceClient.TENANT_ACCESS,
+                        UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4ca5"),
+                        serviceClientSecret((byte) 33)),
+                new ReservedServiceClientBootstrapInput(
+                        ReservedServiceClient.ENTITLEMENT,
+                        UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4ca6"),
+                        serviceClientSecret((byte) 34)));
+        reservedClientBootstrap.bootstrap(initial);
+        clients.rotate(oldClientId, ClientSecretDigest.fromPlaintext(rotatedSecret), bootstrapAt.plusSeconds(1));
+
+        List<ReservedServiceClientBootstrapInput> rotatedMount = List.of(
+                new ReservedServiceClientBootstrapInput(
+                        ReservedServiceClient.IAM, oldClientId, rotatedSecret),
+                initial.get(1), initial.get(2));
+        ReservedServiceClientBootstrapResult rerun = reservedClientBootstrap.bootstrap(rotatedMount);
+        assertEquals(ReservedServiceClientBootstrapResult.Outcome.ALREADY_INITIALIZED,
+                rerun.clients().get(ReservedServiceClient.IAM).outcome());
+
+        new JdbcTemplate(dataSource).update(
+                "UPDATE iam_oauth_client_secrets SET valid_until = ? WHERE client_id = ? AND secret_digest = ?",
+                OffsetDateTime.ofInstant(bootstrapAt, ZoneOffset.UTC), oldClientId,
+                ClientSecretDigest.fromPlaintext(oldSecret).value());
+        ReservedServiceClientBootstrapConflictException expired = assertThrows(
+                ReservedServiceClientBootstrapConflictException.class,
+                () -> reservedClientBootstrap.bootstrap(initial));
+        assertEquals(ReservedServiceClientBootstrapConflictException.Reason.MOUNTED_SECRET_NOT_CURRENT,
+                expired.reason());
+
+        clients.revoke(oldClientId, bootstrapAt.plusSeconds(2));
+        ReservedServiceClientBootstrapConflictException revoked = assertThrows(
+                ReservedServiceClientBootstrapConflictException.class,
+                () -> reservedClientBootstrap.bootstrap(rotatedMount));
+        assertEquals(ReservedServiceClientBootstrapConflictException.Reason.CLIENT_REVOKED, revoked.reason());
+
+        ReservedServiceClientReplacementInput replacement = new ReservedServiceClientReplacementInput(
+                requestId, ReservedServiceClient.IAM, oldClientId, newClientId,
+                serviceClientSecret((byte) 35));
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var first = executor.submit(() -> reservedClientReplacement.replace(replacement, null));
+            var second = executor.submit(() -> reservedClientReplacement.replace(replacement, null));
+            Set<ReservedServiceClientReplacementResult.Outcome> outcomes = Set.of(
+                    first.get(10, TimeUnit.SECONDS).outcome(), second.get(10, TimeUnit.SECONDS).outcome());
+            assertEquals(Set.of(
+                    ReservedServiceClientReplacementResult.Outcome.REPLACED,
+                    ReservedServiceClientReplacementResult.Outcome.ALREADY_REPLACED), outcomes);
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertEquals(OAuthClientStatus.REVOKED, clients.findById(oldClientId).orElseThrow().status());
+        OAuthClient replacementClient = clients.findById(newClientId).orElseThrow();
+        assertEquals(ReservedServiceClient.IAM.serviceKey(), replacementClient.reservedServiceKey());
+        assertEquals(ReservedServiceClient.IAM.allowedScopes(), replacementClient.allowedScopes());
+        assertEquals(1, new JdbcTemplate(dataSource).queryForObject(
+                "SELECT count(*) FROM iam_oauth_clients WHERE reserved_service_key = 'IAM' AND client_status = 'ACTIVE'",
+                Integer.class));
+        String event = new JdbcTemplate(dataSource).queryForObject(
+                "SELECT event_snapshot::text FROM iam_outbox_events WHERE ordering_key = ?",
+                String.class, newClientId.toString());
+        assertTrue(event.contains("\"actorType\": \"DEPLOYMENT\""));
+        assertTrue(event.contains("\"deploymentOperationId\": \"" + requestId + "\""));
+        assertFalse(event.contains(replacement.newClientSecret()));
+        assertFalse(event.toLowerCase().contains("digest"));
+
+        ReservedServiceClientReplacementException conflict = assertThrows(
+                ReservedServiceClientReplacementException.class,
+                () -> reservedClientReplacement.replace(new ReservedServiceClientReplacementInput(
+                        requestId, ReservedServiceClient.IAM, oldClientId, newClientId,
+                        serviceClientSecret((byte) 36)), null));
+        assertEquals(ReservedServiceClientReplacementException.Reason.REQUEST_CONFLICT, conflict.reason());
+
+        deleteReservedClientTestData(List.of(
+                oldClientId, newClientId, initial.get(1).clientId(), initial.get(2).clientId()));
     }
 
     @Test
@@ -885,6 +988,22 @@ class IamPersistenceRepositoryIT {
         return POSTGRES.getJdbcUrl().replace("/saasforge", "/iam_db");
     }
 
+    private static void deleteReservedClientTestData(List<UUID> clientIds) {
+        JdbcTemplate migrator = new JdbcTemplate(
+                new DriverManagerDataSource(iamJdbcUrl(), "iam_migrator", "iam-migrator-password"));
+        for (UUID clientId : clientIds) {
+            migrator.update(
+                    "DELETE FROM iam_outbox_events WHERE ordering_key = ?", clientId.toString());
+            migrator.update(
+                    "DELETE FROM iam_reserved_service_client_replacements WHERE old_client_id = ? OR new_client_id = ?",
+                    clientId, clientId);
+        }
+        for (UUID clientId : clientIds) {
+            migrator.update("DELETE FROM iam_oauth_client_secrets WHERE client_id = ?", clientId);
+            migrator.update("DELETE FROM iam_oauth_clients WHERE id = ?", clientId);
+        }
+    }
+
     private static String iamMigrationLocation() {
         return "filesystem:" + REPOSITORY_ROOT
                 .resolve("services/iam-service/src/main/resources/db/migration");
@@ -935,6 +1054,23 @@ class IamPersistenceRepositoryIT {
         ReservedServiceClientBootstrapService reservedServiceClientBootstrapService(OAuthClientRepository clients) {
             return new ReservedServiceClientBootstrapService(
                     clients, Clock.fixed(Instant.parse("2026-08-21T08:00:00Z"), ZoneOffset.UTC));
+        }
+
+        @Bean
+        ReservedServiceClientReplacementService reservedServiceClientReplacementService(
+                OAuthClientRepository clients,
+                ReservedServiceClientReplacementRepository replacements,
+                OutboxEventRepository outbox) {
+            Clock clock = Clock.fixed(Instant.parse("2026-08-21T08:00:03Z"), ZoneOffset.UTC);
+            return new ReservedServiceClientReplacementService(
+                    clients,
+                    replacements,
+                    outbox,
+                    new OAuthClientCreatedEventFactory(
+                            new tools.jackson.databind.ObjectMapper(),
+                            new UuidV7Generator(clock, new SecureRandom()),
+                            "test"),
+                    clock);
         }
     }
 }
