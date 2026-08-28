@@ -17,21 +17,21 @@ public final class ServiceAccessTokenAuthorizer {
         this.revocations = revocations;
     }
 
-    public ServiceAccessTokenClaims authorize(
+    public ServiceAccessAuthorization authorize(
             String token, UUID expectedClientId, String requiredScope) {
         return authorize(signatures.verify(token, expectedClientId, requiredScope));
     }
 
-    public ServiceAccessTokenClaims authorize(String token, String requiredScope) {
+    public ServiceAccessAuthorization authorize(String token, String requiredScope) {
         return authorize(signatures.verify(token, requiredScope));
     }
 
-    private ServiceAccessTokenClaims authorize(VerifiedServiceAccessTokenClaims claims) {
+    private ServiceAccessAuthorization authorize(VerifiedServiceAccessTokenClaims claims) {
         try {
             if (revocations.isRevoked(claims.clientId(), claims.kid())) {
                 throw new ServiceAccessTokenInvalidException();
             }
-            return claims.authorizedClaims();
+            return new ServiceAccessAuthorization(claims.clientId(), claims.scopes());
         } catch (ServiceAccessTokenInvalidException exception) {
             throw exception;
         } catch (Exception exception) {

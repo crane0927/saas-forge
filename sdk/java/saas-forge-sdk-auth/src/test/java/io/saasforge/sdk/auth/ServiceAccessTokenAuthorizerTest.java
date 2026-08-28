@@ -43,13 +43,15 @@ class ServiceAccessTokenAuthorizerTest {
             return false;
         });
 
-        ServiceAccessTokenClaims claims = authorizer.authorize(
+        ServiceAccessAuthorization authorization = authorizer.authorize(
                 token("iam:identity:write iam:platform-role:read"),
                 CLIENT_ID,
                 "iam:platform-role:read");
 
-        assertEquals(CLIENT_ID, claims.clientId());
-        assertEquals(JTI, claims.jti());
+        assertEquals(CLIENT_ID, authorization.clientId());
+        assertEquals(java.util.Set.of("iam:identity:write", "iam:platform-role:read"),
+                authorization.scopes());
+        assertEquals(2, ServiceAccessAuthorization.class.getRecordComponents().length);
         assertEquals(CLIENT_ID, checkedClientId.get());
         assertEquals("service-key", checkedKid.get());
     }

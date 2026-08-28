@@ -40,7 +40,8 @@ import io.saasforge.iam.application.bootstrap.ReservedServiceClient;
 import io.saasforge.iam.domain.client.OAuthClient;
 import io.saasforge.iam.domain.client.OAuthClientRepository;
 import io.saasforge.iam.domain.session.RevocationFenceTarget;
-import io.saasforge.sdk.auth.ServiceAccessTokenVerifier;
+import io.saasforge.sdk.auth.ServiceAccessTokenAuthorizer;
+import io.saasforge.sdk.auth.ServiceAccessTokenSignatureVerifier;
 import io.saasforge.sdk.auth.ServiceJwtVerificationKey;
 import java.time.Clock;
 import java.time.Duration;
@@ -50,6 +51,7 @@ import java.util.Date;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -79,16 +81,19 @@ class UserSessionRevocationGrpcServiceIT {
     private UserSessionRevocationService application;
     private Server server;
     private ManagedChannel channel;
+    private final AtomicBoolean serviceTokenRevoked = new AtomicBoolean();
 
     @BeforeEach
     void setUp() throws Exception {
         key = new RSAKeyGenerator(2048).keyID("session-revocation-key").generate();
-        ServiceAccessTokenVerifier tokens = new ServiceAccessTokenVerifier(
-                this::verificationKey,
-                Clock.fixed(NOW, ZoneOffset.UTC),
-                "https://iam.test",
-                "saasforge-api",
-                Duration.ofSeconds(30));
+        ServiceAccessTokenAuthorizer tokens = new ServiceAccessTokenAuthorizer(
+                new ServiceAccessTokenSignatureVerifier(
+                        this::verificationKey,
+                        Clock.fixed(NOW, ZoneOffset.UTC),
+                        "https://iam.test",
+                        "saasforge-api",
+                        Duration.ofSeconds(30)),
+                (clientId, kid) -> serviceTokenRevoked.get());
         OAuthClient tenantAccess = OAuthClient.register(
                         ReservedServiceClient.TENANT_ACCESS.displayName(),
                         ReservedServiceClient.TENANT_ACCESS.allowedScopes(),
@@ -139,6 +144,21 @@ class UserSessionRevocationGrpcServiceIT {
         var completed = client.revokeUserSessions(tenantRequest(SECOND_REQUEST_ID));
         assertEquals(2, completed.getCompleted().getRevokedFamilyCount());
         assertEquals(3, completed.getCompleted().getRevokedJtiCount());
+    }
+
+    @Test
+    void immediatelyRejectsPreviouslyIssuedTokenAfterClientRevocation() throws Exception {
+        when(application.revoke(
+                        REQUEST_ID, RevocationFenceTarget.membership(MEMBERSHIP_ID, TENANT_ID)))
+                .thenReturn(UserSessionRevocationResult.completed(0, 0));
+        String token = serviceToken(TENANT_ACCESS_CLIENT_ID, "iam:sessions:write");
+        var client = stub("Bearer " + token);
+        client.revokeUserSessions(membershipRequest(REQUEST_ID));
+
+        serviceTokenRevoked.set(true);
+
+        assertStatus(Status.Code.UNAUTHENTICATED,
+                () -> client.revokeUserSessions(membershipRequest(REQUEST_ID)));
     }
 
     @Test

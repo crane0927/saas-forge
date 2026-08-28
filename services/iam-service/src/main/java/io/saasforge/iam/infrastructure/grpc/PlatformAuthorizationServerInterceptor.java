@@ -8,7 +8,7 @@ import io.grpc.Status;
 import io.saasforge.contracts.iam.authorization.v1.PlatformAuthorizationServiceGrpc;
 import io.saasforge.sdk.auth.ServiceAccessTokenInvalidException;
 import io.saasforge.sdk.auth.ServiceAccessTokenScopeException;
-import io.saasforge.sdk.auth.ServiceAccessTokenVerifier;
+import io.saasforge.sdk.auth.ServiceAccessTokenAuthorizer;
 import org.springframework.grpc.server.GlobalServerInterceptor;
 import org.springframework.stereotype.Component;
 
@@ -20,9 +20,9 @@ public final class PlatformAuthorizationServerInterceptor implements ServerInter
             Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER);
     private static final String REQUIRED_SCOPE = "iam:platform-role:read";
 
-    private final ServiceAccessTokenVerifier tokens;
+    private final ServiceAccessTokenAuthorizer tokens;
 
-    public PlatformAuthorizationServerInterceptor(ServiceAccessTokenVerifier tokens) {
+    public PlatformAuthorizationServerInterceptor(ServiceAccessTokenAuthorizer tokens) {
         this.tokens = tokens;
     }
 
@@ -40,7 +40,7 @@ public final class PlatformAuthorizationServerInterceptor implements ServerInter
             return close(call, Status.UNAUTHENTICATED);
         }
         try {
-            tokens.verify(authorization.substring("Bearer ".length()), REQUIRED_SCOPE);
+            tokens.authorize(authorization.substring("Bearer ".length()), REQUIRED_SCOPE);
             return next.startCall(call, headers);
         } catch (ServiceAccessTokenScopeException exception) {
             return close(call, Status.PERMISSION_DENIED);

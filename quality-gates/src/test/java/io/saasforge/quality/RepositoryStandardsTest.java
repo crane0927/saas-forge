@@ -313,6 +313,22 @@ class RepositoryStandardsTest {
     }
 
     @Test
+    void iamServiceTokenReceiversDependOnlyOnComposedAuthorizer() throws Exception {
+        Path receiverRoot = REPOSITORY.resolve(
+                "services/iam-service/src/main/java/io/saasforge/iam/infrastructure/grpc");
+        List<Path> interceptors = filesUnder(receiverRoot, "ServerInterceptor.java");
+        assertEquals(4, interceptors.size(), "IAM Service Token gRPC 接收端清单发生变化时必须显式评审");
+        for (Path interceptor : interceptors) {
+            String source = Files.readString(interceptor, StandardCharsets.UTF_8);
+            assertTrue(source.contains("ServiceAccessTokenAuthorizer"),
+                    interceptor + " 必须依赖组合 ServiceAccessTokenAuthorizer");
+            assertFalse(source.contains("ServiceAccessTokenVerifier")
+                            || source.contains("ServiceAccessTokenSignatureVerifier"),
+                    interceptor + " 不得直接依赖纯 Service Access Token 验签器");
+        }
+    }
+
+    @Test
     void springRepositoriesRemainProxyable() throws Exception {
         for (String serviceArtifact : SERVICE_ARTIFACTS) {
             Path serviceRoot = REPOSITORY.resolve("services").resolve(serviceArtifact).resolve("src/main/java");

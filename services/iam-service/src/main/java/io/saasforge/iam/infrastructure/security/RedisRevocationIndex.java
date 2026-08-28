@@ -242,9 +242,22 @@ public final class RedisRevocationIndex implements RevocationIndex {
     }
 
     @Override
+    public boolean isServiceTokenRevoked(UUID clientId, String kid) {
+        return isAnyRevoked(clientKey(clientId), kidKey(kid));
+    }
+
+    @Override
     public boolean isTokenRevoked(UUID jti, String kid) {
+        return isAnyRevoked(jtiKey(jti), kidKey(kid));
+    }
+
+    private boolean isAnyRevoked(String firstRevocationKey, String secondRevocationKey) {
+        if (recoveryRequired) {
+            throw new RevocationIndexUnavailableException();
+        }
         try {
-            Long result = redis.execute(CHECK_TOKEN, List.of(readyKey, jtiKey(jti), kidKey(kid)));
+            Long result = redis.execute(CHECK_TOKEN, List.of(
+                    readyKey, firstRevocationKey, secondRevocationKey));
             if (result == null || result < 0) {
                 throw new RevocationIndexUnavailableException();
             }

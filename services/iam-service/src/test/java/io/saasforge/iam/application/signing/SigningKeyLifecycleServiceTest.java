@@ -156,6 +156,7 @@ class SigningKeyLifecycleServiceTest {
         @Override public boolean isJtiRevoked(UUID jti) { return false; }
         @Override public boolean isKidRevoked(String kid) { return false; }
         @Override public boolean isClientRevoked(UUID clientId) { return false; }
+        @Override public boolean isServiceTokenRevoked(UUID clientId, String kid) { return false; }
         @Override public boolean isTokenRevoked(UUID jti, String kid) { return false; }
     }
 }

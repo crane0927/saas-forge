@@ -3,6 +3,7 @@ package io.saasforge.iam.infrastructure.grpc;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.nimbusds.jose.JOSEObjectType;
 import com.nimbusds.jose.JWSAlgorithm;
@@ -30,7 +31,8 @@ import io.saasforge.iam.domain.authorization.PlatformRoleAssignmentRepository;
 import io.saasforge.sdk.auth.GrpcPlatformRoleChecker;
 import io.saasforge.sdk.auth.PlatformAuthorizationDeniedException;
 import io.saasforge.sdk.auth.PlatformRequestAuthorizer;
-import io.saasforge.sdk.auth.ServiceAccessTokenVerifier;
+import io.saasforge.sdk.auth.ServiceAccessTokenAuthorizer;
+import io.saasforge.sdk.auth.ServiceAccessTokenSignatureVerifier;
 import io.saasforge.sdk.auth.ServiceJwtVerificationKey;
 import io.saasforge.sdk.auth.UserAccessTokenVerifier;
 import java.time.Clock;
@@ -62,16 +64,19 @@ class PlatformAuthorizationGrpcServiceIT {
     private Server server;
     private ManagedChannel channel;
     private PlatformRoleAuthorizationService authorizationService;
+    private final AtomicBoolean serviceTokenRevoked = new AtomicBoolean();
 
     @BeforeEach
     void setUp() throws Exception {
         key = new RSAKeyGenerator(2048).keyID("platform-key").generate();
-        ServiceAccessTokenVerifier serviceTokens = new ServiceAccessTokenVerifier(
-                this::verificationKey,
-                Clock.fixed(NOW, ZoneOffset.UTC),
-                "https://iam.test",
-                "saasforge-api",
-                Duration.ofSeconds(30));
+        ServiceAccessTokenAuthorizer serviceTokens = new ServiceAccessTokenAuthorizer(
+                new ServiceAccessTokenSignatureVerifier(
+                        this::verificationKey,
+                        Clock.fixed(NOW, ZoneOffset.UTC),
+                        "https://iam.test",
+                        "saasforge-api",
+                        Duration.ofSeconds(30)),
+                (clientId, kid) -> serviceTokenRevoked.get());
         PlatformAuthorizationServerInterceptor interceptor =
                 new PlatformAuthorizationServerInterceptor(serviceTokens);
         PlatformRoleAssignmentRepository roles = new PlatformRoleAssignmentRepository() {
@@ -188,6 +193,19 @@ class PlatformAuthorizationGrpcServiceIT {
                         .map(field -> field.getName())
                         .toList());
         assertFalse(CheckPlatformRoleResponse.getDefaultInstance().getAllowed());
+    }
+
+    @Test
+    void immediatelyRejectsPreviouslyIssuedTokenAfterClientRevocation() throws Exception {
+        String token = serviceToken("iam:platform-role:read");
+        GrpcPlatformRoleChecker checker = new GrpcPlatformRoleChecker(
+                PlatformAuthorizationServiceGrpc.newBlockingStub(channel), () -> token);
+        assertTrue(checker.isAllowed(IDENTITY_ID, PLATFORM_ADMIN));
+
+        serviceTokenRevoked.set(true);
+
+        assertThrows(IllegalStateException.class,
+                () -> checker.isAllowed(IDENTITY_ID, PLATFORM_ADMIN));
     }
 
     @Test

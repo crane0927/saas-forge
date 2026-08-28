@@ -9,10 +9,10 @@ import io.saasforge.contracts.iam.session.v1.UserSessionRevocationServiceGrpc;
 import io.saasforge.iam.application.bootstrap.ReservedServiceClient;
 import io.saasforge.iam.domain.client.OAuthClientRepository;
 import io.saasforge.iam.domain.client.OAuthClientStatus;
-import io.saasforge.sdk.auth.ServiceAccessTokenClaims;
+import io.saasforge.sdk.auth.ServiceAccessAuthorization;
 import io.saasforge.sdk.auth.ServiceAccessTokenInvalidException;
 import io.saasforge.sdk.auth.ServiceAccessTokenScopeException;
-import io.saasforge.sdk.auth.ServiceAccessTokenVerifier;
+import io.saasforge.sdk.auth.ServiceAccessTokenAuthorizer;
 import org.springframework.grpc.server.GlobalServerInterceptor;
 import org.springframework.stereotype.Component;
 
@@ -23,11 +23,11 @@ public final class UserSessionRevocationServerInterceptor implements ServerInter
     private static final Metadata.Key<String> AUTHORIZATION =
             Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER);
     private static final String REQUIRED_SCOPE = "iam:sessions:write";
-    private final ServiceAccessTokenVerifier tokens;
+    private final ServiceAccessTokenAuthorizer tokens;
     private final OAuthClientRepository clients;
 
     public UserSessionRevocationServerInterceptor(
-            ServiceAccessTokenVerifier tokens, OAuthClientRepository clients) {
+            ServiceAccessTokenAuthorizer tokens, OAuthClientRepository clients) {
         this.tokens = tokens;
         this.clients = clients;
     }
@@ -44,9 +44,9 @@ public final class UserSessionRevocationServerInterceptor implements ServerInter
             return close(call, Status.UNAUTHENTICATED);
         }
         try {
-            ServiceAccessTokenClaims claims = tokens.verify(
+            ServiceAccessAuthorization authorizationResult = tokens.authorize(
                     authorization.substring("Bearer ".length()), REQUIRED_SCOPE);
-            boolean allowed = clients.findById(claims.clientId())
+            boolean allowed = clients.findById(authorizationResult.clientId())
                     .filter(client -> client.status() == OAuthClientStatus.ACTIVE)
                     .filter(client -> ReservedServiceClient.TENANT_ACCESS.displayName().equals(client.displayName()))
                     .map(client -> client.allowedScopes().equals(ReservedServiceClient.TENANT_ACCESS.allowedScopes()))

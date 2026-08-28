@@ -41,5 +41,8 @@ public interface RevocationIndex {
 
     boolean isClientRevoked(UUID clientId);
 
+    /** 原子检查 Ready、签名 kid 与 OAuth Client，状态不可判定时 fail closed。 */
+    boolean isServiceTokenRevoked(UUID clientId, String kid);
+
     boolean isTokenRevoked(UUID jti, String kid);
 }

@@ -28,7 +28,8 @@ import io.saasforge.iam.application.authentication.PasswordSetupDeliveryService;
 import io.saasforge.iam.application.bootstrap.ReservedServiceClient;
 import io.saasforge.iam.domain.client.OAuthClient;
 import io.saasforge.iam.domain.client.OAuthClientRepository;
-import io.saasforge.sdk.auth.ServiceAccessTokenVerifier;
+import io.saasforge.sdk.auth.ServiceAccessTokenAuthorizer;
+import io.saasforge.sdk.auth.ServiceAccessTokenSignatureVerifier;
 import io.saasforge.sdk.auth.ServiceJwtVerificationKey;
 import java.time.Clock;
 import java.time.Duration;
@@ -39,6 +40,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -60,13 +62,16 @@ class PasswordSetupDeliveryGrpcServiceIT {
     private RSAKey key;
     private Server server;
     private ManagedChannel channel;
+    private final AtomicBoolean serviceTokenRevoked = new AtomicBoolean();
 
     @BeforeEach
     void setUp() throws Exception {
         key = new RSAKeyGenerator(2048).keyID("password-setup-delivery-key").generate();
-        ServiceAccessTokenVerifier tokens = new ServiceAccessTokenVerifier(
-                this::verificationKey, Clock.fixed(NOW, ZoneOffset.UTC),
-                "https://iam.test", "saasforge-api", Duration.ofSeconds(30));
+        ServiceAccessTokenAuthorizer tokens = new ServiceAccessTokenAuthorizer(
+                new ServiceAccessTokenSignatureVerifier(
+                        this::verificationKey, Clock.fixed(NOW, ZoneOffset.UTC),
+                        "https://iam.test", "saasforge-api", Duration.ofSeconds(30)),
+                (clientId, kid) -> serviceTokenRevoked.get());
         OAuthClient tenantAccess = OAuthClient.register(
                         ReservedServiceClient.TENANT_ACCESS.displayName(),
                         ReservedServiceClient.TENANT_ACCESS.allowedScopes(), NOW)
@@ -115,6 +120,18 @@ class PasswordSetupDeliveryGrpcServiceIT {
         StatusRuntimeException missing = assertThrows(StatusRuntimeException.class,
                 () -> PasswordSetupServiceGrpc.newBlockingStub(channel).deliverPasswordSetup(request()));
         assertEquals(Status.Code.UNAUTHENTICATED, missing.getStatus().getCode());
+    }
+
+    @Test
+    void immediatelyRejectsPreviouslyIssuedTokenAfterClientRevocation() throws Exception {
+        String token = serviceToken(TENANT_ACCESS_CLIENT_ID, "iam:password-setup:write");
+        stub(token).deliverPasswordSetup(request());
+
+        serviceTokenRevoked.set(true);
+
+        StatusRuntimeException revoked = assertThrows(
+                StatusRuntimeException.class, () -> stub(token).deliverPasswordSetup(request()));
+        assertEquals(Status.Code.UNAUTHENTICATED, revoked.getStatus().getCode());
     }
 
     @Test

@@ -72,7 +72,9 @@ import io.saasforge.iam.infrastructure.security.NimbusPresentedAccessTokenVerifi
 import io.saasforge.iam.api.BrowserRequestSecurity;
 import io.saasforge.iam.infrastructure.security.ClasspathCompromisedPasswordChecker;
 import io.saasforge.iam.infrastructure.security.IamJwtVerificationKeyResolver;
-import io.saasforge.sdk.auth.ServiceAccessTokenVerifier;
+import io.saasforge.sdk.auth.ServiceAccessTokenAuthorizer;
+import io.saasforge.sdk.auth.ServiceAccessTokenRevocationChecker;
+import io.saasforge.sdk.auth.ServiceAccessTokenSignatureVerifier;
 import io.saasforge.sdk.auth.ServiceJwtVerificationKeyResolver;
 import java.security.SecureRandom;
 import java.time.Clock;
@@ -174,11 +176,24 @@ public class AuthenticationConfiguration {
     }
 
     @Bean
-    ServiceAccessTokenVerifier serviceAccessTokenVerifier(
+    ServiceAccessTokenSignatureVerifier serviceAccessTokenSignatureVerifier(
             ServiceJwtVerificationKeyResolver keys,
             Clock clock,
             @Value("${security.jwt.issuer}") String issuer) {
-        return new ServiceAccessTokenVerifier(keys, clock, issuer, "saasforge-api", Duration.ofSeconds(30));
+        return new ServiceAccessTokenSignatureVerifier(
+                keys, clock, issuer, "saasforge-api", Duration.ofSeconds(30));
+    }
+
+    @Bean
+    ServiceAccessTokenRevocationChecker serviceAccessTokenRevocationChecker(RevocationIndex revocations) {
+        return revocations::isServiceTokenRevoked;
+    }
+
+    @Bean
+    ServiceAccessTokenAuthorizer serviceAccessTokenAuthorizer(
+            ServiceAccessTokenSignatureVerifier signatures,
+            ServiceAccessTokenRevocationChecker revocations) {
+        return new ServiceAccessTokenAuthorizer(signatures, revocations);
     }
 
     @Bean

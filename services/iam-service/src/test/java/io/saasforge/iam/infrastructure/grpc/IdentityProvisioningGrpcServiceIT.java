@@ -36,7 +36,8 @@ import io.saasforge.iam.domain.identity.IdentityRepository;
 import io.saasforge.iam.domain.identity.NormalizedEmail;
 import io.saasforge.iam.domain.identity.PasswordCredential;
 import io.saasforge.iam.domain.shared.Sha256Digest;
-import io.saasforge.sdk.auth.ServiceAccessTokenVerifier;
+import io.saasforge.sdk.auth.ServiceAccessTokenAuthorizer;
+import io.saasforge.sdk.auth.ServiceAccessTokenSignatureVerifier;
 import io.saasforge.sdk.auth.ServiceJwtVerificationKey;
 import java.time.Clock;
 import java.time.Duration;
@@ -48,6 +49,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -68,16 +70,19 @@ class IdentityProvisioningGrpcServiceIT {
     private RSAKey key;
     private Server server;
     private ManagedChannel channel;
+    private final AtomicBoolean serviceTokenRevoked = new AtomicBoolean();
 
     @BeforeEach
     void setUp() throws Exception {
         key = new RSAKeyGenerator(2048).keyID("identity-provisioning-key").generate();
-        ServiceAccessTokenVerifier tokens = new ServiceAccessTokenVerifier(
-                this::verificationKey,
-                Clock.fixed(NOW, ZoneOffset.UTC),
-                "https://iam.test",
-                "saasforge-api",
-                Duration.ofSeconds(30));
+        ServiceAccessTokenAuthorizer tokens = new ServiceAccessTokenAuthorizer(
+                new ServiceAccessTokenSignatureVerifier(
+                        this::verificationKey,
+                        Clock.fixed(NOW, ZoneOffset.UTC),
+                        "https://iam.test",
+                        "saasforge-api",
+                        Duration.ofSeconds(30)),
+                (clientId, kid) -> serviceTokenRevoked.get());
 
         OAuthClient tenantAccess = OAuthClient.register(
                         ReservedServiceClient.TENANT_ACCESS.displayName(),
@@ -138,6 +143,18 @@ class IdentityProvisioningGrpcServiceIT {
         StatusRuntimeException missingToken = assertThrows(StatusRuntimeException.class,
                 () -> IdentityProvisioningServiceGrpc.newBlockingStub(channel).ensureIdentity(request()));
         assertEquals(Status.Code.UNAUTHENTICATED, missingToken.getStatus().getCode());
+    }
+
+    @Test
+    void immediatelyRejectsPreviouslyIssuedTokenAfterClientRevocation() throws Exception {
+        String token = serviceToken(TENANT_ACCESS_CLIENT_ID, "iam:identity:write");
+        stub(token).ensureIdentity(request());
+
+        serviceTokenRevoked.set(true);
+
+        StatusRuntimeException revoked = assertThrows(
+                StatusRuntimeException.class, () -> stub(token).ensureIdentity(request()));
+        assertEquals(Status.Code.UNAUTHENTICATED, revoked.getStatus().getCode());
     }
 
     @Test

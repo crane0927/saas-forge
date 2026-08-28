@@ -12,10 +12,10 @@ import io.saasforge.iam.application.bootstrap.ReservedServiceClient;
 import io.saasforge.iam.domain.client.OAuthClient;
 import io.saasforge.iam.domain.client.OAuthClientRepository;
 import io.saasforge.iam.domain.client.OAuthClientStatus;
-import io.saasforge.sdk.auth.ServiceAccessTokenClaims;
+import io.saasforge.sdk.auth.ServiceAccessAuthorization;
 import io.saasforge.sdk.auth.ServiceAccessTokenInvalidException;
 import io.saasforge.sdk.auth.ServiceAccessTokenScopeException;
-import io.saasforge.sdk.auth.ServiceAccessTokenVerifier;
+import io.saasforge.sdk.auth.ServiceAccessTokenAuthorizer;
 import java.util.UUID;
 import org.springframework.grpc.server.GlobalServerInterceptor;
 import org.springframework.stereotype.Component;
@@ -29,11 +29,11 @@ public final class PasswordSetupDeliveryServerInterceptor implements ServerInter
     private static final String REQUIRED_SCOPE = "iam:password-setup:write";
     private static final Context.Key<UUID> CALLER_CLIENT_ID = Context.key("password-setup-delivery-caller-client-id");
 
-    private final ServiceAccessTokenVerifier tokens;
+    private final ServiceAccessTokenAuthorizer tokens;
     private final OAuthClientRepository clients;
 
     public PasswordSetupDeliveryServerInterceptor(
-            ServiceAccessTokenVerifier tokens, OAuthClientRepository clients) {
+            ServiceAccessTokenAuthorizer tokens, OAuthClientRepository clients) {
         this.tokens = tokens;
         this.clients = clients;
     }
@@ -51,13 +51,16 @@ public final class PasswordSetupDeliveryServerInterceptor implements ServerInter
             return close(call, Status.UNAUTHENTICATED);
         }
         try {
-            ServiceAccessTokenClaims claims = tokens.verify(
+            ServiceAccessAuthorization authorizationResult = tokens.authorize(
                     authorization.substring("Bearer ".length()), REQUIRED_SCOPE);
-            if (!isTenantAccessClient(claims.clientId())) {
+            if (!isTenantAccessClient(authorizationResult.clientId())) {
                 return close(call, Status.PERMISSION_DENIED);
             }
             return Contexts.interceptCall(
-                    Context.current().withValue(CALLER_CLIENT_ID, claims.clientId()), call, headers, next);
+                    Context.current().withValue(CALLER_CLIENT_ID, authorizationResult.clientId()),
+                    call,
+                    headers,
+                    next);
         } catch (ServiceAccessTokenScopeException exception) {
             return close(call, Status.PERMISSION_DENIED);
         } catch (ServiceAccessTokenInvalidException exception) {
