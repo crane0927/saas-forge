@@ -312,6 +312,45 @@ request() {
   fi
 }
 
+wait_for_resume_after_redis_recovery() {
+  local tenant_id="$1"
+  local bearer="$2"
+  local idempotency_key="$3"
+  local status
+  for _ in $(seq 1 30); do
+    status="$(curl --silent --show-error --max-time 10 \
+      --request DELETE \
+      --dump-header "$response_headers" \
+      --output "$response_body" \
+      --write-out '%{http_code}' \
+      --header 'Content-Type: application/json' \
+      --header 'X-SF-CSRF: 1' \
+      --header 'Origin: https://console.saasforge.test' \
+      --header 'Sec-Fetch-Site: same-site' \
+      --header "Authorization: Bearer $bearer" \
+      --header "Idempotency-Key: $idempotency_key" \
+      --cookie "$cookie_jar" \
+      --cookie-jar "$cookie_jar" \
+      "$gateway_base/api/v1/platform/tenants/$tenant_id/suspensions")" || status=000
+    if [[ "$status" == "200" ]]; then
+      return 0
+    fi
+    if [[ "$status" == "000" ]] \
+        || { [[ "$status" == "403" ]] \
+          && jq --exit-status '.code == "PLATFORM_AUTHORIZATION_DENIED"' "$response_body" >/dev/null; } \
+        || { [[ "$status" == "503" ]] \
+          && jq --exit-status '.code == "TOKEN_REVOCATION_STATUS_UNAVAILABLE"' "$response_body" >/dev/null; }; then
+      sleep 1
+      continue
+    fi
+    echo "等待 Redis 恢复后 Resume Tenant 时预期 HTTP 200/403/503，实际为 $status" >&2
+    jq '{status,code,title,detail,traceId}' "$response_body" >&2 2>/dev/null || true
+    return 1
+  done
+  echo "Redis 恢复后 Platform 授权链未在预期时间内恢复" >&2
+  return 1
+}
+
 wait_for_suspension_completion_losing_response() {
   local tenant_id="$1"
   local bearer="$2"
@@ -673,8 +712,7 @@ tenant_count_after_fail_closed="$(compose exec -T postgres sh -eu -c '
 [[ "$tenant_count_after_fail_closed" == "$tenant_count_before_fail_closed" ]]
 
 resume_key="$(uuid_v7)"
-request 200 DELETE "/api/v1/platform/tenants/$tenant_id/suspensions" '' \
-  "$platform_token" "$resume_key"
+wait_for_resume_after_redis_recovery "$tenant_id" "$platform_token" "$resume_key"
 assert_json '.status == "ACTIVE"'
 login "$tenant_admin_email" "$tenant_password" TENANT
 assert_json '.contextState == "ACCESS_TOKEN_ISSUED" and (.accessToken | length > 100)'

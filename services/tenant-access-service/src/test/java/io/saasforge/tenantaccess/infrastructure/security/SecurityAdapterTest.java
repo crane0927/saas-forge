@@ -6,11 +6,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+import io.saasforge.sdk.auth.PlatformRequestAuthorizer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -148,6 +150,17 @@ class SecurityAdapterTest {
         assertTrue(checker.isRevoked(UUID.randomUUID(), "kid"));
         when(values.multiGet(anyList())).thenReturn(Arrays.asList("1", null, "revoked"));
         assertTrue(checker.isRevoked(UUID.randomUUID(), "kid"));
+    }
+
+    @Test
+    void delegatesPlatformAdminAuthorizationToTheSdk() {
+        PlatformRequestAuthorizer delegate = mock(PlatformRequestAuthorizer.class);
+        UUID identityId = UUID.randomUUID();
+        when(delegate.authorize("Bearer user-token", "PLATFORM_ADMIN")).thenReturn(identityId);
+
+        assertEquals(identityId,
+                new SdkPlatformAdminAuthorizer(delegate).authorize("Bearer user-token"));
+        verify(delegate).authorize("Bearer user-token", "PLATFORM_ADMIN");
     }
 
     private IamServiceAccessTokenProvider provider(
