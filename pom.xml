@@ -89,6 +89,7 @@
         <error-prone-annotations.version>2.41.0</error-prone-annotations.version>
         <testcontainers.version>2.0.5</testcontainers.version>
         <bouncycastle.version>1.81.1</bouncycastle.version>
+        <swagger-parser.version>2.1.46</swagger-parser.version>
     </properties>
 
     <dependencyManagement>
@@ -153,6 +154,16 @@
                 <groupId>org.testcontainers</groupId>
                 <artifactId>testcontainers-kafka</artifactId>
                 <version>${testcontainers.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.swagger.parser.v3</groupId>
+                <artifactId>swagger-parser-v3</artifactId>
+                <version>${swagger-parser.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>${project.groupId}</groupId>
+                <artifactId>saas-forge-http-route-catalog</artifactId>
+                <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>${project.groupId}</groupId>

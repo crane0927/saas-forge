@@ -16,7 +16,7 @@ class GatewayRouteConfiguration {
     @Bean
     RouterFunction<ServerResponse> gatewayRoutes() {
         RouterFunction<ServerResponse> routes = null;
-        for (GatewayOpenApiRoutes.Route route : GatewayOpenApiRoutes.routes()) {
+        for (GatewayRouteCatalog.Route route : GatewayRouteCatalog.routes()) {
             RouterFunction<ServerResponse> gatewayRoute = gatewayRoute(route);
             routes = routes == null ? gatewayRoute : routes.and(gatewayRoute);
         }
@@ -26,7 +26,7 @@ class GatewayRouteConfiguration {
         return routes;
     }
 
-    private RouterFunction<ServerResponse> gatewayRoute(GatewayOpenApiRoutes.Route route) {
+    private RouterFunction<ServerResponse> gatewayRoute(GatewayRouteCatalog.Route route) {
         var builder = route(route.operationId());
         if (route.method() == HttpMethod.GET) {
             builder.GET(route.path(), http());
@@ -37,6 +37,6 @@ class GatewayRouteConfiguration {
         } else {
             throw new IllegalStateException("Unsupported OpenAPI HTTP method: " + route.method());
         }
-        return builder.filter(lb(route.target().serviceId())).build();
+        return builder.filter(lb(route.serviceId())).build();
     }
 }

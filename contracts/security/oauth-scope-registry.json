@@ -1,0 +1,14 @@
+{
+  "registryVersion": 1,
+  "entries": [
+    { "scope": "runtime:read", "ownerServiceId": "entitlement-service", "clientTypes": ["RUNTIME_SERVICE"], "usage": "RUNTIME", "gatewayRouteAllowed": true, "description": "Read runtime entitlement state." },
+    { "scope": "runtime:quota:write", "ownerServiceId": "entitlement-service", "clientTypes": ["RUNTIME_SERVICE"], "usage": "RUNTIME", "gatewayRouteAllowed": true, "description": "Apply runtime quota operations." },
+    { "scope": "tenant-access:membership:read", "ownerServiceId": "tenant-access-service", "clientTypes": ["RESERVED_SERVICE"], "usage": "INTERNAL", "gatewayRouteAllowed": false, "description": "Read authoritative membership state." },
+    { "scope": "tenant-access:tenant:read", "ownerServiceId": "tenant-access-service", "clientTypes": ["RESERVED_SERVICE"], "usage": "INTERNAL", "gatewayRouteAllowed": false, "description": "Read authoritative tenant state." },
+    { "scope": "iam:identity:write", "ownerServiceId": "iam-service", "clientTypes": ["RESERVED_SERVICE"], "usage": "INTERNAL", "gatewayRouteAllowed": false, "description": "Provision an IAM identity." },
+    { "scope": "iam:password-setup:write", "ownerServiceId": "iam-service", "clientTypes": ["RESERVED_SERVICE"], "usage": "INTERNAL", "gatewayRouteAllowed": false, "description": "Issue password setup delivery." },
+    { "scope": "iam:platform-role:read", "ownerServiceId": "iam-service", "clientTypes": ["RESERVED_SERVICE"], "usage": "INTERNAL", "gatewayRouteAllowed": false, "description": "Read authoritative platform role state." },
+    { "scope": "iam:sessions:write", "ownerServiceId": "iam-service", "clientTypes": ["RESERVED_SERVICE"], "usage": "INTERNAL", "gatewayRouteAllowed": false, "description": "Revoke user sessions." },
+    { "scope": "entitlement:quota:write", "ownerServiceId": "entitlement-service", "clientTypes": ["RESERVED_SERVICE"], "usage": "INTERNAL", "gatewayRouteAllowed": false, "description": "Apply internal quota provisioning operations." }
+  ]
+}

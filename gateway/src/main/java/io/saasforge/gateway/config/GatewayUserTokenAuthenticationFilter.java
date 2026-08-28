@@ -1,5 +1,6 @@
 package io.saasforge.gateway.config;
 
+import io.saasforge.contracts.route.HttpRouteCatalog;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -29,12 +30,12 @@ class GatewayUserTokenAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
-        List<GatewayOpenApiRoutes.Route> routes = GatewayOpenApiRoutes.matching(requestPath(request));
+        List<GatewayRouteCatalog.Route> routes = GatewayRouteCatalog.matching(requestPath(request));
         if (routes.isEmpty()) {
             filterChain.doFilter(request, response);
             return;
         }
-        GatewayOpenApiRoutes.Route matchingRoute = routes.stream()
+        GatewayRouteCatalog.Route matchingRoute = routes.stream()
                 .filter(route -> route.method().matches(request.getMethod()))
                 .findFirst()
                 .orElse(null);
@@ -42,10 +43,11 @@ class GatewayUserTokenAuthenticationFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
             return;
         }
-        GatewayOpenApiRoutes.UserTokenRequirement requirement = matchingRoute.userTokenRequirement();
+        HttpRouteCatalog.CredentialRequirement requirement = matchingRoute.credentialRequirement();
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
-        if (requirement == GatewayOpenApiRoutes.UserTokenRequirement.NONE
-                || requirement == GatewayOpenApiRoutes.UserTokenRequirement.OPTIONAL && authorization == null) {
+        if ((requirement != HttpRouteCatalog.CredentialRequirement.USER_REQUIRED
+                && requirement != HttpRouteCatalog.CredentialRequirement.USER_OPTIONAL)
+                || requirement == HttpRouteCatalog.CredentialRequirement.USER_OPTIONAL && authorization == null) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -56,7 +58,7 @@ class GatewayUserTokenAuthenticationFilter extends OncePerRequestFilter {
             problems.write(request, response, HttpStatus.SERVICE_UNAVAILABLE, "TOKEN_REVOCATION_STATUS_UNAVAILABLE",
                     "The User Token revocation status is unavailable.");
         } catch (GatewayUserTokenInvalidException exception) {
-            if (requirement == GatewayOpenApiRoutes.UserTokenRequirement.OPTIONAL) {
+            if (requirement == HttpRouteCatalog.CredentialRequirement.USER_OPTIONAL) {
                 // logout 必须继续到 IAM 清理 Refresh Cookie；IAM 只在 Bearer 有效时附加撤销其 jti。
                 filterChain.doFilter(request, response);
                 return;

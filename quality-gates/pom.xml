@@ -21,6 +21,10 @@
     <dependencies>
         <dependency>
             <groupId>${project.groupId}</groupId>
+            <artifactId>saas-forge-http-route-catalog</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
             <artifactId>gateway</artifactId>
             <scope>runtime</scope>
         </dependency>

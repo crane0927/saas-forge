@@ -68,6 +68,7 @@ paths:
       tags: [Authentication]
       operationId: refreshAccessToken
       x-saasforge-service: iam-service
+      security: [{ RefreshCookieAuth: [] }]
       summary: Rotate the browser Refresh Token and issue the current Access Token
       description: The Refresh Token is supplied only by the HttpOnly refresh cookie.
       parameters:
@@ -104,6 +105,7 @@ paths:
       tags: [Authentication]
       operationId: changeInitialPassword
       x-saasforge-service: iam-service
+      security: [{ RefreshCookieAuth: [] }]
       summary: Replace an initial password and end the restricted session
       description: |
         Accepts only an INITIAL_PASSWORD_CHANGE Refresh Token cookie. A successful
@@ -158,6 +160,7 @@ paths:
       tags: [Authentication]
       operationId: selectAuthenticationContext
       x-saasforge-service: iam-service
+      security: [{ RefreshCookieAuth: [] }]
       summary: Complete a pending Tenant context selection
       description: |
         The Identity comes only from the USER_TENANT_SELECTION Refresh Token cookie.
@@ -241,6 +244,7 @@ paths:
       tags: [Authentication]
       operationId: switchTenantContext
       x-saasforge-service: iam-service
+      security: [{ RefreshCookieAuth: [] }]
       summary: Select or switch the session Membership
       description: |
         Accepts only the target Membership. The host-only Refresh Token cookie is the
@@ -814,6 +818,20 @@ components:
       type: http
       scheme: basic
       description: OAuth Client client_id and client_secret.
+    RefreshCookieAuth:
+      type: apiKey
+      in: cookie
+      name: __Host-sf_refresh
+      description: Browser Refresh Token cookie used only by IAM session operations.
+    ServiceOAuth2:
+      type: oauth2
+      description: Service Access Token issued through OAuth 2.0 Client Credentials.
+      flows:
+        clientCredentials:
+          tokenUrl: /oauth2/token
+          scopes:
+            runtime:read: Read runtime entitlement state.
+            runtime:quota:write: Apply runtime quota operations.
   headers:
     RefreshCookie:
       description: A rotated __Host-sf_refresh HttpOnly, Secure, SameSite=Strict cookie scoped to Path=/.

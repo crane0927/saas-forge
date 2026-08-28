@@ -1,0 +1,50 @@
+{
+  "registryVersion": 1,
+  "entries": [
+    {
+      "serviceId": "gateway",
+      "owner": "gateway",
+      "modulePath": "gateway",
+      "artifactId": "gateway",
+      "nacosServiceName": "gateway",
+      "deployable": true,
+      "gatewayRouteTargetAllowed": false
+    },
+    {
+      "serviceId": "iam-service",
+      "owner": "iam",
+      "modulePath": "services/iam-service",
+      "artifactId": "iam-service",
+      "nacosServiceName": "iam-service",
+      "deployable": true,
+      "gatewayRouteTargetAllowed": true
+    },
+    {
+      "serviceId": "tenant-access-service",
+      "owner": "tenant-access",
+      "modulePath": "services/tenant-access-service",
+      "artifactId": "tenant-access-service",
+      "nacosServiceName": "tenant-access-service",
+      "deployable": true,
+      "gatewayRouteTargetAllowed": true
+    },
+    {
+      "serviceId": "entitlement-service",
+      "owner": "entitlement",
+      "modulePath": "services/entitlement-service",
+      "artifactId": "entitlement-service",
+      "nacosServiceName": "entitlement-service",
+      "deployable": true,
+      "gatewayRouteTargetAllowed": true
+    },
+    {
+      "serviceId": "audit-service",
+      "owner": "audit",
+      "modulePath": "services/audit-service",
+      "artifactId": "audit-service",
+      "nacosServiceName": "audit-service",
+      "deployable": true,
+      "gatewayRouteTargetAllowed": false
+    }
+  ]
+}

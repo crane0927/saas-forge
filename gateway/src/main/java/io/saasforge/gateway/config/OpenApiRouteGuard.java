@@ -37,7 +37,7 @@ class OpenApiRouteGuard extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
-        List<GatewayOpenApiRoutes.Route> routes = GatewayOpenApiRoutes.matching(requestPath(request));
+        List<GatewayRouteCatalog.Route> routes = GatewayRouteCatalog.matching(requestPath(request));
         if (routes.isEmpty()) {
             writeProblem(request, response, HttpStatus.NOT_FOUND, "ROUTE_NOT_FOUND", "The requested route is not declared.");
             return;

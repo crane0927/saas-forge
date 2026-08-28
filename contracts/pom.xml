@@ -19,6 +19,7 @@
     </properties>
 
     <modules>
+        <module>http-route-catalog</module>
         <module>openapi</module>
         <module>protobuf</module>
         <module>events</module>

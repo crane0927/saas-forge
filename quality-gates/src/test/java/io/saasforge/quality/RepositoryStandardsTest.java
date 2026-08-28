@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.saasforge.contracts.route.HttpRouteCatalog;
+import io.saasforge.contracts.route.HttpRouteCatalogLoader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -31,8 +33,7 @@ class RepositoryStandardsTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Path REPOSITORY = Path.of(System.getProperty("repositoryRoot"));
-    private static final Set<String> SERVICE_ARTIFACTS = Set.of(
-            "iam-service", "tenant-access-service", "entitlement-service", "audit-service");
+    private static final Set<String> SERVICE_ARTIFACTS = registeredServiceArtifacts();
     private static final Map<String, String> SERVICE_PACKAGES = Map.of(
             "iam-service", "io.saasforge.iam",
             "tenant-access-service", "io.saasforge.tenantaccess",
@@ -227,6 +228,68 @@ class RepositoryStandardsTest {
     }
 
     @Test
+    void serviceAndOAuthScopeRegistriesControlPublicRouteEligibility() throws Exception {
+        Path serviceRegistryPath = REPOSITORY.resolve("contracts/services/engineering-registry.json");
+        JsonNode serviceSchema = readJson(
+                REPOSITORY.resolve("contracts/services/engineering-registry.schema.json"));
+        assertEquals(Set.of("serviceId", "owner", "modulePath", "artifactId", "nacosServiceName",
+                        "deployable", "gatewayRouteTargetAllowed"),
+                textSet(serviceSchema.at("/$defs/entry/required")),
+                "Service Registry 字段发生变化时必须显式评审");
+        JsonNode serviceRegistry = readJson(serviceRegistryPath);
+        assertEquals(1, serviceRegistry.path("registryVersion").asInt(), "Service Registry 版本必须为 1");
+        Set<String> serviceIds = new HashSet<>();
+        Set<String> routeTargets = new HashSet<>();
+        for (JsonNode entry : serviceRegistry.path("entries")) {
+            String serviceId = requiredText(entry, "serviceId", serviceRegistryPath);
+            assertTrue(serviceIds.add(serviceId), "Service Registry serviceId 重复: " + serviceId);
+            assertTrue(entry.path("deployable").isBoolean(), serviceId + " deployable 必须是布尔值");
+            assertTrue(entry.path("gatewayRouteTargetAllowed").isBoolean(),
+                    serviceId + " gatewayRouteTargetAllowed 必须是布尔值");
+            if (entry.path("gatewayRouteTargetAllowed").asBoolean()) {
+                routeTargets.add(serviceId);
+            }
+        }
+        assertEquals(routeTargets, HttpRouteCatalogLoader.load().routes().stream()
+                .map(HttpRouteCatalog.Route::serviceId).collect(java.util.stream.Collectors.toSet()),
+                "只有具有公网资格且拥有正式 OpenAPI operation 的服务才能进入 Route Catalog");
+
+        Path scopeRegistryPath = REPOSITORY.resolve("contracts/security/oauth-scope-registry.json");
+        JsonNode scopeSchema = readJson(
+                REPOSITORY.resolve("contracts/security/oauth-scope-registry.schema.json"));
+        assertEquals(Set.of("scope", "ownerServiceId", "clientTypes", "usage",
+                        "gatewayRouteAllowed", "description"),
+                textSet(scopeSchema.at("/$defs/entry/required")),
+                "OAuth Scope Registry 字段发生变化时必须显式评审");
+        JsonNode scopeRegistry = readJson(scopeRegistryPath);
+        assertEquals(1, scopeRegistry.path("registryVersion").asInt(), "OAuth Scope Registry 版本必须为 1");
+        Set<String> scopes = new HashSet<>();
+        Set<String> publicScopes = new HashSet<>();
+        for (JsonNode entry : scopeRegistry.path("entries")) {
+            String scope = requiredText(entry, "scope", scopeRegistryPath);
+            assertTrue(scopes.add(scope), "OAuth Scope 重复: " + scope);
+            assertTrue(serviceIds.contains(requiredText(entry, "ownerServiceId", scopeRegistryPath)),
+                    scope + " 使用了未登记 ownerServiceId");
+            if (entry.path("gatewayRouteAllowed").asBoolean()) {
+                publicScopes.add(scope);
+            }
+        }
+        assertEquals(Set.of("runtime:read", "runtime:quota:write"), publicScopes,
+                "只有 MVP Runtime Scope 可以用于公网 Service route");
+
+        String oauthScopeSource = Files.readString(
+                REPOSITORY.resolve("services/iam-service/src/main/java/io/saasforge/iam/domain/client/OAuthScope.java"),
+                StandardCharsets.UTF_8);
+        Matcher scopeMatcher = Pattern.compile("\\(\"([a-z][a-z0-9-]*(?::[a-z][a-z0-9-]*)+)\"\\)")
+                .matcher(oauthScopeSource);
+        Set<String> iamScopes = new HashSet<>();
+        while (scopeMatcher.find()) {
+            iamScopes.add(scopeMatcher.group(1));
+        }
+        assertEquals(scopes, iamScopes, "IAM OAuthScope 必须与 OAuth Scope Registry 精确一致");
+    }
+
+    @Test
     void publicRestOperationsHaveOneServiceOwnerAndMatchingServerGeneration() throws Exception {
         List<OpenApiOperation> operations = parseOpenApiOperations(
                 REPOSITORY.resolve("contracts/openapi/v1.yaml"));
@@ -260,39 +323,28 @@ class RepositoryStandardsTest {
     }
 
     @Test
-    void gatewayRoutesMatchOpenApiOwnershipAndUserTokenSecurity() throws Exception {
+    void routeCatalogMatchesOpenApiOwnershipAndCredentialSecurity() throws Exception {
         List<OpenApiOperation> operations = parseOpenApiOperations(
                 REPOSITORY.resolve("contracts/openapi/v1.yaml"));
-        Path generatedMetadata = REPOSITORY.resolve(
-                "gateway/target/generated-resources/openapi/META-INF/saasforge/gateway-openapi-routes.tsv");
-        assertTrue(Files.isRegularFile(generatedMetadata), "缺少从 OpenAPI 生成的 Gateway 路由元数据");
-        Map<String, GatewayRoute> routes = new HashMap<>();
-        for (String line : Files.readAllLines(generatedMetadata, StandardCharsets.UTF_8)) {
-            if (line.isBlank() || line.startsWith("#")) {
-                continue;
-            }
-            String[] fields = line.split("\\t", -1);
-            assertEquals(5, fields.length, "Gateway 路由元数据字段数不合法: " + line);
-            String operationId = fields[0];
-            GatewayRoute route = new GatewayRoute(
-                    fields[1], fields[2], fields[3], fields[4]);
-            assertTrue(routes.put(operationId, route) == null,
-                    "Gateway 重复登记 operationId: " + operationId);
+        Map<String, HttpRouteCatalog.Route> routes = new HashMap<>();
+        for (HttpRouteCatalog.Route route : HttpRouteCatalogLoader.load().routes()) {
+            assertTrue(routes.put(route.operationId(), route) == null,
+                    "Route Catalog 重复登记 operationId: " + route.operationId());
         }
 
-        assertEquals(operations.size(), routes.size(), "Gateway 路由数量必须与 OpenAPI operation 数量一致");
+        assertEquals(operations.size(), routes.size(), "Route Catalog 路由数量必须与 OpenAPI operation 数量一致");
         for (OpenApiOperation operation : operations) {
             assertNotNull(operation.operationId(), operation.displayName() + " 缺少 operationId");
-            GatewayRoute route = routes.get(operation.operationId());
-            assertNotNull(route, operation.displayName() + " 未登记到 Gateway 路由白名单");
-            assertEquals(operation.method().toUpperCase(), route.method(),
-                    operation.operationId() + " 的 Gateway HTTP method 与 OpenAPI 不一致");
+            HttpRouteCatalog.Route route = routes.get(operation.operationId());
+            assertNotNull(route, operation.displayName() + " 未登记到 Route Catalog");
+            assertEquals(operation.method().toUpperCase(), route.method().name(),
+                    operation.operationId() + " 的 HTTP method 与 OpenAPI 不一致");
             assertEquals(operation.path(), route.path(),
-                    operation.operationId() + " 的 Gateway path 与 OpenAPI 不一致");
-            assertEquals(gatewayTarget(operation.owner()), route.target(),
-                    operation.operationId() + " 的 Gateway owner 与 OpenAPI 不一致");
-            assertEquals(operation.userTokenRequirement(), route.userTokenRequirement(),
-                    operation.operationId() + " 的 User Token security 分类与 OpenAPI 不一致");
+                    operation.operationId() + " 的 path 与 OpenAPI 不一致");
+            assertEquals(operation.owner(), route.serviceId(),
+                    operation.operationId() + " 的 serviceId 与 OpenAPI 不一致");
+            assertEquals(operation.credentialRequirement(), route.credentialRequirement().name(),
+                    operation.operationId() + " 的凭据分类与 OpenAPI 不一致");
         }
     }
 
@@ -625,6 +677,8 @@ class RepositoryStandardsTest {
         int ownerDeclarations = 0;
         boolean explicitSecurity = false;
         boolean userBearer = false;
+        boolean refreshCookie = false;
+        boolean oauthClientBasic = false;
         boolean anonymousAlternative = false;
         boolean readingSecurity = false;
         List<OpenApiOperation> operations = new ArrayList<>();
@@ -635,7 +689,8 @@ class RepositoryStandardsTest {
                 if (method != null) {
                     operations.add(new OpenApiOperation(
                             path, method, tags, owner, operationId, ownerDeclarations,
-                            userTokenRequirement(explicitSecurity, userBearer, anonymousAlternative)));
+                            credentialRequirement(explicitSecurity, userBearer, refreshCookie,
+                                    oauthClientBasic, anonymousAlternative)));
                     method = null;
                     tags = Set.of();
                     owner = null;
@@ -643,6 +698,8 @@ class RepositoryStandardsTest {
                     ownerDeclarations = 0;
                     explicitSecurity = false;
                     userBearer = false;
+                    refreshCookie = false;
+                    oauthClientBasic = false;
                     anonymousAlternative = false;
                     readingSecurity = false;
                 }
@@ -655,7 +712,8 @@ class RepositoryStandardsTest {
                 if (method != null) {
                     operations.add(new OpenApiOperation(
                             path, method, tags, owner, operationId, ownerDeclarations,
-                            userTokenRequirement(explicitSecurity, userBearer, anonymousAlternative)));
+                            credentialRequirement(explicitSecurity, userBearer, refreshCookie,
+                                    oauthClientBasic, anonymousAlternative)));
                 }
                 method = methodMatcher.group(1);
                 tags = Set.of();
@@ -664,6 +722,8 @@ class RepositoryStandardsTest {
                 ownerDeclarations = 0;
                 explicitSecurity = false;
                 userBearer = false;
+                refreshCookie = false;
+                oauthClientBasic = false;
                 anonymousAlternative = false;
                 readingSecurity = false;
                 continue;
@@ -675,6 +735,8 @@ class RepositoryStandardsTest {
             if (readingSecurity) {
                 if (line.startsWith("        - ")) {
                     userBearer |= line.contains("UserBearerAuth");
+                    refreshCookie |= line.contains("RefreshCookieAuth");
+                    oauthClientBasic |= line.contains("OAuthClientBasic");
                     anonymousAlternative |= line.trim().equals("- {}");
                     continue;
                 }
@@ -705,6 +767,8 @@ class RepositoryStandardsTest {
                 explicitSecurity = true;
                 String inlineSecurity = securityMatcher.group(1);
                 userBearer |= inlineSecurity.contains("UserBearerAuth");
+                refreshCookie |= inlineSecurity.contains("RefreshCookieAuth");
+                oauthClientBasic |= inlineSecurity.contains("OAuthClientBasic");
                 anonymousAlternative |= inlineSecurity.contains("{}");
                 readingSecurity = inlineSecurity.isBlank();
             }
@@ -712,26 +776,31 @@ class RepositoryStandardsTest {
         if (method != null) {
             operations.add(new OpenApiOperation(
                     path, method, tags, owner, operationId, ownerDeclarations,
-                    userTokenRequirement(explicitSecurity, userBearer, anonymousAlternative)));
+                    credentialRequirement(explicitSecurity, userBearer, refreshCookie,
+                            oauthClientBasic, anonymousAlternative)));
         }
         return operations;
     }
 
-    private static String userTokenRequirement(
-            boolean explicitSecurity, boolean userBearer, boolean anonymousAlternative) {
-        if (!explicitSecurity || !userBearer) {
-            return "NONE";
+    private static String credentialRequirement(
+            boolean explicitSecurity,
+            boolean userBearer,
+            boolean refreshCookie,
+            boolean oauthClientBasic,
+            boolean anonymousAlternative) {
+        if (!explicitSecurity) {
+            return "ANONYMOUS";
         }
-        return anonymousAlternative ? "OPTIONAL" : "REQUIRED";
-    }
-
-    private static String gatewayTarget(String serviceOwner) {
-        return switch (serviceOwner) {
-            case "iam-service" -> "IAM";
-            case "tenant-access-service" -> "TENANT_ACCESS";
-            case "entitlement-service" -> "ENTITLEMENT";
-            default -> throw new IllegalArgumentException("没有 Gateway Target 的服务 owner: " + serviceOwner);
-        };
+        if (refreshCookie) {
+            return "REFRESH_COOKIE_REQUIRED";
+        }
+        if (oauthClientBasic) {
+            return "OAUTH_CLIENT_BASIC_REQUIRED";
+        }
+        if (userBearer) {
+            return anonymousAlternative ? "USER_OPTIONAL" : "USER_REQUIRED";
+        }
+        return "ANONYMOUS";
     }
 
     private static List<Path> filesUnder(Path root, String suffix) throws IOException {
@@ -743,6 +812,22 @@ class RepositoryStandardsTest {
                     .filter(path -> path.getFileName().toString().endsWith(suffix))
                     .filter(path -> !path.toString().contains("/target/"))
                     .toList();
+        }
+    }
+
+    private static Set<String> registeredServiceArtifacts() {
+        try {
+            JsonNode entries = JSON.readTree(
+                    REPOSITORY.resolve("contracts/services/engineering-registry.json").toFile()).path("entries");
+            Set<String> artifacts = new LinkedHashSet<>();
+            for (JsonNode entry : entries) {
+                if (entry.path("modulePath").asText().startsWith("services/")) {
+                    artifacts.add(entry.path("artifactId").asText());
+                }
+            }
+            return Set.copyOf(artifacts);
+        } catch (IOException exception) {
+            throw new ExceptionInInitializerError(exception);
         }
     }
 
@@ -817,13 +902,11 @@ class RepositoryStandardsTest {
             String owner,
             String operationId,
             int ownerDeclarations,
-            String userTokenRequirement) {
+            String credentialRequirement) {
 
         private String displayName() {
             return method.toUpperCase() + " " + path;
         }
     }
 
-    private record GatewayRoute(String method, String path, String target, String userTokenRequirement) {
-    }
 }
