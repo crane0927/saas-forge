@@ -560,6 +560,130 @@ class AuthenticationHttpIT {
 
     @Test
     @Order(3)
+    void platformAdminRotatesRuntimeAndReservedSecretsWithOneTimeDeliveryAndAtomicFacts() throws Exception {
+        TestUser admin = createUser(
+                "oauth-rotation-admin@example.test", "correct-password", true, Credential.REGULAR);
+        String platformToken = accessToken(login(
+                "oauth-rotation-admin@example.test", "correct-password", "PLATFORM").andReturn());
+        UUID createKey = uuidV7(67_001);
+        MvcResult created = mockMvc.perform(post("/api/v1/platform/oauth-clients")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + platformToken)
+                        .header("Idempotency-Key", createKey.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsBytes(Map.of(
+                                "displayName", "rotating-runtime",
+                                "allowedScopes", List.of("runtime:read", "runtime:quota:write")))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        JsonNode createdBody = json(created.getResponse().getContentAsByteArray());
+        UUID clientId = UUID.fromString(createdBody.get("clientId").asString());
+        String oldSecret = createdBody.get("clientSecret").asString();
+        UUID rotationKey = uuidV7(67_002);
+
+        MvcResult rotated = rotateClient(platformToken, clientId, rotationKey)
+                .andExpect(jsonPath("$.allowedScopes.length()").value(2))
+                .andReturn();
+        JsonNode rotatedBody = json(rotated.getResponse().getContentAsByteArray());
+        String newSecret = rotatedBody.get("clientSecret").asString();
+        assertEquals(43, newSecret.length());
+        assertFalse(oldSecret.equals(newSecret));
+
+        for (String validSecret : List.of(oldSecret, newSecret)) {
+            mockMvc.perform(post("/oauth2/token")
+                            .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                            .header(HttpHeaders.AUTHORIZATION, basic(clientId, validSecret))
+                            .param("grant_type", "client_credentials")
+                            .param("scope", "runtime:read"))
+                    .andExpect(status().isOk());
+        }
+
+        Map<String, Object> persisted = jdbc.queryForMap("""
+                SELECT client.created_at, client.updated_at,
+                       count(DISTINCT secret.id) AS secret_count,
+                       count(DISTINCT secret.secret_digest) AS digest_count,
+                       max(operation.http_status) FILTER (WHERE operation.operation_type = 'ROTATE') AS rotate_status,
+                       max(octet_length(operation.request_fingerprint))
+                           FILTER (WHERE operation.operation_type = 'ROTATE') AS fingerprint_length,
+                       max(event.event_snapshot::TEXT)
+                           FILTER (WHERE event.event_snapshot->>'type' =
+                               'com.saasforge.iam.client-secret.rotated.v1') AS rotated_event
+                FROM iam_oauth_clients client
+                JOIN iam_oauth_client_secrets secret ON secret.client_id = client.id
+                JOIN iam_oauth_client_management_operations operation ON operation.client_id = client.id
+                JOIN iam_outbox_events event ON event.ordering_key = client.id::TEXT
+                WHERE client.id = ?
+                GROUP BY client.created_at, client.updated_at
+                """, clientId);
+        assertTrue(((java.sql.Timestamp) persisted.get("updated_at")).toInstant()
+                .isAfter(((java.sql.Timestamp) persisted.get("created_at")).toInstant()));
+        assertEquals(2L, persisted.get("secret_count"));
+        assertEquals(2L, persisted.get("digest_count"));
+        assertEquals(200, persisted.get("rotate_status"));
+        assertEquals(32, persisted.get("fingerprint_length"));
+        String rotatedEvent = (String) persisted.get("rotated_event");
+        assertNotNull(rotatedEvent);
+        assertFalse(rotatedEvent.contains(newSecret));
+        assertFalse(rotatedEvent.toLowerCase().contains("digest"));
+        assertFalse(rotatedEvent.contains("clientSecret"));
+        assertFalse(rotatedEvent.contains("secretId"));
+
+        mockMvc.perform(post("/api/v1/platform/oauth-clients/{clientId}/secret-rotations", clientId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + platformToken)
+                        .header("Idempotency-Key", rotationKey.toString()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CLIENT_SECRET_ALREADY_REVEALED"));
+        mockMvc.perform(post("/api/v1/platform/oauth-clients/{clientId}/secret-rotations", clientId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + platformToken)
+                        .header("Idempotency-Key", uuidV7(67_003).toString()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CLIENT_SECRET_ROTATION_OVERLAP_ACTIVE"));
+        mockMvc.perform(post("/api/v1/platform/oauth-clients/{clientId}/secret-rotations", uuidV7(67_099))
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + platformToken)
+                        .header("Idempotency-Key", uuidV7(67_004).toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("OAUTH_CLIENT_NOT_FOUND"));
+
+        Instant issuedAt = Instant.now().minusSeconds(1);
+        UUID tenantAccessClient = uuidV7(67_010);
+        UUID entitlementClient = uuidV7(67_011);
+        createReservedClientIfMissing(tenantAccessClient, "tenant-access-service", Set.of(
+                OAuthScope.IAM_IDENTITY_WRITE, OAuthScope.IAM_PASSWORD_SETUP_WRITE,
+                OAuthScope.IAM_PLATFORM_ROLE_READ, OAuthScope.IAM_SESSIONS_WRITE,
+                OAuthScope.ENTITLEMENT_QUOTA_WRITE), (byte) 67, issuedAt);
+        createReservedClientIfMissing(entitlementClient, "entitlement-service", Set.of(
+                OAuthScope.TENANT_ACCESS_TENANT_READ, OAuthScope.IAM_PLATFORM_ROLE_READ), (byte) 68, issuedAt);
+        Set<String> representedScopes = new java.util.HashSet<>();
+        representedScopes.addAll(scopeValues(rotatedBody));
+        representedScopes.addAll(scopeValues(json(rotateClient(
+                platformToken, IAM_SERVICE_CLIENT_ID, uuidV7(67_012)).andReturn()
+                .getResponse().getContentAsByteArray())));
+        representedScopes.addAll(scopeValues(json(rotateClient(
+                platformToken, tenantAccessClient, uuidV7(67_013)).andReturn()
+                .getResponse().getContentAsByteArray())));
+        representedScopes.addAll(scopeValues(json(rotateClient(
+                platformToken, entitlementClient, uuidV7(67_014)).andReturn()
+                .getResponse().getContentAsByteArray())));
+        assertEquals(Set.of(
+                "runtime:read", "runtime:quota:write", "tenant-access:membership:read",
+                "iam:identity:write", "iam:password-setup:write", "iam:platform-role:read",
+                "iam:sessions:write", "entitlement:quota:write", "tenant-access:tenant:read"),
+                representedScopes);
+
+        UUID revokedClient = uuidV7(67_020);
+        oauthClients.createWithId(
+                OAuthClient.register("revoked-rotation", Set.of(OAuthScope.RUNTIME_READ), issuedAt)
+                        .identifiedBy(revokedClient),
+                ClientSecretDigest.fromPlaintext(serviceClientSecret((byte) 69)), issuedAt);
+        oauthClients.revoke(revokedClient, Instant.now());
+        mockMvc.perform(post("/api/v1/platform/oauth-clients/{clientId}/secret-rotations", revokedClient)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + platformToken)
+                        .header("Idempotency-Key", uuidV7(67_021).toString()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("OAUTH_CLIENT_REVOKED"));
+    }
+
+    @Test
+    @Order(3)
     void credentialFailuresAreUniformAndFifthFailureLocksWithoutCreatingSessionFacts() throws Exception {
         TestUser wrongPassword = createUser("wrong-password@example.test", "correct-password", true, Credential.REGULAR);
         TestUser noCredential = createUser("no-credential@example.test", "unused", true, Credential.NONE);
@@ -1443,8 +1567,8 @@ class AuthenticationHttpIT {
         String secret = serviceClientSecret((byte) 11);
         oauthClients.createWithId(
                 OAuthClient.register("iam-service", Set.of(
-                                OAuthScope.TENANT_ACCESS_MEMBERSHIP_READ,
-                                OAuthScope.IAM_SESSIONS_WRITE), now)
+                                OAuthScope.RUNTIME_READ,
+                                OAuthScope.RUNTIME_QUOTA_WRITE), now)
                         .identifiedBy(clientId),
                 ClientSecretDigest.fromPlaintext(secret), now);
 
@@ -1452,11 +1576,11 @@ class AuthenticationHttpIT {
                         .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                         .header(HttpHeaders.AUTHORIZATION, basic(clientId, secret))
                         .param("grant_type", "client_credentials")
-                        .param("scope", "tenant-access:membership:read"))
+                        .param("scope", "runtime:read"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.token_type").value("Bearer"))
                 .andExpect(jsonPath("$.expires_in").value(300))
-                .andExpect(jsonPath("$.scope").value("tenant-access:membership:read"))
+                .andExpect(jsonPath("$.scope").value("runtime:read"))
                 .andReturn();
         String token = json(issued.getResponse().getContentAsByteArray()).get("access_token").asString();
         JsonNode header = json(Base64.getUrlDecoder().decode(token.split("\\.")[0]));
@@ -1470,9 +1594,9 @@ class AuthenticationHttpIT {
                         .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                         .header(HttpHeaders.AUTHORIZATION, basic(clientId, secret))
                         .param("grant_type", "client_credentials")
-                        .param("scope", "iam:sessions:write"))
+                        .param("scope", "runtime:quota:write"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.scope").value("iam:sessions:write"));
+                .andExpect(jsonPath("$.scope").value("runtime:quota:write"));
 
         mockMvc.perform(post("/oauth2/token")
                         .contentType(MediaType.APPLICATION_FORM_URLENCODED)
@@ -2980,6 +3104,35 @@ class AuthenticationHttpIT {
                         .identifiedBy(IAM_SERVICE_CLIENT_ID),
                 ClientSecretDigest.fromPlaintext(IAM_SERVICE_CLIENT_SECRET),
                 issuedAt);
+    }
+
+    private org.springframework.test.web.servlet.ResultActions rotateClient(
+            String platformToken, UUID clientId, UUID idempotencyKey) throws Exception {
+        return mockMvc.perform(post("/api/v1/platform/oauth-clients/{clientId}/secret-rotations", clientId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + platformToken)
+                        .header("Idempotency-Key", idempotencyKey.toString()))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(jsonPath("$.clientId").value(clientId.toString()))
+                .andExpect(jsonPath("$.clientSecret").isString());
+    }
+
+    private void createReservedClientIfMissing(
+            UUID clientId,
+            String displayName,
+            Set<OAuthScope> scopes,
+            byte secretSeed,
+            Instant issuedAt) {
+        if (oauthClients.findById(clientId).isPresent()) return;
+        oauthClients.createWithId(
+                OAuthClient.register(displayName, scopes, issuedAt).identifiedBy(clientId),
+                ClientSecretDigest.fromPlaintext(serviceClientSecret(secretSeed)), issuedAt);
+    }
+
+    private static Set<String> scopeValues(JsonNode response) {
+        Set<String> values = new java.util.HashSet<>();
+        response.get("allowedScopes").forEach(scope -> values.add(scope.asString()));
+        return values;
     }
 
     private static String iamJdbcUrl() {

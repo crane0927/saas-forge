@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.saasforge.iam.domain.client.OAuthClient;
 import io.saasforge.iam.domain.client.ClientSecretDigest;
 import io.saasforge.iam.domain.client.OAuthClientRepository;
+import io.saasforge.iam.domain.client.OAuthClientSecretRotationException;
 import io.saasforge.iam.domain.client.OAuthClientType;
 import io.saasforge.iam.domain.client.OAuthScope;
 import io.saasforge.iam.application.bootstrap.ReservedServiceClient;
@@ -152,7 +153,7 @@ class IamPersistenceRepositoryIT {
     void migrate() {
         Flyway.configure()
                 .dataSource(iamJdbcUrl(), "iam_migrator", "iam-migrator-password")
-                .locations("classpath:db/migration")
+                .locations(iamMigrationLocation())
                 .load()
                 .migrate();
     }
@@ -366,17 +367,53 @@ class IamPersistenceRepositoryIT {
     @Test
     void enforcesClientScopeSecretOverlapAndTerminalRevocation() {
         Instant now = Instant.parse("2026-08-20T02:00:00Z");
+        Instant rotatedAt = now.plusSeconds(1);
         Sha256Digest initialSecret = digest(4);
+        Sha256Digest rotatedSecret = digest(5);
+        Sha256Digest secondRotatedSecret = digest(6);
         OAuthClient client = clients.create(OAuthClient.register("worker", Set.of(OAuthScope.RUNTIME_READ), now), initialSecret, now);
 
         assertTrue(clients.findActiveBySecretDigest(initialSecret, now).isPresent());
-        clients.rotate(client.id(), digest(5), now.plusSeconds(1));
-        assertThrows(IllegalStateException.class, () -> clients.rotate(client.id(), digest(6), now.plusSeconds(2)));
-        assertTrue(clients.findActiveBySecretDigest(initialSecret, now.plus(23, ChronoUnit.HOURS)).isPresent());
-        assertFalse(clients.findActiveBySecretDigest(initialSecret, now.plus(25, ChronoUnit.HOURS)).isPresent());
+        clients.rotate(client.id(), rotatedSecret, rotatedAt);
+        OAuthClientSecretRotationException overlap = assertThrows(OAuthClientSecretRotationException.class,
+                () -> clients.rotate(client.id(), secondRotatedSecret, rotatedAt.plusSeconds(1)));
+        assertEquals(OAuthClientSecretRotationException.Reason.OVERLAP_ACTIVE, overlap.reason());
+        assertTrue(clients.findActiveBySecretDigest(initialSecret,
+                rotatedAt.plus(24, ChronoUnit.HOURS).minus(1, ChronoUnit.MICROS)).isPresent());
+        assertFalse(clients.findActiveBySecretDigest(initialSecret,
+                rotatedAt.plus(24, ChronoUnit.HOURS)).isPresent());
+        assertTrue(clients.findActiveBySecretDigest(rotatedSecret, rotatedAt).isPresent());
 
-        clients.revoke(client.id(), now.plusSeconds(3));
-        assertFalse(clients.findActiveBySecretDigest(digest(5), now.plusSeconds(4)).isPresent());
+        Instant secondRotationAt = rotatedAt.plus(24, ChronoUnit.HOURS);
+        clients.rotate(client.id(), secondRotatedSecret, secondRotationAt);
+        assertTrue(clients.findActiveBySecretDigest(rotatedSecret, secondRotationAt).isPresent());
+        assertTrue(clients.findActiveBySecretDigest(secondRotatedSecret, secondRotationAt).isPresent());
+        assertEquals(secondRotationAt, clients.findById(client.id()).orElseThrow().updatedAt());
+
+        clients.revoke(client.id(), secondRotationAt.plusSeconds(1));
+        assertFalse(clients.findActiveBySecretDigest(secondRotatedSecret,
+                secondRotationAt.plusSeconds(2)).isPresent());
+    }
+
+    @Test
+    void concurrentClientSecretRotationsKeepOnlyOneOverlapWindow() throws Exception {
+        Instant now = Instant.parse("2026-08-20T03:00:00Z");
+        OAuthClient client = clients.create(
+                OAuthClient.register("concurrent-worker", Set.of(OAuthScope.RUNTIME_READ), now), digest(31), now);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var first = executor.submit(() -> rotateConcurrently(client.id(), digest(32), now.plusSeconds(1), ready, start));
+            var second = executor.submit(() -> rotateConcurrently(client.id(), digest(33), now.plusSeconds(1), ready, start));
+            assertTrue(ready.await(5, TimeUnit.SECONDS));
+            start.countDown();
+            assertEquals(List.of("OVERLAP_ACTIVE", "SUCCEEDED"),
+                    java.util.stream.Stream.of(first.get(5, TimeUnit.SECONDS), second.get(5, TimeUnit.SECONDS))
+                            .sorted().toList());
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     @Test
@@ -455,13 +492,30 @@ class IamPersistenceRepositoryIT {
                 """));
     }
 
+    private String rotateConcurrently(
+            UUID clientId,
+            Sha256Digest digest,
+            Instant at,
+            CountDownLatch ready,
+            CountDownLatch start) throws InterruptedException {
+        ready.countDown();
+        assertTrue(start.await(5, TimeUnit.SECONDS));
+        try {
+            clients.rotate(clientId, digest, at);
+            return "SUCCEEDED";
+        } catch (OAuthClientSecretRotationException exception) {
+            assertEquals(OAuthClientSecretRotationException.Reason.OVERLAP_ACTIVE, exception.reason());
+            return "OVERLAP_ACTIVE";
+        }
+    }
+
     @Test
     void migrationFailsClosedForUnknownHistoricScopeCombination() {
         String schema = "oauth_backfill_" + UUID.randomUUID().toString().replace("-", "");
         Flyway.configure()
                 .dataSource(iamJdbcUrl(), "saasforge_admin", "admin-password")
                 .schemas(schema)
-                .locations("classpath:db/migration")
+                .locations(iamMigrationLocation())
                 .target("20")
                 .load()
                 .migrate();
@@ -476,7 +530,7 @@ class IamPersistenceRepositoryIT {
         Flyway migration = Flyway.configure()
                 .dataSource(iamJdbcUrl(), "saasforge_admin", "admin-password")
                 .schemas(schema)
-                .locations("classpath:db/migration")
+                .locations(iamMigrationLocation())
                 .load();
         assertThrows(FlywayException.class, migration::migrate);
     }
@@ -746,6 +800,11 @@ class IamPersistenceRepositoryIT {
 
     private static String iamJdbcUrl() {
         return POSTGRES.getJdbcUrl().replace("/saasforge", "/iam_db");
+    }
+
+    private static String iamMigrationLocation() {
+        return "filesystem:" + REPOSITORY_ROOT
+                .resolve("services/iam-service/src/main/resources/db/migration");
     }
 
     private static Path repositoryRoot() {

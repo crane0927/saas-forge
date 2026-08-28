@@ -29,4 +29,13 @@ public final class OAuthClientManagementException extends RuntimeException {
     public static OAuthClientManagementException notFound() {
         return new OAuthClientManagementException("OAUTH_CLIENT_NOT_FOUND", "OAuth Client 不存在");
     }
+
+    public static OAuthClientManagementException revoked() {
+        return new OAuthClientManagementException("OAUTH_CLIENT_REVOKED", "OAuth Client 已被吊销");
+    }
+
+    public static OAuthClientManagementException rotationOverlapActive() {
+        return new OAuthClientManagementException(
+                "CLIENT_SECRET_ROTATION_OVERLAP_ACTIVE", "Client Secret 重叠窗口尚未结束");
+    }
 }

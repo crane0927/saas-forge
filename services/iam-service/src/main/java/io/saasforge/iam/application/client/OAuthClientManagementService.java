@@ -5,6 +5,7 @@ import io.saasforge.iam.domain.client.OAuthClient;
 import io.saasforge.iam.domain.client.OAuthClientManagementOperation;
 import io.saasforge.iam.domain.client.OAuthClientManagementOperationRepository;
 import io.saasforge.iam.domain.client.OAuthClientRepository;
+import io.saasforge.iam.domain.client.OAuthClientSecretRotationException;
 import io.saasforge.iam.domain.client.OAuthScope;
 import io.saasforge.iam.domain.outbox.OutboxEventRepository;
 import io.saasforge.iam.domain.shared.Sha256Digest;
@@ -24,6 +25,7 @@ public class OAuthClientManagementService {
     private final OAuthClientManagementOperationRepository operations;
     private final OutboxEventRepository outbox;
     private final OAuthClientCreatedEventFactory events;
+    private final ClientSecretRotatedEventFactory rotationEvents;
     private final ClientSecretIssuer secrets;
     private final UuidV7Generator ids;
     private final Clock clock;
@@ -33,6 +35,7 @@ public class OAuthClientManagementService {
             OAuthClientManagementOperationRepository operations,
             OutboxEventRepository outbox,
             OAuthClientCreatedEventFactory events,
+            ClientSecretRotatedEventFactory rotationEvents,
             ClientSecretIssuer secrets,
             UuidV7Generator ids,
             Clock clock) {
@@ -40,6 +43,7 @@ public class OAuthClientManagementService {
         this.operations = operations;
         this.outbox = outbox;
         this.events = events;
+        this.rotationEvents = rotationEvents;
         this.secrets = secrets;
         this.ids = ids;
         this.clock = clock;
@@ -82,6 +86,43 @@ public class OAuthClientManagementService {
         return clients.findById(clientId).orElseThrow(OAuthClientManagementException::notFound);
     }
 
+    /** 旧 Secret 截止时间、新 Secret、操作终态与事件在同一事务中提交。 */
+    @Transactional
+    public OAuthClientSecretResult rotate(
+            UUID actorIdentityId, UUID idempotencyKey, UUID clientId, String traceId) {
+        requireUuidV7(idempotencyKey);
+        Sha256Digest fingerprint = fingerprint("ROTATE", clientId == null ? "" : clientId.toString());
+        if (!operations.tryLock(actorIdentityId, idempotencyKey)) {
+            throw OAuthClientManagementException.inProgress();
+        }
+        operations.find(actorIdentityId, idempotencyKey).ifPresent(existing -> {
+            if (!existing.requestFingerprint().equals(fingerprint)) {
+                throw OAuthClientManagementException.keyReused();
+            }
+            throw OAuthClientManagementException.secretAlreadyRevealed();
+        });
+
+        Instant rotatedAt = clock.instant().truncatedTo(ChronoUnit.MILLIS);
+        ClientSecretIssuer.IssuedClientSecret issued = secrets.issue();
+        try {
+            clients.rotate(clientId, issued.digest(), rotatedAt);
+        } catch (OAuthClientSecretRotationException exception) {
+            throw switch (exception.reason()) {
+                case CLIENT_NOT_FOUND -> OAuthClientManagementException.notFound();
+                case CLIENT_REVOKED -> OAuthClientManagementException.revoked();
+                case OVERLAP_ACTIVE -> OAuthClientManagementException.rotationOverlapActive();
+            };
+        }
+        OAuthClient client = clients.findById(clientId)
+                .orElseThrow(() -> new IllegalStateException("OAuth Client 轮换后查询失败"));
+        OAuthClientManagementOperation operation = new OAuthClientManagementOperation(
+                ids.next(), actorIdentityId, idempotencyKey, "ROTATE", client.id(), fingerprint,
+                "SUCCEEDED", 200, rotatedAt);
+        operations.append(operation);
+        outbox.append(rotationEvents.create(client, operation, actorIdentityId, rotatedAt, traceId));
+        return new OAuthClientSecretResult(client, issued.plaintext());
+    }
+
     private static void requireUuidV7(UUID key) {
         if (key == null || key.version() != 7) throw OAuthClientManagementException.idempotencyInvalid();
     }
@@ -94,6 +135,17 @@ public class OAuthClientManagementService {
                 scopes.stream().map(OAuthScope::value).sorted(Comparator.naturalOrder())
                         .forEach(value -> update(digest, value));
             }
+            return Sha256Digest.of(digest.digest());
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("缺少 SHA-256 算法支持", exception);
+        }
+    }
+
+    private static Sha256Digest fingerprint(String operation, String target) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            update(digest, operation);
+            update(digest, target);
             return Sha256Digest.of(digest.digest());
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException("缺少 SHA-256 算法支持", exception);

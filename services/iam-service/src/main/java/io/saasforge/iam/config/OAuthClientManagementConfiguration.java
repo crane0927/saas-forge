@@ -3,6 +3,7 @@ package io.saasforge.iam.config;
 import io.saasforge.iam.application.authentication.RevocationIndex;
 import io.saasforge.iam.application.authentication.UuidV7Generator;
 import io.saasforge.iam.application.client.ClientSecretIssuer;
+import io.saasforge.iam.application.client.ClientSecretRotatedEventFactory;
 import io.saasforge.iam.application.client.OAuthClientCreatedEventFactory;
 import io.saasforge.iam.application.client.OAuthClientManagementAuthorizer;
 import io.saasforge.iam.application.client.OAuthClientManagementService;
@@ -37,15 +38,25 @@ public class OAuthClientManagementConfiguration {
     }
 
     @Bean
+    ClientSecretRotatedEventFactory clientSecretRotatedEventFactory(
+            ObjectMapper objectMapper,
+            UuidV7Generator ids,
+            @Value("${saasforge.environment:dev}") String environment) {
+        return new ClientSecretRotatedEventFactory(objectMapper, ids, environment);
+    }
+
+    @Bean
     OAuthClientManagementService oauthClientManagementService(
             OAuthClientRepository clients,
             OAuthClientManagementOperationRepository operations,
             OutboxEventRepository outbox,
             OAuthClientCreatedEventFactory events,
+            ClientSecretRotatedEventFactory rotationEvents,
             ClientSecretIssuer secrets,
             UuidV7Generator ids,
             Clock clock) {
-        return new OAuthClientManagementService(clients, operations, outbox, events, secrets, ids, clock);
+        return new OAuthClientManagementService(
+                clients, operations, outbox, events, rotationEvents, secrets, ids, clock);
     }
 
     @Bean

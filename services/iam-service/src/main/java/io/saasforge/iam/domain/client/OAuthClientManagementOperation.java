@@ -17,11 +17,13 @@ public record OAuthClientManagementOperation(
         Instant completedAt) {
 
     public OAuthClientManagementOperation {
+        boolean supportedTerminal = ("CREATE".equals(operationType) && httpStatus == 201)
+                || ("ROTATE".equals(operationType) && httpStatus == 200);
         if (id == null || id.version() != 7 || actorIdentityId == null
                 || idempotencyKey == null || idempotencyKey.version() != 7
-                || !"CREATE".equals(operationType) || clientId == null
+                || !supportedTerminal || clientId == null
                 || requestFingerprint == null || !"SUCCEEDED".equals(outcome)
-                || httpStatus != 201 || completedAt == null) {
+                || completedAt == null) {
             throw new IllegalArgumentException("OAuth Client 管理操作终态不合法");
         }
     }

@@ -4,6 +4,7 @@ import io.saasforge.iam.domain.client.ClientSecret;
 import io.saasforge.iam.domain.client.OAuthClient;
 import io.saasforge.iam.domain.client.OAuthClientBootstrapState;
 import io.saasforge.iam.domain.client.OAuthClientRepository;
+import io.saasforge.iam.domain.client.OAuthClientSecretRotationException;
 import io.saasforge.iam.domain.client.OAuthClientStatus;
 import io.saasforge.iam.domain.client.OAuthClientType;
 import io.saasforge.iam.domain.client.OAuthScope;
@@ -80,15 +81,23 @@ public class MyBatisOAuthClientRepository implements OAuthClientRepository {
     public ClientSecret rotate(UUID clientId, Sha256Digest nextSecretDigest, Instant at) {
         OAuthClientRow row = mapper.lockClientById(clientId);
         if (row == null) {
-            throw new IllegalArgumentException("OAuth Client 不存在");
+            throw new OAuthClientSecretRotationException(
+                    OAuthClientSecretRotationException.Reason.CLIENT_NOT_FOUND, "OAuth Client 不存在");
         }
         OAuthClient client = toDomain(row);
-        client.requireActive();
+        if (client.status() == OAuthClientStatus.REVOKED) {
+            throw new OAuthClientSecretRotationException(
+                    OAuthClientSecretRotationException.Reason.CLIENT_REVOKED, "OAuth Client 已被吊销");
+        }
         if (mapper.hasOverlappingSecret(clientId, IamTime.asOffsetDateTime(at)) != 0) {
-            throw new IllegalStateException("Client Secret 重叠窗口尚未结束");
+            throw new OAuthClientSecretRotationException(
+                    OAuthClientSecretRotationException.Reason.OVERLAP_ACTIVE, "Client Secret 重叠窗口尚未结束");
         }
         if (mapper.expirePrimarySecret(clientId, IamTime.asOffsetDateTime(at.plus(ClientSecret.ROTATION_OVERLAP))) != 1) {
             throw new IllegalStateException("OAuth Client 缺少可轮换的有效 Secret");
+        }
+        if (mapper.touchClient(clientId, IamTime.asOffsetDateTime(at)) != 1) {
+            throw new IllegalStateException("OAuth Client 轮换时间更新失败");
         }
         return toDomain(mapper.insertSecret(secretRow(clientId, nextSecretDigest, at)));
     }

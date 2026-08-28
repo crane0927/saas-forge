@@ -1,6 +1,5 @@
 package io.saasforge.iam.api;
 
-import io.saasforge.iam.application.client.ClientSecretIssuer;
 import io.saasforge.iam.application.client.OAuthClientManagementAuthorizer;
 import io.saasforge.iam.application.client.OAuthClientManagementService;
 import io.saasforge.iam.contract.api.OAuthClientsApi;
@@ -44,19 +43,16 @@ public class OAuthClientsController implements OAuthClientsApi {
     private final OAuthClientManagementAuthorizer authorizer;
     private final OAuthClientManagementService management;
     private final OAuthClientRepository repository;
-    private final ClientSecretIssuer secrets;
     private final Clock clock;
 
     public OAuthClientsController(
             OAuthClientManagementAuthorizer authorizer,
             OAuthClientManagementService management,
             OAuthClientRepository repository,
-            ClientSecretIssuer secrets,
             Clock clock) {
         this.authorizer = authorizer;
         this.management = management;
         this.repository = repository;
-        this.secrets = secrets;
         this.clock = clock;
     }
 
@@ -80,20 +76,11 @@ public class OAuthClientsController implements OAuthClientsApi {
 
     @Override
     public ResponseEntity<OAuthClientSecretResult> rotateOAuthClientSecret(UUID clientId, UUID idempotencyKey) {
-        authorizer.authorize(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
-        Instant now = clock.instant().truncatedTo(ChronoUnit.MILLIS);
-        ClientSecretIssuer.IssuedClientSecret issued = secrets.issue();
-        try {
-            repository.rotate(clientId, issued.digest(), now);
-            OAuthClient rotated = repository.findActiveBySecretDigest(issued.digest(), now)
-                    .orElseThrow(() -> new IllegalStateException("OAuth Client 轮换后查询失败"));
-            return ResponseEntity.ok().cacheControl(CacheControl.noStore())
-                    .body(toSecretResult(rotated, issued.plaintext()));
-        } catch (IllegalArgumentException ex) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, ex.getMessage(), ex);
-        } catch (IllegalStateException ex) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, ex.getMessage(), ex);
-        }
+        HttpServletRequest httpRequest = currentRequest();
+        UUID actorIdentityId = authorizer.authorize(httpRequest.getHeader(HttpHeaders.AUTHORIZATION));
+        var result = management.rotate(actorIdentityId, idempotencyKey, clientId, traceId(httpRequest));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(toSecretResult(result.client(), result.clientSecret()));
     }
 
     @Override

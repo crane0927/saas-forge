@@ -28,6 +28,8 @@ public interface OAuthClientMapper {
 
     int expirePrimarySecret(@Param("clientId") UUID clientId, @Param("validUntil") OffsetDateTime validUntil);
 
+    int touchClient(@Param("clientId") UUID clientId, @Param("updatedAt") OffsetDateTime updatedAt);
+
     int revokeClient(@Param("clientId") UUID clientId, @Param("revokedAt") OffsetDateTime revokedAt);
 
     int revokeSecrets(@Param("clientId") UUID clientId, @Param("revokedAt") OffsetDateTime revokedAt);

@@ -14,6 +14,8 @@ import io.saasforge.iam.domain.client.OAuthClientManagementOperation;
 import io.saasforge.iam.domain.client.OAuthClientManagementOperationRepository;
 import io.saasforge.iam.domain.client.OAuthClientRepository;
 import io.saasforge.iam.domain.client.OAuthClientScopeGrantForbiddenException;
+import io.saasforge.iam.domain.client.OAuthClientSecretRotationException;
+import io.saasforge.iam.domain.client.OAuthClientStatus;
 import io.saasforge.iam.domain.client.OAuthScope;
 import io.saasforge.iam.domain.outbox.ClaimedOutboxEvent;
 import io.saasforge.iam.domain.outbox.OutboxEvent;
@@ -24,6 +26,8 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,6 +39,7 @@ class OAuthClientManagementServiceTest {
     private static final UUID ACTOR = UUID.fromString("0198f240-0000-7000-8000-000000000001");
     private static final UUID KEY = UUID.fromString("0198f240-0000-7000-8000-000000000002");
     private static final UUID CLIENT = UUID.fromString("0198f240-0000-7000-8000-000000000003");
+    private static final UUID ROTATION_KEY = UUID.fromString("0198f240-0000-7000-8000-000000000004");
 
     private final InMemoryClients clients = new InMemoryClients();
     private final InMemoryOperations operations = new InMemoryOperations();
@@ -48,6 +53,7 @@ class OAuthClientManagementServiceTest {
         service = new OAuthClientManagementService(
                 clients, operations, outbox,
                 new OAuthClientCreatedEventFactory(new ObjectMapper(), ids, "test"),
+                new ClientSecretRotatedEventFactory(new ObjectMapper(), ids, "test"),
                 new ClientSecretIssuer(new SecureRandom()), ids, clock);
     }
 
@@ -109,9 +115,69 @@ class OAuthClientManagementServiceTest {
         assertEquals("OAUTH_CLIENT_NOT_FOUND", missing.code());
     }
 
+    @Test
+    void rotatesOnceAndPersistsOnlyNonSensitiveTerminalFacts() {
+        String initialSecret = service.create(
+                ACTOR, KEY, "worker", Set.of(OAuthScope.RUNTIME_READ), null).clientSecret();
+
+        var result = service.rotate(ACTOR, ROTATION_KEY, CLIENT, "0123456789abcdef0123456789abcdef");
+
+        assertEquals(CLIENT, result.client().id());
+        assertEquals(43, result.clientSecret().length());
+        assertFalse(initialSecret.equals(result.clientSecret()));
+        assertEquals(NOW, result.client().updatedAt());
+        assertEquals("ROTATE", operations.operation.operationType());
+        assertEquals(200, operations.operation.httpStatus());
+        assertTrue(outbox.event.eventSnapshot().contains("CLIENT_SECRET_ROTATED"));
+        assertFalse(outbox.event.eventSnapshot().contains(result.clientSecret()));
+        assertFalse(outbox.event.eventSnapshot().toLowerCase().contains("digest"));
+    }
+
+    @Test
+    void rotationNeverReplaysSecretAndBindsTheKeyToOneClient() {
+        service.create(ACTOR, KEY, "worker", Set.of(OAuthScope.RUNTIME_READ), null);
+        service.rotate(ACTOR, ROTATION_KEY, CLIENT, null);
+
+        OAuthClientManagementException replay = assertThrows(OAuthClientManagementException.class,
+                () -> service.rotate(ACTOR, ROTATION_KEY, CLIENT, null));
+        assertEquals("CLIENT_SECRET_ALREADY_REVEALED", replay.code());
+
+        OAuthClientManagementException conflict = assertThrows(OAuthClientManagementException.class,
+                () -> service.rotate(ACTOR, ROTATION_KEY,
+                        UUID.fromString("0198f240-0000-7000-8000-000000000005"), null));
+        assertEquals("IDEMPOTENCY_KEY_REUSED", conflict.code());
+    }
+
+    @Test
+    void rotationMapsMissingRevokedOverlapAndConcurrentFailures() {
+        OAuthClientManagementException missing = assertThrows(OAuthClientManagementException.class,
+                () -> service.rotate(ACTOR, ROTATION_KEY, CLIENT, null));
+        assertEquals("OAUTH_CLIENT_NOT_FOUND", missing.code());
+
+        clients.client = OAuthClient.restore(CLIENT, "worker", Set.of(OAuthScope.RUNTIME_READ),
+                OAuthClientStatus.REVOKED, NOW.minusSeconds(1), NOW.minusSeconds(1));
+        OAuthClientManagementException revoked = assertThrows(OAuthClientManagementException.class,
+                () -> service.rotate(ACTOR, ROTATION_KEY, CLIENT, null));
+        assertEquals("OAUTH_CLIENT_REVOKED", revoked.code());
+
+        clients.client = OAuthClient.restore(CLIENT, "worker", Set.of(OAuthScope.RUNTIME_READ),
+                OAuthClientStatus.ACTIVE, NOW.minusSeconds(1), null);
+        clients.overlapActive = true;
+        OAuthClientManagementException overlap = assertThrows(OAuthClientManagementException.class,
+                () -> service.rotate(ACTOR, ROTATION_KEY, CLIENT, null));
+        assertEquals("CLIENT_SECRET_ROTATION_OVERLAP_ACTIVE", overlap.code());
+
+        clients.overlapActive = false;
+        operations.lockAvailable = false;
+        OAuthClientManagementException pending = assertThrows(OAuthClientManagementException.class,
+                () -> service.rotate(ACTOR, ROTATION_KEY, CLIENT, null));
+        assertEquals("IDEMPOTENCY_REQUEST_IN_PROGRESS", pending.code());
+    }
+
     private static final class InMemoryClients implements OAuthClientRepository {
         private OAuthClient client;
         private Sha256Digest digest;
+        private boolean overlapActive;
 
         @Override
         public OAuthClient create(OAuthClient value, Sha256Digest initialSecretDigest, Instant issuedAt) {
@@ -131,7 +197,25 @@ class OAuthClientManagementServiceTest {
             return Optional.empty();
         }
         @Override public ClientSecret rotate(UUID id, Sha256Digest digest, Instant at) {
-            throw new UnsupportedOperationException();
+            if (client == null || !client.id().equals(id)) {
+                throw new OAuthClientSecretRotationException(
+                        OAuthClientSecretRotationException.Reason.CLIENT_NOT_FOUND, "not found");
+            }
+            if (client.status() == OAuthClientStatus.REVOKED) {
+                throw new OAuthClientSecretRotationException(
+                        OAuthClientSecretRotationException.Reason.CLIENT_REVOKED, "revoked");
+            }
+            if (overlapActive) {
+                throw new OAuthClientSecretRotationException(
+                        OAuthClientSecretRotationException.Reason.OVERLAP_ACTIVE, "overlap");
+            }
+            overlapActive = true;
+            this.digest = digest;
+            client = OAuthClient.restore(client.id(), client.displayName(), client.clientType(),
+                    client.reservedServiceKey(), client.allowedScopes(), client.status(),
+                    client.createdAt(), at, client.revokedAt());
+            return ClientSecret.issued(id, at)
+                    .identifiedBy(UUID.fromString("0198f240-0000-7000-8000-000000000006"));
         }
         @Override public void revoke(UUID id, Instant at) { throw new UnsupportedOperationException(); }
     }
@@ -139,12 +223,15 @@ class OAuthClientManagementServiceTest {
     private static final class InMemoryOperations implements OAuthClientManagementOperationRepository {
         private boolean lockAvailable = true;
         private OAuthClientManagementOperation operation;
+        private final Map<String, OAuthClientManagementOperation> stored = new HashMap<>();
         @Override public boolean tryLock(UUID actor, UUID key) { return lockAvailable; }
         @Override public Optional<OAuthClientManagementOperation> find(UUID actor, UUID key) {
-            return Optional.ofNullable(operation)
-                    .filter(value -> value.actorIdentityId().equals(actor) && value.idempotencyKey().equals(key));
+            return Optional.ofNullable(stored.get(actor + ":" + key));
         }
-        @Override public void append(OAuthClientManagementOperation value) { operation = value; }
+        @Override public void append(OAuthClientManagementOperation value) {
+            operation = value;
+            stored.put(value.actorIdentityId() + ":" + value.idempotencyKey(), value);
+        }
     }
 
     private static final class InMemoryOutbox implements OutboxEventRepository {
