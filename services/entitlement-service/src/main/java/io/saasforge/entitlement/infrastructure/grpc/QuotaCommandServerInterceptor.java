@@ -8,10 +8,10 @@ import io.grpc.ServerCallHandler;
 import io.grpc.ServerInterceptor;
 import io.grpc.Status;
 import io.saasforge.contracts.entitlement.quota.v1.QuotaCommandServiceGrpc;
-import io.saasforge.sdk.auth.ServiceAccessTokenClaims;
+import io.saasforge.sdk.auth.ServiceAccessAuthorization;
+import io.saasforge.sdk.auth.ServiceAccessTokenAuthorizer;
 import io.saasforge.sdk.auth.ServiceAccessTokenInvalidException;
 import io.saasforge.sdk.auth.ServiceAccessTokenScopeException;
-import io.saasforge.sdk.auth.ServiceAccessTokenVerifier;
 import java.util.UUID;
 import org.springframework.grpc.server.GlobalServerInterceptor;
 import org.springframework.stereotype.Component;
@@ -25,9 +25,9 @@ public final class QuotaCommandServerInterceptor implements ServerInterceptor {
     private static final String REQUIRED_SCOPE = "entitlement:quota:write";
     private static final Context.Key<UUID> CALLER_CLIENT_ID = Context.key("quota-command-caller-client-id");
 
-    private final ServiceAccessTokenVerifier tokens;
+    private final ServiceAccessTokenAuthorizer tokens;
 
-    public QuotaCommandServerInterceptor(ServiceAccessTokenVerifier tokens) {
+    public QuotaCommandServerInterceptor(ServiceAccessTokenAuthorizer tokens) {
         this.tokens = tokens;
     }
 
@@ -45,9 +45,9 @@ public final class QuotaCommandServerInterceptor implements ServerInterceptor {
             return close(call, Status.UNAUTHENTICATED);
         }
         try {
-            ServiceAccessTokenClaims claims = tokens.verify(
+            ServiceAccessAuthorization authorizationResult = tokens.authorize(
                     authorization.substring("Bearer ".length()), REQUIRED_SCOPE);
-            Context context = Context.current().withValue(CALLER_CLIENT_ID, claims.clientId());
+            Context context = Context.current().withValue(CALLER_CLIENT_ID, authorizationResult.clientId());
             return Contexts.interceptCall(context, call, headers, next);
         } catch (ServiceAccessTokenScopeException exception) {
             return close(call, Status.PERMISSION_DENIED);

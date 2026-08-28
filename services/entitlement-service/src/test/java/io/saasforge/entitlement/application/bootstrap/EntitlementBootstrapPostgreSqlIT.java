@@ -35,9 +35,9 @@ import io.saasforge.entitlement.infrastructure.persistence.MyBatisQuotaOperation
 import io.saasforge.entitlement.infrastructure.persistence.MyBatisSubscriptionRepository;
 import io.saasforge.entitlement.infrastructure.grpc.QuotaCommandGrpcService;
 import io.saasforge.entitlement.infrastructure.grpc.QuotaCommandServerInterceptor;
-import io.saasforge.sdk.auth.ServiceAccessTokenClaims;
+import io.saasforge.sdk.auth.ServiceAccessAuthorization;
+import io.saasforge.sdk.auth.ServiceAccessTokenAuthorizer;
 import io.saasforge.sdk.auth.ServiceAccessTokenScopeException;
-import io.saasforge.sdk.auth.ServiceAccessTokenVerifier;
 import io.saasforge.entitlement.application.subscription.CreateInitialSubscriptionService;
 import io.saasforge.entitlement.application.subscription.TenantEligibilityGateway;
 import io.saasforge.entitlement.domain.subscription.InitialSubscriptionAlreadyExistsException;
@@ -417,14 +417,13 @@ class EntitlementBootstrapPostgreSqlIT {
 
     @Test
     void grpcRejectsWrongScopeAndPurposeBeforeQuotaStateAndReturnsContractFields() throws Exception {
-        ServiceAccessTokenVerifier tokens = mock(ServiceAccessTokenVerifier.class);
+        ServiceAccessTokenAuthorizer tokens = mock(ServiceAccessTokenAuthorizer.class);
         UUID caller = uuidV7(140);
-        when(tokens.verify("tenant-access-token", "entitlement:quota:write"))
-                .thenReturn(new ServiceAccessTokenClaims(
-                        caller, java.util.Set.of("entitlement:quota:write"), uuidV7(141),
-                        java.time.Instant.EPOCH, java.time.Instant.EPOCH.plusSeconds(300)));
+        when(tokens.authorize("tenant-access-token", "entitlement:quota:write"))
+                .thenReturn(new ServiceAccessAuthorization(
+                        caller, java.util.Set.of("entitlement:quota:write")));
         doThrow(new ServiceAccessTokenScopeException())
-                .when(tokens).verify("runtime-token", "entitlement:quota:write");
+                .when(tokens).authorize("runtime-token", "entitlement:quota:write");
         QuotaCommandGrpcService grpc = new QuotaCommandGrpcService(quotaCommands);
         String serverName = InProcessServerBuilder.generateName();
         Server server = InProcessServerBuilder.forName(serverName).directExecutor()
