@@ -88,13 +88,29 @@ _Avoid_: Refresh token lock, session lease
 由 IAM 注册、以 `client_id` 和显式 scope 表示的服务认证主体。它不代表用户、Membership 或 Tenant Context。
 _Avoid_: User, service tenant identity
 
+**OAuth Client Type**:
+决定一个 OAuth Client 的创建责任与可授予 Scope 集合的分类。MVP 只有由部署流程管理、Scope 绑定具体平台服务的 `RESERVED_SERVICE`，以及由 Platform Admin 创建、仅可获得 Runtime Scope 的 `RUNTIME_SERVICE`。
+_Avoid_: Role, tenant type, arbitrary scope group
+
 **Service Access Token**:
-IAM 通过 Client Credentials 为 OAuth Client 签发的短期访问凭证，只表示 `client_id` 与显式 scope，不建立 Identity、Membership 或 Tenant Context。
+IAM 通过 Client Credentials 为 OAuth Client 签发的短期访问凭证，只表示 `client_id` 与显式 scope，不建立 Identity、Membership 或 Tenant Context；它只有在签名与声明有效、Client 未吊销且 Revocation Index 就绪时才可用于授权。
 _Avoid_: User Access Token, tenant token, service tenant identity
 
 **Client Secret**:
-OAuth Client 的机器生成认证机密，仅在创建或轮换时明文展示一次。IAM 仅保存其 SHA-256 摘要；轮换后的旧 Secret 最多与新 Secret 重叠 24 小时，重叠期内不允许再次轮换。
+OAuth Client 的机器生成认证机密，仅在创建或轮换时明文展示一次。IAM 仅保存其 SHA-256 摘要；常规轮换后的旧 Secret 固定与新 Secret 重叠 24 小时，重叠期内不允许再次轮换，疑似泄露时必须吊销整个 Client 而非缩短窗口。
 _Avoid_: Password, API key
+
+**Client Secret Issuance Recovery**:
+创建或轮换 Client Secret 的响应遗失后，由原操作者在首次提交后十分钟内创建一次显式恢复操作，用新生成且只展示一次的 Secret 原子替代上一把可能未送达的 Secret；它不恢复、保存、再次展示既有明文 Secret，也不延长旧稳定 Secret 的重叠期限。
+_Avoid_: Secret retrieval, Secret replay, encrypted Secret storage
+
+**OAuth Client Revocation**:
+Platform Admin 对一个 OAuth Client 执行的不可逆终止；从吊销提交起，该 Client 不能再签发或使用 Service Access Token，且其全部 Client Secret 同时失效。
+_Avoid_: Client Secret rotation, Client suspension, token expiry
+
+**Reserved Service Client Replacement**:
+受控部署流程在一个 `RESERVED_SERVICE` OAuth Client 已不可逆吊销后，以一次严格幂等的部署请求为同一平台服务创建新 Client ID 与 Secret；它继承该服务固定的 Scope，不能通过普通 Client 创建接口执行，也不会恢复旧 Client。
+_Avoid_: Client reactivation, Client Secret rotation, runtime Client creation
 
 ## Browser Delivery
 
@@ -217,7 +233,7 @@ _Avoid_: Application log, audit event
 ## Contract Governance
 
 **Committed Fact Event**:
-由其数据权威服务提交后对外传播的不可变事实；它不是命令，也不表示某个跨服务工作流已经成功。重投同一事实时保留同一 Event ID 与 Trace 关联。
+由其数据权威服务提交后对外传播的不可变事实；它不是命令，也不表示某个跨服务工作流已经成功。重投同一事实时保留同一 Event ID 与 Trace 关联；操作者必须如实区分用户 Identity 与受控 Deployment Operation，不能为部署任务伪造用户身份。
 _Avoid_: Message, command, notification
 
 **v1 Contract Baseline**:

@@ -35,6 +35,7 @@ Gateway 的用户 Token 强制策略由正式 OpenAPI 操作的 `security` 声�
 | `/api/v1/auth` | IAM | 登录、刷新、登出、Tenant 切换、Password Setup Challenge 兑换 |
 | `/oauth2/token` | IAM | 仅服务间 Client Credentials；不承载面向用户的第三方授权登录 |
 | `/.well-known/jwks.json` | IAM | 版本化 JWKS 公钥发布 |
+| `/api/v1/platform/oauth-clients` | IAM | Platform Admin 管理服务 OAuth Client、Secret 轮换、签发恢复和不可逆吊销 |
 | `/api/v1/platform` | Tenant Access、Entitlement | Tenant、平台管理员、Plan、Subscription、Feature、Quota 定义和能力注册 |
 | `/api/v1/tenant` | Tenant Access | Membership、Organization、Role、Permission、邀请、未认证的 Invitation 激活与租户设置 |
 | `/api/v1/runtime` | Tenant Access、Entitlement | 业务系统的 Permission / Feature 查询与 Quota `check`、`consume`、`release` |
@@ -43,6 +44,8 @@ Gateway 的用户 Token 强制策略由正式 OpenAPI 操作的 `security` 声�
 用户 Token 的 Tenant 由已验证的 `membershipId` 决定。用户请求不得通过请求头、查询参数、请求体或任何语义等价别名传入或覆盖 Tenant；这类输入必须作为字段校验失败以 `400` 拒绝，而非静默忽略。Tenant 切换接口只接受目标 `membershipId`，由 IAM 校验后建立新上下文，不接受 Tenant 标识。
 
 Client Credentials 的身份与授权语义只限 `client_id` 与显式 `scope`，不得伪造用户、Membership、Tenant 或用户 RBAC 上下文；缺少所需 scope 时返回 `403`。Service Access Token 使用 `at+jwt` 类型、5 分钟默认有效期以及固定 Claim 白名单，`sub` 必须等于 `client_id`；接收方必须精确校验类型、签名、Issuer、Audience、时间和 Scope。服务可在契约明确的内部调用或可信消息元数据中携带 Tenant Operation Target，但下游必须按 `client_id` 与 `scope` 授权并校验其与目标资源的关系；它不建立 Tenant Context。
+
+OAuth Client 管理只接受 Platform Admin 的 Platform User Access Token。Client 创建、Secret 轮换或签发恢复只在首次成功响应中展示 Secret；它们不适用普通响应体重放，具体接口与安全例外见 [OAuth 2.0 Client Credentials 管理规格](22-oauth-client-credentials-management.md)。
 
 Tenant 切换为 IAM 的 `POST /api/v1/auth/tenant-switches`：请求通过必需的 Refresh Token Cookie 定位当前 `USER_TENANT` Family，Body 只携带目标 `membershipId`，Bearer Access Token 不参与定位。IAM 必须同步向 Tenant Access 分别验证当前与目标 Membership 属于该 Identity、仍启用且所属 Tenant 可访问；实际切换撤销该 Family 切换前签发且未过期的全部 User Access Token，只更新该 Family 的上下文并返回 `204 No Content`。Tenant Console Shell 随后调用刷新接口取得新 Access Token，刷新完成前不得再次切换。Invitation 激活为 Tenant Access 的 `POST /api/v1/tenant/invitation-activations`：它不接受客户端提供的 Tenant 上下文，而是由 Invitation 令牌解析所属 Tenant。初始管理员 Password Setup Challenge 由 IAM 的 `POST /api/v1/auth/password-setups` 匿名兑换；Platform Admin 请求首次投递或重发使用 Tenant Access 的 `POST /api/v1/platform/tenants/{tenantId}/administrator-password-setups`，后者不得返回 Token、邮箱或投递内容。
 
@@ -78,6 +81,7 @@ IAM 的 JWKS 响应以 `Cache-Control: max-age=300` 发布。验证方遇到未�
 - v1 不提供通用 `/files` 或上传 API。平台导出一律先创建显式导出任务资源，返回 `202 Accepted` 和任务 `Location`；客户端轮询任务资源，完成后取得短期签名下载 URL。文件字节不经平台 API 中转；任何未来领域文件能力必须另行定义其所有权、类型、大小、病毒扫描与留存规则。
 - 创建和其他具有外部可见状态变更的请求必须携带规范 UUIDv7 形式的 `Idempotency-Key`，包括 `PUT`、`PATCH`、`DELETE` 和操作资源的 `POST`。键按外部调用方跨全部状态变更接口唯一：用户令牌使用 `identityId`，服务令牌使用 `client_id`；未认证的 Invitation 激活请求在验证令牌后使用 `invitationId`。同键重试完全相同的请求时，服务原样重放首次完成请求的 HTTP 状态码和响应体，而不重新执行业务操作，首个业务 `4xx` 也须重放。方法、规范化路径或规范化请求体不同的同键请求，以 `409 Conflict` 和 `IDEMPOTENCY_KEY_REUSED` 拒绝。首次请求未完成时的同键重复请求，以 `409 Conflict`、`IDEMPOTENCY_REQUEST_IN_PROGRESS` 和 `Retry-After` 拒绝。仅 `2xx` 和业务 `4xx` 是可重放稳定结果；无持久完成记录的基础设施 `5xx` 不缓存并释放键，已提交业务变更与幂等完成记录必须同一事务写入。请求格式或字段校验 `400` 不创建幂等完成记录，修正后可沿用同一键。幂等记录自首次完成起保留 24 小时，期满后同一键可视为新请求；缺失/空白和格式非法的键分别以 `400` / `IDEMPOTENCY_KEY_REQUIRED` 和 `400` / `IDEMPOTENCY_KEY_INVALID` 拒绝，且不预留键。
 - 未认证的 Password Setup Challenge 兑换在验证 Token 后以 `challengeId` 作为调用方作用域，也必须携带规范 UUIDv7 `Idempotency-Key`。创建 Password Credential、消费 Challenge 和记录稳定 `204` 结果必须在 IAM 同一事务完成；相同 Token 与相同 Key 重试时重放 `204`，使用其他 Key 重试已消费 Token 时统一返回 `PASSWORD_SETUP_TOKEN_INVALID`。幂等指纹只绑定方法、规范化路径与 Challenge Token 摘要，不保存或快速哈希新密码；未提交业务结果的 `5xx` 不缓存。
+- OAuth Client 创建、Secret 轮换与 Secret Issuance Recovery 是摘要-only 安全例外：操作终态永久保留但不保存或重放含 Secret 的响应，同键重放返回 `409 / CLIENT_SECRET_ALREADY_REVEALED`；恢复是引用原操作的新幂等操作。吊销不含 Secret，继续按普通幂等规则重放 `204`。完整规则见 [Client Credentials 管理规格](22-oauth-client-credentials-management.md)。
 - Tenant Administrator Initialization 在 Quota 已扣减但本地激活事务失败后保留原幂等键和根工作流；补偿未完成时返回可重试的 `503 / TENANT_ADMIN_INITIALIZATION_COMPENSATING`。补偿成功后，原键稳定重放 `409 / TENANT_ADMIN_INITIALIZATION_RETRY_REQUIRED`，客户端必须以新键启动具有全新下游子操作 ID 的根工作流；不得让原键在同一根工作流内生成无限次 Quota 尝试。
 - Tenant Suspension 和恢复是普通 `5xx` 释放幂等键规则的安全例外：Tenant Access 在远程调用前持久化根工作流和稳定内部请求 ID，同 Key 在处理中返回 `503` 与 `Retry-After`，完成后重放 `200`。Fence 已建立后自动恢复耗尽时不释放工作流或 Fence；必须由 Platform Admin 通过幂等的 Suspension Recovery 操作恢复原流程。
 - Tenant Suspension v1 只做兼容性新增：保留现有 Suspension/恢复路径、请求与 `200 Tenant`，新增 `503`、`Retry-After`、新 Problem codes 以及 `POST /api/v1/platform/tenants/{tenantId}/suspension-recoveries`。现有 `502/504` 声明不从 v1 删除，但耐久工作流中的暂时依赖失败统一映射为 `503 PENDING`。历史 compatibility baseline 必须保持逐字节不变，OpenAPI、生成接口、Gateway 路由和安全分类必须一起通过兼容性门禁。

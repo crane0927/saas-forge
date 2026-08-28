@@ -50,7 +50,7 @@ audit-service          → audit_db
 
 | 数据库 | 主要表 | 关键关系与约束 |
 |---|---|---|
-| `iam_db` | `identities`、`credentials`、`refresh_tokens`、`oauth_clients`、`oauth_client_secrets`、`signing_key_metadata` | `identities.email` 规范化后全局唯一；密码仅保存 Argon2id 哈希；Refresh Token 和 Client Secret 仅保存哈希；已轮换 Refresh Token 的摘要保留至其 Family 绝对到期后才可清理；`oauth_clients.allowed_scopes` 使用受限 `text[]`，MVP 仅允许 `runtime:read`、`runtime:quota:write`；`signing_key_metadata` 保存唯一 `kid`、KMS/HSM Key Version 引用、JWKS 的公开 `n`/`e` 与生命周期时间，私钥不入库 |
+| `iam_db` | `identities`、`credentials`、`refresh_tokens`、`oauth_clients`、`oauth_client_secrets`、OAuth Client 管理幂等/保留身份替换记录、`signing_key_metadata` | `identities.email` 规范化后全局唯一；密码仅保存 Argon2id 哈希；Refresh Token 和 Client Secret 仅保存哈希；已轮换 Refresh Token 的摘要保留至其 Family 绝对到期后才可清理；`oauth_clients` 区分固定内部 Scope 的 `RESERVED_SERVICE` 与仅允许 Runtime Scope 的 `RUNTIME_SERVICE`，吊销不可逆；Secret 签发幂等记录永久保留但不保存 Secret、摘要或完整响应；`signing_key_metadata` 保存唯一 `kid`、KMS/HSM Key Version 引用、JWKS 的公开 `n`/`e` 与生命周期时间，私钥不入库 |
 | `tenant_access_db` | `tenants`、`memberships`、`organizations`、`organization_units`、`roles`、`permissions`、`role_permissions`、`membership_roles`、`invitations`、`capability_registrations` | Membership 唯一关联 Identity 与 Tenant；Role 绑定 Membership；权限按命名空间、资源、动作定义；邀请保存一次性、限时激活状态 |
 | `entitlement_db` | `plans`、`plan_features`、`plan_quotas`、`subscriptions`、`subscription_entitlement_snapshots`、`quota_definitions`、`quota_usages`、`quota_operations` | 一个 Tenant 任一时刻仅一个生效 Subscription；套餐变更产生新的订阅版本和不可变权益快照；`quota_operations.operation_id` 为全局唯一 UUIDv7，保证计量幂等 |
 | `audit_db` | `audit_records`、`export_jobs` | `audit_records` 只追加，记录 Tenant、Identity、Membership、Action、Resource、Request ID、IP、User Agent、Timestamp、Result、Metadata；`export_jobs` 仅保存任务元数据，不保存导出结果文件 |

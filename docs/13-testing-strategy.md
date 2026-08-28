@@ -23,7 +23,7 @@
 - 批量会话撤销：回归普通登出的当前 Family 边界；覆盖 Membership/Tenant 当前 Family 与历史 Issuance 匹配、多批次游标恢复、租约接管、重复批次、稳定计数、Redis 先写、部分失败和 Ready=false 重建。
 - Revocation Fence：覆盖登录、Refresh 与 Tenant Context Switch 并发，Fence 前/后重试耗尽、显式 Suspension Recovery、解除 ABA、Tenant/Membership 重叠、跨 Tenant 隔离和旧会话不复活。
 - Gateway 用户 Token 验证：分别覆盖必需、匿名和可选 Token 路由，以及 `401 / ACCESS_TOKEN_INVALID`、`503 / TOKEN_REVOCATION_STATUS_UNAVAILABLE`、`WWW-Authenticate` 和拒绝请求不转发。
-- Client Credentials：Scope 最小化、Secret 轮换与吊销、服务 Token 不可冒充用户或 Tenant。
+- Client Credentials：Runtime/Reserved Scope 矩阵、Secret 一次展示与签发恢复、固定重叠轮换、整 Client 即时吊销、Redis/Ready fail-closed，以及服务 Token 不可冒充用户或建立 Tenant Context；最高集成接缝必须证明吊销前签发且未过期的真实 Service Token 被至少一个真实服务接收端立即拒绝。
 - RLS：以应用数据库角色连接，在 Tenant A 上下文中验证 Tenant B 数据不可读、不可写、不可更新、不可删除；无 Tenant 上下文默认拒绝。
 - 授权与权益：平台/租户角色隔离、Permission 与 Feature 的组合拒绝、Subscription 到期、Quota 并发扣减不超额、`operationId` 重试幂等。
 - 前端：未注册来源不可加载 Remote，Remote 不可读取 Token，菜单隐藏不作为后端授权替代。
