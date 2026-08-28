@@ -1,6 +1,20 @@
 spring:
   application:
     name: audit-service
+  flyway:
+    enabled: false
+  datasource:
+    url: ${AUDIT_DATABASE_URL:jdbc:postgresql://postgres:5432/audit_db}
+    username: ${AUDIT_DATABASE_USERNAME:audit_app}
+    password: ${AUDIT_DATABASE_PASSWORD:?AUDIT_DATABASE_PASSWORD is required}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+    consumer:
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    listener:
+      ack-mode: manual_immediate
   config:
     import: nacos:audit-service.yaml?group=SAAS_FORGE&refreshEnabled=false
   cloud:
@@ -17,3 +31,8 @@ spring:
         namespace: ${NACOS_NAMESPACE:dev}
         service: audit-service
         fail-fast: true
+
+saasforge:
+  environment: ${SAASFORGE_ENVIRONMENT:dev}
+  audit:
+    iam-session-topic: saasforge.${saasforge.environment}.iam-service.events
