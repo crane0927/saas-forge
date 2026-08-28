@@ -27,7 +27,7 @@
       "keyPattern": "sf:<environment>:iam-service:revocation-index-ready:v1:state",
       "purpose": "声明 Redis Revocation Index 已完成 PostgreSQL 持久撤销事实重建",
       "writer": "iam-service",
-      "readers": ["gateway", "saas-forge-spring-boot-starter"],
+      "readers": ["gateway", "tenant-access-service", "saas-forge-spring-boot-starter"],
       "valueFormat": "boolean",
       "ttl": {
         "mode": "authority-expiry",
@@ -84,7 +84,7 @@
       "keyPattern": "sf:<environment>:iam-service:signing-kid-revocation:v1:<kid_sha256>",
       "purpose": "在本地 JWKS 缓存仍可能包含旧公钥时拒绝已撤销 Signing Key",
       "writer": "iam-service",
-      "readers": ["gateway", "saas-forge-spring-boot-starter"],
+      "readers": ["gateway", "tenant-access-service", "saas-forge-spring-boot-starter"],
       "valueFormat": "boolean",
       "ttl": {
         "mode": "derived",

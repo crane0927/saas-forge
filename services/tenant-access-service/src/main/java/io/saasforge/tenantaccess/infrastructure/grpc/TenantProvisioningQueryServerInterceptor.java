@@ -8,7 +8,7 @@ import io.grpc.Status;
 import io.saasforge.contracts.tenantaccess.provisioning.v1.TenantProvisioningQueryServiceGrpc;
 import io.saasforge.sdk.auth.ServiceAccessTokenInvalidException;
 import io.saasforge.sdk.auth.ServiceAccessTokenScopeException;
-import io.saasforge.sdk.auth.ServiceAccessTokenVerifier;
+import io.saasforge.sdk.auth.ServiceAccessTokenAuthorizer;
 import org.springframework.grpc.server.GlobalServerInterceptor;
 import org.springframework.stereotype.Component;
 
@@ -20,9 +20,9 @@ public final class TenantProvisioningQueryServerInterceptor implements ServerInt
             Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER);
     private static final String REQUIRED_SCOPE = "tenant-access:tenant:read";
 
-    private final ServiceAccessTokenVerifier tokens;
+    private final ServiceAccessTokenAuthorizer tokens;
 
-    public TenantProvisioningQueryServerInterceptor(ServiceAccessTokenVerifier tokens) {
+    public TenantProvisioningQueryServerInterceptor(ServiceAccessTokenAuthorizer tokens) {
         this.tokens = tokens;
     }
 
@@ -40,7 +40,7 @@ public final class TenantProvisioningQueryServerInterceptor implements ServerInt
             return close(call, Status.UNAUTHENTICATED);
         }
         try {
-            tokens.verify(authorization.substring("Bearer ".length()), REQUIRED_SCOPE);
+            tokens.authorize(authorization.substring("Bearer ".length()), REQUIRED_SCOPE);
             return next.startCall(call, headers);
         } catch (ServiceAccessTokenScopeException exception) {
             return close(call, Status.PERMISSION_DENIED);

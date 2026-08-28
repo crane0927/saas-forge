@@ -127,6 +127,29 @@ class SecurityAdapterTest {
         assertTrue(checker.isRevoked(UUID.randomUUID(), "kid"));
     }
 
+    @Test
+    void checksServiceClientAndSigningKeyRevocationAndFailsClosedWithoutReadyProjection() {
+        StringRedisTemplate redis = mock(StringRedisTemplate.class);
+        @SuppressWarnings("unchecked")
+        ValueOperations<String, String> values = mock(ValueOperations.class);
+        when(redis.opsForValue()).thenReturn(values);
+        RedisServiceAccessTokenRevocationChecker checker =
+                new RedisServiceAccessTokenRevocationChecker(redis, "test");
+
+        when(values.multiGet(anyList())).thenReturn(null);
+        assertThrows(IllegalStateException.class, () -> checker.isRevoked(UUID.randomUUID(), "kid"));
+        when(values.multiGet(anyList())).thenReturn(List.of("1", "only-two"));
+        assertThrows(IllegalStateException.class, () -> checker.isRevoked(UUID.randomUUID(), "kid"));
+        when(values.multiGet(anyList())).thenReturn(Arrays.asList("0", null, null));
+        assertThrows(IllegalStateException.class, () -> checker.isRevoked(UUID.randomUUID(), "kid"));
+        when(values.multiGet(anyList())).thenReturn(Arrays.asList("1", null, null));
+        assertFalse(checker.isRevoked(UUID.randomUUID(), "kid"));
+        when(values.multiGet(anyList())).thenReturn(Arrays.asList("1", "revoked", null));
+        assertTrue(checker.isRevoked(UUID.randomUUID(), "kid"));
+        when(values.multiGet(anyList())).thenReturn(Arrays.asList("1", null, "revoked"));
+        assertTrue(checker.isRevoked(UUID.randomUUID(), "kid"));
+    }
+
     private IamServiceAccessTokenProvider provider(
             RestClient.Builder builder, String clientIdValue, String secretValue) throws Exception {
         Path clientId = Files.writeString(directory.resolve("client-id-" + directory.toFile().list().length),

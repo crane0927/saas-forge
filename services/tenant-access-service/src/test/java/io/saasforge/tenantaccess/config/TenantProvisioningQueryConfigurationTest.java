@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import io.saasforge.sdk.auth.ServiceAccessTokenRevocationChecker;
+import io.saasforge.sdk.auth.ServiceAccessTokenSignatureVerifier;
 import io.saasforge.tenantaccess.domain.tenant.Tenant;
 import io.saasforge.tenantaccess.domain.tenant.TenantRepository;
 import java.nio.file.Files;
@@ -13,6 +15,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.client.RestClient;
 
 class TenantProvisioningQueryConfigurationTest {
@@ -26,11 +29,16 @@ class TenantProvisioningQueryConfigurationTest {
             new TenantProvisioningQueryConfiguration();
 
     @Test
-    void wiresEligibilityAndTokenVerification() {
+    void wiresEligibilityAndTokenAuthorization() {
         assertNotNull(configuration.initialSubscriptionEligibilityService(
                 emptyTenantRepository(), Clock.systemUTC()));
-        assertNotNull(configuration.tenantAccessServiceAccessTokenVerifier(
-                RestClient.create(), Clock.systemUTC(), "https://iam.test.saasforge.invalid"));
+        ServiceAccessTokenSignatureVerifier signatures =
+                configuration.tenantAccessServiceAccessTokenSignatureVerifier(
+                        RestClient.create(), Clock.systemUTC(), "https://iam.test.saasforge.invalid");
+        ServiceAccessTokenRevocationChecker revocations =
+                configuration.tenantAccessServiceAccessTokenRevocationChecker(
+                        org.mockito.Mockito.mock(StringRedisTemplate.class), "test");
+        assertNotNull(configuration.tenantAccessServiceAccessTokenAuthorizer(signatures, revocations));
     }
 
     @Test

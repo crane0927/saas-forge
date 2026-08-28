@@ -15,7 +15,7 @@ import io.grpc.Status;
 import io.saasforge.contracts.tenantaccess.provisioning.v1.TenantProvisioningQueryServiceGrpc;
 import io.saasforge.sdk.auth.ServiceAccessTokenInvalidException;
 import io.saasforge.sdk.auth.ServiceAccessTokenScopeException;
-import io.saasforge.sdk.auth.ServiceAccessTokenVerifier;
+import io.saasforge.sdk.auth.ServiceAccessTokenAuthorizer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -23,7 +23,7 @@ class TenantProvisioningQueryServerInterceptorTest {
     private static final Metadata.Key<String> AUTHORIZATION =
             Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER);
 
-    private ServiceAccessTokenVerifier tokens;
+    private ServiceAccessTokenAuthorizer tokens;
     private TenantProvisioningQueryServerInterceptor interceptor;
     private ServerCall<String, String> call;
     private ServerCallHandler<String, String> next;
@@ -33,7 +33,7 @@ class TenantProvisioningQueryServerInterceptorTest {
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
-        tokens = mock(ServiceAccessTokenVerifier.class);
+        tokens = mock(ServiceAccessTokenAuthorizer.class);
         interceptor = new TenantProvisioningQueryServerInterceptor(tokens);
         call = mock(ServerCall.class);
         next = mock(ServerCallHandler.class);
@@ -51,7 +51,7 @@ class TenantProvisioningQueryServerInterceptorTest {
 
         assertSame(listener, interceptor.interceptCall(call, headers, next));
 
-        verify(tokens).verify("entitlement-token", "tenant-access:tenant:read");
+        verify(tokens).authorize("entitlement-token", "tenant-access:tenant:read");
         verify(call, never()).close(org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any());
     }
@@ -60,7 +60,7 @@ class TenantProvisioningQueryServerInterceptorTest {
     void rejectsWrongScopeWithPermissionDenied() {
         headers.put(AUTHORIZATION, "Bearer wrong-scope-token");
         doThrow(new ServiceAccessTokenScopeException())
-                .when(tokens).verify("wrong-scope-token", "tenant-access:tenant:read");
+                .when(tokens).authorize("wrong-scope-token", "tenant-access:tenant:read");
 
         interceptor.interceptCall(call, headers, next);
 
@@ -74,7 +74,7 @@ class TenantProvisioningQueryServerInterceptorTest {
     void rejectsInvalidTokenWithUnauthenticated() {
         headers.put(AUTHORIZATION, "Bearer invalid-token");
         doThrow(new ServiceAccessTokenInvalidException())
-                .when(tokens).verify("invalid-token", "tenant-access:tenant:read");
+                .when(tokens).authorize("invalid-token", "tenant-access:tenant:read");
 
         interceptor.interceptCall(call, headers, next);
 

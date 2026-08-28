@@ -28,7 +28,8 @@ import io.saasforge.contracts.tenantaccess.membership.v1.ListAccessibleMembershi
 import io.saasforge.contracts.tenantaccess.membership.v1.MembershipValidationServiceGrpc;
 import io.saasforge.contracts.tenantaccess.membership.v1.ValidateMembershipRequest;
 import io.saasforge.contracts.tenantaccess.membership.v1.ValidateMembershipResponse;
-import io.saasforge.sdk.auth.ServiceAccessTokenVerifier;
+import io.saasforge.sdk.auth.ServiceAccessTokenAuthorizer;
+import io.saasforge.sdk.auth.ServiceAccessTokenSignatureVerifier;
 import io.saasforge.sdk.auth.ServiceJwtVerificationKey;
 import io.saasforge.tenantaccess.infrastructure.grpc.MembershipValidationServerInterceptor;
 import io.saasforge.tenantaccess.infrastructure.persistence.MyBatisAccessibleMembershipQuery;
@@ -135,14 +136,16 @@ class AccessibleMembershipGrpcServiceIT {
         signingKey = new RSAKeyGenerator(2048).keyID("membership-key").generate();
         otherSigningKey = new RSAKeyGenerator(2048).keyID("membership-key").generate();
         keyUnavailable.set(false);
-        ServiceAccessTokenVerifier verifier = new ServiceAccessTokenVerifier(
-                this::verificationKey,
-                Clock.fixed(NOW, ZoneOffset.UTC),
-                "https://iam.test",
-                "saasforge-api",
-                Duration.ofSeconds(30));
+        ServiceAccessTokenAuthorizer authorizer = new ServiceAccessTokenAuthorizer(
+                new ServiceAccessTokenSignatureVerifier(
+                        this::verificationKey,
+                        Clock.fixed(NOW, ZoneOffset.UTC),
+                        "https://iam.test",
+                        "saasforge-api",
+                        Duration.ofSeconds(30)),
+                (clientId, kid) -> false);
         MembershipValidationServerInterceptor interceptor = new MembershipValidationServerInterceptor(
-                verifier, new IamServiceClientId(IAM_CLIENT_ID));
+                authorizer, new IamServiceClientId(IAM_CLIENT_ID));
         String serverName = InProcessServerBuilder.generateName();
         server = InProcessServerBuilder.forName(serverName)
                 .directExecutor()

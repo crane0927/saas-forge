@@ -1,10 +1,13 @@
 package io.saasforge.tenantaccess.config;
 
-import io.saasforge.sdk.auth.ServiceAccessTokenVerifier;
+import io.saasforge.sdk.auth.ServiceAccessTokenAuthorizer;
+import io.saasforge.sdk.auth.ServiceAccessTokenRevocationChecker;
+import io.saasforge.sdk.auth.ServiceAccessTokenSignatureVerifier;
 import io.saasforge.tenantaccess.application.tenant.InitialSubscriptionEligibilityService;
 import io.saasforge.tenantaccess.domain.tenant.TenantRepository;
 import io.saasforge.tenantaccess.infrastructure.security.IamJwksKeyResolver;
 import io.saasforge.tenantaccess.infrastructure.security.IamServiceClientId;
+import io.saasforge.tenantaccess.infrastructure.security.RedisServiceAccessTokenRevocationChecker;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -14,6 +17,7 @@ import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.client.RestClient;
 
 @Configuration
@@ -25,13 +29,27 @@ public class TenantProvisioningQueryConfiguration {
     }
 
     @Bean
-    ServiceAccessTokenVerifier tenantAccessServiceAccessTokenVerifier(
+    ServiceAccessTokenSignatureVerifier tenantAccessServiceAccessTokenSignatureVerifier(
             RestClient tenantAccessIamRestClient,
             Clock clock,
             @Value("${security.jwt.issuer}") String issuer) {
-        return new ServiceAccessTokenVerifier(
+        return new ServiceAccessTokenSignatureVerifier(
                 new IamJwksKeyResolver(tenantAccessIamRestClient),
                 clock, issuer, "saasforge-api", Duration.ofSeconds(30));
+    }
+
+    @Bean
+    ServiceAccessTokenRevocationChecker tenantAccessServiceAccessTokenRevocationChecker(
+            StringRedisTemplate redis,
+            @Value("${saasforge.environment:dev}") String environment) {
+        return new RedisServiceAccessTokenRevocationChecker(redis, environment);
+    }
+
+    @Bean
+    ServiceAccessTokenAuthorizer tenantAccessServiceAccessTokenAuthorizer(
+            ServiceAccessTokenSignatureVerifier signatures,
+            ServiceAccessTokenRevocationChecker revocations) {
+        return new ServiceAccessTokenAuthorizer(signatures, revocations);
     }
 
     @Bean

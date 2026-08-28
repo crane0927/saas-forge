@@ -8,7 +8,7 @@ import io.grpc.Status;
 import io.saasforge.contracts.tenantaccess.membership.v1.MembershipValidationServiceGrpc;
 import io.saasforge.sdk.auth.ServiceAccessTokenInvalidException;
 import io.saasforge.sdk.auth.ServiceAccessTokenScopeException;
-import io.saasforge.sdk.auth.ServiceAccessTokenVerifier;
+import io.saasforge.sdk.auth.ServiceAccessTokenAuthorizer;
 import io.saasforge.tenantaccess.infrastructure.security.IamServiceClientId;
 import org.springframework.grpc.server.GlobalServerInterceptor;
 import org.springframework.stereotype.Component;
@@ -21,11 +21,11 @@ public final class MembershipValidationServerInterceptor implements ServerInterc
             Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER);
     private static final String REQUIRED_SCOPE = "tenant-access:membership:read";
 
-    private final ServiceAccessTokenVerifier tokens;
+    private final ServiceAccessTokenAuthorizer tokens;
     private final IamServiceClientId iamClientId;
 
     public MembershipValidationServerInterceptor(
-            ServiceAccessTokenVerifier tokens,
+            ServiceAccessTokenAuthorizer tokens,
             IamServiceClientId iamClientId) {
         this.tokens = tokens;
         this.iamClientId = iamClientId;
@@ -45,7 +45,7 @@ public final class MembershipValidationServerInterceptor implements ServerInterc
             return close(call, Status.UNAUTHENTICATED);
         }
         try {
-            tokens.verify(
+            tokens.authorize(
                     authorization.substring("Bearer ".length()),
                     iamClientId.value(),
                     REQUIRED_SCOPE);

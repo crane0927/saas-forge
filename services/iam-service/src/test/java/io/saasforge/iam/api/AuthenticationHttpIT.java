@@ -74,7 +74,8 @@ import io.saasforge.iam.infrastructure.persistence.MyBatisIdentityRepository;
 import io.saasforge.iam.infrastructure.grpc.GrpcAccessibleMemberships;
 import io.saasforge.iam.infrastructure.grpc.GrpcMembershipValidation;
 import io.saasforge.iam.infrastructure.security.ReservedIamServiceAccessTokenProvider;
-import io.saasforge.sdk.auth.ServiceAccessTokenVerifier;
+import io.saasforge.sdk.auth.ServiceAccessTokenAuthorizer;
+import io.saasforge.sdk.auth.ServiceAccessTokenSignatureVerifier;
 import io.saasforge.sdk.auth.ServiceJwtVerificationKey;
 import io.saasforge.tenantaccess.api.grpc.AccessibleMembershipGrpcService;
 import io.saasforge.tenantaccess.api.grpc.MembershipValidationGrpcService;
@@ -256,12 +257,14 @@ class AuthenticationHttpIT {
                     new MyBatisAccessibleMembershipQuery(memberships));
             MembershipValidationGrpcService membershipValidation = new MembershipValidationGrpcService(
                     new MyBatisMembershipValidationQuery(memberships));
-            ServiceAccessTokenVerifier tokens = new ServiceAccessTokenVerifier(
-                    AuthenticationHttpIT::verificationKey,
-                    java.time.Clock.systemUTC(),
-                    "https://iam.test.saasforge.invalid",
-                    "saasforge-api",
-                    Duration.ofSeconds(30));
+            ServiceAccessTokenAuthorizer tokens = new ServiceAccessTokenAuthorizer(
+                    new ServiceAccessTokenSignatureVerifier(
+                            AuthenticationHttpIT::verificationKey,
+                            java.time.Clock.systemUTC(),
+                            "https://iam.test.saasforge.invalid",
+                            "saasforge-api",
+                            Duration.ofSeconds(30)),
+                    (clientId, kid) -> false);
             MembershipValidationServerInterceptor authentication = new MembershipValidationServerInterceptor(
                     tokens, new IamServiceClientId(IAM_SERVICE_CLIENT_ID));
             String serverName = InProcessServerBuilder.generateName();
