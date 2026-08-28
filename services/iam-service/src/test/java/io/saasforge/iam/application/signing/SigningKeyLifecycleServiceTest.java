@@ -133,6 +133,7 @@ class SigningKeyLifecycleServiceTest {
         private List<AccessTokenIssuance> issuances = new ArrayList<>();
 
         @Override public void revokeJti(UUID jti, Instant expiresAt, Instant at) { throw new UnsupportedOperationException(); }
+        @Override public void revokeClient(UUID clientId) { throw new UnsupportedOperationException(); }
         @Override public void revokeSigningKey(
                 String kid, Instant rejectUntil, List<AccessTokenIssuance> issuances, Instant at) {
             if (fail) {
@@ -144,7 +145,8 @@ class SigningKeyLifecycleServiceTest {
         }
         @Override public void markNotReady() { throw new UnsupportedOperationException(); }
         @Override public void rebuild(
-                List<DurableRevocation> revocations, List<RevocationFence> fences, Instant at) {
+                List<DurableRevocation> revocations, List<RevocationFence> fences,
+                List<UUID> clientIds, Instant at) {
             throw new UnsupportedOperationException();
         }
         @Override public void establishFence(RevocationFence fence) { throw new UnsupportedOperationException(); }
@@ -153,6 +155,7 @@ class SigningKeyLifecycleServiceTest {
         @Override public boolean isReady() { return true; }
         @Override public boolean isJtiRevoked(UUID jti) { return false; }
         @Override public boolean isKidRevoked(String kid) { return false; }
+        @Override public boolean isClientRevoked(UUID clientId) { return false; }
         @Override public boolean isTokenRevoked(UUID jti, String kid) { return false; }
     }
 }

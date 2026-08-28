@@ -20,6 +20,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 
 public final class RedisRevocationIndex implements RevocationIndex {
@@ -91,6 +92,15 @@ public final class RedisRevocationIndex implements RevocationIndex {
     }
 
     @Override
+    public void revokeClient(UUID clientId) {
+        try {
+            redis.opsForValue().set(clientKey(clientId), "1");
+        } catch (DataAccessException exception) {
+            throw unavailable(exception);
+        }
+    }
+
+    @Override
     public void revokeSigningKey(
             String kid, Instant rejectUntil, List<AccessTokenIssuance> issuances, Instant at) {
         if (kid == null || kid.isBlank() || rejectUntil == null || issuances == null || at == null) {
@@ -125,7 +135,11 @@ public final class RedisRevocationIndex implements RevocationIndex {
     }
 
     @Override
-    public void rebuild(List<DurableRevocation> revocations, List<RevocationFence> fences, Instant at) {
+    public void rebuild(
+            List<DurableRevocation> revocations,
+            List<RevocationFence> fences,
+            List<UUID> revokedClientIds,
+            Instant at) {
         try {
             for (DurableRevocation revocation : revocations) {
                 if (revocation.jtiRevoked()) {
@@ -141,6 +155,19 @@ public final class RedisRevocationIndex implements RevocationIndex {
             kidExpiries.forEach((kid, expiresAt) -> write(kidKey(kid), expiresAt.plus(CLOCK_SKEW), at));
             for (RevocationFence fence : fences) {
                 redis.opsForValue().set(fenceKey(fence.target()), fence.revocationRequestId().toString());
+            }
+            var authoritativeClientKeys = revokedClientIds.stream()
+                    .map(this::clientKey)
+                    .collect(java.util.stream.Collectors.toSet());
+            for (UUID clientId : revokedClientIds) {
+                redis.opsForValue().set(clientKey(clientId), "1");
+            }
+            try (var keys = redis.scan(ScanOptions.scanOptions()
+                    .match(prefix + "oauth-client-revocation:v1:*").count(1000).build())) {
+                while (keys.hasNext()) {
+                    String key = keys.next();
+                    if (!authoritativeClientKeys.contains(key)) redis.delete(key);
+                }
             }
             redis.opsForValue().set(readyKey, "1");
             recoveryRequired = false;
@@ -210,6 +237,11 @@ public final class RedisRevocationIndex implements RevocationIndex {
     }
 
     @Override
+    public boolean isClientRevoked(UUID clientId) {
+        return isRevoked(clientKey(clientId));
+    }
+
+    @Override
     public boolean isTokenRevoked(UUID jti, String kid) {
         try {
             Long result = redis.execute(CHECK_TOKEN, List.of(readyKey, jtiKey(jti), kidKey(kid)));
@@ -257,6 +289,10 @@ public final class RedisRevocationIndex implements RevocationIndex {
 
     private String kidKey(String kid) {
         return prefix + "signing-kid-revocation:v1:" + digest(kid);
+    }
+
+    private String clientKey(UUID clientId) {
+        return prefix + "oauth-client-revocation:v1:" + clientId;
     }
 
     private String fenceKey(RevocationFenceTarget target) {

@@ -12,12 +12,19 @@ import java.util.UUID;
 public interface RevocationIndex {
     void revokeJti(UUID jti, Instant expiresAt, Instant at);
 
+    /** OAuth Client 吊销不可逆，因此拒绝项不设置 TTL。 */
+    void revokeClient(UUID clientId);
+
     /** 原子写入失陷 kid 及其全部未过期 jti，任一写入失败都不得部分报告成功。 */
     void revokeSigningKey(String kid, Instant rejectUntil, List<AccessTokenIssuance> issuances, Instant at);
 
     void markNotReady();
 
-    void rebuild(List<DurableRevocation> revocations, List<RevocationFence> fences, Instant at);
+    void rebuild(
+            List<DurableRevocation> revocations,
+            List<RevocationFence> fences,
+            List<UUID> revokedClientIds,
+            Instant at);
 
     void establishFence(RevocationFence fence);
 
@@ -31,6 +38,8 @@ public interface RevocationIndex {
     boolean isJtiRevoked(UUID jti);
 
     boolean isKidRevoked(String kid);
+
+    boolean isClientRevoked(UUID clientId);
 
     boolean isTokenRevoked(UUID jti, String kid);
 }

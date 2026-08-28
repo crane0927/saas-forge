@@ -683,6 +683,126 @@ class AuthenticationHttpIT {
     }
 
     @Test
+    @Order(4)
+    void clientRevocationIsRedisFirstIdempotentAndRecoveredFromPostgresql() throws Exception {
+        TestUser admin = createUser(
+                "oauth-revocation-admin@example.test", "correct-password", true, Credential.REGULAR);
+        String platformToken = accessToken(login(
+                "oauth-revocation-admin@example.test", "correct-password", "PLATFORM").andReturn());
+        UUID createKey = uuidV7(68_001);
+        MvcResult created = mockMvc.perform(post("/api/v1/platform/oauth-clients")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + platformToken)
+                        .header("Idempotency-Key", createKey.toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsBytes(Map.of(
+                                "displayName", "revocable-runtime",
+                                "allowedScopes", List.of("runtime:read")))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        JsonNode body = json(created.getResponse().getContentAsByteArray());
+        UUID clientId = UUID.fromString(body.get("clientId").asString());
+        String secret = body.get("clientSecret").asString();
+
+        mockMvc.perform(post("/oauth2/token")
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .header(HttpHeaders.AUTHORIZATION, basic(clientId, secret))
+                        .param("grant_type", "client_credentials"))
+                .andExpect(status().isOk());
+
+        // 复用创建键会让数据库事务失败，但 Redis 额外拒绝必须保留且签发失败关闭。
+        mockMvc.perform(post("/api/v1/platform/oauth-clients/{clientId}/revocations", clientId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + platformToken)
+                        .header("Idempotency-Key", createKey.toString()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_REUSED"));
+        String clientKey = oauthClientRevocationKey(clientId);
+        assertEquals("1", redis.opsForValue().get(clientKey));
+        assertEquals("ACTIVE", jdbc.queryForObject(
+                "SELECT client_status FROM iam_oauth_clients WHERE id = ?", String.class, clientId));
+        mockMvc.perform(post("/oauth2/token")
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .header(HttpHeaders.AUTHORIZATION, basic(clientId, secret))
+                        .param("grant_type", "client_credentials"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("TOKEN_REVOCATION_STATUS_UNAVAILABLE"));
+
+        UUID revokeKey = uuidV7(68_002);
+        mockMvc.perform(post("/api/v1/platform/oauth-clients/{clientId}/revocations", clientId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + platformToken)
+                        .header("Idempotency-Key", revokeKey.toString())
+                        .header("traceparent", "00-" + TRACE_ID + "-0123456789abcdef-01"))
+                .andExpect(status().isNoContent());
+        assertEquals(-1L, redis.getExpire(clientKey, TimeUnit.MILLISECONDS));
+        Map<String, Object> first = jdbc.queryForMap("""
+                SELECT client.revoked_at, client.updated_at,
+                       count(DISTINCT secret.id) FILTER (WHERE secret.revoked_at IS NOT NULL) AS revoked_secrets,
+                       count(DISTINCT operation.id) FILTER (WHERE operation.operation_type = 'REVOKE') AS operations,
+                       count(DISTINCT event.event_id) FILTER (WHERE event.event_snapshot->>'type' =
+                           'com.saasforge.iam.oauth-client.revoked.v1') AS events
+                FROM iam_oauth_clients client
+                JOIN iam_oauth_client_secrets secret ON secret.client_id = client.id
+                LEFT JOIN iam_oauth_client_management_operations operation ON operation.client_id = client.id
+                LEFT JOIN iam_outbox_events event ON event.ordering_key = client.id::TEXT
+                WHERE client.id = ?
+                GROUP BY client.revoked_at, client.updated_at
+                """, clientId);
+        assertNotNull(first.get("revoked_at"));
+        assertEquals(first.get("revoked_at"), first.get("updated_at"));
+        assertEquals(1L, first.get("revoked_secrets"));
+        assertEquals(1L, first.get("operations"));
+        assertEquals(1L, first.get("events"));
+
+        TestUser otherAdmin = createUser(
+                "oauth-revocation-other@example.test", "correct-password", true, Credential.REGULAR);
+        String otherToken = accessToken(login(
+                "oauth-revocation-other@example.test", "correct-password", "PLATFORM").andReturn());
+        mockMvc.perform(post("/api/v1/platform/oauth-clients/{clientId}/revocations", clientId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + otherToken)
+                        .header("Idempotency-Key", uuidV7(68_003).toString()))
+                .andExpect(status().isNoContent());
+        assertEquals(first.get("revoked_at"), jdbc.queryForObject(
+                "SELECT revoked_at FROM iam_oauth_clients WHERE id = ?", java.sql.Timestamp.class, clientId));
+        assertEquals(1L, jdbc.queryForObject(
+                "SELECT count(*) FROM iam_oauth_client_management_operations "
+                        + "WHERE client_id = ? AND operation_type = 'REVOKE'", Long.class, clientId));
+        assertEquals(1L, jdbc.queryForObject(
+                "SELECT count(*) FROM iam_outbox_events WHERE ordering_key = ? "
+                        + "AND event_snapshot->>'type' = 'com.saasforge.iam.oauth-client.revoked.v1'",
+                Long.class, clientId.toString()));
+
+        UUID missing = uuidV7(68_099);
+        mockMvc.perform(post("/api/v1/platform/oauth-clients/{clientId}/revocations", missing)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + platformToken)
+                        .header("Idempotency-Key", uuidV7(68_004).toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("OAUTH_CLIENT_NOT_FOUND"));
+        assertEquals(null, redis.opsForValue().get(oauthClientRevocationKey(missing)));
+
+        UUID activeClient = uuidV7(68_010);
+        String activeSecret = serviceClientSecret((byte) 70);
+        oauthClients.createWithId(
+                OAuthClient.register("rebuild-active", Set.of(OAuthScope.RUNTIME_READ), Instant.now())
+                        .identifiedBy(activeClient),
+                ClientSecretDigest.fromPlaintext(activeSecret), Instant.now());
+        redis.opsForValue().set(oauthClientRevocationKey(activeClient), "1");
+        revocationIndex.markNotReady();
+        mockMvc.perform(post("/oauth2/token")
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .header(HttpHeaders.AUTHORIZATION, basic(activeClient, activeSecret))
+                        .param("grant_type", "client_credentials"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("TOKEN_REVOCATION_STATUS_UNAVAILABLE"));
+        revocationIndexRecovery.recover();
+        assertEquals(null, redis.opsForValue().get(oauthClientRevocationKey(activeClient)));
+        assertEquals("1", redis.opsForValue().get(clientKey));
+        mockMvc.perform(post("/oauth2/token")
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .header(HttpHeaders.AUTHORIZATION, basic(activeClient, activeSecret))
+                        .param("grant_type", "client_credentials"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     @Order(3)
     void credentialFailuresAreUniformAndFifthFailureLocksWithoutCreatingSessionFacts() throws Exception {
         TestUser wrongPassword = createUser("wrong-password@example.test", "correct-password", true, Credential.REGULAR);
@@ -2841,6 +2961,10 @@ class AuthenticationHttpIT {
         String digest = java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
                 .digest(jti.toString().getBytes(StandardCharsets.UTF_8)));
         return "sf:test:iam-service:jwt-jti-revocation:v1:" + digest;
+    }
+
+    private static String oauthClientRevocationKey(UUID clientId) {
+        return "sf:test:iam-service:oauth-client-revocation:v1:" + clientId;
     }
 
     private static String refreshRotationLeaseKey(String refreshToken) throws Exception {

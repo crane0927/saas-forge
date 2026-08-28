@@ -14,12 +14,17 @@ import java.util.stream.Collectors;
 public final class ClientCredentialsTokenService {
     private final OAuthClientRepository clients;
     private final ServiceAccessTokenIssuer tokens;
+    private final RevocationIndex revocations;
     private final Clock clock;
 
     public ClientCredentialsTokenService(
-            OAuthClientRepository clients, ServiceAccessTokenIssuer tokens, Clock clock) {
+            OAuthClientRepository clients,
+            ServiceAccessTokenIssuer tokens,
+            RevocationIndex revocations,
+            Clock clock) {
         this.clients = clients;
         this.tokens = tokens;
+        this.revocations = revocations;
         this.clock = clock;
     }
 
@@ -36,6 +41,13 @@ public final class ClientCredentialsTokenService {
                     .orElseThrow(ClientCredentialsInvalidException::new);
         } catch (IllegalArgumentException invalidSecret) {
             throw new ClientCredentialsInvalidException();
+        }
+        try {
+            if (!revocations.isReady() || revocations.isClientRevoked(client.id())) {
+                throw new TokenRevocationStatusUnavailableException();
+            }
+        } catch (RevocationIndexUnavailableException unavailable) {
+            throw new TokenRevocationStatusUnavailableException();
         }
         Set<OAuthScope> scopes = requestedScopes(requestedScope, client.allowedScopes());
         if (!client.allowedScopes().containsAll(scopes)) {

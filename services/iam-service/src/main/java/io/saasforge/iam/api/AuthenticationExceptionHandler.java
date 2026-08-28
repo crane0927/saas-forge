@@ -11,6 +11,7 @@ import io.saasforge.iam.application.authentication.ClientCredentialsInvalidExcep
 import io.saasforge.iam.application.authentication.ClientCredentialsScopeRejectedException;
 import io.saasforge.iam.application.authentication.LogoutUnavailableException;
 import io.saasforge.iam.application.authentication.RevocationIndexUnavailableException;
+import io.saasforge.iam.application.authentication.TokenRevocationStatusUnavailableException;
 import io.saasforge.iam.application.authentication.TenantAccessUnavailableException;
 import io.saasforge.iam.application.authentication.PasswordChangeSessionInvalidException;
 import io.saasforge.iam.application.authentication.PasswordCompromisedException;
@@ -95,6 +96,13 @@ public class AuthenticationExceptionHandler {
         return problemWithClearedRefreshCookie(
                 HttpStatus.SERVICE_UNAVAILABLE, RevocationIndexUnavailableException.CODE,
                 "Revocation index unavailable", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(TokenRevocationStatusUnavailableException.class)
+    ResponseEntity<Problem> tokenRevocationStatusUnavailable(
+            TokenRevocationStatusUnavailableException exception, HttpServletRequest request) {
+        return problem(HttpStatus.SERVICE_UNAVAILABLE, TokenRevocationStatusUnavailableException.CODE,
+                "Token revocation status unavailable", exception.getMessage(), request);
     }
 
     @ExceptionHandler(LogoutUnavailableException.class)

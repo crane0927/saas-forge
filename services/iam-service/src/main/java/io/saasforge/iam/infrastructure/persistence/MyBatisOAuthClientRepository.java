@@ -16,6 +16,7 @@ import io.saasforge.iam.infrastructure.persistence.record.OAuthClientSecretRow;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
@@ -104,20 +105,26 @@ public class MyBatisOAuthClientRepository implements OAuthClientRepository {
 
     @Override
     @Transactional
-    public void revoke(UUID clientId, Instant at) {
+    public boolean revoke(UUID clientId, Instant at) {
         OAuthClientRow row = mapper.lockClientById(clientId);
         if (row == null) {
             throw new IllegalArgumentException("OAuth Client 不存在");
         }
         OAuthClient client = toDomain(row);
         if (client.status() == OAuthClientStatus.REVOKED) {
-            return;
+            return false;
         }
         client.revoke(at);
         if (mapper.revokeClient(clientId, IamTime.asOffsetDateTime(at)) != 1) {
             throw new IllegalStateException("OAuth Client 吊销并发冲突");
         }
         mapper.revokeSecrets(clientId, IamTime.asOffsetDateTime(at));
+        return true;
+    }
+
+    @Override
+    public List<UUID> findRevokedClientIds() {
+        return mapper.findRevokedClientIds();
     }
 
     private static OAuthClientRow toRow(OAuthClient client) {

@@ -35,6 +35,7 @@ class ClientCredentialsTokenServiceTest {
     private static final String SECRET = Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[32]);
 
     private final OAuthClientRepository clients = mock(OAuthClientRepository.class);
+    private final RevocationIndex revocations = mock(RevocationIndex.class);
     private ClientCredentialsTokenService service;
     private OAuthClient activeClient;
 
@@ -60,7 +61,8 @@ class ClientCredentialsTokenServiceTest {
                         (keyReference, algorithm, input) -> new byte[32]),
                 new ObjectMapper(), new UuidV7Generator(clock, new SecureRandom()), clock,
                 "https://iam.test", Duration.ofMinutes(5));
-        service = new ClientCredentialsTokenService(clients, issuer, clock);
+        when(revocations.isReady()).thenReturn(true);
+        service = new ClientCredentialsTokenService(clients, issuer, revocations, clock);
     }
 
     @Test
@@ -99,5 +101,22 @@ class ClientCredentialsTokenServiceTest {
                 () -> service.issue(CLIENT_ID, SECRET, "password", null));
         assertThrows(ClientCredentialsScopeRejectedException.class,
                 () -> service.issue(CLIENT_ID, SECRET, "client_credentials", "runtime:read"));
+    }
+
+    @Test
+    void failsClosedWhenRevocationStateIsUnreadyOrClientIsRejected() {
+        when(clients.findActiveBySecretDigest(any(), any())).thenReturn(Optional.of(activeClient));
+        when(revocations.isReady()).thenReturn(false);
+        assertThrows(TokenRevocationStatusUnavailableException.class,
+                () -> service.issue(CLIENT_ID, SECRET, "client_credentials", null));
+
+        when(revocations.isReady()).thenReturn(true);
+        when(revocations.isClientRevoked(CLIENT_ID)).thenReturn(true);
+        assertThrows(TokenRevocationStatusUnavailableException.class,
+                () -> service.issue(CLIENT_ID, SECRET, "client_credentials", null));
+
+        when(revocations.isReady()).thenThrow(new RevocationIndexUnavailableException());
+        assertThrows(TokenRevocationStatusUnavailableException.class,
+                () -> service.issue(CLIENT_ID, SECRET, "client_credentials", null));
     }
 }

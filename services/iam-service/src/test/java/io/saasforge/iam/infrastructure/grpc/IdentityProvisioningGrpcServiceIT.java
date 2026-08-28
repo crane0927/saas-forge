@@ -237,8 +237,13 @@ class IdentityProvisioningGrpcServiceIT {
         }
 
         @Override
-        public void revoke(UUID clientId, Instant at) {
+        public boolean revoke(UUID clientId, Instant at) {
             throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public java.util.List<UUID> findRevokedClientIds() {
+            return java.util.List.of();
         }
     }
 

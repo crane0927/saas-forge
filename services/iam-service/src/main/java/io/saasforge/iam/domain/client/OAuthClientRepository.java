@@ -2,6 +2,7 @@ package io.saasforge.iam.domain.client;
 
 import io.saasforge.iam.domain.shared.Sha256Digest;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -22,5 +23,8 @@ public interface OAuthClientRepository {
 
     ClientSecret rotate(UUID clientId, Sha256Digest nextSecretDigest, Instant at);
 
-    void revoke(UUID clientId, Instant at);
+    /** 返回 true 表示本次固定了首次不可逆吊销事实。 */
+    boolean revoke(UUID clientId, Instant at);
+
+    List<UUID> findRevokedClientIds();
 }

@@ -123,4 +123,11 @@
         SET revoked_at = #{revokedAt}
         WHERE client_id = #{clientId} AND revoked_at IS NULL
     </update>
+
+    <select id="findRevokedClientIds" resultType="java.util.UUID">
+        SELECT id
+        FROM iam_oauth_clients
+        WHERE client_status = 'REVOKED'
+        ORDER BY id
+    </select>
 </mapper>

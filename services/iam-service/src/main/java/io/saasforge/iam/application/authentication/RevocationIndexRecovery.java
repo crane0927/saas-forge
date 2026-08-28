@@ -2,6 +2,7 @@ package io.saasforge.iam.application.authentication;
 
 import io.saasforge.iam.domain.session.AccessTokenIssuanceRepository;
 import io.saasforge.iam.domain.session.RevocationFenceRepository;
+import io.saasforge.iam.domain.client.OAuthClientRepository;
 import java.time.Clock;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -10,16 +11,19 @@ public final class RevocationIndexRecovery implements InitializingBean {
     private final RevocationIndex index;
     private final AccessTokenIssuanceRepository issuances;
     private final RevocationFenceRepository fences;
+    private final OAuthClientRepository clients;
     private final Clock clock;
 
     public RevocationIndexRecovery(
             RevocationIndex index,
             AccessTokenIssuanceRepository issuances,
             RevocationFenceRepository fences,
+            OAuthClientRepository clients,
             Clock clock) {
         this.index = index;
         this.issuances = issuances;
         this.fences = fences;
+        this.clients = clients;
         this.clock = clock;
     }
 
@@ -39,6 +43,10 @@ public final class RevocationIndexRecovery implements InitializingBean {
     public void recover() {
         index.markNotReady();
         var now = clock.instant();
-        index.rebuild(issuances.findUnexpiredRevocations(now), fences.findActive(), now);
+        index.rebuild(
+                issuances.findUnexpiredRevocations(now),
+                fences.findActive(),
+                clients.findRevokedClientIds(),
+                now);
     }
 }

@@ -18,7 +18,8 @@ public record OAuthClientManagementOperation(
 
     public OAuthClientManagementOperation {
         boolean supportedTerminal = ("CREATE".equals(operationType) && httpStatus == 201)
-                || ("ROTATE".equals(operationType) && httpStatus == 200);
+                || ("ROTATE".equals(operationType) && httpStatus == 200)
+                || ("REVOKE".equals(operationType) && httpStatus == 204);
         if (id == null || id.version() != 7 || actorIdentityId == null
                 || idempotencyKey == null || idempotencyKey.version() != 7
                 || !supportedTerminal || clientId == null

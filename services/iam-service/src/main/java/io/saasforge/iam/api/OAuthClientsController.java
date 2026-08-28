@@ -11,11 +11,9 @@ import io.saasforge.iam.contract.model.OAuthClientType;
 import io.saasforge.iam.contract.model.ReservedServiceKey;
 import io.saasforge.iam.contract.model.RuntimeScope;
 import io.saasforge.iam.domain.client.OAuthClient;
-import io.saasforge.iam.domain.client.OAuthClientRepository;
 import io.saasforge.iam.domain.client.OAuthScope;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
-import java.time.Clock;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -28,12 +26,10 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
-import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 public class OAuthClientsController implements OAuthClientsApi {
@@ -42,18 +38,12 @@ public class OAuthClientsController implements OAuthClientsApi {
 
     private final OAuthClientManagementAuthorizer authorizer;
     private final OAuthClientManagementService management;
-    private final OAuthClientRepository repository;
-    private final Clock clock;
 
     public OAuthClientsController(
             OAuthClientManagementAuthorizer authorizer,
-            OAuthClientManagementService management,
-            OAuthClientRepository repository,
-            Clock clock) {
+            OAuthClientManagementService management) {
         this.authorizer = authorizer;
         this.management = management;
-        this.repository = repository;
-        this.clock = clock;
     }
 
     @Override
@@ -85,15 +75,10 @@ public class OAuthClientsController implements OAuthClientsApi {
 
     @Override
     public ResponseEntity<Void> revokeOAuthClient(UUID clientId, UUID idempotencyKey) {
-        authorizer.authorize(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
-        try {
-            repository.revoke(clientId, clock.instant().truncatedTo(ChronoUnit.MILLIS));
-            return ResponseEntity.noContent().build();
-        } catch (IllegalArgumentException ex) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, ex.getMessage(), ex);
-        } catch (IllegalStateException ex) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, ex.getMessage(), ex);
-        }
+        HttpServletRequest httpRequest = currentRequest();
+        UUID actorIdentityId = authorizer.authorize(httpRequest.getHeader(HttpHeaders.AUTHORIZATION));
+        management.revoke(actorIdentityId, idempotencyKey, clientId, traceId(httpRequest));
+        return ResponseEntity.noContent().build();
     }
 
     static String traceId(HttpServletRequest request) {

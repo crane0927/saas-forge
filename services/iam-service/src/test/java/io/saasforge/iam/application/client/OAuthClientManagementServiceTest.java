@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.saasforge.iam.application.authentication.UuidV7Generator;
+import io.saasforge.iam.application.authentication.RevocationIndex;
 import io.saasforge.iam.domain.client.ClientSecret;
 import io.saasforge.iam.domain.client.OAuthClient;
 import io.saasforge.iam.domain.client.OAuthClientBootstrapState;
@@ -29,6 +30,7 @@ import java.util.Optional;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,6 +46,7 @@ class OAuthClientManagementServiceTest {
     private final InMemoryClients clients = new InMemoryClients();
     private final InMemoryOperations operations = new InMemoryOperations();
     private final InMemoryOutbox outbox = new InMemoryOutbox();
+    private final RevocationIndex revocations = org.mockito.Mockito.mock(RevocationIndex.class);
     private OAuthClientManagementService service;
 
     @BeforeEach
@@ -54,6 +57,8 @@ class OAuthClientManagementServiceTest {
                 clients, operations, outbox,
                 new OAuthClientCreatedEventFactory(new ObjectMapper(), ids, "test"),
                 new ClientSecretRotatedEventFactory(new ObjectMapper(), ids, "test"),
+                new OAuthClientRevokedEventFactory(new ObjectMapper(), ids, "test"),
+                revocations,
                 new ClientSecretIssuer(new SecureRandom()), ids, clock);
     }
 
@@ -174,6 +179,26 @@ class OAuthClientManagementServiceTest {
         assertEquals("IDEMPOTENCY_REQUEST_IN_PROGRESS", pending.code());
     }
 
+    @Test
+    void revokesOnceAfterRedisAndPreservesTheFirstTerminalFacts() {
+        service.create(ACTOR, KEY, "worker", Set.of(OAuthScope.RUNTIME_READ), null);
+
+        service.revoke(ACTOR, ROTATION_KEY, CLIENT, null);
+
+        org.mockito.Mockito.verify(revocations).revokeClient(CLIENT);
+        assertEquals(OAuthClientStatus.REVOKED, clients.client.status());
+        assertEquals("REVOKE", operations.operation.operationType());
+        assertEquals(204, operations.operation.httpStatus());
+        assertTrue(outbox.event.eventSnapshot().contains("OAUTH_CLIENT_REVOKED"));
+        OAuthClientManagementOperation first = operations.operation;
+        OutboxEvent firstEvent = outbox.event;
+
+        service.revoke(UUID.fromString("0198f240-0000-7000-8000-000000000007"),
+                UUID.fromString("0198f240-0000-7000-8000-000000000008"), CLIENT, null);
+        assertEquals(first, operations.operation);
+        assertEquals(firstEvent, outbox.event);
+    }
+
     private static final class InMemoryClients implements OAuthClientRepository {
         private OAuthClient client;
         private Sha256Digest digest;
@@ -217,7 +242,16 @@ class OAuthClientManagementServiceTest {
             return ClientSecret.issued(id, at)
                     .identifiedBy(UUID.fromString("0198f240-0000-7000-8000-000000000006"));
         }
-        @Override public void revoke(UUID id, Instant at) { throw new UnsupportedOperationException(); }
+        @Override public boolean revoke(UUID id, Instant at) {
+            if (client == null || !client.id().equals(id)) throw new IllegalArgumentException("not found");
+            if (client.status() == OAuthClientStatus.REVOKED) return false;
+            client = client.revoke(at);
+            return true;
+        }
+        @Override public List<UUID> findRevokedClientIds() {
+            return client != null && client.status() == OAuthClientStatus.REVOKED
+                    ? List.of(client.id()) : List.of();
+        }
     }
 
     private static final class InMemoryOperations implements OAuthClientManagementOperationRepository {

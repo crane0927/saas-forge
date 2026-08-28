@@ -3,6 +3,7 @@ package io.saasforge.iam.infrastructure.persistence.mapper;
 import io.saasforge.iam.infrastructure.persistence.record.OAuthClientRow;
 import io.saasforge.iam.infrastructure.persistence.record.OAuthClientSecretRow;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 import org.apache.ibatis.annotations.Param;
 
@@ -33,4 +34,6 @@ public interface OAuthClientMapper {
     int revokeClient(@Param("clientId") UUID clientId, @Param("revokedAt") OffsetDateTime revokedAt);
 
     int revokeSecrets(@Param("clientId") UUID clientId, @Param("revokedAt") OffsetDateTime revokedAt);
+
+    List<UUID> findRevokedClientIds();
 }

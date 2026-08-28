@@ -161,8 +161,11 @@ public class AuthenticationConfiguration {
 
     @Bean
     ClientCredentialsTokenService clientCredentialsTokenService(
-            OAuthClientRepository clients, ServiceAccessTokenIssuer tokens, Clock clock) {
-        return new ClientCredentialsTokenService(clients, tokens, clock);
+            OAuthClientRepository clients,
+            ServiceAccessTokenIssuer tokens,
+            RevocationIndex revocations,
+            Clock clock) {
+        return new ClientCredentialsTokenService(clients, tokens, revocations, clock);
     }
 
     @Bean
@@ -340,8 +343,9 @@ public class AuthenticationConfiguration {
             RevocationIndex index,
             AccessTokenIssuanceRepository issuances,
             RevocationFenceRepository fences,
+            OAuthClientRepository clients,
             Clock clock) {
-        return new RevocationIndexRecovery(index, issuances, fences, clock);
+        return new RevocationIndexRecovery(index, issuances, fences, clients, clock);
     }
 
     @Bean

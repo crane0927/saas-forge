@@ -1,6 +1,9 @@
 package io.saasforge.iam.application.client;
 
 import io.saasforge.iam.application.authentication.UuidV7Generator;
+import io.saasforge.iam.application.authentication.RevocationIndex;
+import io.saasforge.iam.application.authentication.RevocationIndexUnavailableException;
+import io.saasforge.iam.application.authentication.TokenRevocationStatusUnavailableException;
 import io.saasforge.iam.domain.client.OAuthClient;
 import io.saasforge.iam.domain.client.OAuthClientManagementOperation;
 import io.saasforge.iam.domain.client.OAuthClientManagementOperationRepository;
@@ -26,6 +29,8 @@ public class OAuthClientManagementService {
     private final OutboxEventRepository outbox;
     private final OAuthClientCreatedEventFactory events;
     private final ClientSecretRotatedEventFactory rotationEvents;
+    private final OAuthClientRevokedEventFactory revocationEvents;
+    private final RevocationIndex revocations;
     private final ClientSecretIssuer secrets;
     private final UuidV7Generator ids;
     private final Clock clock;
@@ -36,6 +41,8 @@ public class OAuthClientManagementService {
             OutboxEventRepository outbox,
             OAuthClientCreatedEventFactory events,
             ClientSecretRotatedEventFactory rotationEvents,
+            OAuthClientRevokedEventFactory revocationEvents,
+            RevocationIndex revocations,
             ClientSecretIssuer secrets,
             UuidV7Generator ids,
             Clock clock) {
@@ -44,6 +51,8 @@ public class OAuthClientManagementService {
         this.outbox = outbox;
         this.events = events;
         this.rotationEvents = rotationEvents;
+        this.revocationEvents = revocationEvents;
+        this.revocations = revocations;
         this.secrets = secrets;
         this.ids = ids;
         this.clock = clock;
@@ -121,6 +130,43 @@ public class OAuthClientManagementService {
         operations.append(operation);
         outbox.append(rotationEvents.create(client, operation, actorIdentityId, rotatedAt, traceId));
         return new OAuthClientSecretResult(client, issued.plaintext());
+    }
+
+    /** Redis 必须先拒绝 Client；数据库失败时保留额外拒绝，重试继续固定权威事实。 */
+    @Transactional
+    public void revoke(
+            UUID actorIdentityId, UUID idempotencyKey, UUID clientId, String traceId) {
+        requireUuidV7(idempotencyKey);
+        OAuthClient current = clients.findById(clientId)
+                .orElseThrow(OAuthClientManagementException::notFound);
+        try {
+            revocations.revokeClient(clientId);
+        } catch (RevocationIndexUnavailableException unavailable) {
+            throw new TokenRevocationStatusUnavailableException();
+        }
+        if (current.status() == io.saasforge.iam.domain.client.OAuthClientStatus.REVOKED) return;
+
+        Sha256Digest fingerprint = fingerprint("REVOKE", clientId.toString());
+        if (!operations.tryLock(actorIdentityId, idempotencyKey)) {
+            throw OAuthClientManagementException.inProgress();
+        }
+        var existing = operations.find(actorIdentityId, idempotencyKey);
+        if (existing.isPresent()) {
+            if (!existing.get().requestFingerprint().equals(fingerprint)) {
+                throw OAuthClientManagementException.keyReused();
+            }
+            return;
+        }
+
+        Instant revokedAt = clock.instant().truncatedTo(ChronoUnit.MILLIS);
+        if (!clients.revoke(clientId, revokedAt)) return;
+        OAuthClient client = clients.findById(clientId)
+                .orElseThrow(() -> new IllegalStateException("OAuth Client 吊销后查询失败"));
+        OAuthClientManagementOperation operation = new OAuthClientManagementOperation(
+                ids.next(), actorIdentityId, idempotencyKey, "REVOKE", client.id(), fingerprint,
+                "SUCCEEDED", 204, revokedAt);
+        operations.append(operation);
+        outbox.append(revocationEvents.create(client, operation, actorIdentityId, revokedAt, traceId));
     }
 
     private static void requireUuidV7(UUID key) {

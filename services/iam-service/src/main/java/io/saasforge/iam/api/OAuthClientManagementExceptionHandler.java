@@ -3,6 +3,7 @@ package io.saasforge.iam.api;
 import io.saasforge.iam.application.client.OAuthClientManagementAuthorizationException;
 import io.saasforge.iam.application.client.OAuthClientManagementException;
 import io.saasforge.iam.domain.client.OAuthClientScopeGrantForbiddenException;
+import io.saasforge.iam.application.authentication.TokenRevocationStatusUnavailableException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
 import java.util.UUID;
@@ -49,6 +50,13 @@ public class OAuthClientManagementExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     ResponseEntity<Problem> invalid(IllegalArgumentException exception, HttpServletRequest request) {
         return problem(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(TokenRevocationStatusUnavailableException.class)
+    ResponseEntity<Problem> tokenRevocationStatusUnavailable(
+            TokenRevocationStatusUnavailableException exception, HttpServletRequest request) {
+        return problem(HttpStatus.SERVICE_UNAVAILABLE, TokenRevocationStatusUnavailableException.CODE,
+                exception.getMessage(), request);
     }
 
     private static ResponseEntity<Problem> problem(
