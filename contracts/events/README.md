@@ -2,7 +2,7 @@
 
 事件只表达来源服务已提交的事实，不能作为跨服务命令或同步流程的成功依据。发布使用 Transactional Outbox，Kafka 至少一次交付；消费者按 CloudEvents `id` 幂等。
 
-实际业务切片的本地 Outbox、发布器、消费者和去重表必须遵循[Transactional Outbox 工程约定](transactional-outbox.md)。每个实际实现事件还必须先登记到[事件工程注册表](engineering-registry.json)，其字段由[v1 Schema](engineering-registry.schema.json)约束；当前没有业务切片实现，注册表因此为空。
+实际业务切片的本地 Outbox、发布器、消费者和去重表必须遵循[Transactional Outbox 工程约定](transactional-outbox.md)。每个实际实现事件还必须先登记到[事件工程注册表](engineering-registry.json)，其字段由[v1 Schema](engineering-registry.schema.json)约束；当前 IAM、Tenant Access与 Entitlement已有生产 Outbox和已登记事件，allowed consumer只表示授权，不证明接收端已经实现。
 
 ## 统一信封
 
@@ -21,7 +21,7 @@
 | `com.saasforge.audit.recorded.v1` | Audit | `auditRecordId`、`sourceEventId`、`recordedAt`，可选 `tenantId` | [Audit Record Stored v1](audit-recorded.v1.schema.json) |
 | `com.saasforge.cache.invalidated.v1` | 对应缓存域的权威服务 | `cacheDomain`、`scope`，以及范围匹配的 `tenantId` / `membershipId` | [Logical Cache Invalidated v1](cache-invalidated.v1.schema.json) |
 
-`audit.recorded.v1` 仅说明 Audit 已追加保存一条 Audit Record；完整审计内容必须通过 Audit 服务的受权查询取得。缓存失效只表达逻辑缓存域（`authorization` 或 `entitlement`）及范围（`MEMBERSHIP`、`TENANT` 或 `GLOBAL`）；消费者自行清理本地或业务缓存，未命中、过期、失效消息或缓存不可用时回源权威接口，不得把它当作领域真相。
+`audit.recorded.v1` 仅说明 Audit 已追加保存一条 Audit Record；当前只有 Schema，尚未登记、生产或确认消费者，没有真实消费者前不得据此建立 Audit Outbox。完整审计内容必须通过未来 Audit服务的受权查询取得。缓存失效只表达逻辑缓存域（`authorization` 或 `entitlement`）及范围（`MEMBERSHIP`、`TENANT` 或 `GLOBAL`）；消费者自行清理本地或业务缓存，未命中、过期、失效消息或缓存不可用时回源权威接口，不得把它当作领域真相。
 
 `authorization` 缓存失效由 Tenant Access 发布，`entitlement` 缓存失效由 Entitlement 发布；其他缓存域不是 v1 契约的一部分。
 

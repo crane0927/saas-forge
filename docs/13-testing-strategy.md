@@ -61,6 +61,8 @@ Tenant Suspension 安全闭环的最高集成接缝必须从 Gateway 公网请�
 
 首个实际事件切片必须使用 PostgreSQL 与 Kafka 集成测试验证：领域提交与 Outbox 快照原子性、Kafka 确认前故障后的同 ID 重投、领取租约接管、同 `orderingKey` 的顺序、按 `(consumerName, eventId)` 的幂等副作用、不同消费者独立处理、CloudEvents/schema 拒绝、隔离与同 ID 重放，以及 `traceId` 从业务入口经 Outbox 到消费者的原样保留。事件工程注册表及其服务/topic/schema 对应关系由 `./mvnw verify` 校验。
 
+Gateway Service Scope 切片必须用非生产真实 Spring Boot 接收端夹具证明 Gateway 与 Starter 共同接受合法 Service Token，并分别拒绝错误令牌类型、缺少 Scope、已撤销 Client、撤销状态不可用和伪造保留头；夹具通过测试专用 Registry overlay 与 OpenAPI 操作进入真实 Route Catalog，不计入生产服务登记。Audit 切片必须使用真实 PostgreSQL 与 Kafka 证明三个成功事实的映射、两个消费者身份互不干扰、提交前不确认、同 ID 去重、10 次指数退避、永久错误立即隔离、隔离投递状态机及保持原事件 ID 的重放。具体矩阵分别见 [Gateway Service Scope 路由设计](23-gateway-service-scope-routing.md)与 [Audit 成功事实消费设计](24-audit-success-fact-consumption.md)。
+
 ## 容量、性能与可用性验证
 
 首期规划容量：20 个 Tenant、每 Tenant 500 名活跃用户，共 10,000 名活跃用户；峰值按 10% 同时在线，即 1,000 并发用户。按每位并发用户平均每 10 秒 1 次 API 请求，基线为 100 RPS，并验证 200 RPS 突发余量。审计按 100,000 条/日规划，并保留 2 倍增长余量。

@@ -2,7 +2,7 @@
 
 **状态：已确认并发布为 [GitHub Issue #64](https://github.com/crane0927/saas-forge/issues/64)，可进入实现。**
 
-本规格对应 [MVP 开发计划第 2 阶段](16-mvp-development-plan.md)中的 OAuth 2.0 Client Credentials 管理条目，建立在已完成的最小 Client Credentials Token 签发、Service Access Token 校验和保留服务 Client bootstrap 之上。领域语言以 [CONTEXT.md](../CONTEXT.md) 为准，架构取舍见 [ADR 0033](adr/0033-oauth-client-management-uses-immediate-revocation-and-replacement-recovery.md)。
+本规格对应 [MVP 开发计划第 2 阶段](16-mvp-development-plan.md)中的 OAuth 2.0 Client Credentials 管理条目，建立在已完成的最小 Client Credentials Token 签发、Service Access Token 校验和保留服务 Client bootstrap 之上。领域语言以 [IAM Context](../services/iam-service/CONTEXT.md) 为准，架构取舍见 [ADR 0033](adr/0033-oauth-client-management-uses-immediate-revocation-and-replacement-recovery.md)。
 
 ## 1. 交付边界
 

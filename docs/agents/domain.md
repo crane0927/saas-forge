@@ -6,7 +6,7 @@
 
 - 根目录的 `CONTEXT-MAP.md`，从中找到与当前主题相关的各个 `CONTEXT.md` 并读取；
 - `docs/adr/` 中与当前工作区域相关的系统级 ADR；
-- `src/<context>/docs/adr/` 中与当前上下文相关的 ADR。
+- 从 `CONTEXT-MAP.md` 取得 context root，再读取该 root 下 `docs/adr/` 中与当前上下文相关的 ADR。
 
 若这些文件不存在，静默继续，不要主动提示或预先创建。`/domain-modeling`（可由 `/grill-with-docs` 和 `/improve-codebase-architecture` 调用）会在术语或决策实际明确后再创建它们。
 
@@ -18,13 +18,13 @@
 /
 ├── CONTEXT-MAP.md
 ├── docs/adr/                          ← 系统级决策
-└── src/
-    ├── ordering/
-    │   ├── CONTEXT.md
-    │   └── docs/adr/                  ← 上下文级决策
-    └── billing/
-        ├── CONTEXT.md
-        └── docs/adr/
+├── gateway/CONTEXT.md
+├── contracts/CONTEXT.md
+└── services/
+    ├── iam-service/CONTEXT.md
+    ├── tenant-access-service/CONTEXT.md
+    ├── entitlement-service/CONTEXT.md
+    └── audit-service/CONTEXT.md
 ```
 
 ## 使用统一术语

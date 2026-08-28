@@ -73,3 +73,9 @@ public List<Report> list() {
 配置包含 Gateway 地址、JWKS 地址、服务端 Client Credentials、超时/重试和缓存策略。Client Secret 不得写入代码或普通配置文件，应由运行环境的受控密钥注入提供。
 
 Tenant Context、授权和审计的公共 API 是稳定集成面；平台内部服务或数据库实体不是 SDK 兼容性承诺。
+
+## 最小 HTTP 认证 Starter
+
+首个可投产 Starter 切片只负责 HTTP 接收端认证：消费与 Gateway 相同的版本化 Route Catalog 制品，按操作建立不可变的 User Principal 或 Service Principal，并在业务 Controller 之前再次校验令牌类型、签名、标准 Claim、撤销状态与 Service Scope。两类 Principal 互斥；Service Principal 只暴露 `client_id` 与已授予 Scope，不建立 Identity、Membership、Tenant 或用户 RBAC 上下文。Starter 不自动跨线程传播安全上下文，异步边界必须显式提取最小必要值并重新建立受控上下文。
+
+Gateway 与 Starter 的职责、错误语义、保留请求头和真实接收端验收夹具见 [Gateway Service Scope 路由设计](23-gateway-service-scope-routing.md)。

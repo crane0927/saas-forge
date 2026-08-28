@@ -17,7 +17,7 @@ Browser / Business Application
 
 API Gateway 是唯一公网入口，负责 TLS 终止、JWT 初步校验、限流、路由、CORS 与 `traceId` 透传。领域服务不直接暴露公网。
 
-Gateway 的用户 Token 强制策略由正式 OpenAPI 操作的 `security` 声明生成或校验，不另维护可漂移的路径列表。必需 `UserBearerAuth` 的操作在转发前完成验签与撤销检查；匿名操作不要求 User Token；登出等同时声明 `UserBearerAuth` 与匿名的操作必须允许请求到达下游以完成 Cookie 清理，不得因可选 Bearer 无效或已撤销而提前拒绝。
+Gateway 的凭据分类由正式 OpenAPI 操作的 `security` 声明生成或校验，不另维护可漂移的路径列表。公共契约只使用 `UserBearerAuth`、`ServiceOAuth2`、`OAuthClientBasic` 与 Refresh Cookie 语义，并归一为 `ANONYMOUS`、`REFRESH_COOKIE_REQUIRED`、`OAUTH_CLIENT_BASIC_REQUIRED`、`USER_OPTIONAL`、`USER_REQUIRED`、`SERVICE_REQUIRED` 六类。必需 User 或 Service Token 的操作在转发前完成对应验证；匿名操作不要求 Token；登出等同时声明 `UserBearerAuth` 与匿名的操作必须允许请求到达下游以完成 Cookie 清理，不得因可选 Bearer 无效或已撤销而提前拒绝。完整生成与门禁规则见 [Gateway Service Scope 路由设计](23-gateway-service-scope-routing.md)。
 
 ## 契约与版本
 

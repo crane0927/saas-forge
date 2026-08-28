@@ -71,3 +71,9 @@ Remote 仅能由经审核的版本化 Manifest 加载。Manifest 由业务模块
 - 每个领域服务可依赖自身领域模块、契约与通用库；不得反向依赖其他服务的领域实现。
 - SDK 只依赖公共 REST / JWKS 契约，不依赖内部 gRPC 或领域数据库模型。
 - Console 只依赖公开 API Client 和注册的前端契约，不直接访问服务数据库。
+
+## 服务登记与 HTTP 路由契约
+
+`contracts` 维护受控 Service Registry 与独立 Scope Registry；它们只登记可部署服务、所有权和合法 Scope，不承载运行时实例地址。公共 OpenAPI 仍是操作、路径和安全声明的唯一事实来源。构建期将 OpenAPI、两个 Registry 与服务所有权校验后生成版本化 Route Catalog JSON，并发布为 Gateway 与 Spring Boot Starter 共同消费的 `saas-forge-http-route-catalog` 制品。Gateway 不因 Nacos 出现新实例而自动开放公网路由。完整边界见 [ADR 0034](adr/0034-controlled-service-registry-and-route-catalog.md)与 [Gateway Service Scope 路由设计](23-gateway-service-scope-routing.md)。
+
+Audit 只消费来源服务已经提交并注册的事实事件；首个切片仅覆盖 Session Started、Tenant Created、Tenant Context Switched，采用两个独立消费者身份写入只追加 Audit Record。存储、隔离和重放边界见 [Audit 成功事实消费设计](24-audit-success-fact-consumption.md)。

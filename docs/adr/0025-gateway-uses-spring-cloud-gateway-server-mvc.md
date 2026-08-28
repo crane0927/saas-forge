@@ -12,7 +12,7 @@ Nacos 配置默认随版本滚动发布生效；只有被显式标记为可热�
 
 Gateway 和每个领域服务各使用独立的 Nacos 工作负载身份，只能注册、发现服务并读取自己的配置。生产配置写入仅授予受控发布流水线；人工运维使用独立、可审计的应急身份。
 
-Nacos 注册名固定为 `gateway`、`iam-service`、`tenant-access-service`、`entitlement-service` 和 `audit-service`。新业务服务以稳定模块名注册；Gateway 的代码白名单只将已声明的 API 映射到相应服务名，不因新服务注册而自动增加公网入口。
+Nacos 注册名固定为 `gateway`、`iam-service`、`tenant-access-service`、`entitlement-service` 和 `audit-service`。新业务服务以稳定模块名注册；Gateway 的构建期不可变 Route Catalog只将正式 OpenAPI已声明的 API映射到受控 Service Registry服务名，不因新服务注册而自动增加公网入口。Registry、Catalog与 User/Service认证模型的演进见 [ADR 0034](0034-controlled-service-registry-and-route-catalog.md)。
 
 客户端使用 Spring Cloud Alibaba 2025.1.x BOM（首个锁定版本为 `2025.1.0.0`）及 Nacos Config、Discovery Starter；配置通过 `spring.config.import` 导入，并启用 Nacos 的 Spring Cloud LoadBalancer 集成以按服务名选择健康实例。
 

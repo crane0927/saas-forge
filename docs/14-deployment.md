@@ -85,6 +85,8 @@ Platform Console、Tenant Console Shell 与业务 Remote 独立发布。Gateway 
 - 非敏感 Nacos 配置以仓库中受版本控制的配置清单为权威来源，由 CI 校验并发布。Nacos Console 仅用于查看和受审计的应急处置；任何应急变更都必须回写仓库并经 Git 复核。
 - 清单目录、CI 发布身份、最小权限矩阵、回滚和 Console 应急回写步骤由 [`deploy/nacos/README.md`](../deploy/nacos/README.md) 约束；生产发布使用受保护的 GitHub Environment。
 - Nacos 运行时不可用时，已启动实例继续使用最后一次成功加载的配置与已知健康实例；新实例若不能加载必需配置或完成注册不得 Ready。Gateway 找不到健康实例时返回 `503`，不得回退到静态服务地址。
+- Gateway 的生产路由只来自随制品发布的版本化 Route Catalog；Nacos 仅为 Catalog 已允许的 `serviceId` 提供健康实例发现，不得成为开放路由的来源。Service Registry、Scope Registry、OpenAPI 与 Catalog 不通过 Nacos 动态刷新，变更须走契约审查、构建门禁和受控发布。
+- Audit 的 Kafka bootstrap、数据库凭据和其他敏感连接材料由部署侧 Secret/环境注入；重试、退避、隔离恢复策略写入 `audit-service` 专属 Nacos 资源并保持 `refreshEnabled=false`。Audit 只有在 Nacos 必需配置已加载、数据库可用且迁移完成、Kafka 连接成功并取得两个消费者的目标分区分配后才 Ready；任一前提失效时退出 Ready，不能以健康 HTTP 进程掩盖无法消费的状态。完整配置矩阵见 [Audit 成功事实消费设计](24-audit-success-fact-consumption.md)。
 - 本地可用 `bash scripts/verify-nacos-failure-recovery.sh` 对上述行为执行隔离的 Compose 故障注入验收；脚本不会停止已有开发栈，并在退出时删除自己的临时容器和卷。
 - API 的凭据型 CORS 仅允许 Platform Console 与 Tenant Console Shell；Remote 静态资源仅允许 Tenant Console Shell 无凭据加载。Remote 的入口和版本由 Manifest 白名单控制。
 

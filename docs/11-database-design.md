@@ -53,11 +53,13 @@ audit-service          → audit_db
 | `iam_db` | `identities`、`credentials`、`refresh_tokens`、`oauth_clients`、`oauth_client_secrets`、OAuth Client 管理幂等/保留身份替换记录、`signing_key_metadata` | `identities.email` 规范化后全局唯一；密码仅保存 Argon2id 哈希；Refresh Token 和 Client Secret 仅保存哈希；已轮换 Refresh Token 的摘要保留至其 Family 绝对到期后才可清理；`oauth_clients` 区分固定内部 Scope 的 `RESERVED_SERVICE` 与仅允许 Runtime Scope 的 `RUNTIME_SERVICE`，吊销不可逆；Secret 签发幂等记录永久保留但不保存 Secret、摘要或完整响应；`signing_key_metadata` 保存唯一 `kid`、KMS/HSM Key Version 引用、JWKS 的公开 `n`/`e` 与生命周期时间，私钥不入库 |
 | `tenant_access_db` | `tenants`、`memberships`、`organizations`、`organization_units`、`roles`、`permissions`、`role_permissions`、`membership_roles`、`invitations`、`capability_registrations` | Membership 唯一关联 Identity 与 Tenant；Role 绑定 Membership；权限按命名空间、资源、动作定义；邀请保存一次性、限时激活状态 |
 | `entitlement_db` | `plans`、`plan_features`、`plan_quotas`、`subscriptions`、`subscription_entitlement_snapshots`、`quota_definitions`、`quota_usages`、`quota_operations` | 一个 Tenant 任一时刻仅一个生效 Subscription；套餐变更产生新的订阅版本和不可变权益快照；`quota_operations.operation_id` 为全局唯一 UUIDv7，保证计量幂等 |
-| `audit_db` | `audit_records`、`export_jobs` | `audit_records` 只追加，记录 Tenant、Identity、Membership、Action、Resource、Request ID、IP、User Agent、Timestamp、Result、Metadata；`export_jobs` 仅保存任务元数据，不保存导出结果文件 |
+| `audit_db` | `audit_records`、消费去重与隔离处置表、`export_jobs` | `audit_records` 只追加，只保存来源事实明确提供的 Actor、Tenant、Action、Resource、Timestamp、Result 与白名单 Metadata；不得为缺失的 Request ID、IP、User Agent、Membership 或 Tenant 伪造值。消费去重与隔离处置按可变性分表；`export_jobs` 仅保存任务元数据，不保存导出结果文件 |
 
 具体字段、枚举与 OpenAPI / Protobuf Schema 须在实现前同步评审；任一服务不得以外键约束、`JOIN`、FDW、`dblink` 或其他跨数据库访问机制耦合另一服务数据库。
 
 `audit_app` 对 `audit_records` 只被授予 `SELECT`、`INSERT`，不得获得 `UPDATE`、`DELETE`、`TRUNCATE`，也不使用软删除；创建该表的迁移必须显式维持此权限。`export_jobs` 是可变任务元数据，按其状态迁移所需权限单独授予。迁移账号保留架构演进责任，但不得修改已进入主分支或发布版本的迁移。
+
+`audit_records` 同时容纳 Platform级、Tenant级和跨 Tenant合规记录，`tenant_id` 只在来源事实明确提供时填写，因此可空且不启用 Tenant RLS；该例外不适用于其他业务表。未来 Audit查询必须在服务层执行显式授权。完整模型、消费表权限与直接验收见 [Audit成功事实消费规格](24-audit-success-fact-consumption.md)和 [ADR 0035](adr/0035-audit-records-do-not-use-tenant-rls.md)。
 
 ## 多租户隔离与 RLS
 

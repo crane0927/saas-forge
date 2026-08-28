@@ -29,6 +29,8 @@
 - Tenant 批量撤销不依赖未受限的 Redis Lua 调用或单个超大数据库事务。IAM 在 Fence 下分批执行，每批仍保持 Redis 先于 PostgreSQL，并持久化可恢复游标；全部批次完成前不报告整体成功。对当前上下文匹配的 `USER_TENANT` Family 撤销整个 Family 及其全部未过期 `jti`；对已切换离开目标上下文的 Family 仅撤销历史上为目标签发且未过期的 `jti`。
 - Gateway 以正式 OpenAPI `security` 声明作为用户 Token 强制策略来源：必需 `UserBearerAuth` 的操作必须完成验签、`jti`/`kid`、Revocation Fence 和 Index Ready 检查后才转发；匿名操作不要求 User Token。登出等将 `UserBearerAuth` 与匿名并列的可选 Token 操作，不得因 Bearer 缺失、无效或已撤销而阻止 Refresh Cookie 清理。路由安全分类必须参与 OpenAPI/Gateway 一致性门禁，不得使用可漂移的独立手写列表。
 - Gateway 在必需 User Token 操作上对缺失、签名/时间/Claim 无效、`jti`/`kid` 撤销或 Revocation Fence 命中统一返回 `401 / ACCESS_TOKEN_INVALID` 和 `WWW-Authenticate: Bearer`，不暴露具体撤销机制。Redis 不可用或 Index Ready/Fence 状态无法确定时返回 `503 / TOKEN_REVOCATION_STATUS_UNAVAILABLE`，不带 `WWW-Authenticate`。安全撤销先于 Tenant 领域访问状态；`403 / TENANT_SUSPENDED` 只适用于仍然有效的认证上下文到达 Tenant 权威校验后被拒绝的场景。
+- `SERVICE_REQUIRED` 操作同时由 Gateway 与接收端 Starter 校验 Service Token。缺失或无效 Token 返回 `401 / ACCESS_TOKEN_INVALID`；合法 Token 缺少任一要求 Scope 返回 `403 / ACCESS_TOKEN_SCOPE_INSUFFICIENT`；撤销状态不可确定或验证上游不可用返回 `503 / TOKEN_REVOCATION_STATUS_UNAVAILABLE`。多个要求 Scope 按 AND 语义校验，已登记且已授予的额外 Scope 不构成拒绝原因。
+- Gateway 在转发前删除所有平台保留的 Identity、Membership、Tenant、Role、Permission、Scope 与 Client 身份请求头，只能从已验证 Principal 重建允许的内部头；Starter 对绕过 Gateway 的直连请求再次拒绝外部伪造保留头。精确头清单、Route Catalog 与双重校验规则见 [Gateway Service Scope 路由设计](23-gateway-service-scope-routing.md)。
 
 Service Access Token 使用与 User Access Token 相同的环境 Issuer、固定 `saasforge-api` Audience、`RS256` Signing Key 生命周期与 30 秒时钟偏差，但 JOSE `typ` 固定为 `at+jwt`，默认有效期为 5 分钟。其 Claim 白名单固定为 `iss`、`aud`、`iat`、`exp`、`jti`、`sub`、`client_id` 与 `scope`：`sub` 必须等于 `client_id`，`scope` 使用去重并排序后的单空格分隔字符串，`jti` 每次实际签发均生成新的 UUIDv7。Service Access Token 不得包含 `identityId`、`membershipId`、`tenantId`、Role 或 Permission；接收方必须同时校验 Token 类型、签名、Issuer、Audience、时间、`client_id` 与操作所需的精确 Scope。
 
@@ -100,6 +102,8 @@ RBAC 以 `Membership → Role → Permission` 实施。平台角色与租户角�
 IAM 首个认证切片同步落地服务自有 Transactional Outbox，并可靠发布 `com.saasforge.iam.session.started.v1`、`com.saasforge.iam.session.revoked.v1`、`com.saasforge.iam.refresh-replay-detected.v1` 与 `com.saasforge.iam.password.changed.v1`；现有批量 `com.saasforge.iam.sessions-revoked.v1` 仍只用于成员禁用、Tenant 冻结等跨服务撤销。事件与对应数据库事实在同一事务提交，且只含内部 ID、Purpose、上下文类型、结果、时间和 `traceId`。正常刷新成功只记录指标；密码错误、未知邮箱和锁定拒绝只写白名单结构化安全日志与指标，不伪称可靠 Outbox 事实。事件、日志均不得包含邮箱、密码、JWT、Refresh Token、Cookie、IP 原文或完整 User-Agent。
 
 Audit 服务只追加审计记录，平台或租户管理员不得修改或物理删除。审计保留期由平台级合规配置确定。导出保留任务元数据与审计记录；临时导出文件通过短期签名 URL 获取，并按可配置留存期从对象存储物理删除。
+
+首个事实消费切片的 Audit Record 只保存规范化列和事件类型白名单元数据，不复制完整事件 Envelope。`audit_records` 不启用 Tenant RLS：Platform 审计人员需要跨 Tenant 调查，且系统级事实允许 `tenant_id` 为空；隔离区原始载荷仅在契约与安全校验通过后保存，非法或疑似敏感载荷只保存摘要及诊断元数据。见 [ADR 0035](adr/0035-audit-records-do-not-use-tenant-rls.md)与 [Audit 成功事实消费设计](24-audit-success-fact-consumption.md)。
 
 ## 安全验证与应急
 

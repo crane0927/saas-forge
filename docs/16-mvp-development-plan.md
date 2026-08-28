@@ -117,7 +117,9 @@ flowchart TD
 - [x] IAM 通过同步契约调用 Tenant Access 验证当前与目标 Membership，实现当前 Refresh Token Family 的 Tenant Context Switch，并将该 Family 切换前签发且未过期的全部 User Access Token 写入持久撤销事实和 Redis Revocation Index；本项只验收 IAM 撤销权威与索引，Gateway 实际拒绝及 Redis fail-closed 由下一安全条目验收。
 - [x] 复用已完成的普通登出撤销模型，实现成员禁用所需的按 Membership 批量会话与 `jti` 撤销能力，并完成 Tenant Suspension 的按 Tenant 批量撤销与状态迁移；IAM 在批量撤销前建立 Revocation Fence，阻止目标范围并发签发或使用未被扫描的新 Token。Gateway 同步完成最小用户 Token 验签、`jti`/`kid` 与 Revocation Fence 检查、Revocation Index Ready 检查，Redis 不可用或索引未就绪时必须 fail-closed。Invitation 激活、Password Recovery 和成员禁用公开工作流在第 4 阶段随成员闭环完成。
 - [x] 在已前移的最小签发与校验链路上，按 [Client Credentials 管理规格](22-oauth-client-credentials-management.md)补全仅服务间使用的 OAuth 2.0 Client Credentials 管理：Secret 一次展示、重叠轮换和吊销；服务 Token 不建立用户 Tenant Context。
-- [ ] Gateway 在已完成的最小用户 Token 验证链路上，补全用户与服务 Token 的最小 Scope 路由策略，并接入登录、Tenant 创建和 Tenant 切换的审计事件。
+- [ ] 完成 Gateway 用户/服务 Token 路由策略与三类成功事实审计总项；只有以下两个可独立验收的子项均有直接证据后才勾选：
+  - [ ] [Issue #75](https://github.com/crane0927/saas-forge/issues/75)：按 [Gateway 通用路由目录与 User/Service Token Scope 策略](23-gateway-service-scope-routing.md)建立受控 Service/Scope Registry、共享不可变 Route Catalog、Gateway与 Starter双重校验，以及真实 IAM/Redis/Nacos和非生产接收端验收。首个生产 Runtime operation仍由后续对应领域 Issue交付。
+  - [ ] [Issue #76](https://github.com/crane0927/saas-forge/issues/76)：按 [三类成功事实的 Audit Record 消费闭环](24-audit-success-fact-consumption.md)将 Session Started、Tenant Created、Tenant Context Switched映射为只追加 Audit Record，完成真实 Kafka/PostgreSQL去重、重试、隔离、重放和最小权限验收。
 
 **完成标准：** 在 Compose 环境中可完成“Platform Admin 登录 → 创建 Tenant → 初始化 Tenant Admin → Tenant Admin 登录与切换 Tenant”；错误 Token、重放 Refresh Token、黑名单 Token、Redis 不可用和越权 Tenant 切换均有反向测试。
 
