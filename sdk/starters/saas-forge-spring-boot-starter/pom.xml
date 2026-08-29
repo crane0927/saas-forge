@@ -12,9 +12,12 @@
     </parent>
 
     <artifactId>saas-forge-spring-boot-starter</artifactId>
-    <packaging>pom</packaging>
 
     <dependencies>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>saas-forge-http-route-catalog</artifactId>
+        </dependency>
         <dependency>
             <groupId>io.github.crane0927</groupId>
             <artifactId>saas-forge-sdk-core</artifactId>
@@ -42,6 +45,23 @@
         <dependency>
             <groupId>io.github.crane0927</groupId>
             <artifactId>saas-forge-sdk-audit</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 </project>
