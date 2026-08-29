@@ -271,7 +271,7 @@ class SessionStartedConsumerPostgreSqlKafkaIT {
     }
 
     @Test
-    void acknowledgesRegisteredUnsupportedTenantEventWithoutDatabaseState() {
+    void acknowledgesTenantEventRegisteredToOtherConsumerWithoutDatabaseState() {
         String eventId = uuidV7(8);
         String group = "audit-tenant-ignored-" + UUID.randomUUID();
 

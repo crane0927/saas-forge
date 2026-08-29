@@ -228,6 +228,25 @@ class RepositoryStandardsTest {
     }
 
     @Test
+    void tenantAuditConsumersSeparateCreatedFromLifecycleEvents() throws Exception {
+        JsonNode entries = readJson(REPOSITORY.resolve("contracts/events/engineering-registry.json"))
+                .path("entries");
+        Map<String, Set<String>> consumersByType = new HashMap<>();
+        for (JsonNode entry : entries) {
+            Set<String> consumers = new HashSet<>();
+            for (JsonNode consumer : entry.path("allowedConsumers")) {
+                consumers.add(consumer.path("consumerName").asText());
+            }
+            consumersByType.put(entry.path("type").asText(), consumers);
+        }
+
+        assertEquals(Set.of("audit-service.tenant-events"),
+                consumersByType.get("com.saasforge.tenant.created.v1"));
+        assertEquals(Set.of("audit-service.tenant-lifecycle-events"),
+                consumersByType.get("com.saasforge.tenant.suspended.v1"));
+    }
+
+    @Test
     void serviceAndOAuthScopeRegistriesControlPublicRouteEligibility() throws Exception {
         Path serviceRegistryPath = REPOSITORY.resolve("contracts/services/engineering-registry.json");
         JsonNode serviceSchema = readJson(

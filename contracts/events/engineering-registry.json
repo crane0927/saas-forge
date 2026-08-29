@@ -207,7 +207,7 @@
       "allowedConsumers": [
         {
           "service": "audit-service",
-          "consumerName": "audit-service.tenant-events"
+          "consumerName": "audit-service.tenant-lifecycle-events"
         }
       ]
     },

@@ -26,7 +26,9 @@ class TenantAccessEventValidatorTest {
     }
 
     @Test
-    void ignoresRegisteredTenantTypeOutsideThisConsumerSlice() {
+    void ignoresRegisteredTenantTypeBelongingToOtherConsumer() {
+        assertEquals("audit-service.tenant-lifecycle-events",
+                TenantAccessEventValidator.TENANT_SUSPENDED_CONSUMER_NAME);
         var result = validator.validate(
                 TenantCreatedEventValidatorTest.TOPIC,
                 TenantCreatedEventValidatorTest.tenantId(),

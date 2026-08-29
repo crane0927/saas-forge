@@ -17,6 +17,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class TenantAccessEventValidator {
     private static final String TENANT_SUSPENDED_TYPE = "com.saasforge.tenant.suspended.v1";
+    static final String TENANT_SUSPENDED_CONSUMER_NAME = "audit-service.tenant-lifecycle-events";
     private static final String TENANT_SUSPENDED_SCHEMA =
             "https://saasforge.io/contracts/events/tenant-suspended.v1.schema.json";
     private static final Set<String> ENVELOPE_FIELDS = Set.of(
@@ -65,6 +66,7 @@ public class TenantAccessEventValidator {
                     tenantCreated.validate(topic, orderingKey, consumerName, payload));
             case TENANT_SUSPENDED_TYPE -> {
                 validateRegisteredTenantSuspended(topic, orderingKey, consumerName, envelope);
+                requireOtherRegisteredConsumer(TENANT_SUSPENDED_CONSUMER_NAME, consumerName);
                 yield Optional.empty();
             }
             default -> throw new InvalidAuditEventException(
@@ -80,7 +82,7 @@ public class TenantAccessEventValidator {
         requireEquals(TENANT_SUSPENDED_TYPE, text(envelope, "type"), "type");
         requireEquals("application/json", text(envelope, "datacontenttype"), "datacontenttype");
         requireEquals(TENANT_SUSPENDED_SCHEMA, text(envelope, "dataschema"), "dataschema");
-        requireEquals(TenantCreatedEventValidator.CONSUMER_NAME, consumerName, "allowed consumer");
+        requireEquals(TenantCreatedEventValidator.CONSUMER_NAME, consumerName, "consumer");
         requireEquals(expectedTopic, topic, "topic");
         uuidV7(text(envelope, "id"), "id");
         utcInstant(text(envelope, "time"), "time");
@@ -101,6 +103,12 @@ public class TenantAccessEventValidator {
         }
         requireEquals(tenantId.toString(), text(envelope, "subject"), "subject");
         requireEquals(tenantId.toString(), orderingKey, "ordering key");
+    }
+
+    private void requireOtherRegisteredConsumer(String registeredConsumer, String consumerName) {
+        if (registeredConsumer.equals(consumerName)) {
+            throw invalid("allowed consumer");
+        }
     }
 
     private void requireObjectWithAllowedFields(

@@ -192,6 +192,10 @@ Metadata必须逐 type构造，不允许把 `data` 整体复制为 JSONB。Membe
 | `audit-service.iam-session-events` | IAM events | Session Started、Tenant Context Switched |
 | `audit-service.tenant-events` | Tenant Access events | Tenant Created |
 
+Tenant Suspended 与 Tenant Created 共用 Tenant Access Topic，但工程注册表将其授权给
+`audit-service.tenant-lifecycle-events`。当前 `audit-service.tenant-events` 只校验并确认该合法事件，
+计入 `ignored`，不写去重或 Audit Record，也不占用生命周期审计 Consumer 的处理状态。
+
 每个 Consumer只处理工程注册表授权给自己的 type：
 
 - 已登记且属于其他 Consumer的合法事件：确认、增加 `ignored` 指标，不写去重、不隔离；

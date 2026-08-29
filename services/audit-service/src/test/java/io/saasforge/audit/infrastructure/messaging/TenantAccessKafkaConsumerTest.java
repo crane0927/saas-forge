@@ -33,7 +33,7 @@ class TenantAccessKafkaConsumerTest {
     }
 
     @Test
-    void acknowledgesRegisteredUnsupportedTypeAndCountsIgnoredWithoutPersistence() {
+    void acknowledgesTypeRegisteredToOtherConsumerAndCountsIgnoredWithoutPersistence() {
         List<String> calls = new ArrayList<>();
         SimpleMeterRegistry meters = new SimpleMeterRegistry();
         var consumer = consumer((consumerName, record, consumedAt) -> {
