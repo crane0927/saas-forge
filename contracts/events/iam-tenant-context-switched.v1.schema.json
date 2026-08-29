@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://saasforge.io/contracts/events/iam-tenant-context-switched.v1.schema.json",
+  "title": "IAM Tenant Context Switched v1",
+  "allOf": [
+    {
+      "$ref": "cloudevents-envelope.v1.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "com.saasforge.iam.tenant-context-switched.v1" },
+        "source": { "const": "urn:saasforge:iam-service" },
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["identityId", "previousMembershipId", "membershipId", "tenantId"],
+          "properties": {
+            "identityId": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+            },
+            "previousMembershipId": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+            },
+            "membershipId": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+            },
+            "tenantId": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

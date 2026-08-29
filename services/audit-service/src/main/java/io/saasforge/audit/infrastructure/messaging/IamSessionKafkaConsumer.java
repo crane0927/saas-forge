@@ -1,18 +1,17 @@
 package io.saasforge.audit.infrastructure.messaging;
 
-import io.saasforge.audit.application.SessionStartedAuditService;
+import io.saasforge.audit.application.AuditRecordService;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
 
 @Component
-public class SessionStartedKafkaConsumer {
-    private final SessionStartedEventValidator validator;
-    private final SessionStartedAuditService service;
+public class IamSessionKafkaConsumer {
+    private final IamSessionEventValidator validator;
+    private final AuditRecordService service;
 
-    public SessionStartedKafkaConsumer(
-            SessionStartedEventValidator validator, SessionStartedAuditService service) {
+    public IamSessionKafkaConsumer(IamSessionEventValidator validator, AuditRecordService service) {
         this.validator = validator;
         this.service = service;
     }

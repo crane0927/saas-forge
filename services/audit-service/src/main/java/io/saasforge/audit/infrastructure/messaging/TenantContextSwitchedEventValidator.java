@@ -14,14 +14,13 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/** 将已登记的 IAM Session Started v1 契约收窄为 Audit 可持久化的白名单模型。 */
+/** 将已登记的 IAM Tenant Context Switched v1 契约收窄为 Audit 可持久化的白名单模型。 */
 @Component
-public class SessionStartedEventValidator {
-    public static final String CONSUMER_NAME = "audit-service.iam-session-events";
-    public static final String EVENT_TYPE = "com.saasforge.iam.session.started.v1";
+public class TenantContextSwitchedEventValidator {
+    public static final String EVENT_TYPE = "com.saasforge.iam.tenant-context-switched.v1";
     public static final String SOURCE = "urn:saasforge:iam-service";
     public static final String DATASCHEMA =
-            "https://saasforge.io/contracts/events/iam-session-started.v1.schema.json";
+            "https://saasforge.io/contracts/events/iam-tenant-context-switched.v1.schema.json";
 
     private static final Set<String> ENVELOPE_FIELDS = Set.of(
             "specversion", "id", "source", "type", "subject", "time",
@@ -30,12 +29,7 @@ public class SessionStartedEventValidator {
             "specversion", "id", "source", "type", "subject", "time",
             "datacontenttype", "dataschema", "data");
     private static final Set<String> DATA_FIELDS = Set.of(
-            "familyId", "identityId", "purpose", "contextType", "result", "occurredAt");
-    private static final Set<String> PURPOSES = Set.of(
-            "USER_PLATFORM", "USER_TENANT", "USER_TENANT_SELECTION", "INITIAL_PASSWORD_CHANGE");
-    private static final Set<String> CONTEXT_TYPES = Set.of("PLATFORM", "TENANT");
-    private static final Set<String> SESSION_RESULTS = Set.of(
-            "ACCESS_TOKEN_ISSUED", "CONTEXT_SELECTION_REQUIRED", "PASSWORD_CHANGE_REQUIRED");
+            "identityId", "previousMembershipId", "membershipId", "tenantId");
     private static final Pattern UUID_V7 = Pattern.compile(
             "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$");
     private static final Pattern TRACE_ID = Pattern.compile("^(?!0{32}$)[0-9a-f]{32}$");
@@ -43,24 +37,23 @@ public class SessionStartedEventValidator {
     private final ObjectMapper objectMapper;
     private final String expectedTopic;
 
-    public SessionStartedEventValidator(
+    public TenantContextSwitchedEventValidator(
             ObjectMapper objectMapper,
             @Value("${saasforge.audit.iam-session-topic}") String expectedTopic) {
         this.objectMapper = objectMapper;
         if (expectedTopic == null
                 || !expectedTopic.matches("^saasforge\\.[a-z][a-z0-9-]*\\.iam-service\\.events$")) {
-            throw new IllegalArgumentException("IAM Session Started Topic 配置不合法");
+            throw new IllegalArgumentException("IAM Tenant Context Switched Topic 配置不合法");
         }
         this.expectedTopic = expectedTopic;
     }
 
-    public AuditRecord validate(
-            String topic, String orderingKey, String consumerName, String payload) {
+    public AuditRecord validate(String topic, String orderingKey, String consumerName, String payload) {
         JsonNode envelope;
         try {
             envelope = objectMapper.readTree(payload);
         } catch (RuntimeException exception) {
-            throw new InvalidAuditEventException("Session Started payload 不是合法 JSON", exception);
+            throw new InvalidAuditEventException("Tenant Context Switched payload 不是合法 JSON", exception);
         }
         requireObjectWithAllowedFields(envelope, ENVELOPE_FIELDS, REQUIRED_ENVELOPE_FIELDS, "Envelope");
         requireEquals("1.0", text(envelope, "specversion"), "specversion");
@@ -68,10 +61,11 @@ public class SessionStartedEventValidator {
         requireEquals(EVENT_TYPE, text(envelope, "type"), "type");
         requireEquals("application/json", text(envelope, "datacontenttype"), "datacontenttype");
         requireEquals(DATASCHEMA, text(envelope, "dataschema"), "dataschema");
-        requireEquals(CONSUMER_NAME, consumerName, "allowed consumer");
+        requireEquals(SessionStartedEventValidator.CONSUMER_NAME, consumerName, "allowed consumer");
         requireEquals(expectedTopic, topic, "topic");
 
         UUID eventId = uuidV7(text(envelope, "id"), "id");
+        UUID familyId = uuidV7(text(envelope, "subject"), "subject");
         Instant eventTime = utcInstant(text(envelope, "time"), "time");
         String traceId = optionalText(envelope, "traceId");
         if (traceId != null && !TRACE_ID.matcher(traceId).matches()) {
@@ -80,25 +74,22 @@ public class SessionStartedEventValidator {
 
         JsonNode data = envelope.path("data");
         requireObjectWithAllowedFields(data, DATA_FIELDS, DATA_FIELDS, "data");
-        UUID familyId = uuidV7(text(data, "familyId"), "data.familyId");
         UUID identityId = uuidV7(text(data, "identityId"), "data.identityId");
-        requireEquals(familyId.toString(), text(envelope, "subject"), "subject");
+        UUID previousMembershipId = uuidV7(
+                text(data, "previousMembershipId"), "data.previousMembershipId");
+        UUID membershipId = uuidV7(text(data, "membershipId"), "data.membershipId");
+        UUID tenantId = uuidV7(text(data, "tenantId"), "data.tenantId");
         requireEquals(identityId.toString(), orderingKey, "ordering key");
-        String purpose = allowedText(data, "purpose", PURPOSES);
-        String contextType = allowedText(data, "contextType", CONTEXT_TYPES);
-        String result = allowedText(data, "result", SESSION_RESULTS);
-        Instant dataOccurredAt = utcInstant(text(data, "occurredAt"), "data.occurredAt");
-        if (!eventTime.equals(dataOccurredAt)) {
-            throw invalid("data.occurredAt");
+        if (previousMembershipId.equals(membershipId)) {
+            throw invalid("data.membershipId unchanged");
         }
 
         Map<String, String> metadata = new LinkedHashMap<>();
-        metadata.put("purpose", purpose);
-        metadata.put("contextType", contextType);
-        metadata.put("sessionOutcome", result);
+        metadata.put("previousMembershipId", previousMembershipId.toString());
+        metadata.put("targetMembershipId", membershipId.toString());
         return new AuditRecord(
-                eventId, SOURCE, EVENT_TYPE, eventTime, traceId, identityId, null,
-                "SESSION_STARTED", "REFRESH_TOKEN_FAMILY", familyId,
+                eventId, SOURCE, EVENT_TYPE, eventTime, traceId, identityId, tenantId,
+                "TENANT_CONTEXT_SWITCHED", "REFRESH_TOKEN_FAMILY", familyId,
                 objectMapper.writeValueAsString(metadata));
     }
 
@@ -111,14 +102,6 @@ public class SessionStartedEventValidator {
         if (!allowed.containsAll(actual) || !actual.containsAll(required)) {
             throw invalid(field + " fields");
         }
-    }
-
-    private String allowedText(JsonNode object, String field, Set<String> allowed) {
-        String value = text(object, field);
-        if (!allowed.contains(value)) {
-            throw invalid("data." + field);
-        }
-        return value;
     }
 
     private String text(JsonNode object, String field) {
@@ -154,7 +137,8 @@ public class SessionStartedEventValidator {
         try {
             return Instant.parse(value);
         } catch (DateTimeParseException exception) {
-            throw new InvalidAuditEventException("Session Started 契约字段不合法: " + field, exception);
+            throw new InvalidAuditEventException(
+                    "Tenant Context Switched 契约字段不合法: " + field, exception);
         }
     }
 
@@ -165,6 +149,6 @@ public class SessionStartedEventValidator {
     }
 
     private InvalidAuditEventException invalid(String field) {
-        return new InvalidAuditEventException("Session Started 契约字段不合法: " + field);
+        return new InvalidAuditEventException("Tenant Context Switched 契约字段不合法: " + field);
     }
 }

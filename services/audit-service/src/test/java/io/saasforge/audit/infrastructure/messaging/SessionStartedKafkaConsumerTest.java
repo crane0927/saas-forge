@@ -1,13 +1,12 @@
 package io.saasforge.audit.infrastructure.messaging;
 
-import static org.mockito.Mockito.inOrder;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
-import io.saasforge.audit.application.SessionStartedAuditRecord;
-import io.saasforge.audit.application.SessionStartedAuditService;
+import io.saasforge.audit.application.AuditRecordRepository;
+import io.saasforge.audit.application.AuditRecordService;
+import java.time.Clock;
 import java.time.Instant;
-import java.util.UUID;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.Test;
 import org.springframework.kafka.support.Acknowledgment;
@@ -15,26 +14,26 @@ import org.springframework.kafka.support.Acknowledgment;
 class SessionStartedKafkaConsumerTest {
     @Test
     void acknowledgesOnlyAfterTransactionalServiceReturns() {
-        SessionStartedEventValidator validator = mock(SessionStartedEventValidator.class);
-        SessionStartedAuditService service = mock(SessionStartedAuditService.class);
-        Acknowledgment acknowledgment = mock(Acknowledgment.class);
-        var message = new ConsumerRecord<String, String>("topic", 0, 1, "key", "payload");
-        var record = new SessionStartedAuditRecord(
-                UUID.fromString("019535d9-0001-7000-8000-000000000001"),
-                SessionStartedEventValidator.SOURCE,
-                SessionStartedEventValidator.EVENT_TYPE,
-                Instant.parse("2026-08-28T10:15:30Z"),
-                null,
-                UUID.fromString("019535d9-0001-7000-8000-000000000002"),
-                UUID.fromString("019535d9-0001-7000-8000-000000000003"),
-                "{}");
-        when(validator.validate("topic", "key", SessionStartedEventValidator.CONSUMER_NAME, "payload"))
-                .thenReturn(record);
+        List<String> calls = new ArrayList<>();
+        AuditRecordRepository repository = (consumerName, actual, consumedAt) -> {
+            org.junit.jupiter.api.Assertions.assertEquals("SESSION_STARTED", actual.action());
+            calls.add("record");
+            return true;
+        };
+        AuditRecordService service = new AuditRecordService(
+                repository, Clock.fixed(Instant.parse("2026-08-28T10:16:00Z"), ZoneOffset.UTC));
+        var objectMapper = new tools.jackson.databind.ObjectMapper();
+        var validator = new IamSessionEventValidator(objectMapper,
+                new SessionStartedEventValidator(objectMapper, "saasforge.test.iam-service.events"),
+                new TenantContextSwitchedEventValidator(objectMapper, "saasforge.test.iam-service.events"));
+        var message = new ConsumerRecord<String, String>(
+                "saasforge.test.iam-service.events", 0, 1,
+                "019535d9-0001-7000-8000-000000000002",
+                SessionStartedEventValidatorTest.event(""));
+        Acknowledgment acknowledgment = () -> calls.add("acknowledge");
 
-        new SessionStartedKafkaConsumer(validator, service).consume(message, acknowledgment);
+        new IamSessionKafkaConsumer(validator, service).consume(message, acknowledgment);
 
-        var order = inOrder(service, acknowledgment);
-        order.verify(service).record(SessionStartedEventValidator.CONSUMER_NAME, record);
-        order.verify(acknowledgment).acknowledge();
+        org.junit.jupiter.api.Assertions.assertEquals(List.of("record", "acknowledge"), calls);
     }
 }

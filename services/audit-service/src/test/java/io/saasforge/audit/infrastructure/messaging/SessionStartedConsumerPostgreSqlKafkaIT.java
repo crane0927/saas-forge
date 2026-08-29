@@ -3,7 +3,7 @@ package io.saasforge.audit.infrastructure.messaging;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import io.saasforge.audit.application.SessionStartedAuditService;
+import io.saasforge.audit.application.AuditRecordService;
 import io.saasforge.audit.infrastructure.persistence.JdbcAuditRecordRepository;
 import java.time.Clock;
 import java.time.Duration;
@@ -12,6 +12,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -54,7 +55,7 @@ class SessionStartedConsumerPostgreSqlKafkaIT {
 
     private static JdbcTemplate admin;
     private static JdbcTemplate app;
-    private static SessionStartedKafkaConsumer listener;
+    private static IamSessionKafkaConsumer listener;
 
     @BeforeAll
     static void setUp() {
@@ -70,15 +71,18 @@ class SessionStartedConsumerPostgreSqlKafkaIT {
                 .migrate();
         var appDataSource = new DriverManagerDataSource(POSTGRES.getJdbcUrl(), "audit_app", APP_PASSWORD);
         app = new JdbcTemplate(appDataSource);
-        var serviceTarget = new SessionStartedAuditService(
+        var serviceTarget = new AuditRecordService(
                 new JdbcAuditRecordRepository(app),
                 Clock.fixed(Instant.parse("2026-08-28T10:16:00Z"), ZoneOffset.UTC));
         ProxyFactory serviceProxy = new ProxyFactory(serviceTarget);
         serviceProxy.addAdvice(new TransactionInterceptor(
                 new DataSourceTransactionManager(appDataSource), new AnnotationTransactionAttributeSource()));
-        var service = (SessionStartedAuditService) serviceProxy.getProxy();
-        listener = new SessionStartedKafkaConsumer(
-                new SessionStartedEventValidator(new ObjectMapper(), TOPIC), service);
+        var service = (AuditRecordService) serviceProxy.getProxy();
+        ObjectMapper objectMapper = new ObjectMapper();
+        var sessionStarted = new SessionStartedEventValidator(objectMapper, TOPIC);
+        var tenantContextSwitched = new TenantContextSwitchedEventValidator(objectMapper, TOPIC);
+        listener = new IamSessionKafkaConsumer(
+                new IamSessionEventValidator(objectMapper, sessionStarted, tenantContextSwitched), service);
     }
 
     @AfterEach
@@ -91,10 +95,11 @@ class SessionStartedConsumerPostgreSqlKafkaIT {
     void writesOnceAndSafelyAbsorbsRedeliveryAfterCommitBeforeAcknowledgmentFailure() {
         String eventId = uuidV7(11);
         String payload = event(eventId);
-        send(payload);
         String group = "audit-redelivery-" + UUID.randomUUID();
 
         try (KafkaConsumer<String, String> first = consumer(group)) {
+            seekToEnd(first);
+            send(identityId(), payload);
             ConsumerRecord<String, String> message = pollOne(first);
             assertThrows(RuntimeException.class,
                     () -> listener.consume(message, () -> { throw new RuntimeException("simulated crash"); }));
@@ -118,6 +123,37 @@ class SessionStartedConsumerPostgreSqlKafkaIT {
     }
 
     @Test
+    void writesTenantContextSwitchOnceWithWhitelistedMapping() {
+        String eventId = uuidV7(13);
+        String group = "audit-context-switch-" + UUID.randomUUID();
+
+        try (KafkaConsumer<String, String> kafka = consumer(group)) {
+            seekToEnd(kafka);
+            send(identityId(), TenantContextSwitchedEventValidatorTest.event(eventId, ""));
+            ConsumerRecord<String, String> message = pollOne(kafka);
+            listener.consume(message, kafka::commitSync);
+            listener.consume(message, () -> {});
+        }
+
+        assertEquals(1, count("audit_records", eventId));
+        assertEquals(1, count("audit_consumed_events", eventId));
+        Map<String, Object> record = app.queryForMap("""
+                SELECT actor_identity_id, tenant_id, action, resource_type, resource_id, result,
+                       metadata ->> 'previousMembershipId' AS previous_membership_id,
+                       metadata ->> 'targetMembershipId' AS target_membership_id
+                FROM audit_records WHERE source_event_id = ?::uuid
+                """, eventId);
+        assertEquals(identityId(), record.get("actor_identity_id").toString());
+        assertEquals(TenantContextSwitchedEventValidatorTest.tenantId(), record.get("tenant_id").toString());
+        assertEquals("TENANT_CONTEXT_SWITCHED", record.get("action"));
+        assertEquals("REFRESH_TOKEN_FAMILY", record.get("resource_type"));
+        assertEquals(TenantContextSwitchedEventValidatorTest.familyId(), record.get("resource_id").toString());
+        assertEquals("SUCCESS", record.get("result"));
+        assertEquals("019535d9-0001-7000-8000-000000000004", record.get("previous_membership_id"));
+        assertEquals("019535d9-0001-7000-8000-000000000005", record.get("target_membership_id"));
+    }
+
+    @Test
     void rollsBackDeduplicationWhenAuditRecordInsertFailsAndDoesNotAcknowledge() {
         String eventId = uuidV7(12);
         admin.execute("""
@@ -129,12 +165,13 @@ class SessionStartedConsumerPostgreSqlKafkaIT {
                 CREATE TRIGGER fail_audit_record_insert BEFORE INSERT ON audit_records
                 FOR EACH STATEMENT EXECUTE FUNCTION fail_audit_record_insert()
                 """);
-        Acknowledgment acknowledgment = org.mockito.Mockito.mock(Acknowledgment.class);
+        AtomicInteger acknowledgments = new AtomicInteger();
+        Acknowledgment acknowledgment = acknowledgments::incrementAndGet;
 
         assertThrows(DataAccessException.class, () -> listener.consume(
                 new ConsumerRecord<>(TOPIC, 0, 0, identityId(), event(eventId)), acknowledgment));
 
-        org.mockito.Mockito.verifyNoInteractions(acknowledgment);
+        assertEquals(0, acknowledgments.get());
         assertEquals(0, count("audit_records", eventId));
         assertEquals(0, count("audit_consumed_events", eventId));
     }
@@ -150,14 +187,14 @@ class SessionStartedConsumerPostgreSqlKafkaIT {
                 "SELECT relrowsecurity FROM pg_class WHERE relname = 'audit_records'", Boolean.class));
     }
 
-    private static void send(String payload) {
+    private static void send(String key, String payload) {
         try (KafkaProducer<String, String> producer = new KafkaProducer<>(Map.of(
                 ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, KAFKA.getBootstrapServers(),
                 ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class,
                 ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class,
                 ProducerConfig.ACKS_CONFIG, "all"))) {
             try {
-                producer.send(new ProducerRecord<>(TOPIC, identityId(), payload)).get();
+                producer.send(new ProducerRecord<>(TOPIC, key, payload)).get();
             } catch (Exception exception) {
                 throw new IllegalStateException(exception);
             }
@@ -185,6 +222,18 @@ class SessionStartedConsumerPostgreSqlKafkaIT {
             }
         }
         throw new AssertionError("未在期限内收到 Kafka 消息");
+    }
+
+    private static void seekToEnd(KafkaConsumer<String, String> consumer) {
+        Instant deadline = Instant.now().plusSeconds(20);
+        while (consumer.assignment().isEmpty() && Instant.now().isBefore(deadline)) {
+            consumer.poll(Duration.ofMillis(250));
+        }
+        if (consumer.assignment().isEmpty()) {
+            throw new AssertionError("未在期限内获得 Kafka 分区");
+        }
+        consumer.seekToEnd(consumer.assignment());
+        consumer.assignment().forEach(consumer::position);
     }
 
     private static int count(String table, String eventId) {
