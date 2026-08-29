@@ -36,3 +36,4 @@ saasforge:
   environment: ${SAASFORGE_ENVIRONMENT:dev}
   audit:
     iam-session-topic: saasforge.${saasforge.environment}.iam-service.events
+    tenant-access-topic: saasforge.${saasforge.environment}.tenant-access-service.events

@@ -3,6 +3,7 @@ package io.saasforge.audit.infrastructure.messaging;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.saasforge.audit.application.AuditRecordService;
 import io.saasforge.audit.infrastructure.persistence.JdbcAuditRecordRepository;
 import java.time.Clock;
@@ -43,6 +44,7 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 class SessionStartedConsumerPostgreSqlKafkaIT {
     private static final String TOPIC = "saasforge.test.iam-service.events";
+    private static final String TENANT_TOPIC = "saasforge.test.tenant-access-service.events";
     private static final String APP_PASSWORD = "audit-app-test-password";
 
     @Container
@@ -56,6 +58,8 @@ class SessionStartedConsumerPostgreSqlKafkaIT {
     private static JdbcTemplate admin;
     private static JdbcTemplate app;
     private static IamSessionKafkaConsumer listener;
+    private static TenantAccessKafkaConsumer tenantListener;
+    private static SimpleMeterRegistry meters;
 
     @BeforeAll
     static void setUp() {
@@ -83,12 +87,18 @@ class SessionStartedConsumerPostgreSqlKafkaIT {
         var tenantContextSwitched = new TenantContextSwitchedEventValidator(objectMapper, TOPIC);
         listener = new IamSessionKafkaConsumer(
                 new IamSessionEventValidator(objectMapper, sessionStarted, tenantContextSwitched), service);
+        var tenantCreated = new TenantCreatedEventValidator(objectMapper, TENANT_TOPIC);
+        meters = new SimpleMeterRegistry();
+        tenantListener = new TenantAccessKafkaConsumer(
+                new TenantAccessEventValidator(objectMapper, tenantCreated, TENANT_TOPIC), service, meters);
     }
 
     @AfterEach
     void removeFailureTrigger() {
         admin.execute("DROP TRIGGER IF EXISTS fail_audit_record_insert ON audit_records");
         admin.execute("DROP FUNCTION IF EXISTS fail_audit_record_insert()");
+        admin.execute("DROP TRIGGER IF EXISTS fail_tenant_audit_record_insert ON audit_records");
+        admin.execute("DROP FUNCTION IF EXISTS fail_tenant_audit_record_insert()");
     }
 
     @Test
@@ -177,6 +187,110 @@ class SessionStartedConsumerPostgreSqlKafkaIT {
     }
 
     @Test
+    void keepsBothConsumerIdentitiesIndependentAcrossSuccessDuplicateAndRecovery() {
+        String eventId = uuidV7(14);
+        String iamGroup = "audit-iam-independent-" + UUID.randomUUID();
+        String tenantGroup = "audit-tenant-independent-" + UUID.randomUUID();
+
+        try (KafkaConsumer<String, String> iam = consumer(TOPIC, iamGroup);
+                KafkaConsumer<String, String> tenant = consumer(TENANT_TOPIC, tenantGroup)) {
+            seekToEnd(iam);
+            seekToEnd(tenant);
+            send(TOPIC, identityId(), event(eventId));
+            send(TENANT_TOPIC, TenantCreatedEventValidatorTest.tenantId(),
+                    TenantCreatedEventValidatorTest.event(eventId, ""));
+            ConsumerRecord<String, String> iamMessage = pollOne(iam);
+            ConsumerRecord<String, String> tenantMessage = pollOne(tenant);
+
+            listener.consume(iamMessage, iam::commitSync);
+            listener.consume(iamMessage, () -> {});
+
+            admin.execute("""
+                    CREATE FUNCTION fail_tenant_audit_record_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+                    BEGIN
+                        IF NEW.source_type = 'com.saasforge.tenant.created.v1' THEN
+                            RAISE EXCEPTION 'forced tenant audit insert failure';
+                        END IF;
+                        RETURN NEW;
+                    END
+                    $$
+                    """);
+            admin.execute("""
+                    CREATE TRIGGER fail_tenant_audit_record_insert BEFORE INSERT ON audit_records
+                    FOR EACH ROW EXECUTE FUNCTION fail_tenant_audit_record_insert()
+                    """);
+            assertThrows(DataAccessException.class,
+                    () -> tenantListener.consume(tenantMessage, tenant::commitSync));
+        }
+
+        assertEquals(1, app.queryForObject("""
+                SELECT count(*) FROM audit_records
+                WHERE source_event_id = ?::uuid AND source = 'urn:saasforge:iam-service'
+                """, Integer.class, eventId));
+        assertEquals(0, app.queryForObject("""
+                SELECT count(*) FROM audit_consumed_events
+                WHERE event_id = ?::uuid AND consumer_name = ?
+                """, Integer.class, eventId, TenantCreatedEventValidator.CONSUMER_NAME));
+
+        admin.execute("DROP TRIGGER fail_tenant_audit_record_insert ON audit_records");
+        admin.execute("DROP FUNCTION fail_tenant_audit_record_insert()");
+        try (KafkaConsumer<String, String> tenant = consumer(TENANT_TOPIC, tenantGroup)) {
+            ConsumerRecord<String, String> redelivery = pollOne(tenant);
+            tenantListener.consume(redelivery, tenant::commitSync);
+            tenantListener.consume(redelivery, () -> {});
+        }
+
+        assertEquals(2, app.queryForObject(
+                "SELECT count(*) FROM audit_records WHERE source_event_id = ?::uuid",
+                Integer.class, eventId));
+        assertEquals(2, app.queryForObject(
+                "SELECT count(*) FROM audit_consumed_events WHERE event_id = ?::uuid",
+                Integer.class, eventId));
+        assertEquals(1, app.queryForObject("""
+                SELECT count(*) FROM audit_consumed_events
+                WHERE event_id = ?::uuid AND consumer_name = ?
+                """, Integer.class, eventId, SessionStartedEventValidator.CONSUMER_NAME));
+        assertEquals(1, app.queryForObject("""
+                SELECT count(*) FROM audit_consumed_events
+                WHERE event_id = ?::uuid AND consumer_name = ?
+                """, Integer.class, eventId, TenantCreatedEventValidator.CONSUMER_NAME));
+        Map<String, Object> tenantRecord = app.queryForMap("""
+                SELECT actor_identity_id, tenant_id, action, resource_type, resource_id, result,
+                       metadata ->> 'initialStatus' AS initial_status
+                FROM audit_records
+                WHERE source_event_id = ?::uuid AND source = 'urn:saasforge:tenant-access-service'
+                """, eventId);
+        assertEquals(TenantCreatedEventValidatorTest.actorIdentityId(),
+                tenantRecord.get("actor_identity_id").toString());
+        assertEquals(TenantCreatedEventValidatorTest.tenantId(), tenantRecord.get("tenant_id").toString());
+        assertEquals("TENANT_CREATED", tenantRecord.get("action"));
+        assertEquals("TENANT", tenantRecord.get("resource_type"));
+        assertEquals(TenantCreatedEventValidatorTest.tenantId(), tenantRecord.get("resource_id").toString());
+        assertEquals("SUCCESS", tenantRecord.get("result"));
+        assertEquals("PENDING", tenantRecord.get("initial_status"));
+    }
+
+    @Test
+    void acknowledgesRegisteredUnsupportedTenantEventWithoutDatabaseState() {
+        String eventId = uuidV7(8);
+        String group = "audit-tenant-ignored-" + UUID.randomUUID();
+
+        try (KafkaConsumer<String, String> tenant = consumer(TENANT_TOPIC, group)) {
+            seekToEnd(tenant);
+            send(TENANT_TOPIC, TenantCreatedEventValidatorTest.tenantId(),
+                    TenantAccessEventValidatorTest.registeredTenantSuspendedEvent());
+            tenantListener.consume(pollOne(tenant), tenant::commitSync);
+        }
+
+        assertEquals(0, count("audit_records", eventId));
+        assertEquals(0, count("audit_consumed_events", eventId));
+        assertEquals(1.0, meters.get("saasforge.audit.consumer.events")
+                .tag("consumer", TenantCreatedEventValidator.CONSUMER_NAME)
+                .tag("result", "ignored")
+                .counter().count());
+    }
+
+    @Test
     void runtimeRoleCanOnlySelectAndInsertAppendOnlyTables() {
         assertThrows(DataAccessException.class, () -> app.update("UPDATE audit_records SET result = result"));
         assertThrows(DataAccessException.class, () -> app.update("DELETE FROM audit_records"));
@@ -188,13 +302,17 @@ class SessionStartedConsumerPostgreSqlKafkaIT {
     }
 
     private static void send(String key, String payload) {
+        send(TOPIC, key, payload);
+    }
+
+    private static void send(String topic, String key, String payload) {
         try (KafkaProducer<String, String> producer = new KafkaProducer<>(Map.of(
                 ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, KAFKA.getBootstrapServers(),
                 ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class,
                 ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class,
                 ProducerConfig.ACKS_CONFIG, "all"))) {
             try {
-                producer.send(new ProducerRecord<>(TOPIC, key, payload)).get();
+                producer.send(new ProducerRecord<>(topic, key, payload)).get();
             } catch (Exception exception) {
                 throw new IllegalStateException(exception);
             }
@@ -202,6 +320,10 @@ class SessionStartedConsumerPostgreSqlKafkaIT {
     }
 
     private static KafkaConsumer<String, String> consumer(String group) {
+        return consumer(TOPIC, group);
+    }
+
+    private static KafkaConsumer<String, String> consumer(String topic, String group) {
         KafkaConsumer<String, String> consumer = new KafkaConsumer<>(Map.of(
                 ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, KAFKA.getBootstrapServers(),
                 ConsumerConfig.GROUP_ID_CONFIG, group,
@@ -209,7 +331,7 @@ class SessionStartedConsumerPostgreSqlKafkaIT {
                 ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false,
                 ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class,
                 ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class));
-        consumer.subscribe(List.of(TOPIC));
+        consumer.subscribe(List.of(topic));
         return consumer;
     }
 
