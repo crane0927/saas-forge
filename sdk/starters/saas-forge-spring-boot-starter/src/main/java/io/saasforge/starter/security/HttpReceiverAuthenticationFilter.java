@@ -1,6 +1,7 @@
 package io.saasforge.starter.security;
 
 import io.saasforge.contracts.route.HttpRouteCatalog;
+import io.saasforge.sdk.auth.ReservedContextHeaderRegistry;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -34,6 +35,12 @@ final class HttpReceiverAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         try {
+            if (hasReservedContextHeader(request)) {
+                problems.write(request, response, HttpStatus.BAD_REQUEST,
+                        "UNTRUSTED_CONTEXT_HEADER",
+                        "Platform context headers are not accepted from HTTP requests.");
+                return;
+            }
             ReceiverRouteCatalog.Route route = catalog.matching(request.getMethod(), requestPath(request));
             if (route != null) {
                 authenticate(request, route);
@@ -85,6 +92,11 @@ final class HttpReceiverAuthenticationFilter extends OncePerRequestFilter {
             throw new AccessTokenInvalidException(tokenKind, true);
         }
         return values.isEmpty() ? null : values.get(0);
+    }
+
+    private static boolean hasReservedContextHeader(HttpServletRequest request) {
+        return Collections.list(request.getHeaderNames()).stream()
+                .anyMatch(ReservedContextHeaderRegistry::contains);
     }
 
     private static void establish(Object principal) {

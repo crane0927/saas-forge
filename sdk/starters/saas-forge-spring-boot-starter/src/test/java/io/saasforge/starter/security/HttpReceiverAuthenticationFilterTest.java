@@ -173,6 +173,37 @@ class HttpReceiverAuthenticationFilterTest {
         assertEquals(200, duplicateResponse.getStatus());
     }
 
+    @Test
+    void rejectsReservedContextHeadersBeforeEveryOperationKind() throws Exception {
+        HttpReceiverAuthenticationFilter filter = filter((jti, kid, membershipId, tenantId) -> false,
+                (clientId, kid) -> false);
+        List<RequestTarget> targets = List.of(
+                new RequestTarget("GET", "/api/user", "Bearer user-token"),
+                new RequestTarget("POST", "/api/service/target", "Bearer service-token"),
+                new RequestTarget("GET", "/api/anonymous", null),
+                new RequestTarget("POST", "/api/cookie", null));
+
+        for (String header : List.of(
+                "X-Identity",
+                "x-membership",
+                "X-TENANT-context",
+                "x-ROLE",
+                "X-Permission",
+                "x-scope",
+                "X-cLiEnT")) {
+            for (RequestTarget target : targets) {
+                MockHttpServletRequest request = request(target.method(), target.path(), target.authorization());
+                request.addHeader(header, "forged");
+
+                MockHttpServletResponse response = invoke(filter, request);
+
+                assertEquals(400, response.getStatus(), header + " on " + target.path());
+                assertNull(response.getHeader(HttpHeaders.WWW_AUTHENTICATE));
+                assertTrue(response.getContentAsString().contains("\"code\":\"UNTRUSTED_CONTEXT_HEADER\""));
+            }
+        }
+    }
+
     private HttpReceiverAuthenticationFilter filter(
             UserAccessTokenContextRevocationChecker userRevocations,
             ServiceAccessTokenRevocationChecker serviceRevocations) {
@@ -192,7 +223,11 @@ class HttpReceiverAuthenticationFilterTest {
                         HttpRouteCatalog.CredentialRequirement.USER_REQUIRED, List.of()),
                 route("writeService", HttpRouteCatalog.HttpMethod.POST, "/api/service/{tenantId}",
                         HttpRouteCatalog.CredentialRequirement.SERVICE_REQUIRED,
-                        List.of("runtime:quota:write", "runtime:read"))));
+                        List.of("runtime:quota:write", "runtime:read")),
+                route("anonymous", HttpRouteCatalog.HttpMethod.GET, "/api/anonymous",
+                        HttpRouteCatalog.CredentialRequirement.ANONYMOUS, List.of()),
+                route("cookie", HttpRouteCatalog.HttpMethod.POST, "/api/cookie",
+                        HttpRouteCatalog.CredentialRequirement.REFRESH_COOKIE_REQUIRED, List.of())));
     }
 
     private static HttpRouteCatalog.Route route(
@@ -253,5 +288,8 @@ class HttpReceiverAuthenticationFilterTest {
             throw new AssertionError("等待子线程验证被中断", exception);
         }
         assertNull(childAuthentication.get());
+    }
+
+    private record RequestTarget(String method, String path, String authorization) {
     }
 }

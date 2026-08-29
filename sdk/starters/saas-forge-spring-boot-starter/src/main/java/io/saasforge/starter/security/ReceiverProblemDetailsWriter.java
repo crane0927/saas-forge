@@ -37,6 +37,7 @@ final class ReceiverProblemDetailsWriter {
             case "ACCESS_TOKEN_INVALID" -> "Access Token invalid";
             case "ACCESS_TOKEN_SCOPE_INSUFFICIENT" -> "Access Token scope insufficient";
             case "TOKEN_REVOCATION_STATUS_UNAVAILABLE" -> "Token revocation status unavailable";
+            case "UNTRUSTED_CONTEXT_HEADER" -> "Untrusted context header";
             default -> throw new IllegalArgumentException("Unsupported Starter Problem Details code: " + code);
         };
     }

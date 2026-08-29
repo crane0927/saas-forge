@@ -390,6 +390,39 @@ class GatewayJwksRouteTest {
     }
 
     @Test
+    void removesReservedContextHeadersFromEveryCredentialPathWithoutChangingCredentials()
+            throws IOException, InterruptedException {
+        for (ForwardingScenario scenario : List.of(
+                new ForwardingScenario("tenant-access", HttpRequest.newBuilder(gatewayUri("/api/v1/platform/tenants"))
+                        .header("Authorization", GatewayUserTokenTestConfiguration.VALID_BEARER)
+                        .POST(HttpRequest.BodyPublishers.noBody()), GatewayUserTokenTestConfiguration.VALID_BEARER, null),
+                new ForwardingScenario("entitlement", HttpRequest.newBuilder(
+                                gatewayUri(GatewayServiceTokenTestConfiguration.TEST_PATH))
+                        .header("Authorization", GatewayServiceTokenTestConfiguration.VALID_BEARER)
+                        .GET(), GatewayServiceTokenTestConfiguration.VALID_BEARER, null),
+                new ForwardingScenario("iam", HttpRequest.newBuilder(gatewayUri("/.well-known/jwks.json"))
+                        .GET(), null, null),
+                new ForwardingScenario("iam", HttpRequest.newBuilder(gatewayUri("/api/v1/auth/refresh"))
+                        .header("Cookie", "refresh_token=opaque")
+                        .POST(HttpRequest.BodyPublishers.noBody()), null, "refresh_token=opaque"))) {
+            resetObservedRequest(scenario.service());
+
+            HttpResponse<String> response = send(withReservedContextHeaders(scenario.request()).build());
+
+            assertEquals(200, response.statusCode());
+            ObservedRequest observed = observedRequest(scenario.service());
+            for (String header : List.of(
+                    "X-Identity", "X-Membership", "X-Tenant-Context", "X-Role",
+                    "X-Permission", "X-Scope", "X-Client")) {
+                assertFalse(observed.hasHeader(header), header);
+            }
+            assertEquals(scenario.authorization(), observed.firstHeader("Authorization"));
+            assertEquals(scenario.cookie(), observed.firstHeader("Cookie"));
+            assertTrue(TRACEPARENT.matcher(observed.firstHeader("traceparent")).matches());
+        }
+    }
+
+    @Test
     void removesClientSuppliedForwardingAndHopByHopHeaders() throws IOException, InterruptedException {
         resetObservedRequest("iam");
         HttpResponse<String> response = send(HttpRequest.newBuilder(gatewayUri("/.well-known/jwks.json"))
@@ -422,6 +455,17 @@ class GatewayJwksRouteTest {
 
     private URI gatewayUri(String path) {
         return URI.create("http://127.0.0.1:" + gatewayPort + path);
+    }
+
+    private HttpRequest.Builder withReservedContextHeaders(HttpRequest.Builder request) {
+        return request
+                .header("X-Identity", "forged")
+                .header("x-membership", "forged")
+                .header("X-TENANT-context", "forged")
+                .header("x-ROLE", "forged")
+                .header("X-Permission", "forged")
+                .header("x-scope", "forged")
+                .header("X-cLiEnT", "forged");
     }
 
     private void assertRejectedServiceRequest(String authorization, int status, String code)
@@ -496,6 +540,10 @@ class GatewayJwksRouteTest {
     }
 
     private record UnavailableRoute(String serviceId, URI uri, String method, String path) {
+    }
+
+    private record ForwardingScenario(
+            String service, HttpRequest.Builder request, String authorization, String cookie) {
     }
 
     private record ObservedRequest(String method, String pathAndQuery, Map<String, List<String>> headers, String body) {

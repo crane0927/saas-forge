@@ -1,5 +1,6 @@
 package io.saasforge.gateway.config;
 
+import io.saasforge.sdk.auth.ReservedContextHeaderRegistry;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -42,6 +43,7 @@ class GatewayRequestHeadersFilter implements RequestHttpHeadersFilter, Ordered {
     private boolean isEndToEndHeader(String name, Set<String> connectionHeaders) {
         String normalized = name.toLowerCase(Locale.ROOT);
         return !HOP_BY_HOP_HEADERS.contains(normalized) && !connectionHeaders.contains(normalized)
+                && !ReservedContextHeaderRegistry.contains(name)
                 && !HttpHeaders.HOST.equalsIgnoreCase(name) && !"forwarded".equals(normalized)
                 && !normalized.startsWith("x-forwarded-") && !TraceContext.TRACEPARENT_HEADER.equals(normalized)
                 && !TraceContext.TRACESTATE_HEADER.equals(normalized);
