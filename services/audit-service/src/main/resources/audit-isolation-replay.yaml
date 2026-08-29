@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: audit-isolation-replay
+  main:
+    banner-mode: "off"
+    web-application-type: none
+  cloud:
+    discovery:
+      enabled: false
+    service-registry:
+      auto-registration:
+        enabled: false
+    nacos:
+      config:
+        enabled: false
+      discovery:
+        enabled: false
+  flyway:
+    enabled: false
+  datasource:
+    url: ${AUDIT_DATABASE_URL:jdbc:postgresql://postgres:5432/audit_db}
+    username: ${AUDIT_DATABASE_USERNAME:audit_app}
+    password: ${AUDIT_DATABASE_PASSWORD:?AUDIT_DATABASE_PASSWORD is required}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all

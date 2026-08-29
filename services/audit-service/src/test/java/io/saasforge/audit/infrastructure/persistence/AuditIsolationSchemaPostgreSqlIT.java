@@ -66,17 +66,18 @@ class AuditIsolationSchemaPostgreSqlIT {
 
     @BeforeEach
     void clearIsolationFixtures() {
-        admin.execute("TRUNCATE audit_isolation_attempts, audit_isolation_deliveries, "
+        admin.execute("TRUNCATE audit_isolation_attempts, audit_isolation_replays, audit_isolation_deliveries, "
                 + "audit_consumer_isolations");
     }
 
     @Test
     void grantsOnlyAppendOrRequiredStateTransitionPrivileges() {
-        assertEquals(3, app.queryForObject("""
+        assertEquals(4, app.queryForObject("""
                 SELECT count(*) FROM information_schema.tables
                 WHERE table_schema = 'public'
                   AND table_name IN (
-                    'audit_consumer_isolations', 'audit_isolation_attempts', 'audit_isolation_deliveries')
+                    'audit_consumer_isolations', 'audit_isolation_attempts',
+                    'audit_isolation_deliveries', 'audit_isolation_replays')
                 """, Integer.class));
 
         assertThrows(DataAccessException.class,
@@ -86,11 +87,15 @@ class AuditIsolationSchemaPostgreSqlIT {
         assertThrows(DataAccessException.class,
                 () -> app.execute("TRUNCATE audit_isolation_deliveries"));
         assertThrows(DataAccessException.class,
+                () -> app.execute("TRUNCATE audit_isolation_replays"));
+        assertThrows(DataAccessException.class,
                 () -> app.update("DELETE FROM audit_consumer_isolations"));
         assertThrows(DataAccessException.class,
                 () -> app.update("DELETE FROM audit_isolation_attempts"));
         assertThrows(DataAccessException.class,
                 () -> app.update("DELETE FROM audit_isolation_deliveries"));
+        assertThrows(DataAccessException.class,
+                () -> app.update("DELETE FROM audit_isolation_replays"));
 
         assertEquals("YES", admin.queryForObject("""
                 SELECT is_updatable FROM information_schema.columns
@@ -104,6 +109,10 @@ class AuditIsolationSchemaPostgreSqlIT {
         assertEquals(Boolean.FALSE, admin.queryForObject("""
                 SELECT has_column_privilege('audit_app',
                     'audit_isolation_deliveries', 'isolation_id', 'UPDATE')
+                """, Boolean.class));
+        assertEquals(Boolean.FALSE, admin.queryForObject("""
+                SELECT has_column_privilege('audit_app',
+                    'audit_isolation_replays', 'isolation_id', 'UPDATE')
                 """, Boolean.class));
     }
 

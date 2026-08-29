@@ -532,6 +532,32 @@ services:
     ports:
       - "127.0.0.1:8084:8080"
 
+  audit-isolation-replay:
+    profiles: ["audit-isolation-replay"]
+    image: saasforge/audit-service:local
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile
+      args:
+        MODULE: services/audit-service
+    depends_on:
+      audit-migrate:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
+    entrypoint:
+      - java
+      - -Dloader.main=io.saasforge.auditreplay.AuditIsolationReplayApplication
+      - -jar
+      - /app/application.jar
+    command:
+      - --saasforge.audit.replay.isolation-id=${AUDIT_ISOLATION_REPLAY_ID:-}
+    environment:
+      AUDIT_DATABASE_URL: jdbc:postgresql://postgres:5432/audit_db
+      AUDIT_DATABASE_USERNAME: audit_app
+      AUDIT_DATABASE_PASSWORD: ${AUDIT_APP_PASSWORD:?AUDIT_APP_PASSWORD is required}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+
   gateway:
     image: saasforge/gateway:local
     build:
