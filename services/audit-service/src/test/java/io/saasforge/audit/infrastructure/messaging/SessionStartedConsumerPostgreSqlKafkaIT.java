@@ -4,7 +4,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.saasforge.audit.application.AuditConsumerFailurePolicy;
+import io.saasforge.audit.application.AuditConsumerIsolation;
+import io.saasforge.audit.application.AuditConsumerIsolationService;
 import io.saasforge.audit.application.AuditRecordService;
+import io.saasforge.audit.infrastructure.persistence.JdbcAuditConsumerIsolationRepository;
 import io.saasforge.audit.infrastructure.persistence.JdbcAuditRecordRepository;
 import java.time.Clock;
 import java.time.Duration;
@@ -23,6 +27,7 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.flywaydb.core.Flyway;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -30,8 +35,10 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.springframework.kafka.support.Acknowledgment;
+import org.springframework.kafka.core.DefaultKafkaProducerFactory;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.aop.framework.ProxyFactory;
+import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
 import org.springframework.transaction.interceptor.TransactionInterceptor;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -45,6 +52,8 @@ import tools.jackson.databind.ObjectMapper;
 class SessionStartedConsumerPostgreSqlKafkaIT {
     private static final String TOPIC = "saasforge.test.iam-service.events";
     private static final String TENANT_TOPIC = "saasforge.test.tenant-access-service.events";
+    private static final String IAM_ISOLATION_TOPIC =
+            "saasforge.test.audit-service.iam-session-isolations";
     private static final String APP_PASSWORD = "audit-app-test-password";
 
     @Container
@@ -60,6 +69,9 @@ class SessionStartedConsumerPostgreSqlKafkaIT {
     private static IamSessionKafkaConsumer listener;
     private static TenantAccessKafkaConsumer tenantListener;
     private static SimpleMeterRegistry meters;
+    private static AuditConsumerIsolationService isolations;
+    private static AuditIsolationPublisher isolationPublisher;
+    private static DefaultKafkaProducerFactory<String, String> isolationProducerFactory;
 
     @BeforeAll
     static void setUp() {
@@ -82,6 +94,23 @@ class SessionStartedConsumerPostgreSqlKafkaIT {
         serviceProxy.addAdvice(new TransactionInterceptor(
                 new DataSourceTransactionManager(appDataSource), new AnnotationTransactionAttributeSource()));
         var service = (AuditRecordService) serviceProxy.getProxy();
+        var isolationTarget = new AuditConsumerIsolationService(
+                new JdbcAuditConsumerIsolationRepository(app),
+                Clock.fixed(Instant.parse("2026-08-28T10:16:00Z"), ZoneOffset.UTC));
+        ProxyFactory isolationProxy = new ProxyFactory(isolationTarget);
+        isolationProxy.addAdvice(new TransactionInterceptor(
+                new DataSourceTransactionManager(appDataSource), new AnnotationTransactionAttributeSource()));
+        isolations = (AuditConsumerIsolationService) isolationProxy.getProxy();
+        isolationProducerFactory = new DefaultKafkaProducerFactory<>(Map.of(
+                ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, KAFKA.getBootstrapServers(),
+                ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class,
+                ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class,
+                ProducerConfig.ACKS_CONFIG, "all"));
+        isolationPublisher = new AuditIsolationPublisher(
+                isolations, new KafkaTemplate<>(isolationProducerFactory),
+                new AuditConsumerFailurePolicy(10, Duration.ofSeconds(1), Duration.ofMinutes(1)),
+                Clock.fixed(Instant.parse("2026-08-28T10:16:00Z"), ZoneOffset.UTC),
+                Duration.ofSeconds(30));
         ObjectMapper objectMapper = new ObjectMapper();
         var sessionStarted = new SessionStartedEventValidator(objectMapper, TOPIC);
         var tenantContextSwitched = new TenantContextSwitchedEventValidator(objectMapper, TOPIC);
@@ -99,6 +128,11 @@ class SessionStartedConsumerPostgreSqlKafkaIT {
         admin.execute("DROP FUNCTION IF EXISTS fail_audit_record_insert()");
         admin.execute("DROP TRIGGER IF EXISTS fail_tenant_audit_record_insert ON audit_records");
         admin.execute("DROP FUNCTION IF EXISTS fail_tenant_audit_record_insert()");
+    }
+
+    @AfterAll
+    static void closeIsolationProducer() {
+        isolationProducerFactory.destroy();
     }
 
     @Test
@@ -299,6 +333,37 @@ class SessionStartedConsumerPostgreSqlKafkaIT {
                 "SELECT count(*) FROM pg_policies WHERE tablename = 'audit_records'", Integer.class));
         assertEquals(Boolean.FALSE, admin.queryForObject(
                 "SELECT relrowsecurity FROM pg_class WHERE relname = 'audit_records'", Boolean.class));
+    }
+
+    @Test
+    void publishesClaimedSafeIsolationToItsConsumerTopicWithTheOriginalEventId() {
+        String eventId = uuidV7(83);
+        String snapshot = event(eventId);
+        String group = "audit-isolation-publisher-" + UUID.randomUUID();
+
+        try (KafkaConsumer<String, String> isolationConsumer = consumer(IAM_ISOLATION_TOPIC, group)) {
+            seekToEnd(isolationConsumer);
+            var isolationId = isolations.isolate(new AuditConsumerIsolation(
+                    SessionStartedEventValidator.CONSUMER_NAME, TOPIC, 0, 83, identityId(),
+                    UUID.fromString(eventId), SessionStartedEventValidator.SOURCE,
+                    SessionStartedEventValidator.EVENT_TYPE, "a".repeat(64), "RETRY_EXHAUSTED",
+                    "DataAccessResourceFailureException", 10, snapshot, IAM_ISOLATION_TOPIC));
+
+            isolationPublisher.publishNext();
+            ConsumerRecord<String, String> published = pollOne(isolationConsumer);
+
+            assertEquals(identityId(), published.key());
+            assertEquals(snapshot, published.value());
+            assertEquals(eventId, new ObjectMapper().readTree(published.value()).get("id").asText());
+            assertEquals(1, app.queryForObject("""
+                    SELECT count(*) FROM audit_isolation_deliveries
+                    WHERE isolation_id = ? AND published_at IS NOT NULL
+                    """, Integer.class, isolationId));
+            assertEquals(1, app.queryForObject("""
+                    SELECT count(*) FROM audit_isolation_attempts
+                    WHERE isolation_id = ? AND action = 'ISOLATION_DELIVERED'
+                    """, Integer.class, isolationId));
+        }
     }
 
     private static void send(String key, String payload) {

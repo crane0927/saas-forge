@@ -1,6 +1,13 @@
 saasforge:
   audit:
-    configuration-revision: "1"
+    configuration-revision: "2"
+    consumer:
+      max-attempts: 10
+      initial-backoff: PT1S
+      max-backoff: PT1M
+    isolation:
+      publish-delay: PT1S
+      lease-duration: PT30S
 
 management:
   endpoint:

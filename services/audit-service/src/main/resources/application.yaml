@@ -37,3 +37,5 @@ saasforge:
   audit:
     iam-session-topic: saasforge.${saasforge.environment}.iam-service.events
     tenant-access-topic: saasforge.${saasforge.environment}.tenant-access-service.events
+    iam-session-isolation-topic: saasforge.${saasforge.environment}.audit-service.iam-session-isolations
+    tenant-isolation-topic: saasforge.${saasforge.environment}.audit-service.tenant-isolations
