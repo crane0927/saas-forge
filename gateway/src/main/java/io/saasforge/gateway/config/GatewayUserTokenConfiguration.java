@@ -1,5 +1,6 @@
 package io.saasforge.gateway.config;
 
+import io.saasforge.sdk.auth.ServiceAccessTokenSignatureVerifier;
 import io.saasforge.sdk.auth.ServiceJwtVerificationKey;
 import io.saasforge.sdk.auth.ServiceJwtVerificationKeyResolver;
 import io.saasforge.sdk.auth.UserAccessTokenSignatureVerifier;
@@ -33,6 +34,20 @@ class GatewayUserTokenConfiguration {
                 new UserAccessTokenSignatureVerifier(
                         keys, Clock.systemUTC(), issuer, "saasforge-api", Duration.ofSeconds(30)),
                 new RedisGatewayUserTokenRevocationChecker(redis, environment));
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(GatewayServiceTokenVerifier.class)
+    GatewayServiceTokenVerifier gatewayServiceTokenVerifier(
+            LoadBalancerClient loadBalancer,
+            StringRedisTemplate redis,
+            @Value("${security.jwt.issuer}") String issuer,
+            @Value("${saasforge.environment:dev}") String environment) {
+        ServiceJwtVerificationKeyResolver keys = kid -> findByKid(loadBalancer, kid);
+        return new GatewayServiceAccessTokenVerifier(
+                new ServiceAccessTokenSignatureVerifier(
+                        keys, Clock.systemUTC(), issuer, "saasforge-api", Duration.ofSeconds(30)),
+                new RedisGatewayServiceTokenRevocationChecker(redis, environment));
     }
 
     private Optional<ServiceJwtVerificationKey> findByKid(LoadBalancerClient loadBalancer, String kid) {

@@ -14,4 +14,4 @@ mvn -am -pl gateway test
 
 本验收切片不实现或验收限流、受信代理边界，或任何领域服务的业务闭环；这些责任仍由后续安全和领域切片分别定义。
 
-Gateway 在构建时从 OpenAPI v1 生成公开路由及 `UserBearerAuth` 分类：required 路由必须携带有效 Token，anonymous 路由不校验 Token。optional 的登出路由会校验已提供的 Token；Token 无效或已撤销时仍转发 IAM，以便清理 Refresh Cookie，IAM 只会在 Token 有效时执行 `jti` 撤销。验签后会检查 IAM Redis Revocation Index 中的 `jti`、`kid`、Tenant Fence 与 Membership Fence；索引未就绪或 Redis 不可用时返回 `503 TOKEN_REVOCATION_STATUS_UNAVAILABLE`，不会转发下游。
+Gateway 在构建时从 OpenAPI v1 生成公开路由及凭据分类：`USER_REQUIRED` 路由必须携带有效 User Token，`SERVICE_REQUIRED` 路由必须携带有效 Service Token 并满足 Catalog 中按 AND 语义声明的全部 Scope，anonymous 路由不校验 Token。optional 的登出路由会校验已提供的 User Token；Token 无效或已撤销时仍转发 IAM，以便清理 Refresh Cookie，IAM 只会在 Token 有效时执行 `jti` 撤销。User Token 验签后会检查 IAM Redis Revocation Index 中的 `jti`、`kid`、Tenant Fence 与 Membership Fence；Service Token 验签后检查 `client_id` 与 `kid`。索引未就绪或 Redis 不可用时返回 `503 TOKEN_REVOCATION_STATUS_UNAVAILABLE`，不会转发下游。

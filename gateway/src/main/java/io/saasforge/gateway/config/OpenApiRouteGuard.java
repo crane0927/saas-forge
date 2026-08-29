@@ -23,9 +23,11 @@ class OpenApiRouteGuard extends OncePerRequestFilter {
     private static final Set<String> PASSWORD_SETUP_PAGE_RESOURCES = Set.of(
             "/password-setup", "/password-setup/app.js", "/password-setup/styles.css");
 
+    private final GatewayRouteCatalog catalog;
     private final GatewayProblemDetailsWriter problemDetailsWriter;
 
-    OpenApiRouteGuard(GatewayProblemDetailsWriter problemDetailsWriter) {
+    OpenApiRouteGuard(GatewayRouteCatalog catalog, GatewayProblemDetailsWriter problemDetailsWriter) {
+        this.catalog = catalog;
         this.problemDetailsWriter = problemDetailsWriter;
     }
 
@@ -37,7 +39,7 @@ class OpenApiRouteGuard extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
-        List<GatewayRouteCatalog.Route> routes = GatewayRouteCatalog.matching(requestPath(request));
+        List<GatewayRouteCatalog.Route> routes = catalog.matching(requestPath(request));
         if (routes.isEmpty()) {
             writeProblem(request, response, HttpStatus.NOT_FOUND, "ROUTE_NOT_FOUND", "The requested route is not declared.");
             return;

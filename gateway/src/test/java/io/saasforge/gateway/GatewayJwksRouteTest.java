@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.sun.net.httpserver.HttpServer;
+import io.saasforge.gateway.config.GatewayServiceTokenTestConfiguration;
 import io.saasforge.gateway.config.GatewayUserTokenTestConfiguration;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -35,7 +36,11 @@ import org.springframework.test.context.DynamicPropertySource;
         "spring.cloud.loadbalancer.cache.enabled=false",
         "saasforge.gateway.configuration-revision=test"
 })
-@Import({GatewayTestDiscoveryConfiguration.class, GatewayUserTokenTestConfiguration.class})
+@Import({
+        GatewayTestDiscoveryConfiguration.class,
+        GatewayUserTokenTestConfiguration.class,
+        GatewayServiceTokenTestConfiguration.class
+})
 @ActiveProfiles("gateway-test")
 class GatewayJwksRouteTest {
 
@@ -159,6 +164,45 @@ class GatewayJwksRouteTest {
         assertTrue(unavailable.headers().firstValue("WWW-Authenticate").isEmpty());
         assertTrue(unavailable.body().contains("\"code\":\"TOKEN_REVOCATION_STATUS_UNAVAILABLE\""));
         assertNull(OBSERVED_REQUESTS.get("tenant-access").get());
+    }
+
+    @Test
+    void enforcesServiceTokenAndScopesBeforeForwardingTheOriginalAuthorization()
+            throws IOException, InterruptedException {
+        for (String accepted : List.of(
+                GatewayServiceTokenTestConfiguration.VALID_BEARER,
+                GatewayServiceTokenTestConfiguration.EXTRA_SCOPE_BEARER)) {
+            resetObservedRequest("entitlement");
+            HttpResponse<String> response = send(HttpRequest.newBuilder(
+                            gatewayUri(GatewayServiceTokenTestConfiguration.TEST_PATH))
+                    .header("Authorization", accepted)
+                    .GET()
+                    .build());
+
+            assertEquals(200, response.statusCode());
+            assertEquals(accepted, observedRequest("entitlement").firstHeader("Authorization"));
+            assertFalse(observedRequest("entitlement").hasHeader("X-Identity"));
+            assertFalse(observedRequest("entitlement").hasHeader("X-Membership"));
+            assertFalse(observedRequest("entitlement").hasHeader("X-Tenant-Context"));
+            assertFalse(observedRequest("entitlement").hasHeader("X-Role"));
+            assertFalse(observedRequest("entitlement").hasHeader("X-Permission"));
+        }
+
+        for (String invalid : List.of(
+                "Bearer user-token",
+                "Bearer malformed",
+                GatewayServiceTokenTestConfiguration.REVOKED_BEARER)) {
+            assertRejectedServiceRequest(invalid, 401, "ACCESS_TOKEN_INVALID");
+        }
+        assertRejectedServiceRequest(null, 401, "ACCESS_TOKEN_INVALID");
+        assertRejectedServiceRequest(
+                GatewayServiceTokenTestConfiguration.INSUFFICIENT_BEARER,
+                403,
+                "ACCESS_TOKEN_SCOPE_INSUFFICIENT");
+        assertRejectedServiceRequest(
+                GatewayServiceTokenTestConfiguration.UNAVAILABLE_BEARER,
+                503,
+                "TOKEN_REVOCATION_STATUS_UNAVAILABLE");
     }
 
     @Test
@@ -378,6 +422,31 @@ class GatewayJwksRouteTest {
 
     private URI gatewayUri(String path) {
         return URI.create("http://127.0.0.1:" + gatewayPort + path);
+    }
+
+    private void assertRejectedServiceRequest(String authorization, int status, String code)
+            throws IOException, InterruptedException {
+        resetObservedRequest("entitlement");
+        HttpRequest.Builder request = HttpRequest.newBuilder(gatewayUri(GatewayServiceTokenTestConfiguration.TEST_PATH))
+                .GET();
+        if (authorization != null) {
+            request.header("Authorization", authorization);
+        }
+
+        HttpResponse<String> response = send(request.build());
+
+        assertEquals(status, response.statusCode());
+        assertTrue(response.body().contains("\"code\":\"" + code + "\""));
+        assertNull(OBSERVED_REQUESTS.get("entitlement").get());
+        if (status == 401) {
+            assertEquals(authorization == null ? "Bearer" : "Bearer error=\"invalid_token\"",
+                    response.headers().firstValue("WWW-Authenticate").orElseThrow());
+        } else if (status == 403) {
+            assertEquals("Bearer error=\"insufficient_scope\", scope=\"runtime:quota:write runtime:read\"",
+                    response.headers().firstValue("WWW-Authenticate").orElseThrow());
+        } else {
+            assertTrue(response.headers().firstValue("WWW-Authenticate").isEmpty());
+        }
     }
 
     private void resetObservedRequest(String service) {

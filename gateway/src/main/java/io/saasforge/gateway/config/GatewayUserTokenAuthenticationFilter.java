@@ -19,10 +19,15 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Order(Ordered.HIGHEST_PRECEDENCE + 4)
 class GatewayUserTokenAuthenticationFilter extends OncePerRequestFilter {
 
+    private final GatewayRouteCatalog catalog;
     private final GatewayUserTokenVerifier verifier;
     private final GatewayProblemDetailsWriter problems;
 
-    GatewayUserTokenAuthenticationFilter(GatewayUserTokenVerifier verifier, GatewayProblemDetailsWriter problems) {
+    GatewayUserTokenAuthenticationFilter(
+            GatewayRouteCatalog catalog,
+            GatewayUserTokenVerifier verifier,
+            GatewayProblemDetailsWriter problems) {
+        this.catalog = catalog;
         this.verifier = verifier;
         this.problems = problems;
     }
@@ -30,7 +35,7 @@ class GatewayUserTokenAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
-        List<GatewayRouteCatalog.Route> routes = GatewayRouteCatalog.matching(requestPath(request));
+        List<GatewayRouteCatalog.Route> routes = catalog.matching(requestPath(request));
         if (routes.isEmpty()) {
             filterChain.doFilter(request, response);
             return;

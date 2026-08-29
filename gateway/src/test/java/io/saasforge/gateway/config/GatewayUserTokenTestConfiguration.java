@@ -20,4 +20,11 @@ public class GatewayUserTokenTestConfiguration {
             }
         };
     }
+
+    @Bean
+    GatewayServiceTokenVerifier gatewayServiceTokenVerifier() {
+        return (authorization, requiredScopes) -> {
+            throw new AssertionError("该测试上下文不应执行 SERVICE_REQUIRED operation");
+        };
+    }
 }

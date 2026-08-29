@@ -5,27 +5,32 @@ import io.saasforge.contracts.route.HttpRouteCatalogLoader;
 import java.util.List;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.server.PathContainer;
+import org.springframework.stereotype.Component;
 import org.springframework.web.util.pattern.PathPattern;
 import org.springframework.web.util.pattern.PathPatternParser;
 
 /** Gateway 对共享不可变 Route Catalog 的路径匹配视图。 */
+@Component
 final class GatewayRouteCatalog {
 
     private static final PathPatternParser PATH_PATTERN_PARSER = new PathPatternParser();
-    private static final List<Route> ROUTES = HttpRouteCatalogLoader.load().routes().stream()
-            .map(GatewayRouteCatalog::route)
-            .toList();
+    private final List<Route> routes;
 
-    private GatewayRouteCatalog() {
+    GatewayRouteCatalog() {
+        this(HttpRouteCatalogLoader.load());
     }
 
-    static List<Route> routes() {
-        return ROUTES;
+    GatewayRouteCatalog(HttpRouteCatalog catalog) {
+        this.routes = catalog.routes().stream().map(GatewayRouteCatalog::route).toList();
     }
 
-    static List<Route> matching(String requestPath) {
+    List<Route> routes() {
+        return routes;
+    }
+
+    List<Route> matching(String requestPath) {
         PathContainer path = PathContainer.parsePath(requestPath);
-        return ROUTES.stream().filter(route -> route.pattern().matches(path)).toList();
+        return routes.stream().filter(route -> route.pattern().matches(path)).toList();
     }
 
     private static Route route(HttpRouteCatalog.Route route) {
@@ -35,6 +40,7 @@ final class GatewayRouteCatalog {
                 route.path(),
                 route.serviceId(),
                 route.credentialRequirement(),
+                route.requiredScopes(),
                 PATH_PATTERN_PARSER.parse(route.path()));
     }
 
@@ -44,6 +50,7 @@ final class GatewayRouteCatalog {
             String path,
             String serviceId,
             HttpRouteCatalog.CredentialRequirement credentialRequirement,
+            List<String> requiredScopes,
             PathPattern pattern) {
     }
 }

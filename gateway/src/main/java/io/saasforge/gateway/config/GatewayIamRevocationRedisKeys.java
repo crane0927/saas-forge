@@ -29,6 +29,10 @@ final class GatewayIamRevocationRedisKeys {
         return prefix + "signing-kid-revocation:v1:" + digest(kid);
     }
 
+    String oauthClient(UUID clientId) {
+        return prefix + "oauth-client-revocation:v1:" + clientId;
+    }
+
     String tenantFence(UUID tenantId) {
         return prefix + "user-session-revocation-fence:v1:tenant:" + tenantId;
     }

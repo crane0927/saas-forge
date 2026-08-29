@@ -14,9 +14,9 @@ import org.springframework.web.servlet.function.ServerResponse;
 class GatewayRouteConfiguration {
 
     @Bean
-    RouterFunction<ServerResponse> gatewayRoutes() {
+    RouterFunction<ServerResponse> gatewayRoutes(GatewayRouteCatalog catalog) {
         RouterFunction<ServerResponse> routes = null;
-        for (GatewayRouteCatalog.Route route : GatewayRouteCatalog.routes()) {
+        for (GatewayRouteCatalog.Route route : catalog.routes()) {
             RouterFunction<ServerResponse> gatewayRoute = gatewayRoute(route);
             routes = routes == null ? gatewayRoute : routes.and(gatewayRoute);
         }

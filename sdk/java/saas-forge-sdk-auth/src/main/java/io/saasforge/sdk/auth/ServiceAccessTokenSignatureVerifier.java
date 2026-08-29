@@ -60,7 +60,19 @@ public final class ServiceAccessTokenSignatureVerifier {
     }
 
     public VerifiedServiceAccessTokenClaims verify(String token, String requiredScope) {
-        if (token == null || token.isBlank() || requiredScope == null || requiredScope.isBlank()) {
+        if (requiredScope == null || requiredScope.isBlank()) {
+            throw new ServiceAccessTokenInvalidException();
+        }
+        VerifiedServiceAccessTokenClaims claims = verify(token);
+        if (!claims.scopes().contains(requiredScope)) {
+            throw new ServiceAccessTokenScopeException();
+        }
+        return claims;
+    }
+
+    /** 只验证固定 Service Token 形态；operation Scope 与撤销状态由组合授权边界继续判断。 */
+    public VerifiedServiceAccessTokenClaims verify(String token) {
+        if (token == null || token.isBlank()) {
             throw new ServiceAccessTokenInvalidException();
         }
         try {
@@ -99,12 +111,7 @@ public final class ServiceAccessTokenSignatureVerifier {
             }
             UUID jti = canonicalUuidV7(claims.getJWTID());
             Set<String> scopes = scopes(claims.getStringClaim("scope"));
-            if (!scopes.contains(requiredScope)) {
-                throw new ServiceAccessTokenScopeException();
-            }
             return new VerifiedServiceAccessTokenClaims(clientId, scopes, jti, kid, issuedAt, expiresAt);
-        } catch (ServiceAccessTokenScopeException exception) {
-            throw exception;
         } catch (ServiceAccessTokenInvalidException exception) {
             throw exception;
         } catch (Exception exception) {
