@@ -1,0 +1,92 @@
+# Issue #86 平台机制验收使用隔离 Compose 项目、随机宿主机端口和测试专用 Catalog overlay。
+services:
+  postgres:
+    ports: !reset []
+  redis:
+    ports: !reset []
+  kafka:
+    environment:
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx512m
+    ports: !reset []
+  mailpit:
+    ports: !reset []
+  otel-collector:
+    ports: !reset []
+  nacos:
+    environment:
+      JVM_XMS: 256m
+      JVM_XMX: 256m
+      JVM_XMN: 128m
+    ports: !reset []
+  nacos-init:
+    entrypoint: ["/bin/sh", "/scripts/platform-mechanism-nacos-init.sh"]
+    environment:
+      NACOS_PLATFORM_MECHANISM_RECEIVER_USERNAME: ${NACOS_PLATFORM_MECHANISM_RECEIVER_USERNAME:?NACOS_PLATFORM_MECHANISM_RECEIVER_USERNAME is required}
+      NACOS_PLATFORM_MECHANISM_RECEIVER_PASSWORD: ${NACOS_PLATFORM_MECHANISM_RECEIVER_PASSWORD:?NACOS_PLATFORM_MECHANISM_RECEIVER_PASSWORD is required}
+    volumes:
+      - ./platform-mechanism-nacos-init.sh:/scripts/platform-mechanism-nacos-init.sh:ro
+      - ../nacos/test-support/platform-mechanism-receiver.yaml:/config/platform-mechanism-receiver.yaml:ro
+  iam-service:
+    build: !reset null
+    group_add:
+      - "${E2E_HOST_GID:?E2E_HOST_GID is required}"
+    environment:
+      JAVA_TOOL_OPTIONS: -Xms64m -Xmx256m
+      SECURITY_REVOCATION_INDEX_RECOVERY_DELAY: PT1H
+    ports: !reset []
+  tenant-access-service:
+    build: !reset null
+    group_add:
+      - "${E2E_HOST_GID:?E2E_HOST_GID is required}"
+    environment:
+      JAVA_TOOL_OPTIONS: -Xms64m -Xmx256m
+    ports: !reset []
+  entitlement-service:
+    build: !reset null
+    group_add:
+      - "${E2E_HOST_GID:?E2E_HOST_GID is required}"
+    environment:
+      JAVA_TOOL_OPTIONS: -Xms64m -Xmx256m
+    ports: !reset []
+  audit-service:
+    build: !reset null
+    environment:
+      JAVA_TOOL_OPTIONS: -Xms32m -Xmx128m
+    ports: !reset []
+  gateway:
+    build: !reset null
+    environment:
+      JAVA_TOOL_OPTIONS: -Xms32m -Xmx192m
+    ports: !override
+      - "127.0.0.1::8080"
+  iam-platform-admin-bootstrap:
+    build: !reset null
+    group_add:
+      - "${E2E_HOST_GID:?E2E_HOST_GID is required}"
+  iam-reserved-service-client-bootstrap:
+    build: !reset null
+    group_add:
+      - "${E2E_HOST_GID:?E2E_HOST_GID is required}"
+  platform-mechanism-receiver:
+    profiles: ["platform-mechanism-acceptance"]
+    image: saasforge/platform-mechanism-receiver:acceptance
+    depends_on:
+      nacos-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      iam-service:
+        condition: service_started
+    environment:
+      JAVA_TOOL_OPTIONS: -Xms32m -Xmx160m
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      IAM_JWT_ISSUER: ${IAM_JWT_ISSUER:?IAM_JWT_ISSUER is required}
+      NACOS_SERVER_ADDR: nacos:8848
+      NACOS_NAMESPACE: dev
+      NACOS_TLS_ENABLED: "false"
+      NACOS_PLATFORM_MECHANISM_RECEIVER_USERNAME: ${NACOS_PLATFORM_MECHANISM_RECEIVER_USERNAME:?NACOS_PLATFORM_MECHANISM_RECEIVER_USERNAME is required}
+      NACOS_PLATFORM_MECHANISM_RECEIVER_PASSWORD: ${NACOS_PLATFORM_MECHANISM_RECEIVER_PASSWORD:?NACOS_PLATFORM_MECHANISM_RECEIVER_PASSWORD is required}
+    ports:
+      - "127.0.0.1::8080"

@@ -1,0 +1,36 @@
+openapi: 3.1.0
+info:
+  title: SaaS Forge Platform Mechanism Acceptance Overlay
+  version: 1.0.0
+paths:
+  /__test/platform-mechanism:
+    post:
+      operationId: acceptPlatformMechanismServiceToken
+      x-saasforge-service: platform-mechanism-receiver
+      security:
+        - ServiceOAuth2:
+            - runtime:read
+      responses:
+        '200':
+          description: Verified Service Authentication Context
+components:
+  securitySchemes:
+    UserBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    OAuthClientBasic:
+      type: http
+      scheme: basic
+    RefreshCookieAuth:
+      type: apiKey
+      in: cookie
+      name: __Host-sf_refresh
+    ServiceOAuth2:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: /oauth2/token
+          scopes:
+            runtime:read: Read runtime resources
+            runtime:quota:write: Write runtime quota usage

@@ -12,9 +12,11 @@ class HttpRouteCatalogLoaderTest {
     @Test
     void loadsThePublishedCatalog() {
         HttpRouteCatalog catalog = HttpRouteCatalogLoader.load();
+        boolean acceptanceOverlay = catalog.routes().stream()
+                .anyMatch(route -> "acceptPlatformMechanismServiceToken".equals(route.operationId()));
 
         assertEquals(HttpRouteCatalogLoader.SUPPORTED_SCHEMA_VERSION, catalog.schemaVersion());
-        assertEquals(25, catalog.routes().size());
+        assertEquals(acceptanceOverlay ? 26 : 25, catalog.routes().size());
     }
 
     @Test

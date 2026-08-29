@@ -1,0 +1,14 @@
+{
+  "registryVersion": 1,
+  "entries": [
+    {
+      "serviceId": "platform-mechanism-receiver",
+      "owner": "platform-mechanism-acceptance",
+      "modulePath": "test-support/platform-mechanism-receiver",
+      "artifactId": "platform-mechanism-receiver",
+      "nacosServiceName": "platform-mechanism-receiver",
+      "deployable": true,
+      "gatewayRouteTargetAllowed": true
+    }
+  ]
+}

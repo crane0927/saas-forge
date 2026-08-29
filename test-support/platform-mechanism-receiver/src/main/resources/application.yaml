@@ -1,0 +1,22 @@
+spring:
+  application:
+    name: platform-mechanism-receiver
+  config:
+    import: nacos:platform-mechanism-receiver.yaml?group=SAAS_FORGE&refreshEnabled=false
+  cloud:
+    nacos:
+      username: ${NACOS_PLATFORM_MECHANISM_RECEIVER_USERNAME:?NACOS_PLATFORM_MECHANISM_RECEIVER_USERNAME is required}
+      password: ${NACOS_PLATFORM_MECHANISM_RECEIVER_PASSWORD:?NACOS_PLATFORM_MECHANISM_RECEIVER_PASSWORD is required}
+      config:
+        server-addr: ${NACOS_SERVER_ADDR:nacos:8848}
+        namespace: ${NACOS_NAMESPACE:dev}
+        ssl:
+          enabled: ${NACOS_TLS_ENABLED:false}
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:nacos:8848}
+        namespace: ${NACOS_NAMESPACE:dev}
+        service: platform-mechanism-receiver
+        fail-fast: true
+
+saasforge:
+  environment: ${SAASFORGE_ENVIRONMENT:dev}

@@ -44,8 +44,8 @@ public final class HttpRouteCatalogGenerator {
     }
 
     public static void main(String[] args) throws IOException {
-        if (args.length != 2) {
-            throw new IllegalArgumentException("需要仓库根目录和 Route Catalog 输出路径");
+        if (args.length != 4) {
+            throw new IllegalArgumentException("需要仓库根目录、Route Catalog 输出路径和可选测试 overlay");
         }
         Path repository = Path.of(args[0]).toAbsolutePath().normalize();
         Path output = Path.of(args[1]);
@@ -53,14 +53,85 @@ public final class HttpRouteCatalogGenerator {
                 repository.resolve("contracts/services/engineering-registry.json").toFile(), ServiceRegistry.class);
         ScopeRegistry scopes = JSON.readValue(
                 repository.resolve("contracts/security/oauth-scope-registry.json").toFile(), ScopeRegistry.class);
-        Map<String, ServiceEntry> servicesById = validateServices(repository, services);
+        Map<String, ServiceEntry> servicesById = new HashMap<>(validateServices(repository, services));
+        Path registryOverlay = optionalPath(args[2]);
+        Path openApiOverlay = optionalPath(args[3]);
+        require((registryOverlay == null) == (openApiOverlay == null),
+                "测试 Registry 与 OpenAPI overlay 必须同时提供");
+        if (registryOverlay != null) {
+            mergeTestServices(repository, registryOverlay, servicesById);
+        }
         Map<String, ScopeEntry> scopesByName = validateScopes(scopes, servicesById);
         OpenAPI openApi = parseOpenApi(repository.resolve("contracts/openapi/v1.yaml"));
         validateSecuritySchemes(openApi, scopesByName);
-        List<Route> routes = generateRoutes(openApi, servicesById, scopesByName);
+        List<Route> routes = new ArrayList<>(generateRoutes(openApi, servicesById, scopesByName));
+        if (openApiOverlay != null) {
+            OpenAPI testOpenApi = parseOpenApi(openApiOverlay);
+            validateSecuritySchemes(testOpenApi, scopesByName);
+            routes.addAll(generateRoutes(testOpenApi, servicesById, scopesByName));
+            validateDistinctRoutes(routes);
+            routes.sort(Comparator.comparing(Route::method)
+                    .thenComparing(Route::path)
+                    .thenComparing(Route::operationId));
+        }
         validateRouteEligibility(routes, servicesById);
         Files.createDirectories(output.getParent());
         JSON.writeValue(output.toFile(), new Catalog(SCHEMA_VERSION, routes));
+    }
+
+    private static Path optionalPath(String value) {
+        return "-".equals(value) ? null : Path.of(value).toAbsolutePath().normalize();
+    }
+
+    private static void mergeTestServices(
+            Path repository, Path registryOverlay, Map<String, ServiceEntry> services) throws IOException {
+        ServiceRegistry overlay = JSON.readValue(registryOverlay.toFile(), ServiceRegistry.class);
+        require(overlay.registryVersion() == 1 && overlay.entries() != null && !overlay.entries().isEmpty(),
+                "测试 Service Registry overlay 版本或 entries 非法");
+        for (ServiceEntry entry : overlay.entries()) {
+            require(entry != null
+                            && matches(SERVICE_ID, entry.serviceId())
+                            && matches(OWNER, entry.owner())
+                            && entry.modulePath() != null
+                            && entry.modulePath().startsWith("test-support/")
+                            && matches(SERVICE_ID, entry.artifactId())
+                            && matches(SERVICE_ID, entry.nacosServiceName())
+                            && entry.deployable()
+                            && entry.gatewayRouteTargetAllowed(),
+                    "测试 Service Registry overlay entry 字段非法");
+            require(!services.containsKey(entry.serviceId()),
+                    "测试 serviceId 与生产 Registry 冲突: " + entry.serviceId());
+            require(services.values().stream().noneMatch(existing ->
+                            existing.owner().equals(entry.owner())
+                                    || existing.modulePath().equals(entry.modulePath())
+                                    || existing.artifactId().equals(entry.artifactId())
+                                    || existing.nacosServiceName().equals(entry.nacosServiceName())),
+                    "测试 Service Registry overlay 与生产字段冲突: " + entry.serviceId());
+            Path module = repository.resolve(entry.modulePath()).normalize();
+            require(module.startsWith(repository.resolve("test-support").normalize())
+                            && Files.isRegularFile(module.resolve("pom.xml")),
+                    "测试接收端 module 不存在: " + entry.modulePath());
+            String pom = Files.readString(module.resolve("pom.xml"), StandardCharsets.UTF_8);
+            String application = Files.readString(
+                    module.resolve("src/main/resources/application.yaml"), StandardCharsets.UTF_8);
+            require(pom.contains("<artifactId>" + entry.artifactId() + "</artifactId>"),
+                    entry.serviceId() + " artifactId 与测试 module 不一致");
+            require(application.contains("    name: " + entry.serviceId())
+                            && application.contains("        service: " + entry.nacosServiceName()),
+                    entry.serviceId() + " 与测试 Spring/Nacos service name 不一致");
+            services.put(entry.serviceId(), entry);
+        }
+    }
+
+    private static void validateDistinctRoutes(List<Route> routes) {
+        Set<String> operationIds = new HashSet<>();
+        Set<String> methodPaths = new HashSet<>();
+        for (Route route : routes) {
+            require(operationIds.add(route.operationId()), "operationId 重复: " + route.operationId());
+            String normalizedPath = PATH_VARIABLE.matcher(route.path()).replaceAll("{}");
+            require(methodPaths.add(route.method() + " " + normalizedPath),
+                    "OpenAPI method/path 规范化冲突: " + route.method() + " " + normalizedPath);
+        }
     }
 
     private static OpenAPI parseOpenApi(Path spec) {

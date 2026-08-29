@@ -14,6 +14,11 @@
     <artifactId>saas-forge-http-route-catalog</artifactId>
     <name>saas-forge HTTP Route Catalog</name>
 
+    <properties>
+        <route-catalog.registry-overlay>-</route-catalog.registry-overlay>
+        <route-catalog.openapi-overlay>-</route-catalog.openapi-overlay>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
@@ -60,6 +65,8 @@
                                 <argument>${project.basedir}/src/codegen/java/HttpRouteCatalogGenerator.java</argument>
                                 <argument>${maven.multiModuleProjectDirectory}</argument>
                                 <argument>${project.build.directory}/generated-resources/route-catalog/META-INF/saasforge/http-route-catalog.json</argument>
+                                <argument>${route-catalog.registry-overlay}</argument>
+                                <argument>${route-catalog.openapi-overlay}</argument>
                             </arguments>
                         </configuration>
                     </execution>
@@ -67,4 +74,14 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>platform-mechanism-acceptance</id>
+            <properties>
+                <route-catalog.registry-overlay>${maven.multiModuleProjectDirectory}/test-support/platform-mechanism-receiver/registry-overlay.json</route-catalog.registry-overlay>
+                <route-catalog.openapi-overlay>${maven.multiModuleProjectDirectory}/test-support/platform-mechanism-receiver/openapi-overlay.yaml</route-catalog.openapi-overlay>
+            </properties>
+        </profile>
+    </profiles>
 </project>
