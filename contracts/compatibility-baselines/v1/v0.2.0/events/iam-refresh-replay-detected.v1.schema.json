@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://saasforge.io/contracts/events/iam-refresh-replay-detected.v1.schema.json",
+  "title": "IAM Refresh Replay Detected v1",
+  "allOf": [
+    {
+      "$ref": "cloudevents-envelope.v1.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "com.saasforge.iam.refresh-replay-detected.v1" },
+        "source": { "const": "urn:saasforge:iam-service" },
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "familyId",
+            "identityId",
+            "purpose",
+            "result",
+            "revokedAccessTokenCount",
+            "occurredAt"
+          ],
+          "properties": {
+            "familyId": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+            },
+            "identityId": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+            },
+            "purpose": {
+              "enum": ["USER_PLATFORM", "USER_TENANT", "USER_TENANT_SELECTION", "INITIAL_PASSWORD_CHANGE"]
+            },
+            "result": { "const": "REFRESH_REPLAY_DETECTED" },
+            "revokedAccessTokenCount": { "type": "integer", "minimum": 0 },
+            "occurredAt": { "type": "string", "format": "date-time" }
+          }
+        }
+      }
+    }
+  ]
+}

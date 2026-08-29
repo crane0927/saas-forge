@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package io.saasforge.contracts.iam.authorization.v1;
+
+option java_multiple_files = true;
+option java_package = "io.saasforge.contracts.iam.authorization.v1";
+
+// IAM 是当前 Platform Role 授予状态的唯一权威来源。
+service PlatformAuthorizationService {
+  // 只返回一个精确角色的当前允许或拒绝决策。
+  rpc CheckPlatformRole(CheckPlatformRoleRequest) returns (CheckPlatformRoleResponse);
+}
+
+message CheckPlatformRoleRequest {
+  // 小写、带连字符的规范 UUIDv7 Identity ID。
+  string identity_id = 1;
+
+  // 调用端要求的精确 Platform Role key。
+  string role_key = 2;
+}
+
+message CheckPlatformRoleResponse {
+  bool allowed = 1;
+}

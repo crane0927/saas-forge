@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://saasforge.io/contracts/events/iam-oauth-client-created.v1.schema.json",
+  "title": "IAM OAuth Client Created v1",
+  "allOf": [
+    { "$ref": "cloudevents-envelope.v1.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "com.saasforge.iam.oauth-client.created.v1" },
+        "source": { "const": "urn:saasforge:iam-service" },
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["clientId", "operationId", "result", "actorType", "occurredAt"],
+          "properties": {
+            "clientId": { "$ref": "#/$defs/uuidV7" },
+            "operationId": { "$ref": "#/$defs/uuidV7" },
+            "result": { "const": "OAUTH_CLIENT_CREATED" },
+            "actorType": { "enum": ["IDENTITY", "DEPLOYMENT"] },
+            "actorIdentityId": { "$ref": "#/$defs/uuidV7" },
+            "deploymentOperationId": { "$ref": "#/$defs/uuidV7" },
+            "occurredAt": { "type": "string", "format": "date-time" }
+          },
+          "oneOf": [
+            {
+              "required": ["actorIdentityId"],
+              "properties": { "actorType": { "const": "IDENTITY" } },
+              "not": { "required": ["deploymentOperationId"] }
+            },
+            {
+              "required": ["deploymentOperationId"],
+              "properties": { "actorType": { "const": "DEPLOYMENT" } },
+              "not": { "required": ["actorIdentityId"] }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "uuidV7": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    }
+  }
+}

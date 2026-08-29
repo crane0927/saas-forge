@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://saasforge.io/contracts/events/tenant-suspended.v1.schema.json",
+  "title": "Tenant Suspended v1",
+  "allOf": [
+    { "$ref": "cloudevents-envelope.v1.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "com.saasforge.tenant.suspended.v1" },
+        "source": { "const": "urn:saasforge:tenant-access-service" },
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tenantId", "actorIdentityId", "revokedSessionCount"],
+          "properties": {
+            "tenantId": { "$ref": "#/$defs/uuidV7" },
+            "actorIdentityId": { "$ref": "#/$defs/uuidV7" },
+            "revokedSessionCount": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "uuidV7": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    }
+  }
+}

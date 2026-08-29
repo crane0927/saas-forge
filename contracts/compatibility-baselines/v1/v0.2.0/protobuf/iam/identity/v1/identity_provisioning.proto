@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package io.saasforge.contracts.iam.identity.v1;
+
+option java_multiple_files = true;
+option java_package = "io.saasforge.contracts.iam.identity.v1";
+
+// IAM 按稳定请求创建或复用 Identity，并返回当前凭证处置结论。
+service IdentityProvisioningService {
+  rpc EnsureIdentity(EnsureIdentityRequest) returns (EnsureIdentityResponse);
+}
+
+message EnsureIdentityRequest {
+  // 调用方为一次下游操作生成并在重试中保持不变的规范 UUIDv7。
+  string request_id = 1;
+  string email = 2;
+  optional string display_name = 3;
+}
+
+message EnsureIdentityResponse {
+  string identity_id = 1;
+  IdentityCredentialStatus credential_status = 2;
+}
+
+enum IdentityCredentialStatus {
+  IDENTITY_CREDENTIAL_STATUS_UNSPECIFIED = 0;
+  SETUP_ALLOWED = 1;
+  PASSWORD_READY = 2;
+  RECOVERY_REQUIRED = 3;
+}

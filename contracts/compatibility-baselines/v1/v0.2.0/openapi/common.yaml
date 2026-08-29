@@ -1,0 +1,280 @@
+openapi: 3.1.1
+info:
+  title: saas-forge Common API Components
+  version: 1.0.0
+  description: Reusable response, error, pagination, and asynchronous Job components. This document defines no resource endpoints.
+paths: {}
+components:
+  headers:
+    Location:
+      description: Canonical absolute-path reference of the created or accepted resource.
+      required: true
+      schema:
+        type: string
+        format: uri-reference
+        pattern: '^/[^?#]*([?][^#]*)?$'
+      example: /api/v1/audit/export-jobs/018f2d3a-4b5c-7d6e-8f90-123456789abc
+
+  schemas:
+    UuidV7:
+      type: string
+      format: uuid
+      pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+      description: RFC 9562 UUIDv7 in canonical lowercase, hyphenated form.
+
+    TraceId:
+      type: string
+      pattern: '^(?!0{32}$)[0-9a-f]{32}$'
+      description: Non-zero W3C Trace Context trace ID in lowercase hexadecimal.
+
+    ProblemCode:
+      type: string
+      pattern: '^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$'
+      description: Stable machine-readable error code. Clients branch only on this field.
+
+    ProblemDetails:
+      type: object
+      required:
+        - type
+        - title
+        - status
+        - code
+        - detail
+        - traceId
+      properties:
+        type:
+          type: string
+          format: uri
+          description: Stable problem type derived from code as urn:saasforge:problem:{lower-kebab-case-code}.
+        title:
+          type: string
+          description: Short English summary for humans. Clients must not branch on it.
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+          description: HTTP response status code.
+        code:
+          $ref: '#/components/schemas/ProblemCode'
+        detail:
+          type: string
+          description: English, human-readable explanation. Clients must not parse it.
+        traceId:
+          $ref: '#/components/schemas/TraceId'
+      additionalProperties: true
+
+    FieldError:
+      type: object
+      required:
+        - pointer
+        - code
+        - detail
+      properties:
+        pointer:
+          type: string
+          description: JSON Pointer locating the invalid request value. The value itself is never echoed.
+        code:
+          $ref: '#/components/schemas/ProblemCode'
+        detail:
+          type: string
+          description: English, human-readable validation explanation.
+      additionalProperties: false
+
+    ValidationProblemDetails:
+      allOf:
+        - $ref: '#/components/schemas/ProblemDetails'
+        - type: object
+          required:
+            - errors
+          properties:
+            errors:
+              type: array
+              minItems: 1
+              items:
+                $ref: '#/components/schemas/FieldError'
+
+    Page:
+      type: object
+      required:
+        - items
+        - nextCursor
+        - hasMore
+      properties:
+        items:
+          type: array
+          description: The current page. Resource-specific schemas narrow its item type with allOf.
+          items: {}
+        nextCursor:
+          type:
+            - string
+            - 'null'
+        hasMore:
+          type: boolean
+      oneOf:
+        - properties:
+            hasMore:
+              const: true
+            nextCursor:
+              type: string
+              minLength: 1
+        - properties:
+            hasMore:
+              const: false
+            nextCursor:
+              type: 'null'
+      additionalProperties: true
+
+    JobStatus:
+      type: string
+      enum:
+        - QUEUED
+        - RUNNING
+        - SUCCEEDED
+        - FAILED
+
+    Job:
+      type: object
+      required:
+        - id
+        - status
+        - createdAt
+        - startedAt
+        - completedAt
+        - failure
+      properties:
+        id:
+          $ref: '#/components/schemas/UuidV7'
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        createdAt:
+          type: string
+          format: date-time
+          pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'
+        startedAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+          pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'
+        completedAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+          pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'
+        failure:
+          oneOf:
+            - $ref: '#/components/schemas/ProblemDetails'
+            - type: 'null'
+      oneOf:
+        - title: Queued Job
+          properties:
+            status:
+              const: QUEUED
+            startedAt:
+              type: 'null'
+            completedAt:
+              type: 'null'
+            failure:
+              type: 'null'
+        - title: Running Job
+          properties:
+            status:
+              const: RUNNING
+            startedAt:
+              type: string
+            completedAt:
+              type: 'null'
+            failure:
+              type: 'null'
+        - title: Succeeded Job
+          properties:
+            status:
+              const: SUCCEEDED
+            startedAt:
+              type: string
+            completedAt:
+              type: string
+            failure:
+              type: 'null'
+        - title: Failed Job
+          properties:
+            status:
+              const: FAILED
+            startedAt:
+              type: string
+            completedAt:
+              type: string
+            failure:
+              $ref: '#/components/schemas/ProblemDetails'
+      additionalProperties: true
+
+  responses:
+    NoContent:
+      description: Request succeeded and intentionally has no response body.
+    Problem:
+      description: Request failed.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    ValidationProblem:
+      description: Request format or field validation failed.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ValidationProblemDetails'
+
+  examples:
+    EmptyPage:
+      summary: Successful empty final page
+      value:
+        items: []
+        nextCursor: null
+        hasMore: false
+    QueuedJob:
+      summary: Newly accepted asynchronous Job
+      value:
+        id: 018f2d3a-4b5c-7d6e-8f90-123456789abc
+        status: QUEUED
+        createdAt: '2026-08-17T09:30:45.123Z'
+        startedAt: null
+        completedAt: null
+        failure: null
+    FailedJob:
+      summary: Failed asynchronous Job
+      value:
+        id: 018f2d3a-4b5c-7d6e-8f90-123456789abc
+        status: FAILED
+        createdAt: '2026-08-17T09:30:45.123Z'
+        startedAt: '2026-08-17T09:30:46.123Z'
+        completedAt: '2026-08-17T09:30:47.123Z'
+        failure:
+          type: urn:saasforge:problem:tenant-suspended
+          title: Tenant is suspended
+          status: 403
+          code: TENANT_SUSPENDED
+          detail: The current tenant is suspended.
+          traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+    TenantSuspendedProblem:
+      summary: Business rejection
+      value:
+        type: urn:saasforge:problem:tenant-suspended
+        title: Tenant is suspended
+        status: 403
+        code: TENANT_SUSPENDED
+        detail: The current tenant is suspended.
+        traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+    InvitationEmailValidationProblem:
+      summary: Request field validation rejection
+      value:
+        type: urn:saasforge:problem:invitation-email-invalid
+        title: Invalid invitation email
+        status: 400
+        code: INVITATION_EMAIL_INVALID
+        detail: The request contains an invalid email address.
+        traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+        errors:
+          - pointer: /email
+            code: INVALID_FORMAT
+            detail: Must be a valid email address.

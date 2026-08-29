@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://saasforge.io/contracts/events/iam-session-started.v1.schema.json",
+  "title": "IAM Session Started v1",
+  "allOf": [
+    {
+      "$ref": "cloudevents-envelope.v1.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "com.saasforge.iam.session.started.v1" },
+        "source": { "const": "urn:saasforge:iam-service" },
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["familyId", "identityId", "purpose", "contextType", "result", "occurredAt"],
+          "properties": {
+            "familyId": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+            },
+            "identityId": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+            },
+            "purpose": {
+              "enum": ["USER_PLATFORM", "USER_TENANT", "USER_TENANT_SELECTION", "INITIAL_PASSWORD_CHANGE"]
+            },
+            "contextType": { "enum": ["PLATFORM", "TENANT"] },
+            "result": {
+              "enum": ["ACCESS_TOKEN_ISSUED", "CONTEXT_SELECTION_REQUIRED", "PASSWORD_CHANGE_REQUIRED"]
+            },
+            "occurredAt": { "type": "string", "format": "date-time" }
+          }
+        }
+      }
+    }
+  ]
+}

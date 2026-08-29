@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package io.saasforge.contracts.entitlement.quota.v1;
+
+option java_multiple_files = true;
+option java_package = "io.saasforge.contracts.entitlement.quota.v1";
+
+// Tenant Access uses this boundary to reserve and compensate lifecycle quota usage.
+service QuotaCommandService {
+  rpc Consume(QuotaCommandRequest) returns (QuotaCommandResponse);
+  rpc Release(QuotaCommandRequest) returns (QuotaCommandResponse);
+}
+
+message QuotaCommandRequest {
+  // Canonical lowercase, hyphenated UUIDv7 Tenant ID.
+  string tenant_id = 1;
+  string quota_code = 2;
+  int32 amount = 3;
+  // Canonical lowercase, hyphenated UUIDv7 operation ID.
+  string operation_id = 4;
+  QuotaPurpose purpose = 5;
+}
+
+message QuotaCommandResponse {
+  int32 usage = 1;
+  int32 limit = 2;
+  bool replayed = 3;
+}
+
+enum QuotaPurpose {
+  QUOTA_PURPOSE_UNSPECIFIED = 0;
+  TENANT_ADMIN_INITIALIZATION = 1;
+  RUNTIME = 2;
+}

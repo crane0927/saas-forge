@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://saasforge.io/contracts/events/iam-platform-admin-initialized.v1.schema.json",
+  "title": "IAM Platform Admin Initialized v1",
+  "allOf": [
+    { "$ref": "cloudevents-envelope.v1.schema.json" },
+    {
+      "type": "object",
+      "required": ["traceId"],
+      "properties": {
+        "type": { "const": "com.saasforge.iam.platform-admin-initialized.v1" },
+        "source": { "const": "urn:saasforge:iam-service" },
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "identityId",
+            "credentialId",
+            "roleAssignmentId",
+            "roleKey",
+            "credentialExpiresAt",
+            "result",
+            "actor",
+            "occurredAt"
+          ],
+          "properties": {
+            "identityId": { "$ref": "#/$defs/uuidV7" },
+            "credentialId": { "$ref": "#/$defs/uuidV7" },
+            "roleAssignmentId": { "$ref": "#/$defs/uuidV7" },
+            "roleKey": { "const": "PLATFORM_ADMIN" },
+            "credentialExpiresAt": { "type": "string", "format": "date-time" },
+            "result": { "const": "PLATFORM_ADMIN_INITIALIZED" },
+            "actor": { "const": "DEPLOYMENT_BOOTSTRAP" },
+            "occurredAt": { "type": "string", "format": "date-time" }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "uuidV7": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    }
+  }
+}
