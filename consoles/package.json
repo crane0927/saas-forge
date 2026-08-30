@@ -9,9 +9,10 @@
   "scripts": {
     "generate:api": "../mvnw -f ../pom.xml --batch-mode --no-transfer-progress -pl contracts/openapi -am generate-sources",
     "typecheck": "pnpm --recursive --if-present run typecheck",
+    "test": "pnpm --recursive --if-present run test",
     "lint": "eslint .",
     "format:check": "prettier --check .",
-    "verify": "pnpm run generate:api && pnpm run typecheck && pnpm run lint && pnpm run format:check"
+    "verify": "pnpm run generate:api && pnpm run typecheck && pnpm run test && pnpm run lint && pnpm run format:check"
   },
   "devDependencies": {
     "@eslint/js": "catalog:",

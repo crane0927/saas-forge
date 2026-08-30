@@ -1,5 +1,6 @@
 packages:
   - shared/api-client
+  - shared/app-runtime
 
 catalog:
   '@eslint/js': 10.0.1

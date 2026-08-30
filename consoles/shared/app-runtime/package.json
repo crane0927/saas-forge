@@ -1,0 +1,28 @@
+{
+  "name": "@saas-forge/app-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./bootstrap.css": "./src/bootstrap.css"
+  },
+  "types": "./src/index.ts",
+  "sideEffects": [
+    "./src/bootstrap.css"
+  ],
+  "scripts": {
+    "typecheck": "tsc --project tsconfig.json",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "format:check": "prettier --check .",
+    "verify": "pnpm run typecheck && pnpm run test && pnpm run lint && pnpm run format:check"
+  },
+  "devDependencies": {
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
