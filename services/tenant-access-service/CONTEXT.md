@@ -8,6 +8,10 @@ Tenant Access 管理 Tenant、Membership、Tenant 范围访问关系与生命周
 SaaS 客户的逻辑隔离空间，其业务含义由接入产品定义；持久生命周期状态为 `PENDING`、`ACTIVE`、`SUSPENDED` 或 `CLOSED`。
 _Avoid_: Customer, account
 
+**Tenant Brand Profile**:
+Tenant 的受控品牌表达，仅在建立该 Tenant Context 后生效；未建立 Tenant Context 时使用平台品牌。它不改变平台统一的布局、组件和交互语义。
+_Avoid_: Tenant theme, custom CSS, branded layout
+
 **Tenant Context**:
 面向用户请求、由已验证 User Access Token 的 `membershipId` 解析出的可信 Tenant 安全上下文；客户端不能传入或覆盖它，Service Access Token 也不建立它。
 _Avoid_: Client-selected tenant, service tenant identity

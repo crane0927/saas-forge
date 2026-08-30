@@ -10,7 +10,7 @@
 → Tenant Context、Permission、Feature、Quota 校验 → 执行业务 → 审计可查询
 ```
 
-已核实当前仓库仅具备 Maven 多模块骨架、Gateway 和四个服务的启动验证、SDK/Starter 制品坐标及目录边界；尚未实现 API、领域规则、数据存储、前端构建、Docker Compose 或官方 Example。因此下列事项均为待完成项。
+当前仓库已完成第 1、2 阶段的大部分后端契约、服务、数据、安全与诊断型端到端切片，但 `consoles` 仍只有工作区和生成的无状态 TypeScript Client，尚无可验证上述闭环的最终产品 React Console；Gateway 的 Password Setup 静态页不能替代 Platform Console 或 Tenant Console。原有后端勾选保留，新增的 Console 与浏览器验收项在取得直接证据前保持未完成，因此第 1、2 阶段当前均属于部分完成。
 
 MVP 不包含完整支付/账单/发票、公共注册和外部身份源、多语言 SDK、Schema Per Tenant 或 Database Per Tenant 隔离、CLI，以及 Helm/systemd 的完整生产交付。后两项在架构与配置上保持兼容，但按照 [路线图](15-roadmap.md) 中 Phase 1 的范围，不作为 MVP 发布阻塞项。
 
@@ -23,6 +23,8 @@ MVP 不包含完整支付/账单/发票、公共注册和外部身份源、多�
 - 租户管理员可创建组织、邀请并激活成员、创建租户角色、授权 Permission；平台角色与租户角色互不越权。
 - Example 的业务 API 只能通过 Java SDK/Starter 获取可信 Tenant Context，并同时正确执行 Permission、Feature 与 Quota 校验；不同租户的数据经应用层和 PostgreSQL RLS 双重隔离。
 - 登录、租户切换、授权/权益拒绝、配额操作和关键业务操作产生可查询审计记录。
+- 第 1～6 阶段分别交付对应的最终产品页面，并从全新 Compose 数据卷通过真实 Console、Gateway、服务和运行依赖完成核心成功与重要拒绝/恢复路径；接口调用、Mock、生成 Client 或 curl E2E 不能单独证明阶段产品闭环完成。
+- Platform Console、Tenant Console Shell 与业务 Remote 共享同一 Design System、认证/HTTP/错误语义和中英文国际化基线；相同场景不得出现无领域依据的样式或操作逻辑差异。
 - `./mvnw verify`、契约、集成、端到端、安全、性能与质量门禁全部通过，具体门禁见“9. 全链路验收与 MVP 发布门禁”。
 
 
@@ -39,7 +41,7 @@ flowchart TD
     D3 --> D4["4. 组织、成员与 Permission 闭环"]
     D4 --> D5["5. Subscription、Feature 与 Quota 闭环"]
     D5 --> D6["6. Audit 与事件可靠性闭环"]
-    D6 --> D7["7. 控制台、Manifest 与 Remote 闭环"]
+    D6 --> D7["7. Console 整合集成、Manifest 与 Remote 治理"]
     D7 --> D8["8. 本地交付与发布强化"]
     D8 --> D9["9. 全链路验收与发布"]
 
@@ -50,6 +52,14 @@ flowchart TD
     C -. "支撑并验证每个增量" .-> D5
     C -. "支撑并验证每个增量" .-> D6
     C -. "支撑并验证每个增量" .-> D7
+
+    D1 --> F["持续前端与浏览器验收轨道<br/>Design System、Console、Remote、i18n、Playwright"]
+    F -. "身份与 Tenant 页面" .-> D2
+    F -. "Shell、Manifest 与 Example Remote" .-> D3
+    F -. "组织、权限与品牌页面" .-> D4
+    F -. "权益与 Quota 页面" .-> D5
+    F -. "Audit 查询与导出页面" .-> D6
+    F -. "跨模块治理与回归" .-> D7
 
     D1 --> A["持续审计与事件轨道<br/>事件契约、Outbox、幂等消费、traceId"]
     A -. "随业务切片接入" .-> D2
@@ -65,7 +75,9 @@ flowchart TD
 - IAM 与 Tenant Access 在第 2 阶段共同交付登录、Membership 校验、Tenant 切换和管理员初始化，不能按两个完全独立服务串行实施。
 - SDK 可在公开契约稳定后生成客户端骨架，但其认证、Tenant Context、Permission、Feature、Quota 与 Audit 能力分别在第 3～6 阶段随服务端闭环完成。
 - Gateway、Compose、CI、Testcontainers 和基础可观测性从第 1 阶段开始建设，并在后续阶段持续增强。
-- 控制台页面可在对应公开 API 稳定后并行开发；第 7 阶段表示完整 Shell、Manifest 和 Remote 集成验收，不表示前端到该阶段才开始。
+- 最终产品 Console 随对应公开 API 在第 1～6 阶段持续交付；第 7 阶段只负责完整 Shell、Manifest、Remote 治理和跨模块集成，不得成为前端首次实现阶段。
+- 每个阶段分别维护“领域与服务”“Console 交互”“浏览器验收”事项。已有后端直接证据不因新增前端要求失效，但只有三类事项都完成，阶段才算实际完成。
+- 每个阶段的最高验收缝是：从全新 Compose 数据卷启动真实 Console、Gateway、领域服务、PostgreSQL、Redis、Kafka 及该阶段所需的其他依赖，再由 Playwright 验证核心成功路径和重要拒绝/恢复路径。curl E2E 保留为后端诊断证据，不能替代浏览器验收。
 
 
 
@@ -82,10 +94,13 @@ flowchart TD
 - [x] 明确“Tenant 创建与管理员初始化”“邀请激活”“Tenant 切换”“成员禁用/Tenant 冻结”四条跨服务流程的数据所有权、同步调用、事件、失败恢复与幂等责任；见[跨服务工作流契约](18-tenant-access-cross-service-workflows.md)、[ADR 0010](adr/0010-tenant-access-cross-service-workflows.md)与[事件契约](../contracts/events/tenant-access-workflows.md)。
 - [x] 确认数据库、Redis 与应用日志规范以版本化文档和 CI 校验维护，不得以跨服务共享领域实体或数据库模型的方式实现；见[数据库设计与规范](11-database-design.md)、[Redis Key Registry](19-redis-key-registry.md)、[应用日志规范](20-application-logging.md)与[ADR 0011](adr/0011-versioned-data-cache-and-logging-standards.md)。静态门禁已接入 Maven `verify`；真实 Flyway/RLS、Redis 故障和日志输出的运行时门禁随首个相关实现同步加入。
 - [x] 为影响服务边界、安全模型和公开契约的决策建立 ADR；跨服务流程见[ADR 0010](adr/0010-tenant-access-cross-service-workflows.md)，导出留存期、Manifest 审批细节等局部决策在对应阶段开始前冻结，不阻塞第 1～5 阶段。
+- [x] 决定 Tenant Access 拥有受控 Tenant Brand Profile：未建立 Tenant Context 时使用平台品牌，建立后只允许原子应用显示名称、Logo、favicon、主色与强调色 Token；Tenant 品牌不得改变统一布局、组件、状态颜色、交互语义或无障碍约束，见 [ADR 0036](adr/0036-tenant-access-owns-controlled-tenant-brand-profiles.md)。
 
 **完成标准：** 第 1～5 阶段依赖的关键决策均可追溯，不存在会改变服务边界、安全模型或公开契约的未决规则。
 
 ### 1. 工程与运行基线
+
+**领域、契约与运行基线**
 
 - [x] 固化 Maven Wrapper、JDK 17 构建与 JDK 21 兼容性验证；补齐依赖版本管理、测试、覆盖率和制品发布的父 POM 约定。详见 [Maven 构建与制品发布](21-maven-build-and-release.md)与 [ADR 0012](adr/0012-maven-coordinates-use-github-namespace.md)。
 - [x] **先冻结 API 通用规范，再定义任何资源接口。** [API 设计](08-api-design.md#rest-约定)已明确路径、字段和枚举命名；UUIDv7、时间、日期、金额/小数与空值的 JSON 表示；参数边界与 `POST`、`PUT`、`PATCH` 语义；过滤、排序和游标分页；文件/异步任务；版本、幂等、关联 ID 和内容协商规则。
@@ -103,13 +118,27 @@ flowchart TD
 - [x] 建立 Tenant 范围表的 RLS 测试夹具：非空 `tenant_id`、事务级 `app.tenant_id` 设置、默认拒绝策略，常规运行账号不拥有 `BYPASSRLS`；仅 `*_migrator` 可通过角色限定维护策略执行跨 Tenant 数据回填，`*_app` 不得继承或切换至该角色；见 [ADR 0022](adr/0022-migration-roles-are-the-only-rls-maintenance-exception.md)。
 - [x] **先发布 Redis Key Registry，再接入 Redis。** 为每个 Key 定义固定前缀/环境/服务/用途/版本/标识符格式、值序列化、TTL、最大基数、失效事件、单一写入所有者、读取者和故障策略；首版已覆盖 JWT `jti` 黑名单（TTL 为 Token 剩余有效期）、撤销 Signing Key `kid`、Refresh Token/会话缓存、登录保护和 Gateway 限流。Key 中禁止存放 Token、密码、Secret、邮箱等原始敏感值；Redis 不得作为 Quota 额度真相。SDK 的 Permission/Feature 默认使用进程内短缓存，业务可替换为自己的 Redis，未命中时经平台接口权威回源，不属于平台 Redis Registry。
 - [x] **先发布结构化日志规范，再写业务日志。** [应用日志规范](20-application-logging.md)、[日志 Schema](../contracts/logging/application-log.schema.json)与[日志策略](../contracts/logging/policy.json)已定义基础必填和场景条件必填字段、关联字段、HTTP/异常字段、字段白名单与脱敏、级别、采样和保留类别。容器使用结构化标准输出由 Collector 收集；虚拟机以 `systemd`/日志转发收集，应用不依赖本地滚动日志文件。日志不能替代只追加的 Audit Record。
-- [x] 建立包含 Gateway、四个服务、PostgreSQL、Redis、Kafka 和 OpenTelemetry Collector 的最小 Docker Compose；S3 兼容存储在第 6 阶段加入。
+- [x] 建立包含 Gateway、四个服务、PostgreSQL、Redis、Kafka 和 OpenTelemetry Collector 的最小 Docker Compose；S3 兼容存储随第 4 阶段的受控 Tenant 品牌素材加入，第 6 阶段在分离的存储边界内复用其基础能力承载 Audit 导出。
 - [x] 使用 Testcontainers 建立 PostgreSQL 18、Redis 和 Kafka 集成测试基础设施，并建立首版 GitHub Actions 构建、单元测试、契约兼容性和迁移检查；数据库门禁必须验证四库八账号、独立迁移链、运行时最小权限/RLS、数据库 UUIDv7 默认值，以及审计记录不可由 `audit_app` 修改或删除。
 - [x] Gateway 提供最小路由、Problem Details 错误规范化和 W3C Trace Context 透传；鉴权、限流和来源策略在后续闭环中逐步增强。实现边界见 [ADR 0025](adr/0025-gateway-uses-spring-cloud-gateway-server-mvc.md)。
 
-**完成标准：** API、数据库、Redis 与日志基础规范已版本化；最小契约可生成骨架；Compose 能启动基础组件；CI 能构建全仓库并执行契约、迁移和 RLS 测试夹具。
+**Console 工程、共享交互与浏览器基线**
+
+- [ ] 建立最终产品形态的 Platform Console、Tenant Console Shell 与共享前端包；接入生成的 TypeScript API Client，形成可独立构建、部署和测试的应用 Shell，不建设一次性验收 Console。
+- [ ] 建立唯一共享 Design System 包，统一颜色、排版、间距、图标、表单、表格、反馈、空态、加载态、错误态、危险操作确认、键盘与焦点恢复；Platform Console、Tenant Console 和 Remote 不得覆盖全局样式或重复实现同类组件。
+- [ ] 提供响应式栅格和标准分栏布局；以桌面管理场景为主，窄屏不得破坏核心流程，并满足语义化控件、键盘操作、可见焦点和基础无障碍要求。
+- [ ] 通过小型原型和对比验证选择一个成熟、维护活跃且可访问的组件基础，并经用户确认后隐藏在共享 Design System 后；本计划不预选具体组件库。
+- [ ] 建立共享认证状态机、HTTP Client、Problem Details 映射、全局导航和错误边界；两个 Console 复用同一实现，但按受控 Origin 维护独立 Session 实例和内存 Access Token，并以明确 Login Context Intent 区分 Platform 与 Tenant 登录。
+- [ ] 建立 `zh-CN` 与 `en-US` 国际化基线：浏览器语言决定初始 Locale，用户切换只保存为非敏感本地 UI 偏好，Shell 向 Remote 传递当前 Locale；构建门禁保证双语翻译键一致。
+- [ ] 建立平台品牌 Token 与 Tenant 品牌运行时应用缝；第 4 阶段前仅使用平台品牌，后续建立 Tenant Context 时才能原子切换受控 Tenant Brand Profile。
+- [ ] 在开发与端到端环境建立 `platform.saasforge.test`、`console.saasforge.test`、`api.saasforge.test` 与 `remote.saasforge.test` 的本地受信 TLS、精确 Origin、Cookie、CSRF、CORS 和 Remote 静态资源拓扑，不得以不同 `localhost` 端口作为阶段浏览器验收替代。
+- [ ] 建立共享组件测试、无障碍检查、关键稳定状态视觉快照和 Playwright 基础设施；组件与交互状态机覆盖中英文，浏览器测试可从全新 Compose 数据卷执行。
+
+**完成标准：** API、数据库、Redis 与日志基础规范已版本化；最小契约可生成骨架；Compose 能启动基础组件；CI 能构建全仓库并执行契约、迁移和 RLS 测试夹具；两个最终产品 Console 可在受控 TLS/Origin 拓扑启动，共享 Design System、认证/HTTP/错误、布局、双语和 Playwright 基线均有直接验证。当前后端基线已完成，但新增 Console 与浏览器基线未完成，因此本阶段仍为部分完成。
 
 ### 2. 身份与租户最小闭环
+
+**领域与服务**
 
 - [x] 实现 Identity、Credential、Refresh Token、OAuth Client/Secret、Signing Key Metadata 的迁移、领域规则与仓储；密码使用 Argon2id，Refresh Token 和 Client Secret 仅保存哈希。
 - [x] 实现邮箱密码登录、约 15 分钟的 JWT Access Token、HttpOnly Refresh Token Cookie、登出、刷新轮换和 JWKS 发布；Token 仅携带 `identityId`、`membershipId`、`tenantId`、`jti`。
@@ -121,29 +150,80 @@ flowchart TD
   - [x] [Issue #75](https://github.com/crane0927/saas-forge/issues/75)：按 [Gateway 通用路由目录与 User/Service Token Scope 策略](23-gateway-service-scope-routing.md)建立受控 Service/Scope Registry、共享不可变 Route Catalog、Gateway与 Starter双重校验，以及真实 IAM/Redis/Nacos和非生产接收端验收。首个生产 Runtime operation仍由后续对应领域 Issue交付。
   - [x] [Issue #76](https://github.com/crane0927/saas-forge/issues/76)：按 [三类成功事实的 Audit Record 消费闭环](24-audit-success-fact-consumption.md)将 Session Started、Tenant Created、Tenant Context Switched映射为只追加 Audit Record，完成真实 Kafka/PostgreSQL去重、重试、隔离、重放和最小权限验收。
 
-**完成标准：** 在 Compose 环境中可完成“Platform Admin 登录 → 创建 Tenant → 初始化 Tenant Admin → Tenant Admin 登录与切换 Tenant”；错误 Token、重放 Refresh Token、黑名单 Token、Redis 不可用和越权 Tenant 切换均有反向测试。
+**Console 交互**
+
+- [ ] 补齐页面刷新和浏览器重启所需的最小权威读取契约，包括 Current Session、Accessible Memberships，以及本阶段 Quota Definition、Plan、Tenant、Subscription 和 OAuth Client 的必要列表/详情；只增加资源化最小读模型，不前移后续完整 CRUD。
+- [ ] Platform Console 完成“登录 → 首次密码修改 → Refresh → Logout”，并显示稳定的登录保护、凭据错误、会话失效和恢复反馈。
+- [ ] Platform Console 完成“Quota Definition/Plan → Tenant → Subscription → Tenant Administrator 初始化”产品路径，读取结果必须来自真实服务权威状态。
+- [ ] Tenant Console 完成“Password Setup → Tenant Administrator 登录 → Accessible Membership 选择 → Tenant Context Switch”，刷新页面后从权威状态恢复当前 Session 与资源上下文。
+- [ ] Platform Console 完成 Tenant Suspension、显式恢复和恢复失败处理；Tenant Console 可观察旧 Token 被拒绝、Session 失效及重新登录后的恢复结果。
+- [ ] Platform Console 完成 OAuth Client 创建、Secret 一次展示、结果不确定恢复、重叠轮换和吊销；Secret 不得进入浏览器持久存储、日志或重复读取接口。
+
+**浏览器验收**
+
+- [ ] 从全新 Compose 数据卷用 Playwright 完成 Platform Admin 登录与初始化、最小 Entitlement Bootstrap、Tenant 创建和 Tenant Administrator 初始化，再由 Tenant Administrator 完成 Password Setup、登录、Membership 选择与 Tenant Context Switch。
+- [ ] 通过真实 Console 验证错误 Token、Refresh 重放、撤销 Token、Redis 不可用、越权 Tenant 切换、Tenant Suspension 后旧 Token 拒绝，以及显式恢复后的重新登录；相关运行时与浏览器 Console 不得出现使结果失效的错误。
+- [ ] 通过真实 Console 验证 OAuth Client Secret 一次展示、丢失结果恢复、轮换重叠窗口和吊销后的旧凭据拒绝；保留 curl E2E 作为后端诊断，不把它作为本项完成证据。
+- [ ] 完整路径至少以默认 Locale 执行一次，并验证 Locale 切换及另一语言的代表性身份/Tenant 操作。
+
+**完成标准：** 从全新 Compose 数据卷经真实 Platform Console、Tenant Console、Gateway、IAM、Tenant Access、Entitlement、Audit、PostgreSQL、Redis 和 Kafka 完成“Platform Admin 登录 → 创建 Tenant → 初始化 Tenant Admin → Tenant Admin 登录与切换 Tenant”，并覆盖上述安全拒绝、恢复、OAuth Client 与双语代表路径。当前领域与服务项已完成，但 Console 与浏览器验收尚未完成，因此本阶段仍为部分完成。
 
 ### 3. SDK 与 Example 租户隔离闭环
+
+**领域与服务**
 
 - [ ] 完成 BOM、`sdk-core`、`sdk-auth`、`sdk-tenant` 与 Starter 的首个可用版本；从公开契约生成 REST Client，不暴露内部 gRPC 或数据库模型。
 - [ ] Starter 集成 Spring Security Resource Server 和 IAM JWKS，固定只接受 `RS256`，支持按 `kid` 缓存公钥、未知 `kid` 受控刷新、常规密钥轮换、撤销 `kid` 与 `jti` 的 Redis fail-closed 检查，以及不可写的 Identity/Membership/Tenant Context。
 - [ ] 实现 Project/Task Example 的最小业务 API；仅经 Starter 获取 Tenant Context，并在租户范围表使用事务级 `app.tenant_id` 和 RLS。
-- [ ] 为 Example 接入 Gateway 路由、结构化日志、Trace 和最小审计投递；此阶段不依赖控制台或 Module Federation Remote，可通过 API/种子数据验证。
+- [ ] 为 Example 接入 Gateway 路由、结构化日志、Trace 和最小审计投递；API 集成测试和种子数据只作为诊断与准备手段，不能替代本阶段最终 Tenant Shell/Remote 浏览器验收。
+- [ ] 冻结首版 Manifest 最小契约：`module`、`version`、受控 `source`、生命周期状态与审核/启用事实；只允许 CI Client Credentials 注册，只有 Platform Administrator 审核并启用的受控来源可被 Shell 加载。
 
-**完成标准：** Tenant A 可创建和读取自己的 Project，但无法读、写、改、删 Tenant B 的数据；缺失 Tenant Context 默认拒绝；独立 Spring Boot 业务服务只引入 Starter 和受控配置即可获得可信上下文。
+**Console 交互**
+
+- [ ] Platform Console 提供 Manifest 注册结果、审核、启用和拒绝界面，不允许仅因服务注册或来源可访问而自动公开 Remote。
+- [ ] Tenant Console Shell 从首版开始采用最终 Remote 架构，只加载已启用 Manifest 的受控来源；Shell 独占认证状态与共享 HTTP Client，Project/Task Remote 不读取、存储或自行刷新 Token。
+- [ ] 将 Project/Task 页面实现为最终业务 Remote，使用共享 Design System、Locale、导航和错误语义，通过 Gateway 调用真实 Example API。
+
+**浏览器验收**
+
+- [ ] 从全新 Compose 数据卷用 Playwright 完成“CI 注册 Manifest → Platform Administrator 审核并启用 → Tenant Shell 加载 Remote → 创建/读取 Project 与 Task”的完整路径。
+- [ ] 通过真实 Shell、Remote、Gateway、Starter、Example 与 PostgreSQL RLS 验证 Tenant A 可操作自己的 Project/Task、不能读写 Tenant B 数据，缺失 Tenant Context 默认拒绝。
+- [ ] 验证未审核、未启用、来源不受控和加载失败的 Remote 不会进入业务页面，Shell 显示统一且可恢复的错误边界；验证 Locale 传递和另一语言代表页面。
+
+**完成标准：** Tenant A 经最终 Tenant Shell 与 Project/Task Remote 可创建和读取自己的数据，但无法读、写、改、删 Tenant B 数据；缺失 Tenant Context 默认拒绝；Manifest 审核/启用与 Remote 拒绝路径有真实浏览器证据；独立 Spring Boot 业务服务只引入 Starter 和受控配置即可获得可信上下文。
 
 ### 4. 组织、成员与 Permission 闭环
 
-- [ ] 补全 Tenant 生命周期和平台侧管理：修改、启用、Tenant Suspension/恢复、停用/到期；操作必须有平台权限和审计事件。
+**领域与服务**
+
+- [ ] 补全 Tenant 生命周期和平台侧管理：复用第 2 阶段已完成且受平台权限保护的 Tenant Suspension/恢复安全闭环，新增修改、启用、停用/到期，并为这些生命周期操作补齐审计事件。
 - [ ] 实现 Membership、Organization/OrganizationUnit、邀请、Role、Permission、Role-Permission、Membership-Role 的模型、RLS 访问与 v1 API。
 - [ ] 完成 Invitation 激活时仅面向从无凭据 Identity 的首次 Password Setup、已有 Password Credential 的 Password Recovery，以及成员禁用公开工作流；成员禁用复用第 2 阶段的按 Membership 批量会话与 `jti` 撤销能力。
 - [ ] 实现平台角色与租户角色的独立授权边界，以及 SDK/Gateway 所需的 Membership、Permission 查询接口。
 - [ ] 完成 `sdk-permission`，提供 `@RequirePermission` 和编程式检查；使用本地短缓存、Kafka 失效事件和经 Gateway 读取权威结果的回源路径。
 - [ ] 在 Example 注册 `project:create`、`project:list`、`project:export` 等 Permission，覆盖允许与拒绝路径；成员、角色、权限和邀请变更写入 Outbox 与审计事件。
+- [ ] 扩展 Manifest 的 Permission 声明和菜单授权元数据；声明只描述受控能力，服务端 Permission 权威校验不依赖客户端菜单可见性。
+- [ ] 由 Tenant Access 提供 Tenant Brand Profile 最小契约和受控品牌素材引用；具有明确品牌管理 Permission 的 Tenant Administrator 可配置，Platform Administrator 只能按平台安全政策禁用违规素材，不能代替 Tenant 修改。
+- [ ] 在 Compose 中前移最小 S3 兼容对象存储，品牌素材与第 6 阶段 Audit 导出使用分离的存储边界、凭据、授权与生命周期策略；Logo、favicon 上传必须校验允许的类型、大小和安全策略。
 
-**完成标准：** Tenant Admin 可邀请并激活成员、创建组织和角色、分配 Permission；同一 Identity 在不同 Tenant 可拥有不同 Membership 和角色；Example 的权限允许与拒绝均由集成和端到端测试覆盖。
+**Console 交互**
+
+- [ ] Platform Console 提供 Tenant 修改、启用、停用/到期和 Platform Role 页面；Tenant Suspension/恢复直接复用第 2 阶段页面与安全语义，不重复建设另一套操作逻辑。
+- [ ] Tenant Console 提供 Organization/OrganizationUnit、Membership、Invitation、Role、Permission、Role-Permission 和 Membership-Role 页面，统一使用共享列表、表单、危险操作确认与错误反馈。
+- [ ] Tenant Console 完成 Invitation 激活、首次 Password Setup、已有凭据 Identity 的 Password Recovery、登录、成员禁用和授权允许/拒绝的连续产品路径。
+- [ ] Tenant 设置页管理显示名称、Logo、favicon、主色与强调色 Token；未建立 Tenant Context 时保持平台品牌，建立或切换 Tenant Context 后原子应用目标 Tenant 品牌。禁止自定义 CSS、布局、组件、状态/危险颜色和交互语义。
+
+**浏览器验收**
+
+- [ ] 从全新 Compose 数据卷用 Playwright 完成平台 Tenant 生命周期/Platform Role，以及租户 Organization、邀请、Membership、Role 与 Permission 管理路径。
+- [ ] 验证新 Identity Password Setup、已有 Identity Password Recovery、成员禁用后的会话撤销、菜单隐藏与服务端授权拒绝；客户端菜单结果不得替代 Gateway/服务端 Permission 检查。
+- [ ] 验证品牌素材上传、违规素材禁用、刷新恢复、Platform/Tenant 品牌边界和 Tenant Context 切换时无跨 Tenant 品牌泄漏，并覆盖中英文代表页面。
+
+**完成标准：** Tenant Administrator 经真实 Tenant Console 可邀请并激活成员、创建组织和角色、分配 Permission 与受控品牌；同一 Identity 在不同 Tenant 可拥有不同 Membership、角色和品牌上下文；Example 的权限允许/拒绝、成员禁用、凭据恢复和品牌隔离均由全新 Compose 浏览器路径覆盖。
 
 ### 5. Subscription、Feature 与 Quota 闭环
+
+**领域与服务**
 
 - [ ] 实现 Feature、Quota Definition、Plan、Plan-Feature、Plan-Quota、Subscription、不可变 Subscription Entitlement Snapshot 的迁移、领域规则和平台 API。
 - [ ] 实现 Tenant 当前 Subscription 的单一生效约束、试用/到期/暂停等已冻结生命周期规则，以及套餐变更产生新订阅版本和权益快照。
@@ -152,35 +232,68 @@ flowchart TD
 - [ ] 完成 `sdk-feature` 与 `sdk-quota`：提供 `@RequireFeature`、编程式 Feature 检查、同步 Quota API、Problem Details 异常映射及受控的超时、退避、重试和熔断。
 - [ ] 为 Free 与 Professional 套餐配置 `project.basic`、`project.export`、`project.analytics`，以及 `max_users`、`max_projects`；在 Example 覆盖允许、未订阅、到期、超额和重复 `operationId` 路径。
 - [ ] 发布权益变更与配额变更事件，供 SDK 缓存失效和 Audit 消费。
+- [ ] 扩展 Manifest 的 Feature/Quota 声明和权益可见性元数据；客户端展示不替代服务端 Subscription、Feature 与 Quota 权威判定。
 
-**完成标准：** 一个 Tenant 任意时刻不会拥有两个当前生效订阅；Example 同时执行 Permission、Feature 与 Quota 校验；并发扣减不超额，重复 `operationId` 不重复计量。
+**Console 交互**
+
+- [ ] Platform Console 提供 Feature、Quota Definition、Plan、Plan-Feature、Plan-Quota、Subscription 与权益快照所需的 MVP 管理页面，复用统一列表、表单、状态与版本展示语义。
+- [ ] Tenant Console 提供当前 Plan、Subscription、Feature 和 Quota 使用量/限制的只读视图，并能解释未订阅、到期、暂停和超额等稳定拒绝结果。
+- [ ] Example Remote 使用共享 Design System 展示 Permission、Feature、Quota 的允许、拒绝、到期、未订阅、超额和重复 `operationId` 结果，不暴露内部计量或缓存机制。
+
+**浏览器验收**
+
+- [ ] 从全新 Compose 数据卷用 Playwright 完成“Platform 配置 Feature/Quota/Plan/Subscription → Tenant 查看当前权益 → Example Remote 执行业务”的产品路径。
+- [ ] 验证 Permission 与 Feature 组合拒绝、Subscription 到期/暂停/未订阅、Quota 超额、并发不超额和重复 `operationId` 不重复计量；浏览器结果与数据库权威状态一致。
+- [ ] 验证权益变化后的菜单/页面可见性与服务端判定最终收敛，并覆盖 Locale 切换和另一语言代表路径。
+
+**完成标准：** 一个 Tenant 任意时刻不会拥有两个当前生效订阅；Platform Console、Tenant Console 与 Example Remote 真实展示并执行 Permission、Feature 与 Quota 闭环；并发扣减不超额，重复 `operationId` 不重复计量，重要拒绝和恢复均有全新 Compose 浏览器证据。
 
 ### 6. Audit 与事件可靠性闭环
+
+**领域与服务**
 
 - [ ] 定义最小审计事件白名单，记录 Tenant、Identity、Membership、Action、Resource、Request ID、IP、User Agent、时间、结果与经审查 Metadata；拒绝密码、Token、Client Secret 和原始敏感个人信息。
 - [ ] 实现只追加 `audit_records`、按事件 ID 幂等消费、失败重试与死信/告警策略；`audit_app` 对审计记录只具备 `SELECT`、`INSERT`，`export_jobs` 的可变权限单独授予；见 [ADR 0023](adr/0023-audit-records-use-append-only-runtime-privileges.md)。
 - [ ] 验证 IAM、Tenant Access、Entitlement、Gateway 和 Example 的业务事务均通过各自 Outbox 可靠投递事件，并能以 `traceId` 关联同步调用和 Kafka 链路。
 - [ ] 完成 `sdk-audit` 的异步审计 API、失败处理和使用文档，不让审计投递无界阻塞业务请求。
-- [ ] 在开始导出功能前，冻结授权范围、对象存储签名 URL 留存期和清理责任；在 Compose 中加入 S3 兼容对象存储。
+- [ ] 在开始导出功能前，冻结授权范围、对象存储签名 URL 留存期和清理责任；复用第 4 阶段已接入的 S3 兼容基础设施，但为 Audit 导出使用独立 Bucket/前缀、凭据、访问策略和生命周期，不与 Tenant 品牌素材共享授权边界。
 - [ ] 实现经过授权的审计查询、游标分页和异步导出任务；导出结果存储为短期签名 URL，数据库只保存任务元数据。
 
-**完成标准：** 关键闭环操作均能查询到不可修改的审计记录；事件重复消费不产生重复记录；失败事件可重试并进入受监控的死信路径；导出不阻塞请求且结果文件按配置自动清理。
+**Console 交互**
 
-### 7. 控制台、Manifest 与 Remote 闭环
+- [ ] 在适用的 Platform Console 与 Tenant Console 范围提供 Audit 查询、筛选、游标分页和详情页面；Platform/Tenant 授权必须由服务端显式裁决，不能依赖前端隐藏条件。
+- [ ] 提供 Audit 导出创建、进度/状态轮询、完成下载、过期、失败和重试/恢复界面；下载只使用短期签名 URL，Console 不持久化导出凭据。
 
-- [ ] 初始化 TypeScript/React 前端工程与共享 API Client；Platform Console 和 Tenant Console Shell 独立构建、部署和测试。
-- [ ] 交付 Platform Console 的 MVP 页面：登录、租户、Feature、Quota Definition、Plan、Subscription、平台管理员/角色、Manifest 审核和审计查询。
-- [ ] 交付 Tenant Console Shell 的 MVP 页面：登录、Tenant 切换、组织、成员/邀请、角色/权限、套餐权益、Quota 使用、租户设置和审计查询；Shell 在内存保存 Access Token，提供认证 API 与共享 HTTP Client。
-- [ ] 在开始 Manifest 功能前冻结审核/启停状态、审批责任和 Remote 来源规则；实现版本化业务能力 Manifest 及 Permission/Feature/Quota Definition 注册，仅允许 CI 的 Client Credentials 注册。
-- [ ] 将 Project/Task 前端实现为 Module Federation Remote；只能由经审核的 Manifest 加载，只使用 Shell 暴露的认证 API 与共享 HTTP Client，不能读取或存储 Token。
-- [ ] Gateway 完成由 `browser.rootDomain` 推导的 CORS 默认拒绝与精确白名单、`__Host-sf_refresh` Cookie、`X-SF-CSRF`/Origin/Fetch Metadata 防护和控制台/Remote 路由授权；禁止携带凭据的通配来源、`null` Origin 与 Manifest/运行时扩展白名单。
+**浏览器验收**
 
-**完成标准：** 官方 Example 可证明 Core 不包含业务领域模型，同时完整展示租户隔离、角色、权益、配额、Remote 白名单与审计闭环。
+- [ ] 从全新 Compose 数据卷用 Playwright 产生身份、Tenant、Permission、Entitlement 和 Example 成功/拒绝事实，再通过真实 Console 查询、分页并核对 Audit Record。
+- [ ] 验证重复事件不产生重复记录、失败事件进入受监控重试/隔离路径、导出异步完成并可下载、失败可恢复、过期 URL 被拒绝且文件按策略清理。
+- [ ] 验证 Platform/Tenant 查询范围、敏感字段缺失和中英文代表页面；浏览器路径同时关联可观测 `traceId`，不得把日志作为 Audit Record 替代。
+
+**完成标准：** 关键闭环操作均能经真实 Console 查询到不可修改的 Audit Record；事件重复消费不产生重复记录；失败事件可重试并进入受监控的隔离/死信路径；导出不阻塞请求且结果文件按配置自动清理，查询、导出、下载和失败恢复均有全新 Compose 浏览器证据。
+
+### 7. Console 整合集成、Manifest 与 Remote 治理
+
+**治理与集成**
+
+- [ ] 冻结并实现完整 Manifest 生命周期、升级/回退规则、版本兼容、来源变更、启用/禁用、审批责任与历史审计；汇总第 3～5 阶段逐步加入的模块、Permission、Feature 和 Quota 声明。
+- [ ] 完成 Platform Console 对 Manifest 版本、来源、审批、启停和故障状态的统一治理；不重复实现第 1～6 阶段已有业务页面。
+- [ ] 完成 Tenant Console Shell 的跨模块导航、菜单授权、Locale、Tenant Brand Profile、Session 和共享 HTTP Client 集成，确保多个 Remote 不能覆盖全局契约或彼此污染状态。
+- [ ] 完成 Remote 加载超时、资源失败、版本不兼容、运行异常、禁用中和来源失效的故障隔离与恢复；单个 Remote 故障不得破坏 Shell 导航、登出或其他模块。
+- [ ] 对 Gateway 的受控 Origin、Cookie、CSRF、CORS 和 Remote 静态资源策略执行跨模块强化回归；不得在本阶段首次补建早期阶段所需的 TLS/Origin 基线。
+
+**浏览器验收**
+
+- [ ] 从全新 Compose 数据卷用 Playwright 完成 Manifest 新版本注册、审核、启用、升级、禁用、回退/恢复和来源治理，并验证 Shell 只加载当前受控版本。
+- [ ] 验证 Platform Console、Tenant Console 与多个 Remote 的统一导航、认证失效、错误边界、样式、布局、键盘/焦点、Tenant 品牌和双语交互不存在无领域依据的差异。
+- [ ] 验证一个 Remote 加载或运行失败时，Shell、登出、Tenant Context Switch 和其他 Remote 保持可用；未授权菜单隐藏与服务端拒绝同时成立。
+
+**完成标准：** 第 1～6 阶段已经交付的最终 Console 页面在统一 Shell 和治理模型下完整协作；Manifest/Remote 的升级、禁用、来源控制和故障隔离有真实浏览器证据；官方 Example 证明 Core 不包含业务领域模型，同时展示租户隔离、角色、权益、配额、Remote 白名单与 Audit 闭环。
 
 ### 8. 本地交付与发布强化
 
-- [ ] 提供 Docker Compose：Gateway、四个服务、两个控制台、Example、含四个逻辑数据库和受限账号的 PostgreSQL、Redis、Kafka、S3 兼容存储及 OpenTelemetry Collector。
-- [ ] 配置健康检查、初始化迁移、开发用受控密钥注入、`saasforge.test` 本地 TLS/域名拓扑、可重复的种子/清理策略和一条 Quick Start 命令；Quick Start 必须覆盖本地域名解析与证书信任前置条件，单节点依赖仅用于本地环境。
+- [ ] 将第 1～7 阶段持续演进的 Docker Compose 收敛为发布拓扑：Gateway、四个服务、两个控制台、Example、含四个逻辑数据库和受限账号的 PostgreSQL、Redis、Kafka、分离存储边界的 S3 兼容存储及 OpenTelemetry Collector；不得把本项作为两个 Console 或 TLS 拓扑的首次交付。
+- [ ] 强化健康检查、初始化迁移、开发用受控密钥注入、`saasforge.test` 本地 TLS/域名拓扑、可重复的种子/清理策略和一条 Quick Start 命令；Quick Start 必须覆盖本地域名解析与证书信任前置条件，单节点依赖仅用于本地环境。
 - [ ] 接入结构化日志、Trace、Metric 和健康探针；至少能关联 Gateway、服务调用、Kafka 事件和 Audit 的 `traceId`。
 - [ ] 将 Gateway 强化为唯一公网入口并实现 Redis 令牌桶限流，按 IP、Identity、Client、Tenant 维度使用环境化阈值；领域服务不开放公网端口。
 - [ ] 将数据库迁移、Redis Key Registry 和日志字段白名单接入 CI：迁移须符合服务数据库边界与 RLS 门禁，新增 Redis Key 须登记 TTL/所有者，日志测试须证明敏感字段不会输出。
@@ -192,7 +305,8 @@ flowchart TD
 ### 9. 全链路验收与 MVP 发布门禁
 
 - [ ] 单元、集成、契约、前端、端到端、安全与性能测试均按 [测试策略](13-testing-strategy.md) 落地；全仓库行覆盖率 ≥ 80%、分支覆盖率 ≥ 70%，IAM、Tenant Context、RLS、授权和配额行覆盖率 ≥ 90%。
-- [ ] 用 Playwright 在 `saasforge.test` Compose 拓扑执行完整核心端到端闭环，验证 host-only Refresh Token Cookie、SameSite/CSRF/CORS 拒绝路径，以及 Tenant Console Shell 的菜单授权、业务 Remote 加载和拒绝路径。
+- [ ] 用 Playwright 从全新数据卷在 `saasforge.test` Compose 拓扑执行完整核心端到端闭环，覆盖 Platform Console、Tenant Console Shell 与全部 MVP Remote，验证 host-only Refresh Token Cookie、SameSite/CSRF/CORS 拒绝路径，以及菜单授权、Remote 加载和拒绝/恢复路径。
+- [ ] 执行 `zh-CN` 与 `en-US` 跨模块发布回归，验证 Locale 切换、翻译键完整性、关键布局稳定性、Tenant Context 品牌原子切换，以及相同场景在不同 Console/Remote 中保持统一样式和交互语义。
 - [ ] 用 Testcontainers 执行 RLS 强制门禁：Tenant A 上下文不可访问 Tenant B，缺上下文默认拒绝；同时验证用户/服务 Token 的越权、过期、撤销与 Redis 故障路径。
 - [ ] 验证 Permission 与 Feature 组合拒绝、Subscription 到期、Quota 并发不超额和 `operationId` 幂等；验证审计只追加且不含敏感字段。
 - [ ] 验证 Redis Key 的 TTL、命名空间和失效事件符合登记规范；验证结构化日志可按 `traceId` 关联链路，且不输出密码、Token、Client Secret、完整证件或其他原始敏感个人信息。
