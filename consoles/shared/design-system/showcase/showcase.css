@@ -82,6 +82,20 @@
   border-radius: 8px;
 }
 
+.sf-showcase-table-preview {
+  display: grid;
+  min-inline-size: 0;
+  gap: var(--sf-space-md);
+  padding: var(--sf-space-lg);
+  border: 1px solid var(--sf-color-border);
+  border-radius: 8px;
+}
+
+.sf-showcase-table-tools {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .sf-showcase-form-note {
   margin: 0;
   color: var(--sf-color-text-secondary);

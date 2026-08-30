@@ -19,6 +19,7 @@ import {
   RecoverableDangerDialog,
   RefreshingContent,
   SelectField,
+  ServerTable,
   StandardDialog,
   SuccessFeedback,
   TextField,
@@ -27,13 +28,26 @@ import {
   useUnsavedChangesGuard,
   WarningFeedback,
   type FormErrorItem,
+  type ServerTableRequest,
+  type ServerTableSort,
 } from '@saas-forge/design-system';
-import { StrictMode, useRef, useState } from 'react';
+import { StrictMode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import './showcase.css';
 
 const initialTenants = ['北辰科技', '云帆数据'];
+const tenantTableRows = [
+  { id: 'tenant-1', name: '北辰科技', owner: '林知远', status: '启用', createdAt: '2026-08-12' },
+  { id: 'tenant-2', name: '云帆数据', owner: '周清禾', status: '启用', createdAt: '2026-08-10' },
+  { id: 'tenant-3', name: '星河制造', owner: '沈安', status: '停用', createdAt: '2026-08-08' },
+  { id: 'tenant-4', name: '海岳零售', owner: '陈予', status: '启用', createdAt: '2026-08-06' },
+  { id: 'tenant-5', name: '青岚物流', owner: '方晨', status: '启用', createdAt: '2026-08-04' },
+  { id: 'tenant-6', name: '明川教育', owner: '顾言', status: '停用', createdAt: '2026-08-02' },
+  { id: 'tenant-7', name: '栖云健康', owner: '陆宁', status: '启用', createdAt: '2026-08-01' },
+] as const;
+
+type TenantTableRow = (typeof tenantTableRows)[number];
 type PreviewState =
   'default' | 'loading' | 'disabled' | 'success' | 'error' | 'empty' | 'filtered' | 'not-found';
 
@@ -348,6 +362,186 @@ function FormShowcase({ onResult }: { readonly onResult: (result: string) => voi
   );
 }
 
+function TableShowcase({ onResult }: { readonly onResult: (result: string) => void }) {
+  const [draftName, setDraftName] = useState('');
+  const [appliedName, setAppliedName] = useState('');
+  const [page, setPage] = useState(1);
+  const [sort, setSort] = useState<ServerTableSort>();
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string>();
+  const [disabledIds, setDisabledIds] = useState<readonly string[]>([]);
+  const [dangerTarget, setDangerTarget] = useState<TenantTableRow>();
+  const requestTimer = useRef<number | undefined>(undefined);
+  const pendingRequest = useRef({
+    name: '',
+    request: { page: 1, pageSize: 3 } satisfies ServerTableRequest,
+  });
+
+  useEffect(
+    () => () => {
+      window.clearTimeout(requestTimer.current);
+    },
+    [],
+  );
+
+  const simulateRequest = (name: string, request: ServerTableRequest, fail = false) => {
+    window.clearTimeout(requestTimer.current);
+    pendingRequest.current = { name, request };
+    setRefreshing(true);
+    setLoadError(undefined);
+    requestTimer.current = window.setTimeout(() => {
+      setRefreshing(false);
+      if (fail) {
+        setLoadError('模拟租户服务暂时不可用；当前查询条件已保留。');
+        return;
+      }
+      setAppliedName(name);
+      setPage(request.page);
+      setSort(request.sort);
+      onResult(`服务端模拟已返回第 ${String(request.page)} 页。`);
+    }, 350);
+  };
+
+  const matchingRows = tenantTableRows.filter((row) => row.name.includes(appliedName.trim()));
+  const sortedRows = [...matchingRows].sort((left, right) => {
+    if (sort === undefined) {
+      return 0;
+    }
+    const comparison = left[sort.field === 'createdAt' ? 'createdAt' : 'name'].localeCompare(
+      right[sort.field === 'createdAt' ? 'createdAt' : 'name'],
+      'zh-CN',
+    );
+    return sort.direction === 'asc' ? comparison : -comparison;
+  });
+  const currentRows = sortedRows.slice((page - 1) * 3, page * 3);
+
+  return (
+    <div className="sf-showcase-table-preview">
+      <div className="sf-showcase-table-tools">
+        <Button
+          onClick={() => {
+            simulateRequest(appliedName, { page, pageSize: 3, sort }, true);
+          }}
+        >
+          模拟加载失败
+        </Button>
+      </div>
+      <ServerTable
+        ariaLabel="租户服务端列表"
+        query={
+          <TextField
+            id="table-tenant-name"
+            label="租户名称"
+            value={draftName}
+            placeholder="输入名称后查询"
+            onValueChange={setDraftName}
+          />
+        }
+        onQuery={() => {
+          const nextName = draftName.trim();
+          simulateRequest(nextName, { page: 1, pageSize: 3, sort });
+        }}
+        onReset={() => {
+          setDraftName('');
+          simulateRequest('', { page: 1, pageSize: 3 });
+        }}
+        rows={currentRows}
+        rowKey={(row) => row.id}
+        columns={[
+          {
+            key: 'name',
+            title: '租户名称',
+            render: (row) => row.name,
+            sortable: true,
+            fixed: 'left',
+            width: 180,
+          },
+          { key: 'owner', title: '管理员', render: (row) => row.owner, width: 140 },
+          {
+            key: 'status',
+            title: '状态',
+            render: (row) => (disabledIds.includes(row.id) ? '停用' : row.status),
+            width: 100,
+          },
+          {
+            key: 'createdAt',
+            title: '创建日期',
+            render: (row) => row.createdAt,
+            sortable: true,
+            width: 140,
+          },
+        ]}
+        actions={[
+          {
+            key: 'view',
+            label: '查看',
+            onAction: (row) => {
+              onResult(`正在查看 ${row.name}。`);
+            },
+          },
+          {
+            key: 'edit',
+            label: '编辑',
+            onAction: (row) => {
+              onResult(`正在编辑 ${row.name}。`);
+            },
+          },
+          {
+            key: 'copy',
+            label: '复制名称',
+            onAction: (row) => {
+              onResult(`已复制 ${row.name} 的名称。`);
+            },
+          },
+          {
+            key: 'disable',
+            label: '停用',
+            danger: true,
+            disabled: (row) => disabledIds.includes(row.id) || row.status === '停用',
+            onAction: setDangerTarget,
+          },
+        ]}
+        page={page}
+        pageSize={3}
+        total={matchingRows.length}
+        sort={sort}
+        filtered={appliedName !== ''}
+        refreshing={refreshing}
+        loadError={loadError}
+        onRetry={() => {
+          simulateRequest(pendingRequest.current.name, pendingRequest.current.request);
+        }}
+        onTableChange={(request) => {
+          simulateRequest(appliedName, request);
+        }}
+        selectionLabel={(row) => `选择 ${row.name}`}
+        onSelectionChange={(selectedRows) => {
+          if (selectedRows.length > 0) {
+            onResult(`当前页已选择 ${String(selectedRows.length)} 个租户。`);
+          }
+        }}
+      />
+      <RecoverableDangerDialog
+        open={dangerTarget !== undefined}
+        title="停用租户"
+        objectName={dangerTarget?.name ?? ''}
+        consequence="停用后成员暂时无法登录，管理员可以随时恢复。"
+        actionLabel="停用租户"
+        onCancel={() => {
+          setDangerTarget(undefined);
+        }}
+        onConfirm={() => {
+          if (dangerTarget !== undefined) {
+            setDisabledIds((current) => [...current, dangerTarget.id]);
+            onResult(`${dangerTarget.name} 已停用。`);
+          }
+          setDangerTarget(undefined);
+        }}
+      />
+    </div>
+  );
+}
+
 function OverlayShowcase() {
   const [result, setResult] = useState('请选择一个场景进行操作。');
   const [standardOpen, setStandardOpen] = useState(false);
@@ -387,6 +581,16 @@ function OverlayShowcase() {
       <p className="sf-showcase-result" role="status">
         {result}
       </p>
+
+      <section className="sf-showcase-section" aria-labelledby="table-preview-title">
+        <div className="sf-showcase-section-heading">
+          <div>
+            <h2 id="table-preview-title">共享服务端表格完整流程</h2>
+            <p>查询仅在提交时应用，并统一演示分页、单列排序、当前页选择和危险操作。</p>
+          </div>
+        </div>
+        <TableShowcase onResult={setResult} />
+      </section>
 
       <section className="sf-showcase-section" aria-labelledby="form-preview-title">
         <div className="sf-showcase-section-heading">

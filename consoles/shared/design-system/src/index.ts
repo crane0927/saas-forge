@@ -77,5 +77,15 @@ export {
   type RefreshingContentProps,
   type StateAction,
 } from './page-states';
+export {
+  ServerTable,
+  type ServerTableAction,
+  type ServerTableChangeReason,
+  type ServerTableColumn,
+  type ServerTableProps,
+  type ServerTableRequest,
+  type ServerTableSort,
+  type ServerTableSortDirection,
+} from './server-table';
 export { DesignSystemProvider } from './theme-provider';
 export { semanticTokens } from './tokens';
