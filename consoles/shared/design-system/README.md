@@ -15,6 +15,9 @@ SaaS Forge 浏览器界面的唯一公共 Design System 包。当前公共根入
 - `UnsavedChangesDialog`：以“继续编辑”为安全默认值的未保存确认；
 - `RecoverableDangerDialog`：明确对象与后果的可恢复危险确认；
 - `IrreversibleDangerDialog`：必须精确输入对象名称或指定文字的不可恢复危险确认。
+- `FormLayout`、`FormRow`、`TextField`、`PasswordField`、`SelectField` 与 `CheckboxField`：统一单列表单、受控双字段行和标签上置的基础输入；
+- `FieldError` 与 `FormErrorSummary`：关联字段错误、持续表单错误和可聚焦错误汇总；
+- `useFormProblemFocus` 与 `useUnsavedChangesGuard`：首个问题聚焦，以及关闭、返回、页内切换和浏览器离站的未保存保护。
 
 消费者只能从 `@saas-forge/design-system` 根入口导入，不得导入 `antd`、本包内部文件或额外全局样式。缺少公共能力时先扩展本包，再升级消费者；不复制等价组件作为临时实现。
 
@@ -30,4 +33,4 @@ pnpm --filter @saas-forge/design-system run verify
 pnpm --filter @saas-forge/design-system run dev:showcase
 ```
 
-后续表单、表格、深色主题、Tenant 品牌与完整展示矩阵由对应 Issue 分批交付；当前展示入口覆盖已正式交付的启动、页面状态、反馈、图标与浮层能力。
+后续表格、深色主题、Tenant 品牌与完整展示矩阵由对应 Issue 分批交付；当前展示入口覆盖已正式交付的启动、页面状态、反馈、图标、浮层与完整表单流程。

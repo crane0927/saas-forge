@@ -166,6 +166,62 @@ body {
   flex: 1;
 }
 
+.sf-form {
+  display: grid;
+  inline-size: min(100%, 40rem);
+  gap: var(--sf-space-lg);
+}
+
+.sf-form-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sf-space-lg);
+}
+
+.sf-form-field {
+  display: grid;
+  min-inline-size: 0;
+  gap: var(--sf-space-xs);
+}
+
+.sf-form-field > label {
+  justify-self: start;
+  font-weight: 600;
+}
+
+.sf-form-field > .ant-select {
+  inline-size: 100%;
+}
+
+.sf-form-checkbox-field {
+  justify-items: start;
+}
+
+.sf-form-field-error {
+  margin: 0;
+  color: #b91c1c;
+  font-size: 0.875rem;
+}
+
+.sf-form-error-summary {
+  padding: var(--sf-space-md);
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.sf-form-error-summary ul {
+  margin-block: var(--sf-space-xs) 0;
+  padding-inline-start: var(--sf-space-lg);
+}
+
+.sf-form-error-summary a {
+  color: inherit;
+  font-weight: 600;
+  text-underline-offset: 0.2em;
+}
+
 .sf-initial-loading,
 .sf-refreshing-content {
   position: relative;
@@ -255,6 +311,10 @@ body {
 }
 
 @media (max-width: 30rem) {
+  .sf-form-row {
+    grid-template-columns: 1fr;
+  }
+
   .sf-page-title {
     align-items: stretch;
     flex-direction: column;
