@@ -7,7 +7,44 @@ services:
   kafka:
     environment:
       KAFKA_HEAP_OPTS: -Xms256m -Xmx512m
+      KAFKA_LISTENERS: INTERNAL://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:SASL_PLAINTEXT
+      KAFKA_SASL_ENABLED_MECHANISMS: PLAIN
+      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
+      KAFKA_LISTENER_NAME_INTERNAL_PLAIN_SASL_JAAS_CONFIG: >-
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username="admin" password="${KAFKA_ADMIN_PASSWORD:?KAFKA_ADMIN_PASSWORD is required}"
+        user_admin="${KAFKA_ADMIN_PASSWORD:?KAFKA_ADMIN_PASSWORD is required}"
+        user_iam-service="${KAFKA_IAM_PASSWORD:?KAFKA_IAM_PASSWORD is required}"
+        user_tenant-access-service="${KAFKA_TENANT_ACCESS_PASSWORD:?KAFKA_TENANT_ACCESS_PASSWORD is required}"
+        user_entitlement-service="${KAFKA_ENTITLEMENT_PASSWORD:?KAFKA_ENTITLEMENT_PASSWORD is required}"
+        user_audit-service="${KAFKA_AUDIT_PASSWORD:?KAFKA_AUDIT_PASSWORD is required}"
+        user_audit-replay="${KAFKA_AUDIT_REPLAY_PASSWORD:?KAFKA_AUDIT_REPLAY_PASSWORD is required}";
+      KAFKA_AUTHORIZER_CLASS_NAME: org.apache.kafka.metadata.authorizer.StandardAuthorizer
+      # 单节点 KRaft 的 CONTROLLER listener 保持内部 PLAINTEXT；业务客户端只能进入 SASL 的 INTERNAL listener。
+      KAFKA_SUPER_USERS: User:admin;User:ANONYMOUS
+      KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: "false"
+      KAFKA_ADMIN_PASSWORD: ${KAFKA_ADMIN_PASSWORD:?KAFKA_ADMIN_PASSWORD is required}
+      KAFKA_AUDIT_PASSWORD: ${KAFKA_AUDIT_PASSWORD:?KAFKA_AUDIT_PASSWORD is required}
     ports: !reset []
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/9092'"]
+  kafka-audit-acl-init:
+    image: apache/kafka:4.0.0
+    entrypoint: ["/bin/bash", "/scripts/kafka-audit-acl-init.sh"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_ADMIN_PASSWORD: ${KAFKA_ADMIN_PASSWORD:?KAFKA_ADMIN_PASSWORD is required}
+      KAFKA_IAM_PASSWORD: ${KAFKA_IAM_PASSWORD:?KAFKA_IAM_PASSWORD is required}
+      KAFKA_TENANT_ACCESS_PASSWORD: ${KAFKA_TENANT_ACCESS_PASSWORD:?KAFKA_TENANT_ACCESS_PASSWORD is required}
+      KAFKA_ENTITLEMENT_PASSWORD: ${KAFKA_ENTITLEMENT_PASSWORD:?KAFKA_ENTITLEMENT_PASSWORD is required}
+      KAFKA_AUDIT_PASSWORD: ${KAFKA_AUDIT_PASSWORD:?KAFKA_AUDIT_PASSWORD is required}
+      KAFKA_AUDIT_REPLAY_PASSWORD: ${KAFKA_AUDIT_REPLAY_PASSWORD:?KAFKA_AUDIT_REPLAY_PASSWORD is required}
+    volumes:
+      - ./kafka-audit-acl-init.sh:/scripts/kafka-audit-acl-init.sh:ro
   mailpit:
     ports: !override
       - "127.0.0.1::8025"
@@ -26,6 +63,14 @@ services:
     environment:
       JAVA_TOOL_OPTIONS: -Xms64m -Xmx256m
       SAASFORGE_IAM_SESSION_REVOCATION_WORKER_DELAY: PT1H
+      SPRING_KAFKA_PROPERTIES_SECURITY_PROTOCOL: SASL_PLAINTEXT
+      SPRING_KAFKA_PROPERTIES_SASL_MECHANISM: PLAIN
+      SPRING_KAFKA_PROPERTIES_SASL_JAAS_CONFIG: >-
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username="iam-service" password="${KAFKA_IAM_PASSWORD:?KAFKA_IAM_PASSWORD is required}";
+    depends_on:
+      kafka-audit-acl-init:
+        condition: service_completed_successfully
     ports: !reset []
   tenant-access-service:
     build: !reset null
@@ -34,6 +79,14 @@ services:
     environment:
       JAVA_TOOL_OPTIONS: -Xms64m -Xmx256m
       SAASFORGE_TENANT_ACCESS_LIFECYCLE_RECOVERY_DELAY: PT1H
+      SPRING_KAFKA_PROPERTIES_SECURITY_PROTOCOL: SASL_PLAINTEXT
+      SPRING_KAFKA_PROPERTIES_SASL_MECHANISM: PLAIN
+      SPRING_KAFKA_PROPERTIES_SASL_JAAS_CONFIG: >-
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username="tenant-access-service" password="${KAFKA_TENANT_ACCESS_PASSWORD:?KAFKA_TENANT_ACCESS_PASSWORD is required}";
+    depends_on:
+      kafka-audit-acl-init:
+        condition: service_completed_successfully
     ports: !reset []
   entitlement-service:
     build: !reset null
@@ -41,12 +94,40 @@ services:
       - "${E2E_HOST_GID:?E2E_HOST_GID is required}"
     environment:
       JAVA_TOOL_OPTIONS: -Xms64m -Xmx256m
+      SPRING_KAFKA_PROPERTIES_SECURITY_PROTOCOL: SASL_PLAINTEXT
+      SPRING_KAFKA_PROPERTIES_SASL_MECHANISM: PLAIN
+      SPRING_KAFKA_PROPERTIES_SASL_JAAS_CONFIG: >-
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username="entitlement-service" password="${KAFKA_ENTITLEMENT_PASSWORD:?KAFKA_ENTITLEMENT_PASSWORD is required}";
+    depends_on:
+      kafka-audit-acl-init:
+        condition: service_completed_successfully
     ports: !reset []
   audit-service:
     build: !reset null
     environment:
       JAVA_TOOL_OPTIONS: -Xms32m -Xmx128m
-    ports: !reset []
+      SPRING_KAFKA_PROPERTIES_SECURITY_PROTOCOL: SASL_PLAINTEXT
+      SPRING_KAFKA_PROPERTIES_SASL_MECHANISM: PLAIN
+      SPRING_KAFKA_PROPERTIES_SASL_JAAS_CONFIG: >-
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username="audit-service" password="${KAFKA_AUDIT_PASSWORD:?KAFKA_AUDIT_PASSWORD is required}";
+    depends_on:
+      kafka-audit-acl-init:
+        condition: service_completed_successfully
+    ports: !override
+      - "127.0.0.1::8080"
+  audit-isolation-replay:
+    build: !reset null
+    environment:
+      SPRING_KAFKA_PROPERTIES_SECURITY_PROTOCOL: SASL_PLAINTEXT
+      SPRING_KAFKA_PROPERTIES_SASL_MECHANISM: PLAIN
+      SPRING_KAFKA_PROPERTIES_SASL_JAAS_CONFIG: >-
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username="audit-replay" password="${KAFKA_AUDIT_REPLAY_PASSWORD:?KAFKA_AUDIT_REPLAY_PASSWORD is required}";
+    depends_on:
+      kafka-audit-acl-init:
+        condition: service_completed_successfully
   gateway:
     build: !reset null
     environment:

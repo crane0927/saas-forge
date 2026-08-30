@@ -8,6 +8,8 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class IamSessionKafkaConsumer {
+    public static final String LISTENER_ID = "audit-iam-session-events";
+
     private final IamSessionEventValidator validator;
     private final AuditRecordService service;
 
@@ -18,6 +20,7 @@ public class IamSessionKafkaConsumer {
 
     /** Acknowledgment 必须发生在本地事务方法返回之后，以便提交后故障由去重键吸收。 */
     @KafkaListener(
+            id = LISTENER_ID,
             topics = "${saasforge.audit.iam-session-topic}",
             groupId = SessionStartedEventValidator.CONSUMER_NAME)
     public void consume(ConsumerRecord<String, String> message, Acknowledgment acknowledgment) {

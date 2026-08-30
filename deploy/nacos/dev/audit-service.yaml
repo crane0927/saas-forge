@@ -1,6 +1,6 @@
 saasforge:
   audit:
-    configuration-revision: "2"
+    configuration-revision: "3"
     consumer:
       max-attempts: 10
       initial-backoff: PT1S
@@ -18,7 +18,7 @@ management:
         liveness:
           include: livenessState
         readiness:
-          include: readinessState,nacosRegistrationReadiness
+          include: readinessState,nacosRegistrationReadiness,auditRuntimeReadiness
 
 spring:
   nacos:

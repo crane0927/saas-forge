@@ -548,8 +548,9 @@ services:
     entrypoint:
       - java
       - -Dloader.main=io.saasforge.auditreplay.AuditIsolationReplayApplication
-      - -jar
+      - -cp
       - /app/application.jar
+      - org.springframework.boot.loader.launch.PropertiesLauncher
     command:
       - --saasforge.audit.replay.isolation-id=${AUDIT_ISOLATION_REPLAY_ID:-}
     environment:

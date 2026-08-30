@@ -10,6 +10,8 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class TenantAccessKafkaConsumer {
+    public static final String LISTENER_ID = "audit-tenant-events";
+
     private final TenantAccessEventValidator validator;
     private final AuditRecordService service;
     private final Counter ignored;
@@ -28,6 +30,7 @@ public class TenantAccessKafkaConsumer {
 
     /** 合法 ignored 事件不建立去重状态；成功写入或 ignored 计数完成后才确认。 */
     @KafkaListener(
+            id = LISTENER_ID,
             topics = "${saasforge.audit.tenant-access-topic}",
             groupId = TenantCreatedEventValidator.CONSUMER_NAME)
     public void consume(ConsumerRecord<String, String> message, Acknowledgment acknowledgment) {
