@@ -3,6 +3,7 @@ import {
   type BootstrapState,
   type RuntimeConfigBootstrap,
 } from '@saas-forge/app-runtime';
+import { ApplicationLoading, ConfigurationFailure } from '@saas-forge/design-system';
 import { useEffect, useSyncExternalStore } from 'react';
 import { BrowserRouter } from 'react-router';
 
@@ -46,29 +47,13 @@ function BootstrapSurface({
 
   if (state.status === 'failed') {
     return (
-      <main className="sf-runtime-surface">
-        <section className="sf-runtime-panel" aria-labelledby="config-error-title">
-          <h1 id="config-error-title">Tenant Console 配置不可用</h1>
-          <p>部署配置未能通过校验。请确认配置已就绪后重试。</p>
-          <p className="sf-runtime-code">{state.error.code}</p>
-          <button
-            className="sf-runtime-action"
-            type="button"
-            onClick={() => void bootstrap.retry()}
-          >
-            重试
-          </button>
-        </section>
-      </main>
+      <ConfigurationFailure
+        applicationName="Tenant Console"
+        errorCode={state.error.code}
+        onRetry={() => void bootstrap.retry()}
+      />
     );
   }
 
-  return (
-    <main className="sf-runtime-surface" aria-busy="true" aria-live="polite">
-      <section className="sf-runtime-panel" aria-labelledby="loading-title">
-        <h1 id="loading-title">正在启动 Tenant Console</h1>
-        <p>正在加载部署配置。</p>
-      </section>
-    </main>
-  );
+  return <ApplicationLoading applicationName="Tenant Console" />;
 }

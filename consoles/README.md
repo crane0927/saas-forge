@@ -2,11 +2,13 @@
 
 本目录承载 Platform Console、Tenant Console Shell、业务 Remote 与共享前端代码四个独立边界。当前已交付两个最终应用宿主、生成 API Client 和共享应用 Runtime；业务 Remote 尚未实现。
 
-本目录是唯一的 pnpm workspace 根，固定使用 Node 24.14.1 与 pnpm 11.22.0。共享依赖版本由 `pnpm-workspace.yaml` 的默认 Catalog 集中管理，lockfile 记录解析后的精确版本。Platform Console 和 Tenant Console Shell 是彼此独立的 Vite + React 应用；本阶段不初始化 Module Federation，也不创建没有实际职责的共享包。
+本目录是唯一的 pnpm workspace 根，固定使用 Node 24.14.1 与 pnpm 11.22.0。共享依赖版本由 `pnpm-workspace.yaml` 的默认 Catalog 集中管理，lockfile 记录解析后的精确版本。Platform Console 和 Tenant Console Shell 是彼此独立的 Vite + React 应用；本阶段不初始化 Module Federation。
 
 `shared/api-client` 是无状态 TypeScript REST Client。Maven/OpenAPI Generator 是唯一生成权威，生成物位于被 Git 忽略的 `.generated`；手写代码只允许从 `@saas-forge/api-client` 公开入口导入 API、模型和运行时类型，不得直接导入生成目录。它不实现认证、Cookie、CSRF 或 Token 存储。
 
 `shared/app-runtime` 是依赖无关的 Runtime Config 与 Bootstrap 内核。它从同 Origin 的 `/runtime-config.json` 加载严格的 `schemaVersion`、`apiBaseUrl` 两字段契约，只接受绝对 HTTPS API Origin，并向应用暴露稳定的失败码和显式用户重试状态。它不依赖 React、路由、认证或生成 API Client 的请求实例。
+
+`shared/design-system` 是唯一公共 UI 包，内部封装 Ant Design 6.6.2，并通过根入口提供 Theme Provider、语义 Token 和共享启动状态。两个 Console 不得直接依赖 `antd` 或导入 Design System 内部路径；聚合测试包含对应静态边界门禁。
 
 ## 环境准备与完整验证
 
@@ -18,7 +20,7 @@ pnpm install --frozen-lockfile
 pnpm run verify
 ```
 
-`verify` 先通过根命令 `generate:api` 调用 Maven/OpenAPI Generator 正式生成 Client，再一次完成所有手写代码的严格 TypeScript、ESLint、Prettier 检查，执行 `app-runtime` 与两个应用的 Vitest/React Testing Library 测试，最后分别生产构建两个应用。生成代码参与严格类型检查，但不参与手写代码的 Lint 和格式检查。Maven `verify` 复用同一个 workspace 聚合门禁，不安装 Node/pnpm，也不会在缺失依赖时自动联网。
+`verify` 先通过根命令 `generate:api` 调用 Maven/OpenAPI Generator 正式生成 Client，再一次完成所有手写代码的严格 TypeScript、ESLint、Prettier 检查，执行依赖边界、`app-runtime`、Design System 与两个应用的测试，最后生产构建 Design System 和两个应用。生成代码参与严格类型检查，但不参与手写代码的 Lint 和格式检查。Maven `verify` 复用同一个 workspace 聚合门禁，不安装 Node/pnpm，也不会在缺失依赖时自动联网。
 
 ## 根命令
 
@@ -48,4 +50,4 @@ pnpm run verify
 
 ## 证据边界
 
-当前门禁只证明最终 Platform/Tenant 应用宿主、共享 Runtime、生成 Client 的稳定入口和两个静态生产构建存在；不证明登录、真实 API 调用、受控 TLS Origin、业务 Remote 或 Playwright 浏览器闭环。
+当前门禁只证明最终 Platform/Tenant 应用宿主、共享 Runtime、Design System 启动切片、生成 Client 的稳定入口和静态生产构建存在；不证明登录、真实 API 调用、受控 TLS Origin、业务 Remote 或完整多浏览器闭环。

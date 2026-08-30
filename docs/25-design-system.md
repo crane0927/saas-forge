@@ -1,6 +1,6 @@
 # Design System 规范
 
-**状态：规则与底层组件选型已确认；正式共享包和产品接入尚未实现。**
+**状态：规则与底层组件选型已确认；正式共享包、Theme Provider 与两个 Console 的启动状态接入已实现，其余公共组件和完整验收矩阵仍按后续 Issue 交付。**
 
 本规范定义 Platform Console、Tenant Console Shell 与官方业务 Remote 共用的视觉、组件、反馈、键盘和焦点语义。架构边界见 [ADR 0037](adr/0037-browser-surfaces-use-one-shared-design-system.md)，Tenant 品牌边界见 [ADR 0036](adr/0036-tenant-access-owns-controlled-tenant-brand-profiles.md)。本规范不证明共享包、正式组件、Remote 或浏览器闭环已经实现。
 

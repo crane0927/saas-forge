@@ -7,13 +7,9 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
-    },
-    "./bootstrap.css": "./src/bootstrap.css"
+    }
   },
   "types": "./src/index.ts",
-  "sideEffects": [
-    "./src/bootstrap.css"
-  ],
   "scripts": {
     "typecheck": "tsc --project tsconfig.json",
     "test": "vitest run",

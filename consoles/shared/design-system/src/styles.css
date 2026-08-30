@@ -1,0 +1,145 @@
+:root {
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  min-block-size: 100%;
+  margin: 0;
+}
+
+body {
+  min-block-size: 100dvh;
+}
+
+.sf-design-system-root {
+  box-sizing: border-box;
+  min-block-size: 100dvh;
+  background: var(--sf-color-surface);
+  color: var(--sf-color-text);
+  font-family: var(--sf-font-system);
+  line-height: 1.5;
+}
+
+.sf-design-system-root *,
+.sf-design-system-root *::before,
+.sf-design-system-root *::after {
+  box-sizing: border-box;
+}
+
+.sf-bootstrap-surface {
+  display: grid;
+  min-block-size: 100dvh;
+  place-items: center;
+  padding: clamp(var(--sf-space-lg), 5vw, var(--sf-space-xxl));
+  overflow-wrap: anywhere;
+  background: var(--sf-color-surface);
+  color: var(--sf-color-text);
+}
+
+.sf-bootstrap-panel {
+  display: grid;
+  inline-size: min(100%, 34rem);
+  justify-items: start;
+  gap: var(--sf-space-lg);
+  padding: clamp(var(--sf-space-xl), 4vw, var(--sf-space-xxl));
+  border: 1px solid var(--sf-color-border);
+  border-radius: 8px;
+  background: var(--sf-color-surface);
+}
+
+.sf-bootstrap-panel h1,
+.sf-bootstrap-panel p {
+  margin: 0;
+}
+
+.sf-bootstrap-panel h1 {
+  font-size: clamp(1.5rem, 4vw, 2rem);
+  line-height: 1.25;
+}
+
+.sf-bootstrap-panel p {
+  color: var(--sf-color-text-secondary);
+}
+
+.sf-bootstrap-code {
+  font-family: var(--sf-font-monospace);
+  font-size: 0.875rem;
+}
+
+.sf-design-system-root :focus-visible {
+  outline: 3px solid var(--sf-color-primary);
+  outline-offset: 3px;
+}
+
+/* #98 提供正式页面状态组件前，由唯一全局样式入口维持既有 404 与致命错误表面的可读性。 */
+.sf-runtime-surface {
+  display: grid;
+  min-block-size: 100dvh;
+  place-items: center;
+  padding: clamp(var(--sf-space-lg), 5vw, var(--sf-space-xxl));
+  overflow-wrap: anywhere;
+  background: var(--sf-color-surface);
+  color: var(--sf-color-text);
+}
+
+.sf-runtime-panel {
+  inline-size: min(100%, 34rem);
+  padding: clamp(var(--sf-space-xl), 4vw, var(--sf-space-xxl));
+  border: 1px solid var(--sf-color-border);
+  border-radius: 8px;
+  background: var(--sf-color-surface);
+}
+
+.sf-runtime-panel > :first-child {
+  margin-block-start: 0;
+}
+
+.sf-runtime-panel > :last-child {
+  margin-block-end: 0;
+}
+
+.sf-runtime-code {
+  font-family: var(--sf-font-monospace);
+  font-size: 0.875rem;
+}
+
+.sf-runtime-action {
+  min-block-size: 44px;
+  margin-block-start: var(--sf-space-lg);
+  padding-inline: var(--sf-space-lg);
+  border: 1px solid var(--sf-color-primary);
+  border-radius: 6px;
+  background: var(--sf-color-primary);
+  color: var(--sf-color-surface);
+  font: inherit;
+  cursor: pointer;
+}
+
+@media (max-width: 30rem) {
+  .sf-bootstrap-surface {
+    place-items: start stretch;
+  }
+
+  .sf-bootstrap-panel {
+    border-inline: 0;
+    border-radius: 0;
+    padding-inline: 0;
+  }
+
+  .sf-runtime-surface {
+    place-items: start stretch;
+  }
+
+  .sf-runtime-panel {
+    border-inline: 0;
+    border-radius: 0;
+    padding-inline: 0;
+  }
+
+  .sf-bootstrap-panel .ant-btn,
+  .sf-runtime-action {
+    inline-size: 100%;
+  }
+}

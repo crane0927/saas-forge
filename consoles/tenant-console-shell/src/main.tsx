@@ -1,5 +1,4 @@
-import '@saas-forge/app-runtime/bootstrap.css';
-
+import { DesignSystemProvider } from '@saas-forge/design-system';
 import { createRoot } from 'react-dom/client';
 
 import { TenantConsoleShellApp } from './app';
@@ -11,7 +10,9 @@ if (rootElement === null) {
 }
 
 createRoot(rootElement).render(
-  <RootErrorBoundary>
-    <TenantConsoleShellApp />
-  </RootErrorBoundary>,
+  <DesignSystemProvider>
+    <RootErrorBoundary>
+      <TenantConsoleShellApp />
+    </RootErrorBoundary>
+  </DesignSystemProvider>,
 );
