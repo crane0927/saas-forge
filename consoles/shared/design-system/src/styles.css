@@ -68,6 +68,17 @@ body {
   font-size: 0.875rem;
 }
 
+.sf-dialog-field {
+  display: grid;
+  gap: var(--sf-space-xs);
+  margin-block-start: var(--sf-space-lg);
+  font-weight: 600;
+}
+
+.sf-dialog-field .ant-input {
+  font-weight: 400;
+}
+
 .sf-design-system-root :focus-visible {
   outline: 3px solid var(--sf-color-primary);
   outline-offset: 3px;

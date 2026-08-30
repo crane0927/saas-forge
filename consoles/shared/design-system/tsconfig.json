@@ -7,6 +7,8 @@
   "include": [
     "src/**/*.ts",
     "src/**/*.tsx",
+    "showcase/**/*.ts",
+    "showcase/**/*.tsx",
     "test/**/*.ts",
     "test/**/*.tsx",
     "vite.config.ts",

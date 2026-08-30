@@ -19,7 +19,9 @@
     "test": "vitest run",
     "lint": "eslint .",
     "format:check": "prettier --check .",
-    "build": "vite build",
+    "build": "vite build && vite build --config showcase/vite.config.ts",
+    "dev:showcase": "vite --config showcase/vite.config.ts",
+    "preview:showcase": "vite preview --config showcase/vite.config.ts",
     "verify": "pnpm run typecheck && pnpm run test && pnpm run lint && pnpm run format:check && pnpm run build"
   },
   "dependencies": {
