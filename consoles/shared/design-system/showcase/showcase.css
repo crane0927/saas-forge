@@ -13,6 +13,8 @@
 
 .sf-showcase-header h1,
 .sf-showcase-header p,
+.sf-showcase-section-heading h2,
+.sf-showcase-section-heading p,
 .sf-showcase-card h2,
 .sf-showcase-card p {
   margin: 0;
@@ -36,6 +38,39 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--sf-space-lg);
+}
+
+.sf-showcase-section {
+  display: grid;
+  gap: var(--sf-space-lg);
+  margin-block-start: var(--sf-space-xxl);
+}
+
+.sf-showcase-section-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: var(--sf-space-lg);
+}
+
+.sf-showcase-section-heading p {
+  margin-block-start: var(--sf-space-xs);
+  color: var(--sf-color-text-secondary);
+}
+
+.sf-showcase-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sf-space-sm);
+}
+
+.sf-showcase-preview {
+  display: grid;
+  justify-items: start;
+  gap: var(--sf-space-lg);
+  padding: var(--sf-space-lg);
+  border: 1px solid var(--sf-color-border);
+  border-radius: 8px;
 }
 
 .sf-showcase-card {
@@ -91,6 +126,11 @@
 }
 
 @media (max-width: 48rem) {
+  .sf-showcase-section-heading {
+    align-items: start;
+    flex-direction: column;
+  }
+
   .sf-showcase-grid {
     grid-template-columns: 1fr;
   }

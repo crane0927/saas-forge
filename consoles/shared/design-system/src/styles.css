@@ -84,7 +84,133 @@ body {
   outline-offset: 3px;
 }
 
-/* #98 提供正式页面状态组件前，由唯一全局样式入口维持既有 404 与致命错误表面的可读性。 */
+.sf-icon {
+  flex: none;
+}
+
+.sf-link {
+  color: var(--sf-color-primary);
+  font-weight: 600;
+  text-underline-offset: 0.2em;
+}
+
+.sf-page-layout {
+  inline-size: min(100%, 76rem);
+  min-block-size: 100dvh;
+  margin-inline: auto;
+  padding: clamp(var(--sf-space-lg), 4vw, var(--sf-space-xxl));
+}
+
+.sf-page-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sf-space-lg);
+  margin-block-end: var(--sf-space-xl);
+}
+
+.sf-page-title h1,
+.sf-page-title p {
+  margin: 0;
+}
+
+.sf-page-title h1 {
+  font-size: clamp(1.75rem, 4vw, 2.25rem);
+  line-height: 1.2;
+}
+
+.sf-page-title p {
+  margin-block-start: var(--sf-space-xs);
+  color: var(--sf-color-text-secondary);
+}
+
+.sf-page-title-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sf-space-sm);
+}
+
+.sf-page-content {
+  min-inline-size: 0;
+}
+
+.sf-feedback {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sf-space-sm);
+  padding: var(--sf-space-md);
+  border: 1px solid var(--sf-color-border);
+  border-radius: 8px;
+}
+
+.sf-feedback-success {
+  inline-size: fit-content;
+  border-color: #86efac;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.sf-feedback-warning {
+  border-color: #fcd34d;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.sf-feedback-error {
+  border-color: #fca5a5;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.sf-feedback-body {
+  flex: 1;
+}
+
+.sf-initial-loading,
+.sf-refreshing-content {
+  position: relative;
+  display: grid;
+  gap: var(--sf-space-md);
+}
+
+.sf-initial-loading {
+  padding: var(--sf-space-lg);
+  border: 1px solid var(--sf-color-border);
+  border-radius: 8px;
+}
+
+.sf-initial-loading > .ant-spin {
+  justify-self: start;
+}
+
+.sf-refreshing-indicator {
+  display: flex;
+  align-items: center;
+  inline-size: fit-content;
+  gap: var(--sf-space-xs);
+  color: var(--sf-color-text-secondary);
+  font-size: 0.875rem;
+}
+
+.sf-page-state {
+  display: grid;
+  inline-size: min(100%, 34rem);
+  justify-items: start;
+  gap: var(--sf-space-sm);
+  padding: var(--sf-space-xl);
+  border: 1px solid var(--sf-color-border);
+  border-radius: 8px;
+}
+
+.sf-page-state h2,
+.sf-page-state p {
+  margin: 0;
+}
+
+.sf-page-state p {
+  color: var(--sf-color-text-secondary);
+}
+
 .sf-runtime-surface {
   display: grid;
   min-block-size: 100dvh;
@@ -129,6 +255,16 @@ body {
 }
 
 @media (max-width: 30rem) {
+  .sf-page-title {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .sf-page-title-actions .ant-btn,
+  .sf-page-state .ant-btn {
+    inline-size: 100%;
+  }
+
   .sf-bootstrap-surface {
     place-items: start stretch;
   }

@@ -6,6 +6,10 @@ SaaS Forge 浏览器界面的唯一公共 Design System 包。当前公共根入
 - `semanticTokens`：平台主色、系统字体、基础颜色与 `4px` 级间距；
 - `ApplicationLoading`：应用首次启动和部署配置加载状态；
 - `ConfigurationFailure`：持续配置失败状态与显式重试操作。
+- `PageLayout`、`PageTitle`、`Button`、`Link` 与 `DesignIcon`：统一页面结构、基础操作和首批图标；
+- `SuccessFeedback`、`WarningFeedback` 与 `PersistentError`：短暂成功、持续警告与可恢复错误反馈；
+- `InitialContentLoading` 与 `RefreshingContent`：区分首次内容加载和保留旧内容的局部更新，按钮通过 `loading` 表示提交中；
+- `EmptyDataState`、`FilteredEmptyState`、`LoadFailureState` 与 `NotFoundState`：提供不同说明和至多一个恢复动作的页面状态；
 - `ActionMenu`：统一菜单触发、危险项分隔、Esc 关闭和焦点恢复；
 - `StandardDialog`：普通弹窗与可选主操作；
 - `UnsavedChangesDialog`：以“继续编辑”为安全默认值的未保存确认；
@@ -26,4 +30,4 @@ pnpm --filter @saas-forge/design-system run verify
 pnpm --filter @saas-forge/design-system run dev:showcase
 ```
 
-后续页面状态、反馈、表单、表格、图标、深色主题、Tenant 品牌与完整展示矩阵由对应 Issue 分批交付；当前展示入口只覆盖已正式交付的启动与浮层能力。
+后续表单、表格、深色主题、Tenant 品牌与完整展示矩阵由对应 Issue 分批交付；当前展示入口覆盖已正式交付的启动、页面状态、反馈、图标与浮层能力。

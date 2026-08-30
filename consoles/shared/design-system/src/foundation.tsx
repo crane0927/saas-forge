@@ -1,0 +1,163 @@
+import { Button as AntButton } from 'antd';
+import type { MouseEventHandler, ReactNode } from 'react';
+
+export type DesignIconName =
+  'check' | 'warning' | 'error' | 'empty' | 'search' | 'reload' | 'not-found';
+
+export interface DesignIconProps {
+  readonly name: DesignIconName;
+  readonly label?: string;
+  readonly size?: number;
+}
+
+export interface ButtonProps {
+  readonly children: ReactNode;
+  readonly onClick?: MouseEventHandler<HTMLButtonElement>;
+  readonly variant?: 'primary' | 'secondary' | 'text' | 'danger';
+  readonly disabled?: boolean;
+  readonly loading?: boolean;
+  readonly loadingLabel?: string;
+  readonly type?: 'button' | 'submit' | 'reset';
+}
+
+export interface LinkProps {
+  readonly children: ReactNode;
+  readonly href: string;
+  readonly external?: boolean;
+}
+
+export interface PageTitleProps {
+  readonly children: ReactNode;
+  readonly description?: ReactNode;
+  readonly actions?: ReactNode;
+}
+
+export interface PageLayoutProps {
+  readonly title: ReactNode;
+  readonly children: ReactNode;
+}
+
+const iconPaths: Record<DesignIconName, ReactNode> = {
+  check: <path d="m6.5 12.5 3.5 3.5 7.5-8" />,
+  warning: (
+    <>
+      <path d="M12 3 2.8 20h18.4L12 3Z" />
+      <path d="M12 9v4.5M12 17h.01" />
+    </>
+  ),
+  error: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="m9 9 6 6m0-6-6 6" />
+    </>
+  ),
+  empty: (
+    <>
+      <path d="M4 7.5 7 4h10l3 3.5V20H4V7.5Z" />
+      <path d="M4 8h5l1.5 2h3L15 8h5" />
+    </>
+  ),
+  search: (
+    <>
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <path d="m15.5 15.5 5 5" />
+    </>
+  ),
+  reload: (
+    <>
+      <path d="M19 8a8 8 0 1 0 1 7" />
+      <path d="M19 3v5h-5" />
+    </>
+  ),
+  'not-found': (
+    <>
+      <path d="M5 3h10l4 4v14H5V3Z" />
+      <path d="M15 3v5h4M9 13h6M9 17h4" />
+    </>
+  ),
+};
+
+export function DesignIcon({ name, label, size = 20 }: DesignIconProps) {
+  return (
+    <svg
+      className="sf-icon"
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      role={label === undefined ? undefined : 'img'}
+      aria-label={label}
+      aria-hidden={label === undefined ? true : undefined}
+    >
+      {iconPaths[name]}
+    </svg>
+  );
+}
+
+export function Button({
+  children,
+  onClick,
+  variant = 'secondary',
+  disabled = false,
+  loading = false,
+  loadingLabel = '正在处理',
+  type = 'button',
+}: ButtonProps) {
+  return (
+    <AntButton
+      type={
+        variant === 'primary' || variant === 'danger'
+          ? 'primary'
+          : variant === 'text'
+            ? 'text'
+            : 'default'
+      }
+      danger={variant === 'danger'}
+      disabled={disabled}
+      loading={loading}
+      htmlType={type}
+      onClick={onClick}
+      aria-label={loading ? loadingLabel : undefined}
+    >
+      {children}
+    </AntButton>
+  );
+}
+
+export function Link({ children, href, external = false }: LinkProps) {
+  return (
+    <a
+      className="sf-link"
+      href={href}
+      target={external ? '_blank' : undefined}
+      rel={external ? 'noreferrer' : undefined}
+    >
+      {children}
+    </a>
+  );
+}
+
+export function PageTitle({ children, description, actions }: PageTitleProps) {
+  return (
+    <header className="sf-page-title">
+      <div>
+        <h1 tabIndex={-1}>{children}</h1>
+        {description === undefined ? null : <p>{description}</p>}
+      </div>
+      {actions === undefined ? null : <div className="sf-page-title-actions">{actions}</div>}
+    </header>
+  );
+}
+
+export function PageLayout({ title, children }: PageLayoutProps) {
+  return (
+    <main className="sf-page-layout">
+      {title}
+      <div className="sf-page-content">{children}</div>
+    </main>
+  );
+}
