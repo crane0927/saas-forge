@@ -45,9 +45,17 @@ Tenant ── Subscription Version
 
 ## 构建
 
-运行环境为 JDK 17；CI 额外使用 JDK 21 验证兼容性。
+后端运行环境为 JDK 17，CI 额外使用 JDK 21 验证兼容性。全仓库验证还要求 Node 24.14.1、pnpm 11.22.0，并先在 `consoles` 完成冻结 lockfile 安装；Maven 不安装前端工具或依赖。
 
-    ./mvnw verify
+```bash
+cd consoles
+corepack enable
+pnpm install --frozen-lockfile
+cd ..
+./mvnw verify
+```
+
+`./mvnw verify` 会正式生成 TypeScript API Client，并调用一次前端聚合门禁；前端开发、独立构建和根命令详见 [consoles/README.md](consoles/README.md)。
 
 ## 目录
 

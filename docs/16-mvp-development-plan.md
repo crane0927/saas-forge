@@ -10,7 +10,7 @@
 → Tenant Context、Permission、Feature、Quota 校验 → 执行业务 → 审计可查询
 ```
 
-当前仓库已完成第 1、2 阶段的大部分后端契约、服务、数据、安全与诊断型端到端切片，但 `consoles` 仍只有工作区和生成的无状态 TypeScript Client，尚无可验证上述闭环的最终产品 React Console；Gateway 的 Password Setup 静态页不能替代 Platform Console 或 Tenant Console。原有后端勾选保留，新增的 Console 与浏览器验收项在取得直接证据前保持未完成，因此第 1、2 阶段当前均属于部分完成。
+当前仓库已完成第 1、2 阶段的大部分后端契约、服务、数据、安全与诊断型端到端切片，并已建立可独立构建的 Platform Console、Tenant Console Shell、共享 Runtime 与生成 API Client；这些应用宿主尚未实现登录、真实 API、业务页面、受控 TLS Origin、Remote 或 Playwright 浏览器闭环。Gateway 的 Password Setup 静态页不能替代最终 Console 产品路径。原有后端勾选保留，尚无直接证据的 Console 与浏览器验收项保持未完成，因此第 1、2 阶段当前均属于部分完成。
 
 MVP 不包含完整支付/账单/发票、公共注册和外部身份源、多语言 SDK、Schema Per Tenant 或 Database Per Tenant 隔离、CLI，以及 Helm/systemd 的完整生产交付。后两项在架构与配置上保持兼容，但按照 [路线图](15-roadmap.md) 中 Phase 1 的范围，不作为 MVP 发布阻塞项。
 
@@ -124,7 +124,7 @@ flowchart TD
 
 **Console 工程、共享交互与浏览器基线**
 
-- [ ] 建立最终产品形态的 Platform Console、Tenant Console Shell 与共享前端包；接入生成的 TypeScript API Client，形成可独立构建、部署和测试的应用 Shell，不建设一次性验收 Console。
+- [x] 建立最终产品形态的 Platform Console、Tenant Console Shell 与共享 Runtime；通过稳定包入口接入生成的 TypeScript API Client，形成可独立构建、发布静态制品和测试的应用 Shell，不建设一次性验收 Console。此项不证明登录、真实 API、受控 TLS Origin、Remote 或 Playwright 浏览器闭环。
 - [ ] 建立唯一共享 Design System 包，统一颜色、排版、间距、图标、表单、表格、反馈、空态、加载态、错误态、危险操作确认、键盘与焦点恢复；Platform Console、Tenant Console 和 Remote 不得覆盖全局样式或重复实现同类组件。
 - [ ] 提供响应式栅格和标准分栏布局；以桌面管理场景为主，窄屏不得破坏核心流程，并满足语义化控件、键盘操作、可见焦点和基础无障碍要求。
 - [ ] 通过小型原型和对比验证选择一个成熟、维护活跃且可访问的组件基础，并经用户确认后隐藏在共享 Design System 后；本计划不预选具体组件库。

@@ -8,11 +8,16 @@
   },
   "scripts": {
     "generate:api": "../mvnw -f ../pom.xml --batch-mode --no-transfer-progress -pl contracts/openapi -am generate-sources",
+    "dev:platform": "pnpm run generate:api && pnpm --filter @saas-forge/platform-console run dev",
+    "dev:tenant": "pnpm run generate:api && pnpm --filter @saas-forge/tenant-console-shell run dev",
     "typecheck": "pnpm --recursive --if-present run typecheck",
     "test": "pnpm --recursive --if-present run test",
     "lint": "eslint .",
     "format:check": "prettier --check .",
-    "verify": "pnpm run generate:api && pnpm run typecheck && pnpm run test && pnpm run lint && pnpm run format:check"
+    "build:workspace": "pnpm --recursive --if-present run build",
+    "build": "pnpm run generate:api && pnpm run build:workspace",
+    "verify:workspace": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run test && pnpm run build:workspace",
+    "verify": "pnpm run generate:api && pnpm run verify:workspace"
   },
   "devDependencies": {
     "@eslint/js": "catalog:",

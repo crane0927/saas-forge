@@ -28,7 +28,7 @@ S3 兼容对象存储
 OpenTelemetry Collector
 ```
 
-当前第 1 阶段的最小 Compose 仅包含 Gateway、四个领域服务、PostgreSQL、Redis、Kafka、OpenTelemetry Collector 和各服务的 Flyway 迁移任务。Platform Console、Tenant Console Shell、业务 Remote 与 S3 兼容对象存储随对应业务阶段加入；对象存储不早于第 6 阶段。
+当前第 1 阶段的最小 Compose 仅包含 Gateway、四个领域服务、PostgreSQL、Redis、Kafka、OpenTelemetry Collector 和各服务的 Flyway 迁移任务。Platform Console 与 Tenant Console Shell 已能生成独立静态制品，但尚未接入 Compose 的受控 TLS Origin；业务 Remote 与 S3 兼容对象存储随对应业务阶段加入，对象存储不早于第 6 阶段。
 
 本地环境可以使用单节点依赖，但不得把单节点拓扑等同于生产拓扑。
 
@@ -54,6 +54,8 @@ External PostgreSQL / Redis / Kafka / Nacos / S3 / KMS / Observability
 ```
 
 Platform Console、Tenant Console Shell 与业务 Remote 独立发布。Gateway 与四个无状态领域服务至少运行 2 个副本，配置滚动发布、readiness/liveness 探针和 PodDisruptionBudget。领域服务不直接暴露公网。
+
+Platform Console 和 Tenant Console Shell 的静态制品分别构建。制品内的 `/runtime-config.json` 是故意非法的模板，部署流程必须原子替换为当前环境的 `schemaVersion` 与绝对 HTTPS `apiBaseUrl`；不得用 Runtime Config 改变 Console 身份、路由、菜单或授权边界。未替换或配置非法时应用保持失败关闭。
 
 浏览器入口固定为同一完全受控可注册根域下的 `https://platform.<root>`、`https://console.<root>`、`https://api.<root>` 与 `https://remote.<root>/<module>/<version>`。前三者分别承载 Platform Console、Tenant Console Shell 和 Gateway；Remote 仅由受审的 `remote.<root>` 路径发布。每个 Origin 必须独立配置 TLS 与发布权限。
 

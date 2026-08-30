@@ -1,3 +1,3 @@
 # Shared frontend
 
-预留给经审查的控制台共享前端代码。`api-client` 是唯一的 OpenAPI 生成 API Client；Shell 以手写适配层提供认证、CSRF 与统一错误处理，业务 Remote 不得直接管理 Token。
+这里只保留已经承担跨应用职责的共享前端包：`api-client` 是 Maven/OpenAPI Generator 唯一生成的 API Client，`app-runtime` 负责严格 Runtime Config 与可重试 Bootstrap。认证、CSRF、共享 HTTP Client 和业务 Remote 契约尚未实现，不在当前共享边界中预留空包。

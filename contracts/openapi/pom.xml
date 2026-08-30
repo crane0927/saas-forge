@@ -46,19 +46,15 @@
                 <artifactId>exec-maven-plugin</artifactId>
                 <executions>
                     <execution>
-                        <id>typecheck-typescript-api-client</id>
+                        <id>verify-consoles</id>
                         <phase>verify</phase>
                         <goals>
                             <goal>exec</goal>
                         </goals>
                         <configuration>
-                            <executable>pnpm</executable>
-                            <workingDirectory>${maven.multiModuleProjectDirectory}/consoles</workingDirectory>
+                            <executable>bash</executable>
                             <arguments>
-                                <argument>--filter</argument>
-                                <argument>@saas-forge/api-client</argument>
-                                <argument>run</argument>
-                                <argument>typecheck</argument>
+                                <argument>${maven.multiModuleProjectDirectory}/scripts/verify-frontend-workspace.sh</argument>
                             </arguments>
                         </configuration>
                     </execution>
