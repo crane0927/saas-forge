@@ -22,7 +22,8 @@ if [[ "$actual_node" != "v$expected_node" ]]; then
   exit 1
 fi
 
-actual_pnpm="$(pnpm --version)"
+# Corepack 会从当前目录向上查找 packageManager，必须在 workspace 根解析固定版本。
+actual_pnpm="$(cd "$console_root" && pnpm --version)"
 if [[ "$actual_pnpm" != "$expected_pnpm" ]]; then
   echo "Frontend verification requires pnpm $expected_pnpm, but found $actual_pnpm." >&2
   exit 1
@@ -33,4 +34,4 @@ if [[ ! -d "$console_root/node_modules" ]]; then
   exit 1
 fi
 
-pnpm --dir "$console_root" run verify:workspace
+(cd "$console_root" && pnpm run verify:workspace)
