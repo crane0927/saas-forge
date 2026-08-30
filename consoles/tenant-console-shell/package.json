@@ -1,0 +1,32 @@
+{
+  "name": "@saas-forge/tenant-console-shell",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --project tsconfig.json",
+    "lint": "eslint .",
+    "format:check": "prettier --check . --ignore-path ../.prettierignore",
+    "test": "vitest run",
+    "build": "vite build",
+    "verify": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run test && pnpm run build"
+  },
+  "dependencies": {
+    "@saas-forge/api-client": "workspace:*",
+    "@saas-forge/app-runtime": "workspace:*",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-router": "catalog:"
+  },
+  "devDependencies": {
+    "@testing-library/react": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "jsdom": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}
