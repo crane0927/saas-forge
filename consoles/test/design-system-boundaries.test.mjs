@@ -13,6 +13,7 @@ import {
 test('rejects direct Ant Design imports from a Console', () => {
   assert.match(forbiddenImportReason('antd'), /design-system/);
   assert.match(forbiddenImportReason('antd/es/button'), /design-system/);
+  assert.match(forbiddenImportReason('antd/es/grid'), /design-system/);
 });
 
 test('rejects unpublished Design System subpaths while allowing the public root', () => {
@@ -25,12 +26,17 @@ test('rejects consumer global styles and public component selector overrides', (
   assert.equal(forbiddenImportReason('./tenant-page.module.css'), undefined);
   assert.match(forbiddenSelectorReason('.ant-btn'), /Ant Design 内部选择器/);
   assert.match(forbiddenSelectorReason('.tenant-page .sf-button'), /公共组件内部选择器/);
+  assert.match(forbiddenSelectorReason('.remote .sf-responsive-grid'), /公共组件内部选择器/);
+  assert.match(forbiddenSelectorReason('.remote .sf-split-layout'), /公共组件内部选择器/);
   assert.equal(forbiddenSelectorReason('.tenant-page__summary'), undefined);
 });
 
 test('rejects duplicate public components and detects repeated Theme Providers', () => {
   assert.match(forbiddenDeclarationReason('ApplicationFatalError'), /不得重复实现/);
+  assert.match(forbiddenDeclarationReason('PageLayout'), /不得重复实现/);
+  assert.match(forbiddenDeclarationReason('ResponsiveGrid'), /不得重复实现/);
   assert.match(forbiddenDeclarationReason('ServerTable'), /不得重复实现/);
+  assert.match(forbiddenDeclarationReason('SplitLayout'), /不得重复实现/);
   assert.equal(forbiddenDeclarationReason('TenantSummary'), undefined);
   assert.equal(
     providerUsageCount(`

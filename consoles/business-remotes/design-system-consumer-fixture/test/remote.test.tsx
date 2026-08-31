@@ -20,6 +20,13 @@ describe('Design System Remote 消费夹具', () => {
     expect(
       container.querySelector('.sf-design-system-root')?.getAttribute('data-color-scheme'),
     ).toBe('dark');
+    expect(screen.getByRole('main').dataset.layoutWidth).toBe('wide');
+    expect(container.querySelectorAll('[data-layout-intent="content"]')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-layout-intent="compact-statistics"]')).toHaveLength(1);
+    expect(screen.getAllByTestId('remote-content-item')).toHaveLength(3);
+    expect(screen.getAllByTestId('remote-statistics-item')).toHaveLength(4);
+    expect(screen.getByRole('complementary', { name: 'Remote 布局说明' })).not.toBeNull();
+    expect(screen.queryByRole('grid')).toBeNull();
     fireEvent.change(screen.getByRole('textbox', { name: '显示名称' }), {
       target: { value: '合同 Remote' },
     });

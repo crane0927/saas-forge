@@ -52,6 +52,7 @@ const publicComponentNames = new Set([
   'ResponsiveGrid',
   'SelectField',
   'ServerTable',
+  'SplitLayout',
   'StandardDialog',
   'SuccessFeedback',
   'TextField',
@@ -80,7 +81,7 @@ export function forbiddenSelectorReason(selector) {
     return '消费者不得覆盖 Ant Design 内部选择器。';
   }
   if (
-    /(?:^|[\s>+~,])\.sf-(?:design-system-root|button|dialog|field|form|page|server-table)/.test(
+    /(?:^|[\s>+~,])\.sf-(?:design-system-root|button|dialog|field|form|page|responsive-grid|server-table|split-layout)/.test(
       selector,
     )
   ) {
