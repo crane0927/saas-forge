@@ -15,6 +15,7 @@
 ## 2. 版本与 Remote 治理
 
 - MVP 的两个 Console 与全部官方 Remote 使用完全相同的 Design System 版本。
+- 前端工作区按既有目录边界自动发现当前及后续新增的 Console 与官方 Remote 并执行消费门禁，不维护需要人工同步的消费者名单。
 - Shell 独占全局样式和当前 Theme Provider，Remote 不重复注入全局样式。
 - 后续 Manifest 声明 `designSystemVersion`；不一致时必须在执行 Remote 代码前拒绝加载。
 - 第三方 Remote、多版本兼容范围和独立升级不属于 MVP，出现真实需求后另行决策。
@@ -116,6 +117,8 @@ Design System 先维护完整公共能力清单，再随真实产品页面逐步
 
 底层组件基础确定为 **Ant Design 6.6.2**。它只能由 `@saas-forge/design-system` 内部依赖和封装，Platform Console、Tenant Console Shell 与 Remote 不得直接导入 `antd`、引用 Ant Design 全局样式或覆盖其内部选择器。
 
+消费者不得在 `dependencies`、`devDependencies`、`peerDependencies` 或 `optionalDependencies` 中声明 `antd`，不得重复安装 Theme Provider、重写受控 Token 或覆盖 Design System 内部选择器。领域页面仍可使用局部作用域样式排列领域内容，但不能改变公共组件的外观、行为、状态语义或无障碍约束。
+
 Design System 使用 Ant Design 的 `ConfigProvider`、主题算法和 Design Token 作为底层能力，再通过本规范定义的语义 Token 与公共组件形成唯一公开接口。业务消费者只认识 SaaS Forge 的组件名称、属性和状态语义，因此后续替换底层组件库时，迁移范围应被限制在 Design System 内部。
 
 选型前在不修改正式页面的隔离位置制作了 Ant Design 6.6.2 与 React Aria Components 1.20.0 的同场景原型，包括：
@@ -134,6 +137,8 @@ Design System 使用 Ant Design 的 `ConfigProvider`、主题算法和 Design To
 
 原型的生产构建将两个候选拆分为独立代码块；在同一原型中，Ant Design 候选压缩后约 `233.19 kB`，React Aria Components 候选压缩后约 `90.22 kB`。这只是原型体积，不代表正式 Design System 的最终大小。Ant Design 提供了更完整的后台表格、表单、反馈和弹窗组合能力，代价是更大的初始文件与更严格的封装、按需加载和升级回归要求。用户已确认选择 Ant Design 6.6.2。
 
+MVP 固定使用 Ant Design 6.6.2。后续升级必须作为 Design System 内的独立受控工作统一进行，评审上游变更，并通过共享组件、键盘、焦点、无障碍、视觉、两个 Console 与代表性 Remote 的完整回归后同步更新本规范；消费者不得自行升级或形成多版本共存。
+
 原型还验证出 Ant Design 表格的分页与通用 `onChange` 会同时触发；封装层必须根据变更类型区分分页和排序，防止翻页被错误重置。该行为需要固定为自动化回归测试。原型不算正式产品功能，不勾选 MVP 完成项。
 
 ## 13. 验证与支持范围
@@ -145,6 +150,6 @@ Design System 使用 Ant Design 的 `ConfigProvider`、主题算法和 Design To
 - 新布局能力必须以增量公共 API 交付，保持 `PageLayout` 默认外观、`FormRow` 和现有消费者行为不变；不得自动迁移现有页面，真实页面只能显式采用新能力。
 - 布局单元测试覆盖默认值、公开属性、语义结构和辅助栏可访问名称；真实浏览器验证两种栅格意图、分栏切换、DOM 与 Tab 顺序、可见焦点、局部表格滚动和页面无横向溢出，并覆盖既有五个固定视口与相当于 `320 CSS px` 的可用宽度。Chrome、Edge、Firefox 和 WebKit 门禁继续沿用，视觉快照只覆盖稳定边界状态。
 - 必须验证 Platform Console、Tenant Console Shell 与代表性 Remote 使用同一版本、同一主题入口和同一公共交互。
-- 静态门禁禁止消费者导入底层组件库、内部 Design System 文件、全局 CSS 或覆盖公共组件的选择器。
+- 静态门禁自动发现当前及后续新增的 Console 与官方 Remote，禁止消费者在任何依赖分区声明底层组件库，或导入底层组件库、内部 Design System 文件、全局 CSS、重复 Theme Provider，以及覆盖底层组件或公共组件的内部选择器。
 - 创建共享包、组件能渲染或单个应用测试通过都不足以完成 MVP；只有共享消费、边界门禁和相应浏览器证据全部成立，才能勾选 [MVP 开发计划](16-mvp-development-plan.md)中的 Design System 事项。
 - “响应式栅格和标准分栏布局”事项只有在公共布局从 Design System 根入口提供、组件与真实浏览器验证通过、Platform Console 与 Tenant Console Shell 的最终产品路由各有一个真实消费场景、代表性 Remote 能正确消费，并且对应核心流程在 `390px` 与 `360px` 均可完成后才能勾选。展示入口、消费夹具或一次性验收页面不能替代两个 Console 的最终产品证据；如果真实页面尚未出现，可以先交付公共能力，但该事项继续保持未完成。

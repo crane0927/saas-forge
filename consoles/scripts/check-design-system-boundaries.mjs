@@ -6,23 +6,11 @@ import ts from 'typescript';
 
 const consoleRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const designSystemPackage = 'shared/design-system';
-const consumers = [
-  {
-    packageRoot: 'platform-console',
-    runtimeRoots: ['src'],
-    providerEntry: 'src/main.tsx',
-  },
-  {
-    packageRoot: 'tenant-console-shell',
-    runtimeRoots: ['src'],
-    providerEntry: 'src/main.tsx',
-  },
-  {
-    packageRoot: 'business-remotes/design-system-consumer-fixture',
-    runtimeRoots: ['host', 'src'],
-    providerEntry: 'host/main.tsx',
-    providerForbiddenRoots: ['src'],
-  },
+const dependencySections = [
+  'dependencies',
+  'devDependencies',
+  'peerDependencies',
+  'optionalDependencies',
 ];
 const sourceExtensions = new Set(['.js', '.jsx', '.mjs', '.ts', '.tsx']);
 const publicComponentNames = new Set([
@@ -98,6 +86,7 @@ export function forbiddenDeclarationReason(name) {
 
 export async function designSystemDependencyReport(root = consoleRoot) {
   const designSystemManifest = await readManifest(path.join(root, designSystemPackage));
+  const consumers = await discoverConsumers(root);
   return Promise.all(
     consumers.map(async (consumer) => {
       const manifest = await readManifest(path.join(root, consumer.packageRoot));
@@ -112,6 +101,7 @@ export async function designSystemDependencyReport(root = consoleRoot) {
 
 export async function findBoundaryViolations(root = consoleRoot) {
   const violations = [];
+  const consumers = await discoverConsumers(root);
   const dependencyReport = await designSystemDependencyReport(root);
 
   for (const dependency of dependencyReport) {
@@ -129,7 +119,7 @@ export async function findBoundaryViolations(root = consoleRoot) {
   for (const consumer of consumers) {
     const packageRoot = path.join(root, consumer.packageRoot);
     const manifest = await readManifest(packageRoot);
-    if (manifest.dependencies?.antd !== undefined || manifest.devDependencies?.antd !== undefined) {
+    if (dependencySections.some((section) => manifest[section]?.antd !== undefined)) {
       violations.push(`${consumer.packageRoot}/package.json: 消费者不得声明 antd 依赖。`);
     }
 
@@ -165,12 +155,14 @@ export async function findBoundaryViolations(root = consoleRoot) {
       }
     }
 
-    const providerEntry = path.join(packageRoot, consumer.providerEntry);
-    const providerEntrySource = await readFile(providerEntry, 'utf8');
-    if (providerUsageCount(providerEntrySource, providerEntry) !== 1) {
-      violations.push(
-        `${path.relative(root, providerEntry)}: Shell 入口必须且只能安装一个 DesignSystemProvider。`,
-      );
+    if (consumer.providerEntry !== undefined) {
+      const providerEntry = path.join(packageRoot, consumer.providerEntry);
+      const providerEntrySource = await readFile(providerEntry, 'utf8');
+      if (providerUsageCount(providerEntrySource, providerEntry) !== 1) {
+        violations.push(
+          `${path.relative(root, providerEntry)}: Shell 入口必须且只能安装一个 DesignSystemProvider。`,
+        );
+      }
     }
 
     for (const forbiddenRoot of consumer.providerForbiddenRoots ?? []) {
@@ -187,6 +179,52 @@ export async function findBoundaryViolations(root = consoleRoot) {
   }
 
   return violations;
+}
+
+async function discoverConsumers(root) {
+  const consoleConsumers = [];
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    if (
+      !entry.isDirectory() ||
+      entry.name === 'business-remotes' ||
+      entry.name === 'node_modules' ||
+      entry.name === 'shared'
+    ) {
+      continue;
+    }
+    const packageEntries = await readdir(path.join(root, entry.name), { withFileTypes: true });
+    const entryNames = new Set(packageEntries.map(({ name }) => name));
+    if (!entryNames.has('package.json') || !entryNames.has('src')) {
+      continue;
+    }
+    consoleConsumers.push({
+      packageRoot: entry.name,
+      runtimeRoots: ['src'],
+      providerEntry: 'src/main.tsx',
+    });
+  }
+
+  const remoteParent = path.join(root, 'business-remotes');
+  const remoteConsumers = [];
+  for (const entry of await readdir(remoteParent, { withFileTypes: true })) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    const packageRoot = path.join('business-remotes', entry.name);
+    const packageEntries = await readdir(path.join(root, packageRoot), { withFileTypes: true });
+    const entryNames = new Set(packageEntries.map(({ name }) => name));
+    if (!entryNames.has('package.json')) {
+      continue;
+    }
+    const runtimeRoots = ['host', 'src'].filter((runtimeRoot) => entryNames.has(runtimeRoot));
+    remoteConsumers.push({
+      packageRoot,
+      runtimeRoots,
+      providerEntry: entryNames.has('host') ? 'host/main.tsx' : undefined,
+      providerForbiddenRoots: entryNames.has('src') ? ['src'] : [],
+    });
+  }
+  return [...consoleConsumers, ...remoteConsumers];
 }
 
 function inspectDeclarations(sourceFile, relativeFile, violations) {
