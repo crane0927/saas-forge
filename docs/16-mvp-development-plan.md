@@ -125,7 +125,7 @@ flowchart TD
 **Console 工程、共享交互与浏览器基线**
 
 - [x] 建立最终产品形态的 Platform Console、Tenant Console Shell 与共享 Runtime；通过稳定包入口接入生成的 TypeScript API Client，形成可独立构建、发布静态制品和测试的应用 Shell，不建设一次性验收 Console。此项不证明登录、真实 API、受控 TLS Origin、Remote 或 Playwright 浏览器闭环。
-- [ ] 建立唯一共享 Design System 包，统一颜色、排版、间距、图标、表单、表格、反馈、空态、加载态、错误态、危险操作确认、键盘与焦点恢复；Platform Console、Tenant Console 和 Remote 不得覆盖全局样式或重复实现同类组件。具体规则见 [Design System 规范](25-design-system.md)，共享边界与版本治理见 [ADR 0037](adr/0037-browser-surfaces-use-one-shared-design-system.md)。
+- [x] 建立唯一共享 Design System 包，统一颜色、排版、间距、图标、表单、表格、反馈、空态、加载态、错误态、危险操作确认、键盘与焦点恢复；Platform Console、Tenant Console 和 Remote 不得覆盖全局样式或重复实现同类组件。具体规则见 [Design System 规范](25-design-system.md)，共享边界与版本治理见 [ADR 0037](adr/0037-browser-surfaces-use-one-shared-design-system.md)。
 - [ ] 提供响应式栅格和标准分栏布局；以桌面管理场景为主，窄屏不得破坏核心流程，并满足语义化控件、键盘操作、可见焦点和基础无障碍要求。
 - [ ] 使用已通过隔离原型比较并经用户确认的 Ant Design 6.6.2 作为底层组件基础，只允许由共享 Design System 封装和暴露；Console 与 Remote 不得直接依赖或覆盖 Ant Design。
 - [ ] 建立共享认证状态机、HTTP Client、Problem Details 映射、全局导航和错误边界；两个 Console 复用同一实现，但按受控 Origin 维护独立 Session 实例和内存 Access Token，并以明确 Login Context Intent 区分 Platform 与 Tenant 登录。
