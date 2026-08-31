@@ -1,6 +1,6 @@
 # 共享响应式布局消费与浏览器验证记录
 
-**状态：Issue #106 的代表性 Remote 消费、静态边界门禁、Chromium/Chrome 行为与 Chromium 视觉证据已建立；Edge、Firefox 与 WebKit 的本机运行仍有环境或既有焦点门禁阻塞，两个 Console 尚无最终产品业务路由消费。**
+**状态：Issue #106 的代表性 Remote 消费、静态边界门禁、四浏览器 CI 行为与 Chromium 视觉证据已建立；本机 Darwin/Chromium 抗锯齿基线已独立校准，两个 Console 尚无最终产品业务路由消费。**
 
 ## 1. 验证边界
 
@@ -56,11 +56,10 @@ pnpm run verify:workspace
 
 - `pnpm run test:boundaries` 通过，6 个边界测试全部成功。
 - Remote Chromium 行为与更新后的桌面、390px 视觉基线通过，5 个消费者浏览器测试全部成功；应用内 Browser 另行确认 1280px 与 390px 页面身份、完整 DOM、几何顺序、提交反馈和控制台健康。
-- `SF_VISUAL_SNAPSHOTS=false pnpm run verify:workspace` 通过，包含全部类型检查、Lint、格式、83 个单元测试、Chrome 之外的默认 Chromium 行为测试、三个消费者生产构建和制品哈希门禁。三个消费者构建产物继续只有一个且内容完全相同的 CSS 入口。
+- 标准 `pnpm run verify:workspace` 通过，包含全部类型检查、Lint、格式、83 个单元测试、Design System 9 个 Chromium 浏览器测试、消费者 5 个 Chromium 浏览器测试、三个消费者生产构建和制品哈希门禁。三个消费者构建产物继续只有一个且内容完全相同的 CSS 入口。
 - 真实 Chrome 兼容入口通过：Design System 6 个行为测试和消费者 4 个行为测试成功，视觉用例按跨浏览器约定跳过。
-- 标准 `pnpm run verify:workspace` 的功能测试均通过，但两个未被本票修改的 Design System 既有 Chromium 快照出现约 1% 的文字抗锯齿差异；本票没有更新这些无关基线。
-- Microsoft Edge 安装需要 macOS 管理员密码，当前非交互式环境未能完成安装，因此 Edge 入口未执行。
-- Playwright Firefox 已下载，但 macOS 拒绝其 headless 插件子进程，浏览器会话在测试开始前超时，因此没有测试结果。
-- Playwright WebKit 可以执行；布局、语义和溢出用例通过，但 macOS WebKit 下既有 `userEvent.tab()` 不聚焦按钮，Design System 有 3 个焦点用例、消费者有 2 个焦点用例失败。该差异同时影响本票之前的既有焦点测试，未在 #106 中放宽断言或改写公共交互。
+- GitHub Actions Run [33397338968](https://github.com/crane0927/saas-forge/actions/runs/33397338968) 中，Console browser Chrome、Edge、Firefox 与 Safari agreement（WebKit）四个独立 Job 全部成功。整个 Run 的失败来自与 #106 无关的 `Tenant lifecycle fresh-volume E2E`，不改变四浏览器门禁的直接结果。
+- 本机连续两次运行 Design System Chromium 快照时，实际图片逐字节一致；差异只位于中英文文字与数字的字形边缘，截图尺寸、卡片边框、间距、分栏和断点排列均未变化。据此独立更新本机 Darwin/Chromium 的 8 张 Design System 基线，不改动 Linux CI 基线或测试容差。
+- 本机 Edge 安装权限、Firefox headless 插件子进程和 WebKit 焦点行为仍是 macOS 本地环境边界；四浏览器兼容结论采用上述 CI 受控环境的直接结果，不再以本机安装或运行成败代替。
 
-因此，本机证据足以确认公共布局、Remote 共享消费、Chrome/Chromium 行为和生产制品边界，但不足以声称四浏览器门禁全部通过，也不足以关闭 #106。Edge、Firefox 与 WebKit 需要在项目 CI 的受控运行环境重放并取得直接结果。
+因此，#106 已取得公共布局、Remote 共享消费、生产制品、Chromium 视觉与四浏览器行为的直接证据。本记录不扩大到两个 Console 的最终产品业务路由；MVP 对应计划项与父 Issue #103 仍不能据此关闭。
