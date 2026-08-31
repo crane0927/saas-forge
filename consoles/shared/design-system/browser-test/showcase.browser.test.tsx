@@ -5,7 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
 
-import { DesignSystemProvider } from '../src';
+import { ApplicationFatalError, DesignSystemProvider } from '../src';
 import { DesignSystemShowcase, ThemeLocaleMatrix } from '../showcase/main';
 
 let renderedRoot: Root | undefined;
@@ -163,5 +163,28 @@ describe('Design System 真实浏览器展示矩阵', () => {
 
     await page.viewport(360, 3200);
     expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(360);
+  });
+
+  it('通过公共入口显示致命错误恢复界面且不暴露异常详情', async () => {
+    let reloaded = false;
+
+    render(
+      <DesignSystemProvider>
+        <ApplicationFatalError
+          applicationName="Platform Console"
+          onReload={() => {
+            reloaded = true;
+          }}
+        />
+      </DesignSystemProvider>,
+    );
+
+    await expect
+      .element(page.getByRole('heading', { name: 'Platform Console 无法继续运行' }))
+      .toBeInTheDocument();
+    await expect.element(page.getByText('APPLICATION_FATAL')).toBeInTheDocument();
+    await page.getByRole('button', { name: '重新加载' }).click();
+
+    expect(reloaded).toBe(true);
   });
 });

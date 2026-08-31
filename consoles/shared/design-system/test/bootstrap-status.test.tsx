@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  ApplicationFatalError,
   ApplicationLoading,
   ConfigurationFailure,
   DesignSystemProvider,
@@ -43,6 +44,23 @@ describe('Design System 启动状态', () => {
     fireEvent.click(screen.getByRole('button', { name: '重试' }));
 
     expect(retry).toHaveBeenCalledOnce();
+  });
+
+  it('显示不暴露异常详情的致命错误恢复界面', () => {
+    const reload = vi.fn();
+
+    render(
+      <DesignSystemProvider>
+        <ApplicationFatalError applicationName="Platform Console" onReload={reload} />
+      </DesignSystemProvider>,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Platform Console 无法继续运行' })).toBeTruthy();
+    expect(screen.getByText('APPLICATION_FATAL')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '重新加载' }));
+
+    expect(reload).toHaveBeenCalledOnce();
   });
 
   it('只从公开语义 Token 提供平台主色', () => {

@@ -29,6 +29,7 @@ test('rejects consumer global styles and public component selector overrides', (
 });
 
 test('rejects duplicate public components and detects repeated Theme Providers', () => {
+  assert.match(forbiddenDeclarationReason('ApplicationFatalError'), /不得重复实现/);
   assert.match(forbiddenDeclarationReason('ServerTable'), /不得重复实现/);
   assert.equal(forbiddenDeclarationReason('TenantSummary'), undefined);
   assert.equal(

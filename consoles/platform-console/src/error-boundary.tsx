@@ -1,3 +1,4 @@
+import { ApplicationFatalError } from '@saas-forge/design-system';
 import { Component, type ReactNode } from 'react';
 
 interface RootErrorBoundaryProps {
@@ -25,18 +26,7 @@ export class RootErrorBoundary extends Component<RootErrorBoundaryProps, RootErr
       return this.props.children;
     }
 
-    return (
-      <main className="sf-runtime-surface">
-        <section className="sf-runtime-panel" aria-labelledby="fatal-error-title">
-          <h1 id="fatal-error-title">Platform Console 无法继续运行</h1>
-          <p>请重新加载应用。如果问题持续存在，请联系平台运维人员。</p>
-          <p className="sf-runtime-code">APPLICATION_FATAL</p>
-          <button className="sf-runtime-action" type="button" onClick={this.reload}>
-            重新加载
-          </button>
-        </section>
-      </main>
-    );
+    return <ApplicationFatalError applicationName="Platform Console" onReload={this.reload} />;
   }
 
   private readonly reload = (): void => {

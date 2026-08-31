@@ -27,6 +27,7 @@ const consumers = [
 const sourceExtensions = new Set(['.js', '.jsx', '.mjs', '.ts', '.tsx']);
 const publicComponentNames = new Set([
   'ActionMenu',
+  'ApplicationFatalError',
   'ApplicationLoading',
   'Button',
   'CheckboxField',

@@ -1,6 +1,11 @@
 import './styles.css';
 
-export { ApplicationLoading, ConfigurationFailure } from './bootstrap-status';
+export {
+  ApplicationFatalError,
+  ApplicationLoading,
+  ConfigurationFailure,
+  type ApplicationFatalErrorProps,
+} from './bootstrap-status';
 export {
   Button,
   DesignIcon,

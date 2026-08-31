@@ -42,6 +42,9 @@ catalogs:
     jsdom:
       specifier: 30.0.1
       version: 30.0.1
+    playwright:
+      specifier: 1.62.1
+      version: 1.62.1
     prettier:
       specifier: 3.9.6
       version: 3.9.6
@@ -95,6 +98,9 @@ importers:
       globals:
         specifier: 'catalog:'
         version: 17.11.0
+      playwright:
+        specifier: 'catalog:'
+        version: 1.62.1
       prettier:
         specifier: 'catalog:'
         version: 3.9.6
