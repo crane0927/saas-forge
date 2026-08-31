@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
 
 import { ApplicationFatalError, DesignSystemProvider } from '../src';
-import { DesignSystemShowcase, ThemeLocaleMatrix } from '../showcase/main';
+import { DesignSystemShowcase, LayoutShowcase, ThemeLocaleMatrix } from '../showcase/main';
 
 let renderedRoot: Root | undefined;
 let renderedContainer: HTMLDivElement | undefined;
@@ -27,6 +27,20 @@ function render(ui: ReactNode) {
   });
 }
 
+function rerender(ui: ReactNode) {
+  flushSync(() => {
+    renderedRoot?.render(ui);
+  });
+}
+
+function renderedGridColumns(itemTestId: string) {
+  const grid = page.getByTestId(itemTestId).element().parentElement;
+  if (grid === null) {
+    throw new Error(`栅格项 ${itemTestId} 缺少布局容器。`);
+  }
+  return getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length;
+}
+
 describe('Design System 真实浏览器展示矩阵', () => {
   it.skipIf(import.meta.env.SF_VISUAL_SNAPSHOTS === 'false')(
     '固定关键稳定状态的五个验收视口',
@@ -45,6 +59,63 @@ describe('Design System 真实浏览器展示矩阵', () => {
       }
     },
   );
+
+  it.skipIf(import.meta.env.SF_VISUAL_SNAPSHOTS === 'false')(
+    '固定标准、全宽与窄屏栅格的稳定边界',
+    async () => {
+      await page.viewport(1440, 1200);
+      render(
+        <DesignSystemProvider>
+          <LayoutShowcase width="standard" />
+        </DesignSystemProvider>,
+      );
+      const main = page.getByRole('main');
+      await expect(main).toMatchScreenshot('layout-standard-1440');
+
+      rerender(
+        <DesignSystemProvider>
+          <LayoutShowcase width="wide" />
+        </DesignSystemProvider>,
+      );
+      await expect(main).toMatchScreenshot('layout-wide-1440');
+
+      await page.viewport(390, 1600);
+      await expect(main).toMatchScreenshot('layout-wide-390');
+      expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
+    },
+  );
+
+  it('按组件可用空间自动换列并在 320 CSS px 保持单列与可见焦点', async () => {
+    render(
+      <DesignSystemProvider>
+        <LayoutShowcase width="wide" />
+      </DesignSystemProvider>,
+    );
+
+    const expectations = [
+      { width: 1440, content: 3, statistics: 4 },
+      { width: 1280, content: 3, statistics: 4 },
+      { width: 768, content: 2, statistics: 3 },
+      { width: 390, content: 1, statistics: 1 },
+      { width: 360, content: 1, statistics: 1 },
+      { width: 320, content: 1, statistics: 1 },
+    ] as const;
+
+    for (const expected of expectations) {
+      await page.viewport(expected.width, 1600);
+      expect(renderedGridColumns('content-grid-item-1')).toBe(expected.content);
+      expect(renderedGridColumns('statistics-grid-item-1')).toBe(expected.statistics);
+      expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(expected.width);
+    }
+
+    expect(document.querySelector('[role="grid"]')).toBeNull();
+    const firstAction = page.getByRole('button', { name: '查看成员目录' });
+    firstAction.element().focus();
+    expect(getComputedStyle(firstAction.element()).outlineStyle).not.toBe('none');
+    const actionBounds = firstAction.element().getBoundingClientRect();
+    expect(actionBounds.left).toBeGreaterThanOrEqual(0);
+    expect(actionBounds.right).toBeLessThanOrEqual(320);
+  });
 
   it('通过自动无障碍检查并响应减少动画偏好', async () => {
     render(
@@ -98,6 +169,13 @@ describe('Design System 真实浏览器展示矩阵', () => {
     expect(getComputedStyle(primaryAction.element()).outlineStyle).not.toBe('none');
     await userEvent.tab();
     await expect.element(page.getByRole('button', { name: '次要操作' }).first()).toHaveFocus();
+
+    expect(page.getByRole('main').element().dataset.layoutWidth).toBe('standard');
+    await page.getByRole('button', { name: '全宽页面' }).click();
+    expect(page.getByRole('main').element().dataset.layoutWidth).toBe('wide');
+    await expect.element(page.getByText('当前页面：全宽管理页面')).toBeInTheDocument();
+    await page.getByRole('button', { name: '标准宽度' }).click();
+    expect(page.getByRole('main').element().dataset.layoutWidth).toBe('standard');
 
     const saveFeedback = page.getByRole('button', { name: '保存并显示成功反馈' });
     saveFeedback.element().focus();

@@ -32,9 +32,19 @@ export interface PageTitleProps {
   readonly actions?: ReactNode;
 }
 
+export type PageLayoutWidth = 'standard' | 'wide';
+
 export interface PageLayoutProps {
   readonly title: ReactNode;
   readonly children: ReactNode;
+  readonly width?: PageLayoutWidth;
+}
+
+export type ResponsiveGridIntent = 'content' | 'compact-statistics';
+
+export interface ResponsiveGridProps {
+  readonly children: ReactNode;
+  readonly intent: ResponsiveGridIntent;
 }
 
 const iconPaths: Record<DesignIconName, ReactNode> = {
@@ -153,11 +163,22 @@ export function PageTitle({ children, description, actions }: PageTitleProps) {
   );
 }
 
-export function PageLayout({ title, children }: PageLayoutProps) {
+export function PageLayout({ title, children, width = 'standard' }: PageLayoutProps) {
   return (
-    <main className="sf-page-layout">
+    <main
+      className={width === 'wide' ? 'sf-page-layout sf-page-layout-wide' : 'sf-page-layout'}
+      data-layout-width={width}
+    >
       {title}
       <div className="sf-page-content">{children}</div>
     </main>
+  );
+}
+
+export function ResponsiveGrid({ children, intent }: ResponsiveGridProps) {
+  return (
+    <div className="sf-responsive-grid-container" data-layout-intent={intent}>
+      <div className={`sf-responsive-grid sf-responsive-grid-${intent}`}>{children}</div>
+    </div>
   );
 }

@@ -1,8 +1,5 @@
 .sf-showcase {
-  inline-size: min(100%, 76rem);
-  min-block-size: 100dvh;
-  margin-inline: auto;
-  padding: clamp(var(--sf-space-lg), 4vw, var(--sf-space-xxl));
+  min-inline-size: 0;
 }
 
 .sf-showcase-header {
@@ -32,6 +29,66 @@
   padding: var(--sf-space-md);
   border-inline-start: 4px solid var(--sf-color-primary);
   background: color-mix(in srgb, var(--sf-color-primary) 8%, var(--sf-color-surface));
+}
+
+.sf-showcase-width-status {
+  inline-size: fit-content;
+  margin: 0;
+  padding: var(--sf-space-xs) var(--sf-space-sm);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--sf-color-primary) 10%, var(--sf-color-surface));
+  color: var(--sf-color-text);
+  font-weight: 600;
+}
+
+.sf-showcase-layout-examples,
+.sf-showcase-layout-examples > section {
+  display: grid;
+  min-inline-size: 0;
+  gap: var(--sf-space-md);
+}
+
+.sf-showcase-layout-examples {
+  gap: var(--sf-space-xl);
+}
+
+.sf-showcase-layout-examples h3,
+.sf-showcase-layout-examples h4,
+.sf-showcase-layout-examples p,
+.sf-showcase-statistic {
+  margin: 0;
+}
+
+.sf-showcase-layout-examples > section > p,
+.sf-showcase-statistic dt {
+  color: var(--sf-color-text-secondary);
+}
+
+.sf-showcase-layout-card,
+.sf-showcase-statistic {
+  padding: var(--sf-space-lg);
+  border: 1px solid var(--sf-color-border);
+  border-radius: 8px;
+  background: var(--sf-color-surface-elevated);
+}
+
+.sf-showcase-layout-card {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: var(--sf-space-sm);
+}
+
+.sf-showcase-statistic dt {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.sf-showcase-statistic dd {
+  margin: var(--sf-space-xs) 0 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 .sf-showcase-grid {

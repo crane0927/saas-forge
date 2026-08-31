@@ -12,12 +12,16 @@ export {
   Link,
   PageLayout,
   PageTitle,
+  ResponsiveGrid,
   type ButtonProps,
   type DesignIconName,
   type DesignIconProps,
   type LinkProps,
   type PageLayoutProps,
+  type PageLayoutWidth,
   type PageTitleProps,
+  type ResponsiveGridIntent,
+  type ResponsiveGridProps,
 } from './foundation';
 export {
   PersistentError,

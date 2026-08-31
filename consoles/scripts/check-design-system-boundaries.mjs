@@ -49,6 +49,7 @@ const publicComponentNames = new Set([
   'PersistentError',
   'RecoverableDangerDialog',
   'RefreshingContent',
+  'ResponsiveGrid',
   'SelectField',
   'ServerTable',
   'StandardDialog',
