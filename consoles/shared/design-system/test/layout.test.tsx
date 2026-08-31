@@ -8,6 +8,7 @@ import {
   PageLayout,
   PageTitle,
   ResponsiveGrid,
+  SplitLayout,
 } from '../src';
 
 afterEach(cleanup);
@@ -80,5 +81,82 @@ describe('Design System 页面宽度与响应式内容栅格', () => {
     const form = screen.getByRole('form', { name: '兼容表单' });
     expect(form.children).toHaveLength(1);
     expect(form.firstElementChild?.children).toHaveLength(2);
+  });
+});
+
+describe('Design System 语义化主辅分栏', () => {
+  it('保持主内容在前，并通过直接名称标识辅助栏', () => {
+    render(
+      <DesignSystemProvider>
+        <PageLayout title={<PageTitle>成员详情</PageTitle>}>
+          <SplitLayout
+            primary={<section aria-label="成员资料">主内容</section>}
+            auxiliary={<p>辅助内容</p>}
+            auxiliaryLabel="成员辅助信息"
+          />
+        </PageLayout>
+      </DesignSystemProvider>,
+    );
+
+    const main = screen.getByRole('main');
+    const primary = screen.getByRole('region', { name: '成员资料' });
+    const auxiliary = screen.getByRole('complementary', { name: '成员辅助信息' });
+
+    expect(main.querySelectorAll('main')).toHaveLength(0);
+    expect(primary.compareDocumentPosition(auxiliary) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(
+      0,
+    );
+    expect(auxiliary.textContent).toBe('辅助内容');
+  });
+
+  it('可以通过消费者提供的标题关联辅助栏名称', () => {
+    render(
+      <DesignSystemProvider>
+        <SplitLayout
+          primary={<p>主内容</p>}
+          auxiliary={
+            <section>
+              <h2 id="activity-title">最近活动</h2>
+              <p>今天登录</p>
+            </section>
+          }
+          auxiliaryLabelledBy="activity-title"
+        />
+      </DesignSystemProvider>,
+    );
+
+    expect(screen.getByRole('complementary', { name: '最近活动' })).toBeTruthy();
+  });
+
+  it('默认使用普通容器承载主内容，且不产生额外键盘交互', () => {
+    render(
+      <DesignSystemProvider>
+        <SplitLayout
+          primary={<button type="button">主操作</button>}
+          auxiliary={<a href="#details">查看详情</a>}
+          auxiliaryLabel="辅助信息"
+        />
+      </DesignSystemProvider>,
+    );
+
+    expect(screen.queryAllByRole('main')).toHaveLength(0);
+    expect(screen.getByRole('button', { name: '主操作' }).parentElement?.tagName).toBe('DIV');
+    expect(document.querySelector('[role="grid"]')).toBeNull();
+    expect(document.querySelector('[tabindex]')).toBeNull();
+  });
+
+  it('拒绝缺少辅助栏可访问名称的非法调用', () => {
+    const invalidProps = {
+      primary: <p>主内容</p>,
+      auxiliary: <p>辅助内容</p>,
+    } as unknown as Parameters<typeof SplitLayout>[0];
+
+    expect(() =>
+      render(
+        <DesignSystemProvider>
+          <SplitLayout {...invalidProps} />
+        </DesignSystemProvider>,
+      ),
+    ).toThrow('SplitLayout 辅助栏必须且只能提供一种可访问名称。');
   });
 });

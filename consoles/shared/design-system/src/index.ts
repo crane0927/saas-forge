@@ -13,6 +13,7 @@ export {
   PageLayout,
   PageTitle,
   ResponsiveGrid,
+  SplitLayout,
   type ButtonProps,
   type DesignIconName,
   type DesignIconProps,
@@ -22,6 +23,7 @@ export {
   type PageTitleProps,
   type ResponsiveGridIntent,
   type ResponsiveGridProps,
+  type SplitLayoutProps,
 } from './foundation';
 export {
   PersistentError,

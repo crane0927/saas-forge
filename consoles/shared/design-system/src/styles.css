@@ -198,6 +198,28 @@ body {
   }
 }
 
+.sf-split-layout-container {
+  min-inline-size: 0;
+  container-type: inline-size;
+}
+
+.sf-split-layout {
+  display: grid;
+  min-inline-size: 0;
+  gap: 24px;
+}
+
+.sf-split-layout-primary,
+.sf-split-layout-auxiliary {
+  min-inline-size: 0;
+}
+
+@container (min-width: 48rem) {
+  .sf-split-layout {
+    grid-template-columns: minmax(0, 2fr) clamp(18rem, 33.333%, 24rem);
+  }
+}
+
 .sf-server-table {
   display: grid;
   min-inline-size: 0;

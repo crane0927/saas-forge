@@ -22,6 +22,7 @@ import {
   ResponsiveGrid,
   SelectField,
   ServerTable,
+  SplitLayout,
   StandardDialog,
   SuccessFeedback,
   TextField,
@@ -689,6 +690,43 @@ export function LayoutShowcase({ width }: { readonly width: PageLayoutWidth }) {
   );
 }
 
+export function SplitLayoutShowcase() {
+  return (
+    <PageLayout
+      width="wide"
+      title={
+        <PageTitle description="主任务始终先于辅助信息，组件空间不足时按同一顺序纵向排列。">
+          语义化主辅分栏
+        </PageTitle>
+      }
+    >
+      <SplitLayout
+        primary={
+          <section className="sf-showcase-split-primary" aria-labelledby="member-task-title">
+            <h2 id="member-task-title">编辑成员资料</h2>
+            <p>完成成员身份、角色和联系信息维护。</p>
+            <TextField
+              id="split-member-name"
+              label="成员名称"
+              value="林知远"
+              onValueChange={() => undefined}
+            />
+            <Button variant="primary">保存成员资料</Button>
+          </section>
+        }
+        auxiliary={
+          <section className="sf-showcase-split-auxiliary">
+            <h2 id="member-help-title">操作提示</h2>
+            <p>角色变更会在成员下次刷新会话后生效。</p>
+            <Button>查看角色说明</Button>
+          </section>
+        }
+        auxiliaryLabelledBy="member-help-title"
+      />
+    </PageLayout>
+  );
+}
+
 export function DesignSystemShowcase() {
   const [result, setResult] = useState('请选择一个场景进行操作。');
   const [pageWidth, setPageWidth] = useState<PageLayoutWidth>('standard');
@@ -763,6 +801,20 @@ export function DesignSystemShowcase() {
             当前页面：{pageWidth === 'standard' ? '标准宽度（最大 76rem）' : '全宽管理页面'}
           </p>
           <LayoutGridExamples />
+        </section>
+
+        <section className="sf-showcase-section" aria-labelledby="split-layout-preview-title">
+          <div className="sf-showcase-section-heading">
+            <div>
+              <h2 id="split-layout-preview-title">语义化主辅分栏</h2>
+              <p>桌面右侧显示辅助信息，组件空间不足时按主内容、辅助内容的顺序堆叠。</p>
+            </div>
+          </div>
+          <SplitLayout
+            primary={<div className="sf-showcase-split-primary">主任务内容</div>}
+            auxiliary={<div className="sf-showcase-split-auxiliary">辅助说明内容</div>}
+            auxiliaryLabel="当前页面辅助说明"
+          />
         </section>
 
         <section className="sf-showcase-section" aria-labelledby="theme-matrix-title">

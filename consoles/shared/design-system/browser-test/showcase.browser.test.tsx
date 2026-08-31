@@ -6,7 +6,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
 
 import { ApplicationFatalError, DesignSystemProvider } from '../src';
-import { DesignSystemShowcase, LayoutShowcase, ThemeLocaleMatrix } from '../showcase/main';
+import {
+  DesignSystemShowcase,
+  LayoutShowcase,
+  SplitLayoutShowcase,
+  ThemeLocaleMatrix,
+} from '../showcase/main';
 
 let renderedRoot: Root | undefined;
 let renderedContainer: HTMLDivElement | undefined;
@@ -39,6 +44,20 @@ function renderedGridColumns(itemTestId: string) {
     throw new Error(`栅格项 ${itemTestId} 缺少布局容器。`);
   }
   return getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length;
+}
+
+function documentOrder(first: Element, second: Element) {
+  return Boolean(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING);
+}
+
+async function waitForLayout() {
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        resolve();
+      });
+    });
+  });
 }
 
 describe('Design System 真实浏览器展示矩阵', () => {
@@ -115,6 +134,85 @@ describe('Design System 真实浏览器展示矩阵', () => {
     const actionBounds = firstAction.element().getBoundingClientRect();
     expect(actionBounds.left).toBeGreaterThanOrEqual(0);
     expect(actionBounds.right).toBeLessThanOrEqual(320);
+  });
+
+  it.skipIf(import.meta.env.SF_VISUAL_SNAPSHOTS === 'false')(
+    '固定主辅分栏桌面与窄屏稳定状态',
+    async () => {
+      render(
+        <DesignSystemProvider>
+          <SplitLayoutShowcase />
+        </DesignSystemProvider>,
+      );
+      const main = page.getByRole('main');
+
+      await page.viewport(1280, 900);
+      await expect(main).toMatchScreenshot('split-layout-1280');
+
+      await page.viewport(390, 1200);
+      await expect(main).toMatchScreenshot('split-layout-390');
+    },
+  );
+
+  it('主辅分栏在 48rem 边界保持固定顺序、可见焦点和页面无横向溢出', async () => {
+    render(
+      <DesignSystemProvider>
+        <SplitLayoutShowcase />
+      </DesignSystemProvider>,
+    );
+
+    const main = page.getByRole('main').element();
+    const primary = page.getByRole('region', { name: '编辑成员资料' }).element();
+    const auxiliary = page.getByRole('complementary', { name: '操作提示' }).element();
+    const primaryWrapper = primary.parentElement;
+    if (primaryWrapper === null) {
+      throw new Error('主内容缺少分栏布局容器。');
+    }
+    const split = primaryWrapper.parentElement;
+    if (split === null) {
+      throw new Error('主内容容器缺少分栏布局。');
+    }
+
+    expect(main.querySelectorAll('main')).toHaveLength(0);
+    expect(documentOrder(primaryWrapper, auxiliary)).toBe(true);
+    expect(document.querySelector('[role="grid"]')).toBeNull();
+
+    await page.viewport(1280, 900);
+    expect(getComputedStyle(split).gridTemplateColumns.split(' ').filter(Boolean)).toHaveLength(2);
+    const gap = Number.parseFloat(getComputedStyle(split).columnGap);
+    const auxiliaryWidth = auxiliary.getBoundingClientRect().width;
+    expect(gap).toBe(24);
+    expect(auxiliaryWidth).toBeGreaterThanOrEqual(18 * 16);
+    expect(auxiliaryWidth).toBeLessThanOrEqual(24 * 16);
+
+    const splitContainer = split.parentElement;
+    if (splitContainer === null) {
+      throw new Error('分栏缺少 Container Query 容器。');
+    }
+    splitContainer.style.inlineSize = '48rem';
+    await waitForLayout();
+    expect(getComputedStyle(split).gridTemplateColumns.split(' ').filter(Boolean)).toHaveLength(2);
+    splitContainer.style.inlineSize = 'calc(48rem - 1px)';
+    await waitForLayout();
+    expect(getComputedStyle(split).gridTemplateColumns.split(' ').filter(Boolean)).toHaveLength(1);
+    splitContainer.style.removeProperty('inline-size');
+
+    for (const width of [390, 320]) {
+      await page.viewport(width, 1200);
+      expect(getComputedStyle(split).gridTemplateColumns.split(' ').filter(Boolean)).toHaveLength(
+        1,
+      );
+      expect(documentOrder(primaryWrapper, auxiliary)).toBe(true);
+      expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
+    }
+
+    await page.viewport(320, 1200);
+    const primaryAction = page.getByRole('button', { name: '保存成员资料' });
+    primaryAction.element().focus();
+    expect(getComputedStyle(primaryAction.element()).outlineStyle).not.toBe('none');
+    await userEvent.tab();
+    await expect.element(page.getByRole('button', { name: '查看角色说明' })).toHaveFocus();
+    expect(documentOrder(primaryWrapper, auxiliary)).toBe(true);
   });
 
   it('通过自动无障碍检查并响应减少动画偏好', async () => {
@@ -241,6 +339,16 @@ describe('Design System 真实浏览器展示矩阵', () => {
 
     await page.viewport(360, 3200);
     expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(360);
+
+    await page.viewport(320, 3200);
+    expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(320);
+    const table = page.getByRole('table').element();
+    const tableScrollRegion = table.parentElement;
+    if (tableScrollRegion === null) {
+      throw new Error('数据表格缺少自身滚动区域。');
+    }
+    expect(getComputedStyle(tableScrollRegion).overflowX).toBe('auto');
+    expect(tableScrollRegion.scrollWidth).toBeGreaterThanOrEqual(tableScrollRegion.clientWidth);
   });
 
   it('通过公共入口显示致命错误恢复界面且不暴露异常详情', async () => {

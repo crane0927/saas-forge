@@ -47,6 +47,24 @@ export interface ResponsiveGridProps {
   readonly intent: ResponsiveGridIntent;
 }
 
+interface SplitLayoutContentProps {
+  readonly primary: ReactNode;
+  readonly auxiliary: ReactNode;
+}
+
+interface SplitLayoutLabelProps extends SplitLayoutContentProps {
+  readonly auxiliaryLabel: string;
+  readonly auxiliaryLabelledBy?: never;
+}
+
+interface SplitLayoutLabelledByProps extends SplitLayoutContentProps {
+  readonly auxiliaryLabel?: never;
+  readonly auxiliaryLabelledBy: string;
+}
+
+/** 辅助栏必须且只能通过直接名称或关联标题获得可访问名称。 */
+export type SplitLayoutProps = SplitLayoutLabelProps | SplitLayoutLabelledByProps;
+
 const iconPaths: Record<DesignIconName, ReactNode> = {
   check: <path d="m6.5 12.5 3.5 3.5 7.5-8" />,
   warning: (
@@ -179,6 +197,35 @@ export function ResponsiveGrid({ children, intent }: ResponsiveGridProps) {
   return (
     <div className="sf-responsive-grid-container" data-layout-intent={intent}>
       <div className={`sf-responsive-grid sf-responsive-grid-${intent}`}>{children}</div>
+    </div>
+  );
+}
+
+export function SplitLayout({
+  primary,
+  auxiliary,
+  auxiliaryLabel,
+  auxiliaryLabelledBy,
+}: SplitLayoutProps) {
+  const hasLabel = auxiliaryLabel !== undefined && auxiliaryLabel.trim() !== '';
+  const hasLabelledBy = auxiliaryLabelledBy !== undefined && auxiliaryLabelledBy.trim() !== '';
+
+  if (hasLabel === hasLabelledBy) {
+    throw new Error('SplitLayout 辅助栏必须且只能提供一种可访问名称。');
+  }
+
+  return (
+    <div className="sf-split-layout-container">
+      <div className="sf-split-layout">
+        <div className="sf-split-layout-primary">{primary}</div>
+        <aside
+          className="sf-split-layout-auxiliary"
+          aria-label={hasLabel ? auxiliaryLabel : undefined}
+          aria-labelledby={hasLabelledBy ? auxiliaryLabelledBy : undefined}
+        >
+          {auxiliary}
+        </aside>
+      </div>
     </div>
   );
 }
