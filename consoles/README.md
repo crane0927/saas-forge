@@ -1,6 +1,6 @@
 # 控制台边界
 
-本目录承载 Platform Console、Tenant Console Shell、业务 Remote 与共享前端代码四个独立边界。当前已交付两个最终应用宿主、生成 API Client 和共享应用 Runtime；业务 Remote 尚未实现。
+本目录承载 Platform Console、Tenant Console Shell、业务 Remote 与共享前端代码四个独立边界。当前已交付两个最终应用宿主、生成 API Client、共享应用 Runtime，以及只用于证明 Design System 消费边界的最小 Remote 夹具；产品业务 Remote 尚未实现。
 
 本目录是唯一的 pnpm workspace 根，固定使用 Node 24.14.1 与 pnpm 11.22.0。共享依赖版本由 `pnpm-workspace.yaml` 的默认 Catalog 集中管理，lockfile 记录解析后的精确版本。Platform Console 和 Tenant Console Shell 是彼此独立的 Vite + React 应用；本阶段不初始化 Module Federation。
 
@@ -8,7 +8,7 @@
 
 `shared/app-runtime` 是依赖无关的 Runtime Config 与 Bootstrap 内核。它从同 Origin 的 `/runtime-config.json` 加载严格的 `schemaVersion`、`apiBaseUrl` 两字段契约，只接受绝对 HTTPS API Origin，并向应用暴露稳定的失败码和显式用户重试状态。它不依赖 React、路由、认证或生成 API Client 的请求实例。
 
-`shared/design-system` 是唯一公共 UI 包，内部封装 Ant Design 6.6.2，并通过根入口提供 Theme Provider、语义 Token 和共享启动状态。两个 Console 不得直接依赖 `antd` 或导入 Design System 内部路径；聚合测试包含对应静态边界门禁。
+`shared/design-system` 是唯一公共 UI 包，内部封装 Ant Design 6.6.2，并通过根入口提供 Theme Provider、语义 Token 和共享启动状态。两个 Console 与 Remote 不得直接依赖 `antd`、导入 Design System 内部路径、注入全局 CSS、覆盖公共组件内部选择器或重复实现已有公共组件；聚合测试包含对应静态和制品边界门禁。
 
 ## 环境准备与完整验证
 
@@ -29,6 +29,8 @@ pnpm run dev:platform
 pnpm run dev:tenant
 pnpm run typecheck
 pnpm run test
+pnpm run test:browser:chromium
+pnpm run test:browser:compatibility
 pnpm run build
 pnpm run verify
 ```
@@ -50,4 +52,4 @@ pnpm run verify
 
 ## 证据边界
 
-当前门禁只证明最终 Platform/Tenant 应用宿主、共享 Runtime、Design System 启动切片、生成 Client 的稳定入口和静态生产构建存在；不证明登录、真实 API 调用、受控 TLS Origin、业务 Remote 或完整多浏览器闭环。
+当前门禁证明 Platform/Tenant 应用宿主与最小 Remote 夹具消费同一 Design System 版本、唯一 Provider/全局样式入口和共享浏览器交互。它不证明登录、真实 API 调用、受控 TLS Origin、产品业务 Remote、原生 Safari 或部署后闭环；WebKit 只作为 CI 中可复现的 Safari 引擎兼容约定。

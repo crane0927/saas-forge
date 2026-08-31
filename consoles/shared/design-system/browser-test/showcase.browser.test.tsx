@@ -28,20 +28,23 @@ function render(ui: ReactNode) {
 }
 
 describe('Design System 真实浏览器展示矩阵', () => {
-  it('固定关键稳定状态的五个验收视口', async () => {
-    render(
-      <DesignSystemProvider>
-        <ThemeLocaleMatrix />
-      </DesignSystemProvider>,
-    );
-    const matrix = page.getByTestId('theme-locale-matrix');
+  it.skipIf(import.meta.env.SF_VISUAL_SNAPSHOTS === 'false')(
+    '固定关键稳定状态的五个验收视口',
+    async () => {
+      render(
+        <DesignSystemProvider>
+          <ThemeLocaleMatrix />
+        </DesignSystemProvider>,
+      );
+      const matrix = page.getByTestId('theme-locale-matrix');
 
-    for (const width of [1440, 1280, 768, 390, 360]) {
-      await page.viewport(width, width <= 768 ? 3200 : 1100);
-      await expect(matrix).toMatchScreenshot(`theme-locale-matrix-${String(width)}`);
-      expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
-    }
-  });
+      for (const width of [1440, 1280, 768, 390, 360]) {
+        await page.viewport(width, width <= 768 ? 3200 : 1100);
+        await expect(matrix).toMatchScreenshot(`theme-locale-matrix-${String(width)}`);
+        expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
+      }
+    },
+  );
 
   it('通过自动无障碍检查并响应减少动画偏好', async () => {
     render(

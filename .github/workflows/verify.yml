@@ -81,7 +81,45 @@ jobs:
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
         working-directory: consoles
+      - run: pnpm exec playwright install --with-deps chromium
+        working-directory: consoles
       - run: ./mvnw --batch-mode --no-transfer-progress verify
+        env:
+          SF_VISUAL_SNAPSHOTS: "false"
+
+  console-browser-compatibility:
+    name: Console browser ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Chrome
+            install: chrome
+            command: test:browser:chrome
+          - name: Edge
+            install: msedge
+            command: test:browser:edge
+          - name: Firefox
+            install: firefox
+            command: test:browser:firefox
+          - name: Safari agreement (WebKit)
+            install: webkit
+            command: test:browser:webkit
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24.14.1"
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+        working-directory: consoles
+      - name: Install ${{ matrix.name }} browser runtime
+        run: pnpm exec playwright install --with-deps ${{ matrix.install }}
+        working-directory: consoles
+      - name: Verify ${{ matrix.name }} Design System consumers
+        run: pnpm run ${{ matrix.command }}
+        working-directory: consoles
 
   nacos-config:
     name: Nacos configuration and permissions

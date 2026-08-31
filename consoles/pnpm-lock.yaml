@@ -83,6 +83,12 @@ importers:
       '@types/react-dom':
         specifier: 'catalog:'
         version: 19.2.5(@types/react@19.2.18)
+      '@vitejs/plugin-react':
+        specifier: 'catalog:'
+        version: 6.1.1(vite@8.1.5(@types/node@24.13.3))
+      '@vitest/browser-playwright':
+        specifier: 'catalog:'
+        version: 4.1.11(playwright@1.62.1)(vite@8.1.5(@types/node@24.13.3))(vitest@4.1.11)
       eslint:
         specifier: 'catalog:'
         version: 10.9.1(supports-color@7.1.0)
@@ -107,6 +113,43 @@ importers:
       typescript-eslint:
         specifier: 'catalog:'
         version: 8.68.0(eslint@10.9.1(supports-color@7.1.0))(supports-color@7.1.0)(typescript@6.0.3)
+      vite:
+        specifier: 'catalog:'
+        version: 8.1.5(@types/node@24.13.3)
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@types/node@24.13.3)(@vitest/browser-playwright@4.1.11)(jsdom@30.0.1)(vite@8.1.5(@types/node@24.13.3))
+
+  business-remotes/design-system-consumer-fixture:
+    dependencies:
+      '@saas-forge/design-system':
+        specifier: workspace:*
+        version: link:../../shared/design-system
+      react:
+        specifier: 'catalog:'
+        version: 19.2.8
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.8(react@19.2.8)
+    devDependencies:
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.3(@testing-library/dom@10.4.1)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.5(@types/react@19.2.18)
+      '@vitejs/plugin-react':
+        specifier: 'catalog:'
+        version: 6.1.1(vite@8.1.5(@types/node@24.13.3))
+      jsdom:
+        specifier: 'catalog:'
+        version: 30.0.1
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
       vite:
         specifier: 'catalog:'
         version: 8.1.5(@types/node@24.13.3)

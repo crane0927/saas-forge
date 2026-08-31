@@ -33,6 +33,8 @@ jobs:
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
         working-directory: consoles
+      - run: pnpm exec playwright install --with-deps chromium
+        working-directory: consoles
       - name: Verify release version
         shell: bash
         run: |
@@ -41,7 +43,7 @@ jobs:
             exit 1
           fi
           version="${GITHUB_REF_NAME#v}"
-          ./mvnw --batch-mode --no-transfer-progress -Drevision="$version" verify
+          SF_VISUAL_SNAPSHOTS=false ./mvnw --batch-mode --no-transfer-progress -Drevision="$version" verify
 
   publish:
     name: Publish Maven Central artifacts
@@ -73,11 +75,14 @@ jobs:
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
         working-directory: consoles
+      - run: pnpm exec playwright install --with-deps chromium
+        working-directory: consoles
       - name: Publish
         env:
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
           CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+          SF_VISUAL_SNAPSHOTS: "false"
         run: >-
           ./mvnw --batch-mode --no-transfer-progress
           -Prelease

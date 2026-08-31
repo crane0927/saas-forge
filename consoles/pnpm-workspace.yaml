@@ -1,4 +1,5 @@
 packages:
+  - business-remotes/design-system-consumer-fixture
   - platform-console
   - shared/api-client
   - shared/app-runtime
