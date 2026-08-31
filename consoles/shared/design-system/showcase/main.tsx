@@ -28,11 +28,13 @@ import {
   useUnsavedChangesGuard,
   WarningFeedback,
   type FormErrorItem,
+  type DesignSystemColorScheme,
+  type DesignSystemLocale,
   type ServerTableRequest,
   type ServerTableSort,
+  type TenantBrandProfile,
 } from '@saas-forge/design-system';
-import { StrictMode, useEffect, useRef, useState } from 'react';
-import { createRoot } from 'react-dom/client';
+import { useEffect, useRef, useState } from 'react';
 
 import './showcase.css';
 
@@ -61,6 +63,14 @@ interface ProfileFormValues {
 
 type ProfileField = keyof ProfileFormValues;
 type ProfileErrors = Partial<Record<ProfileField, string>>;
+
+const showcaseTenantBrand: TenantBrandProfile = {
+  displayName: 'Northstar Labs',
+  logoUrl: '/tenant-assets/northstar.svg',
+  faviconUrl: 'https://assets.example.test/northstar.ico',
+  primaryColor: '#7C3AED',
+  accentColor: '#C026D3',
+};
 
 const emptyProfile: ProfileFormValues = {
   displayName: '',
@@ -542,7 +552,73 @@ function TableShowcase({ onResult }: { readonly onResult: (result: string) => vo
   );
 }
 
-function OverlayShowcase() {
+export function ThemeLocaleMatrix() {
+  const variants: readonly {
+    scheme: DesignSystemColorScheme;
+    locale: DesignSystemLocale;
+    brand: 'platform' | 'tenant';
+  }[] = [
+    { scheme: 'light', locale: 'zh-CN', brand: 'platform' },
+    { scheme: 'dark', locale: 'zh-CN', brand: 'platform' },
+    { scheme: 'light', locale: 'en-US', brand: 'tenant' },
+    { scheme: 'dark', locale: 'en-US', brand: 'tenant' },
+  ];
+
+  return (
+    <div className="sf-showcase-theme-matrix" data-testid="theme-locale-matrix">
+      {variants.map(({ scheme, locale, brand }) => {
+        const english = locale === 'en-US';
+        return (
+          <div className="sf-showcase-theme-sample" key={`${scheme}-${locale}-${brand}`}>
+            <DesignSystemProvider
+              forcedColorScheme={scheme}
+              locale={locale}
+              tenantBrand={brand === 'tenant' ? showcaseTenantBrand : undefined}
+            >
+              <article aria-label={`${locale} ${scheme} ${brand}`}>
+                <p className="sf-showcase-theme-label">
+                  {locale} · {scheme} · {brand}
+                </p>
+                <h3>{english ? 'Member overview' : '成员概览'}</h3>
+                <p>
+                  {english
+                    ? 'Stable controls and semantic states share one token system.'
+                    : '稳定控件与语义状态共享同一套 Token。'}
+                </p>
+                <div className="sf-showcase-controls">
+                  <Button variant="primary">{english ? 'Primary action' : '主要操作'}</Button>
+                  <Button>{english ? 'Secondary action' : '次要操作'}</Button>
+                  <Button disabled>{english ? 'Disabled' : '禁用'}</Button>
+                  <Button loading loadingLabel={english ? 'Saving' : '正在保存'}>
+                    {english ? 'Save' : '保存'}
+                  </Button>
+                </div>
+                <TextField
+                  id={`${scheme}-${locale}-${brand}-query`}
+                  label={english ? 'Search members' : '查询成员'}
+                  value=""
+                  placeholder={english ? 'Press Enter to search' : '按 Enter 查询'}
+                  onValueChange={() => undefined}
+                />
+                <PersistentError title={english ? 'Save failed' : '保存失败'}>
+                  {english ? 'Review the highlighted fields and retry.' : '请检查标记字段后重试。'}
+                </PersistentError>
+                <EmptyDataState
+                  title={english ? 'No members' : '暂无成员'}
+                  description={
+                    english ? 'Create the first member to begin.' : '创建首位成员后开始使用。'
+                  }
+                />
+              </article>
+            </DesignSystemProvider>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export function DesignSystemShowcase() {
   const [result, setResult] = useState('请选择一个场景进行操作。');
   const [standardOpen, setStandardOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -581,6 +657,19 @@ function OverlayShowcase() {
       <p className="sf-showcase-result" role="status">
         {result}
       </p>
+
+      <section className="sf-showcase-section" aria-labelledby="theme-matrix-title">
+        <div className="sf-showcase-section-heading">
+          <div>
+            <h2 id="theme-matrix-title">主题、品牌与双语矩阵</h2>
+            <p>固定呈现平台与 Tenant 品牌的中英文、浅色、深色和公共状态。</p>
+          </div>
+        </div>
+        <ThemeLocaleMatrix />
+        <p className="sf-showcase-motion-note" role="status">
+          减少动画模式由操作系统偏好驱动，展示册浏览器测试会固定验证动画时长。
+        </p>
+      </section>
 
       <section className="sf-showcase-section" aria-labelledby="table-preview-title">
         <div className="sf-showcase-section-heading">
@@ -835,6 +924,10 @@ function OverlayShowcase() {
             }}
           />
         </label>
+        <label className="sf-showcase-field">
+          <span>备注</span>
+          <textarea defaultValue="Enter 只输入换行。" rows={3} />
+        </label>
       </StandardDialog>
 
       <UnsavedChangesDialog
@@ -891,16 +984,3 @@ function OverlayShowcase() {
     </main>
   );
 }
-
-const root = document.getElementById('root');
-if (root === null) {
-  throw new Error('Design System 展示入口缺少根元素。');
-}
-
-createRoot(root).render(
-  <StrictMode>
-    <DesignSystemProvider>
-      <OverlayShowcase />
-    </DesignSystemProvider>
-  </StrictMode>,
-);

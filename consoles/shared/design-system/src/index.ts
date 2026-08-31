@@ -87,5 +87,19 @@ export {
   type ServerTableSort,
   type ServerTableSortDirection,
 } from './server-table';
-export { DesignSystemProvider } from './theme-provider';
+export {
+  contrastRatio,
+  resolveTenantBrandProfile,
+  type BrandColorPair,
+  type ResolvedBrandTheme,
+  type TenantBrandProfile,
+  type TenantBrandResolution,
+} from './brand-theme';
+export { RouteFocusAnnouncement, type RouteFocusAnnouncementProps } from './route-accessibility';
+export {
+  DesignSystemProvider,
+  type DesignSystemColorScheme,
+  type DesignSystemLocale,
+  type DesignSystemProviderProps,
+} from './theme-provider';
 export { semanticTokens } from './tokens';

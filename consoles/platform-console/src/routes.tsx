@@ -1,4 +1,5 @@
-import { Outlet, Route, Routes } from 'react-router';
+import { RouteFocusAnnouncement } from '@saas-forge/design-system';
+import { Outlet, Route, Routes, useLocation } from 'react-router';
 
 export function PlatformPublicAreaOutlet() {
   return <Outlet />;
@@ -30,10 +31,18 @@ function PlatformApplicationRoot() {
 }
 
 function NotFound() {
+  const location = useLocation();
   return (
     <main className="sf-runtime-surface">
       <section className="sf-runtime-panel" aria-labelledby="not-found-title">
-        <h1 id="not-found-title">页面不存在</h1>
+        <RouteFocusAnnouncement
+          routeKey={location.key}
+          pageTitle="页面不存在"
+          focusTargetId="not-found-title"
+        />
+        <h1 id="not-found-title" tabIndex={-1}>
+          页面不存在
+        </h1>
         <p>Platform Console 尚未提供此路由。</p>
         <p className="sf-runtime-code">404</p>
       </section>

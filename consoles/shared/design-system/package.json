@@ -17,12 +17,13 @@
   "scripts": {
     "typecheck": "tsc --project tsconfig.json",
     "test": "vitest run",
+    "test:browser": "vitest run --config vitest.browser.config.ts",
     "lint": "eslint .",
     "format:check": "prettier --check .",
     "build": "vite build && vite build --config showcase/vite.config.ts",
     "dev:showcase": "vite --config showcase/vite.config.ts",
     "preview:showcase": "vite preview --config showcase/vite.config.ts",
-    "verify": "pnpm run typecheck && pnpm run test && pnpm run lint && pnpm run format:check && pnpm run build"
+    "verify": "pnpm run typecheck && pnpm run test && pnpm run test:browser && pnpm run lint && pnpm run format:check && pnpm run build"
   },
   "dependencies": {
     "antd": "catalog:"
@@ -35,7 +36,9 @@
     "@testing-library/react": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "@vitest/browser-playwright": "catalog:",
     "@vitejs/plugin-react": "catalog:",
+    "axe-core": "catalog:",
     "jsdom": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",

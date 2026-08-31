@@ -1,10 +1,25 @@
 export const semanticTokens = {
   color: {
     platformPrimary: '#2563EB',
-    surface: '#FFFFFF',
-    text: '#0F172A',
-    textSecondary: '#475569',
-    border: '#CBD5E1',
+    light: {
+      surface: '#FFFFFF',
+      surfaceElevated: '#F8FAFC',
+      text: '#0F172A',
+      textSecondary: '#475569',
+      border: '#CBD5E1',
+    },
+    dark: {
+      surface: '#0F172A',
+      surfaceElevated: '#1E293B',
+      text: '#F8FAFC',
+      textSecondary: '#CBD5E1',
+      border: '#475569',
+    },
+    status: {
+      success: '#15803D',
+      warning: '#A16207',
+      danger: '#B91C1C',
+    },
   },
   font: {
     system:

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router';
 
@@ -11,7 +11,7 @@ import {
 afterEach(cleanup);
 
 describe('Platform route tree', () => {
-  it('renders an honest 404 for an unmatched route', () => {
+  it('renders an honest 404 and moves route focus to its title', async () => {
     render(
       <MemoryRouter initialEntries={['/not-implemented']}>
         <PlatformRoutes />
@@ -20,6 +20,10 @@ describe('Platform route tree', () => {
 
     expect(screen.getByRole('heading', { name: '页面不存在' })).toBeTruthy();
     expect(screen.getByText('404')).toBeTruthy();
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByRole('heading', { name: '页面不存在' }));
+    });
+    expect(screen.getByRole('status').textContent).toBe('页面不存在');
   });
 
   it.each([

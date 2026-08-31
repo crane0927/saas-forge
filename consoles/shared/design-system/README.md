@@ -2,8 +2,10 @@
 
 SaaS Forge 浏览器界面的唯一公共 Design System 包。当前公共根入口提供：
 
-- `DesignSystemProvider`：安装唯一 Ant Design Theme Provider、全局基础样式与语义 Token；
-- `semanticTokens`：平台主色、系统字体、基础颜色与 `4px` 级间距；
+- `DesignSystemProvider`：安装唯一 Ant Design Theme Provider，默认跟随系统浅色/深色主题，并应用受控 Locale 与 Tenant 品牌；
+- `semanticTokens`：唯一平台主色、浅色/深色表面、固定状态色、系统字体与 `4px` 级间距；
+- `resolveTenantBrandProfile`：同时解析浅色与深色品牌颜色和前景色，任一输入不合法时原子拒绝；
+- `RouteFocusAnnouncement`：路由切换后聚焦新页面主标题并通知读屏软件；
 - `ApplicationLoading`：应用首次启动和部署配置加载状态；
 - `ConfigurationFailure`：持续配置失败状态与显式重试操作。
 - `PageLayout`、`PageTitle`、`Button`、`Link` 与 `DesignIcon`：统一页面结构、基础操作和首批图标；
@@ -18,6 +20,7 @@ SaaS Forge 浏览器界面的唯一公共 Design System 包。当前公共根入
 - `FormLayout`、`FormRow`、`TextField`、`PasswordField`、`SelectField` 与 `CheckboxField`：统一单列表单、受控双字段行和标签上置的基础输入；
 - `FieldError` 与 `FormErrorSummary`：关联字段错误、持续表单错误和可聚焦错误汇总；
 - `useFormProblemFocus` 与 `useUnsavedChangesGuard`：首个问题聚焦，以及关闭、返回、页内切换和浏览器离站的未保存保护。
+- `ServerTable`：提供服务端分页、单列排序、当前页逐行选择、固定操作列与危险菜单边界。
 
 消费者只能从 `@saas-forge/design-system` 根入口导入，不得导入 `antd`、本包内部文件或额外全局样式。缺少公共能力时先扩展本包，再升级消费者；不复制等价组件作为临时实现。
 
@@ -27,10 +30,12 @@ SaaS Forge 浏览器界面的唯一公共 Design System 包。当前公共根入
 pnpm --filter @saas-forge/design-system run verify
 ```
 
+其中浏览器验证通过真实 Chromium 执行 axe 无障碍检查、键盘流程、减少动画和 `1440px`、`1280px`、`768px`、`390px`、`360px` 稳定状态快照。视觉差异只能在评审后通过 `--update` 更新基线。
+
 私有组件展示入口可通过以下命令启动：
 
 ```bash
 pnpm --filter @saas-forge/design-system run dev:showcase
 ```
 
-后续表格、深色主题、Tenant 品牌与完整展示矩阵由对应 Issue 分批交付；当前展示入口覆盖已正式交付的启动、页面状态、反馈、图标、浮层与完整表单流程。
+当前展示入口覆盖启动、页面状态、反馈、图标、浮层、完整表单、服务端表格，以及中英文、浅色/深色、平台/Tenant 品牌与关键稳定状态矩阵。

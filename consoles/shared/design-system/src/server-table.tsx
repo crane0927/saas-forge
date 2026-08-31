@@ -231,6 +231,9 @@ export function ServerTable<RecordType>({
           loading={false}
           rowSelection={{
             fixed: true,
+            // Ant Design 的固定列测量行会复制可聚焦的全选框；逐行选择保留当前页语义且避免隐藏焦点。
+            hideSelectAll: true,
+            columnTitle: <span className="sf-visually-hidden">选择</span>,
             preserveSelectedRowKeys: false,
             selectedRowKeys: [...selectedKeys],
             getCheckboxProps: (record) => ({

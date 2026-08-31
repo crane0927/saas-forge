@@ -13,8 +13,10 @@ catalog:
   '@types/node': 24.13.3
   '@types/react': 19.2.18
   '@types/react-dom': 19.2.5
+  '@vitest/browser-playwright': 4.1.11
   '@vitejs/plugin-react': 6.1.1
   antd: 6.6.2
+  axe-core: 4.13.0
   eslint: 10.9.1
   globals: 17.11.0
   jsdom: 30.0.1
