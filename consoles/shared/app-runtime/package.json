@@ -17,6 +17,9 @@
     "format:check": "prettier --check .",
     "verify": "pnpm run typecheck && pnpm run test && pnpm run lint && pnpm run format:check"
   },
+  "dependencies": {
+    "@saas-forge/api-client": "workspace:*"
+  },
   "devDependencies": {
     "typescript": "catalog:",
     "vitest": "catalog:"

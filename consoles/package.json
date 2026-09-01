@@ -11,7 +11,7 @@
     "dev:platform": "pnpm run generate:api && pnpm --filter @saas-forge/platform-console run dev",
     "dev:tenant": "pnpm run generate:api && pnpm --filter @saas-forge/tenant-console-shell run dev",
     "typecheck": "pnpm --recursive --if-present run typecheck",
-    "test:boundaries": "node --test test/design-system-boundaries.test.mjs",
+    "test:boundaries": "node --test test/*.test.mjs",
     "test:browser:consumers": "vitest run --config vitest.consumers.browser.config.ts",
     "test:browser:current": "pnpm --filter @saas-forge/design-system run test:browser && pnpm run test:browser:consumers",
     "test:browser:compatibility": "pnpm run test:browser:chrome && pnpm run test:browser:edge && pnpm run test:browser:firefox && pnpm run test:browser:webkit",
