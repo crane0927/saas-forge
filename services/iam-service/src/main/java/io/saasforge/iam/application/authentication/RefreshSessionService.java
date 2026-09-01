@@ -58,10 +58,19 @@ public final class RefreshSessionService {
         this.clock = clock;
     }
 
-    public LoginResult refresh(UUID idempotencyKey, String refreshTokenValue, String traceId) {
+    public LoginResult refresh(
+            UUID idempotencyKey,
+            BrowserSessionSlot sessionSlot,
+            String refreshTokenValue,
+            String traceId) {
         Instant inspectedAt = clock.instant();
-        RefreshTokenMaterial presentedToken = new RefreshTokenMaterial(
-                refreshTokenValue, refreshTokenIssuer.digest(refreshTokenValue));
+        RefreshTokenMaterial presentedToken;
+        try {
+            presentedToken = new RefreshTokenMaterial(
+                    refreshTokenValue, refreshTokenIssuer.digest(refreshTokenValue));
+        } catch (ContextSelectionSessionInvalidException invalidRefreshToken) {
+            throw new RefreshSessionInvalidException();
+        }
         Sha256Digest idempotencyKeyDigest = digest(idempotencyKey.toString());
         RefreshRotationLease.Acquisition lease = rotationLease.acquire(
                 presentedToken.digest(), idempotencyKeyDigest);
@@ -71,6 +80,9 @@ public final class RefreshSessionService {
         RefreshTokenFamily family = refreshTokenFamilies
                 .findByTokenDigest(presentedToken.digest())
                 .orElseThrow(RefreshSessionInvalidException::new);
+        if (!sessionSlot.accepts(family.purpose())) {
+            throw new BrowserRequestRejectedException();
+        }
         if (!family.isUsableAt(inspectedAt)) {
             throw new RefreshSessionInvalidException();
         }

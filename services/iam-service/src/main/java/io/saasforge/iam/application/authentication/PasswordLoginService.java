@@ -7,6 +7,7 @@ import io.saasforge.iam.domain.identity.IdentityRepository;
 import io.saasforge.iam.domain.identity.NormalizedEmail;
 import io.saasforge.iam.domain.identity.PasswordCredential;
 import io.saasforge.iam.domain.session.RefreshTokenFamilyPurpose;
+import io.saasforge.iam.domain.session.RefreshTokenFamilyRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -23,6 +24,7 @@ public final class PasswordLoginService {
     private final PasswordVerifier passwordVerifier;
     private final UserAccessTokenIssuer accessTokenIssuer;
     private final RefreshTokenIssuer refreshTokenIssuer;
+    private final RefreshTokenFamilyRepository refreshTokenFamilies;
     private final LoginSessionService sessionService;
     private final Clock clock;
 
@@ -34,6 +36,7 @@ public final class PasswordLoginService {
             PasswordVerifier passwordVerifier,
             UserAccessTokenIssuer accessTokenIssuer,
             RefreshTokenIssuer refreshTokenIssuer,
+            RefreshTokenFamilyRepository refreshTokenFamilies,
             LoginSessionService sessionService,
             Clock clock) {
         this.identities = identities;
@@ -43,11 +46,18 @@ public final class PasswordLoginService {
         this.passwordVerifier = passwordVerifier;
         this.accessTokenIssuer = accessTokenIssuer;
         this.refreshTokenIssuer = refreshTokenIssuer;
+        this.refreshTokenFamilies = refreshTokenFamilies;
         this.sessionService = sessionService;
         this.clock = clock;
     }
 
-    public LoginResult login(String email, String password, LoginContextType contextType, String traceId) {
+    public LoginResult login(
+            String email,
+            String password,
+            LoginContextType contextType,
+            String selectedRefreshToken,
+            String traceId) {
+        requireAvailableSlot(BrowserSessionSlot.forLogin(contextType), selectedRefreshToken);
         NormalizedEmail normalizedEmail = NormalizedEmail.from(email);
         if (loginProtection.isLocked(normalizedEmail)) {
             throw new AuthenticationFailedException();
@@ -71,12 +81,36 @@ public final class PasswordLoginService {
         Identity authenticatedIdentity = identity.orElseThrow();
         PasswordCredential authenticatedCredential = credential.orElseThrow();
         if (authenticatedCredential.type() == CredentialType.INITIAL_PLATFORM_PASSWORD) {
+            if (contextType != LoginContextType.PLATFORM) {
+                throw new BrowserRequestRejectedException();
+            }
             return initialPasswordChangeLogin(authenticatedIdentity, authenticatedCredential, now, traceId);
         }
         return switch (contextType) {
             case PLATFORM -> platformLogin(authenticatedIdentity, now, traceId);
             case TENANT -> tenantLogin(authenticatedIdentity, traceId);
         };
+    }
+
+    private void requireAvailableSlot(BrowserSessionSlot slot, String selectedRefreshToken) {
+        if (selectedRefreshToken == null) {
+            return;
+        }
+        io.saasforge.iam.domain.shared.Sha256Digest digest;
+        try {
+            digest = refreshTokenIssuer.digest(selectedRefreshToken);
+        } catch (ContextSelectionSessionInvalidException invalidRefreshToken) {
+            // 无效或无法解析的旧槽位 Cookie 不阻止重新登录；成功响应会覆盖它。
+            return;
+        }
+        refreshTokenFamilies.findByTokenDigest(digest).ifPresent(family -> {
+            if (!slot.accepts(family.purpose())) {
+                throw new BrowserRequestRejectedException();
+            }
+            if (family.isUsableAt(clock.instant())) {
+                throw new SessionSlotAlreadyActiveException();
+            }
+        });
     }
 
     private LoginResult initialPasswordChangeLogin(

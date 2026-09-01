@@ -23,6 +23,8 @@ import io.saasforge.iam.application.authentication.RefreshSessionInvalidExceptio
 import io.saasforge.iam.application.authentication.RefreshRotationInProgressException;
 import io.saasforge.iam.application.authentication.RefreshRotationUnavailableException;
 import io.saasforge.iam.application.authentication.BrowserRequestRejectedException;
+import io.saasforge.iam.application.authentication.BrowserSessionSlot;
+import io.saasforge.iam.application.authentication.SessionSlotAlreadyActiveException;
 import io.saasforge.iam.application.authentication.TenantContextSwitchAccessRejectedException;
 import io.saasforge.iam.application.authentication.TenantContextSwitchConflictException;
 import io.saasforge.iam.application.authentication.TenantContextSwitchPendingException;
@@ -44,7 +46,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
 public class AuthenticationExceptionHandler {
-    private static final String REFRESH_COOKIE = "__Host-sf_refresh";
+    private static final String LEGACY_REFRESH_COOKIE = "__Host-sf_refresh";
     private static final Pattern TRACE_PARENT = Pattern.compile(
             "^[0-9a-f]{2}-((?!0{32})[0-9a-f]{32})-(?!0{16})[0-9a-f]{16}-[0-9a-f]{2}$");
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -74,6 +76,13 @@ public class AuthenticationExceptionHandler {
     ResponseEntity<Problem> authenticationFailed(AuthenticationFailedException exception, HttpServletRequest request) {
         return problem(HttpStatus.UNAUTHORIZED, AuthenticationFailedException.CODE,
                 "Authentication failed", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(SessionSlotAlreadyActiveException.class)
+    ResponseEntity<Problem> sessionSlotAlreadyActive(
+            SessionSlotAlreadyActiveException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, SessionSlotAlreadyActiveException.CODE,
+                "Session slot already active", exception.getMessage(), request);
     }
 
     @ExceptionHandler(AccessContextUnavailableException.class)
@@ -260,7 +269,8 @@ public class AuthenticationExceptionHandler {
     @ExceptionHandler(MissingRequestCookieException.class)
     ResponseEntity<Problem> missingRefreshCookie(
             MissingRequestCookieException exception, HttpServletRequest request) throws MissingRequestCookieException {
-        if (!REFRESH_COOKIE.equals(exception.getCookieName())) {
+        if (!BrowserSessionSlot.PLATFORM.cookieName().equals(exception.getCookieName())
+                && !BrowserSessionSlot.TENANT.cookieName().equals(exception.getCookieName())) {
             throw exception;
         }
         if (request.getRequestURI().endsWith("/password-changes")) {
@@ -300,14 +310,31 @@ public class AuthenticationExceptionHandler {
                 title, status.value(), code, detail, traceId(request));
         return ResponseEntity.status(status)
                 .contentType(MediaType.APPLICATION_PROBLEM_JSON)
-                .header(HttpHeaders.SET_COOKIE, ResponseCookie.from(REFRESH_COOKIE, "")
-                        .secure(true)
-                        .httpOnly(true)
-                        .sameSite("Strict")
-                        .path("/")
-                        .maxAge(0)
-                        .build().toString())
+                .header(HttpHeaders.SET_COOKIE,
+                        clearedCookie(selectedCookieName(request)).toString(),
+                        clearedCookie(LEGACY_REFRESH_COOKIE).toString())
                 .body(body);
+    }
+
+    private String selectedCookieName(HttpServletRequest request) {
+        Object slot = request.getAttribute(AuthenticationController.SESSION_SLOT_ATTRIBUTE);
+        if (slot instanceof BrowserSessionSlot browserSessionSlot) {
+            return browserSessionSlot.cookieName();
+        }
+        String path = request.getRequestURI();
+        return path.endsWith("/password-changes")
+                ? BrowserSessionSlot.PLATFORM.cookieName()
+                : BrowserSessionSlot.TENANT.cookieName();
+    }
+
+    private ResponseCookie clearedCookie(String cookieName) {
+        return ResponseCookie.from(cookieName, "")
+                .secure(true)
+                .httpOnly(true)
+                .sameSite("Strict")
+                .path("/")
+                .maxAge(0)
+                .build();
     }
 
     private static String traceId(HttpServletRequest request) {

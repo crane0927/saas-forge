@@ -360,7 +360,12 @@ request() {
   local body="${4:-}"
   local bearer="${5:-}"
   local idempotency_key="${6:-}"
+  local browser_origin='https://console.saasforge.test'
   local status
+  if [[ "$path" == "/api/v1/auth/password-changes" || "$body" == *'"contextType":"PLATFORM"'* \
+      || "$body" == *'"sessionSlot":"PLATFORM"'* ]]; then
+    browser_origin='https://platform.saasforge.test'
+  fi
   local arguments=(
     --silent --show-error
     --request "$method"
@@ -369,7 +374,7 @@ request() {
     --write-out '%{http_code}'
     --header 'Content-Type: application/json'
     --header 'X-SF-CSRF: 1'
-    --header 'Origin: https://console.saasforge.test'
+    --header "Origin: $browser_origin"
     --header 'Sec-Fetch-Site: same-site'
     --cookie "$cookie_jar"
     --cookie-jar "$cookie_jar"
@@ -934,7 +939,7 @@ request 200 POST /api/v1/auth/context-selections \
 request 204 POST /api/v1/auth/tenant-switches \
   "$(jq -cn --arg membershipId "$target_membership_id" '{membershipId:$membershipId}')" \
   '' "$(uuid_v7)"
-request 200 POST /api/v1/auth/refresh '{}' '' "$(uuid_v7)"
+request 200 POST /api/v1/auth/refresh '{"sessionSlot":"TENANT"}' '' "$(uuid_v7)"
 
 wait_for_audit_condition \
   "EXISTS (SELECT 1 FROM audit_records WHERE action = 'SESSION_STARTED')" \

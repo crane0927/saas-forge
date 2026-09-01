@@ -1,6 +1,7 @@
 package io.saasforge.iam.api;
 
 import io.saasforge.iam.application.authentication.AccessTokenLoginResult;
+import io.saasforge.iam.application.authentication.BrowserSessionSlot;
 import io.saasforge.iam.application.authentication.ContextSelectionLoginResult;
 import io.saasforge.iam.application.authentication.ContextSelectionService;
 import io.saasforge.iam.application.authentication.ClientCredentialsInvalidException;
@@ -25,6 +26,7 @@ import io.saasforge.iam.contract.model.LoginRequest;
 import io.saasforge.iam.contract.model.MembershipCandidate;
 import io.saasforge.iam.contract.model.PasswordChangeRequest;
 import io.saasforge.iam.contract.model.PasswordSetupRequest;
+import io.saasforge.iam.contract.model.SessionSlotRequest;
 import io.saasforge.iam.contract.model.TenantSwitchRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Duration;
@@ -43,7 +45,8 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 
 @RestController
 public class AuthenticationController implements AuthenticationApi {
-    private static final String REFRESH_COOKIE = "__Host-sf_refresh";
+    static final String SESSION_SLOT_ATTRIBUTE = AuthenticationController.class.getName() + ".sessionSlot";
+    private static final String LEGACY_REFRESH_COOKIE = "__Host-sf_refresh";
     private static final Pattern TRACE_PARENT = Pattern.compile(
             "^[0-9a-f]{2}-((?!0{32})[0-9a-f]{32})-(?!0{16})[0-9a-f]{16}-[0-9a-f]{2}$");
 
@@ -93,32 +96,60 @@ public class AuthenticationController implements AuthenticationApi {
 
     @Override
     public ResponseEntity<AccessTokenResult> selectAuthenticationContext(
-            String csrfHeader, String refreshToken, ContextSelectionRequest request) {
+            String csrfHeader,
+            URI ignoredOrigin,
+            String refreshToken,
+            ContextSelectionRequest request,
+            String ignoredFetchSite) {
+        requireBrowserRequest(BrowserSessionSlot.TENANT, csrfHeader);
         AccessTokenLoginResult result = contextSelectionService.select(refreshToken, request.getMembershipId());
         return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE, refreshCookie(result).toString())
+                .header(HttpHeaders.SET_COOKIE,
+                        refreshCookie(BrowserSessionSlot.TENANT, result).toString(),
+                        clearedCookie(LEGACY_REFRESH_COOKIE).toString())
                 .body(accessTokenBody(result));
     }
 
     @Override
     public ResponseEntity<AuthenticationResult> login(
-            String csrfHeader, LoginRequest loginRequest, UUID ignoredIdempotencyKey) {
+            String csrfHeader,
+            URI ignoredOrigin,
+            LoginRequest loginRequest,
+            UUID ignoredIdempotencyKey,
+            String ignoredFetchSite,
+            String platformRefreshToken,
+            String tenantRefreshToken) {
+        LoginContextType contextType = LoginContextType.valueOf(loginRequest.getContextType().getValue());
+        BrowserSessionSlot requestedSlot = BrowserSessionSlot.forLogin(contextType);
+        requireBrowserRequest(requestedSlot, csrfHeader);
         LoginResult result = loginService.login(
                 loginRequest.getEmail(),
                 loginRequest.getPassword(),
-                LoginContextType.valueOf(loginRequest.getContextType().getValue()),
+                contextType,
+                selectedToken(requestedSlot, platformRefreshToken, tenantRefreshToken),
                 traceId());
+        BrowserSessionSlot resultSlot = result instanceof InitialPasswordChangeLoginResult
+                ? BrowserSessionSlot.PLATFORM : requestedSlot;
         return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE, refreshCookie(result).toString())
+                .header(HttpHeaders.SET_COOKIE,
+                        refreshCookie(resultSlot, result).toString(),
+                        clearedCookie(LEGACY_REFRESH_COOKIE).toString())
                 .body(responseBody(result));
     }
 
     @Override
     public ResponseEntity<Void> changeInitialPassword(
-            String csrfHeader, String refreshToken, PasswordChangeRequest request) {
+            String csrfHeader,
+            URI ignoredOrigin,
+            String refreshToken,
+            PasswordChangeRequest request,
+            String ignoredFetchSite) {
+        requireBrowserRequest(BrowserSessionSlot.PLATFORM, csrfHeader);
         passwordChangeService.change(refreshToken, request.getNewPassword(), traceId());
         return ResponseEntity.noContent()
-                .header(HttpHeaders.SET_COOKIE, clearedRefreshCookie().toString())
+                .header(HttpHeaders.SET_COOKIE,
+                        clearedCookie(BrowserSessionSlot.PLATFORM.cookieName()).toString(),
+                        clearedCookie(LEGACY_REFRESH_COOKIE).toString())
                 .build();
     }
 
@@ -132,19 +163,48 @@ public class AuthenticationController implements AuthenticationApi {
 
     @Override
     public ResponseEntity<AuthenticationResult> refreshAccessToken(
-            UUID idempotencyKey, String csrfHeader, String refreshToken, Object request) {
-        LoginResult result = refreshSessionService.refresh(idempotencyKey, refreshToken, traceId());
+            UUID idempotencyKey,
+            String csrfHeader,
+            URI ignoredOrigin,
+            SessionSlotRequest request,
+            String ignoredFetchSite,
+            String platformRefreshToken,
+            String tenantRefreshToken) {
+        BrowserSessionSlot slot = BrowserSessionSlot.valueOf(request.getSessionSlot().getValue());
+        requireBrowserRequest(slot, csrfHeader);
+        LoginResult result = refreshSessionService.refresh(
+                idempotencyKey,
+                slot,
+                selectedToken(slot, platformRefreshToken, tenantRefreshToken),
+                traceId());
         return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE, refreshCookie(result).toString())
+                .header(HttpHeaders.SET_COOKIE,
+                        refreshCookie(slot, result).toString(),
+                        clearedCookie(LEGACY_REFRESH_COOKIE).toString())
                 .body(responseBody(result));
     }
 
     @Override
-    public ResponseEntity<Void> logout(String csrfHeader, Object request, UUID ignoredIdempotencyKey, String refreshToken) {
+    public ResponseEntity<Void> logout(
+            String csrfHeader,
+            URI ignoredOrigin,
+            SessionSlotRequest request,
+            UUID ignoredIdempotencyKey,
+            String ignoredFetchSite,
+            String platformRefreshToken,
+            String tenantRefreshToken) {
         HttpServletRequest httpRequest = currentRequest();
-        logoutService.logout(refreshToken, httpRequest.getHeader(HttpHeaders.AUTHORIZATION), traceId(httpRequest));
+        BrowserSessionSlot slot = BrowserSessionSlot.valueOf(request.getSessionSlot().getValue());
+        requireBrowserRequest(slot, csrfHeader);
+        logoutService.logout(
+                slot,
+                selectedToken(slot, platformRefreshToken, tenantRefreshToken),
+                httpRequest.getHeader(HttpHeaders.AUTHORIZATION),
+                traceId(httpRequest));
         return ResponseEntity.noContent()
-                .header(HttpHeaders.SET_COOKIE, clearedRefreshCookie().toString())
+                .header(HttpHeaders.SET_COOKIE,
+                        clearedCookie(slot.cookieName()).toString(),
+                        clearedCookie(LEGACY_REFRESH_COOKIE).toString())
                 .build();
     }
 
@@ -156,7 +216,7 @@ public class AuthenticationController implements AuthenticationApi {
             String refreshToken,
             TenantSwitchRequest request,
             String ignoredFetchSite) {
-        browserRequestSecurity.requireControlledMutation(currentRequest(), csrfHeader);
+        requireBrowserRequest(BrowserSessionSlot.TENANT, csrfHeader);
         tenantContextSwitchService.switchContext(
                 idempotencyKey, refreshToken, request.getMembershipId(), traceId(currentRequest()));
         return ResponseEntity.noContent().build();
@@ -188,8 +248,8 @@ public class AuthenticationController implements AuthenticationApi {
                 .expiresIn(result.accessToken().expiresInSeconds());
     }
 
-    private ResponseCookie refreshCookie(LoginResult result) {
-        return ResponseCookie.from(REFRESH_COOKIE, result.refreshToken())
+    private ResponseCookie refreshCookie(BrowserSessionSlot slot, LoginResult result) {
+        return ResponseCookie.from(slot.cookieName(), result.refreshToken())
                 .secure(true)
                 .httpOnly(true)
                 .sameSite("Strict")
@@ -198,14 +258,27 @@ public class AuthenticationController implements AuthenticationApi {
                 .build();
     }
 
-    private ResponseCookie clearedRefreshCookie() {
-        return ResponseCookie.from(REFRESH_COOKIE, "")
+    private ResponseCookie clearedCookie(String cookieName) {
+        return ResponseCookie.from(cookieName, "")
                 .secure(true)
                 .httpOnly(true)
                 .sameSite("Strict")
                 .path("/")
                 .maxAge(0)
                 .build();
+    }
+
+    private void requireBrowserRequest(BrowserSessionSlot slot, String csrfHeader) {
+        HttpServletRequest request = currentRequest();
+        request.setAttribute(SESSION_SLOT_ATTRIBUTE, slot);
+        browserRequestSecurity.requireControlledMutation(request, csrfHeader, slot);
+    }
+
+    private String selectedToken(
+            BrowserSessionSlot slot,
+            String platformRefreshToken,
+            String tenantRefreshToken) {
+        return slot == BrowserSessionSlot.PLATFORM ? platformRefreshToken : tenantRefreshToken;
     }
 
     private String traceId() {

@@ -42,8 +42,10 @@ class AuthenticationExceptionHandlerTest {
     }
 
     private void assertMissingCookieCode(String uri, String code) throws Exception {
-        MissingRequestCookieException exception = new MissingRequestCookieException("__Host-sf_refresh", null);
-        var response = handler.missingRefreshCookie(exception, request(uri));
+        MissingRequestCookieException exception = new MissingRequestCookieException("__Host-sf_platform_refresh", null);
+        MockHttpServletRequest request = request(uri);
+        request.setAttribute(AuthenticationController.SESSION_SLOT_ATTRIBUTE, "PLATFORM");
+        var response = handler.missingRefreshCookie(exception, request);
         assertEquals(code, response.getBody().code());
         assertEquals(32, response.getBody().traceId().length());
     }

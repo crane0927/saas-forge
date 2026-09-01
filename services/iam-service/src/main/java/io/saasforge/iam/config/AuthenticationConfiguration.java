@@ -386,10 +386,12 @@ public class AuthenticationConfiguration {
             PresentedAccessTokenVerifier accessTokens,
             AccessTokenIssuanceRepository issuances,
             RefreshTokenIssuer refreshTokens,
+            RefreshTokenFamilyRepository refreshTokenFamilies,
             RevocationIndex revocationIndex,
             LogoutTransaction transaction,
             Clock clock) {
-        return new LogoutService(accessTokens, issuances, refreshTokens, revocationIndex, transaction, clock);
+        return new LogoutService(
+                accessTokens, issuances, refreshTokens, refreshTokenFamilies, revocationIndex, transaction, clock);
     }
 
     @Bean
@@ -422,10 +424,11 @@ public class AuthenticationConfiguration {
             PasswordVerifier passwordVerifier,
             UserAccessTokenIssuer accessTokenIssuer,
             RefreshTokenIssuer refreshTokenIssuer,
+            RefreshTokenFamilyRepository refreshTokenFamilies,
             LoginSessionService sessionService,
             Clock clock) {
         return new PasswordLoginService(identities, platformRoles, accessibleMemberships, loginProtection, passwordVerifier,
-                accessTokenIssuer, refreshTokenIssuer, sessionService, clock);
+                accessTokenIssuer, refreshTokenIssuer, refreshTokenFamilies, sessionService, clock);
     }
 
     @Bean

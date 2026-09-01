@@ -22,10 +22,14 @@ components:
     OAuthClientBasic:
       type: http
       scheme: basic
-    RefreshCookieAuth:
+    PlatformRefreshCookieAuth:
       type: apiKey
       in: cookie
-      name: __Host-sf_refresh
+      name: __Host-sf_platform_refresh
+    TenantRefreshCookieAuth:
+      type: apiKey
+      in: cookie
+      name: __Host-sf_tenant_refresh
     ServiceOAuth2:
       type: oauth2
       flows:

@@ -132,14 +132,20 @@ class GatewayJwksRouteTest {
         assertEquals("iam", anonymous.body());
 
         resetObservedRequest("iam");
-        HttpResponse<String> optional = send("POST", "/api/v1/auth/logout");
+        HttpResponse<String> optional = send(controlledBrowserRequest("/api/v1/auth/logout")
+                .POST(HttpRequest.BodyPublishers.ofString("{\"sessionSlot\":\"PLATFORM\"}"))
+                .build());
         assertEquals(200, optional.statusCode());
         assertEquals("iam", optional.body());
 
         resetObservedRequest("iam");
         HttpResponse<String> optionalInvalid = send(HttpRequest.newBuilder(gatewayUri("/api/v1/auth/logout"))
                 .header("Authorization", "Bearer malformed")
-                .POST(HttpRequest.BodyPublishers.noBody())
+                .header("Content-Type", "application/json")
+                .header("Origin", "https://platform.saasforge.test")
+                .header("X-SF-CSRF", "1")
+                .header("Sec-Fetch-Site", "same-site")
+                .POST(HttpRequest.BodyPublishers.ofString("{\"sessionSlot\":\"PLATFORM\"}"))
                 .build());
         assertEquals(200, optionalInvalid.statusCode());
         assertEquals("iam", optionalInvalid.body());
@@ -148,7 +154,11 @@ class GatewayJwksRouteTest {
         resetObservedRequest("iam");
         HttpResponse<String> optionalUnavailable = send(HttpRequest.newBuilder(gatewayUri("/api/v1/auth/logout"))
                 .header("Authorization", GatewayUserTokenTestConfiguration.UNAVAILABLE_BEARER)
-                .POST(HttpRequest.BodyPublishers.noBody())
+                .header("Content-Type", "application/json")
+                .header("Origin", "https://platform.saasforge.test")
+                .header("X-SF-CSRF", "1")
+                .header("Sec-Fetch-Site", "same-site")
+                .POST(HttpRequest.BodyPublishers.ofString("{\"sessionSlot\":\"PLATFORM\"}"))
                 .build());
         assertEquals(503, optionalUnavailable.statusCode());
         assertTrue(optionalUnavailable.headers().firstValue("WWW-Authenticate").isEmpty());
@@ -247,7 +257,7 @@ class GatewayJwksRouteTest {
                 request.header("Content-Type", "application/json")
                         .method(route.method(), HttpRequest.BodyPublishers.ofString(body));
             }
-            if ("/api/v1/auth/password-setups".equals(route.path())) {
+            if (route.path().startsWith("/api/v1/auth/")) {
                 request.header("Origin", "https://console.saasforge.test")
                         .header("X-SF-CSRF", "1")
                         .header("Sec-Fetch-Site", "same-site");
@@ -305,6 +315,44 @@ class GatewayJwksRouteTest {
     }
 
     @Test
+    void browserAuthenticationOperationsRequireTheCompleteControlledRequestShape()
+            throws IOException, InterruptedException {
+        for (String path : List.of("/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/auth/logout")) {
+            HttpRequest.Builder valid = HttpRequest.newBuilder(gatewayUri(path))
+                    .header("Content-Type", "application/json")
+                    .header("Origin", path.endsWith("login")
+                            ? "https://platform.saasforge.test"
+                            : "https://console.saasforge.test")
+                    .header("X-SF-CSRF", "1")
+                    .header("Sec-Fetch-Site", "same-site");
+            assertEquals(200, send(valid.POST(HttpRequest.BodyPublishers.ofString("{}")).build()).statusCode(), path);
+        }
+
+        HttpRequest.Builder login = HttpRequest.newBuilder(gatewayUri("/api/v1/auth/login"))
+                .header("Content-Type", "application/json")
+                .header("Origin", "https://platform.saasforge.test")
+                .header("X-SF-CSRF", "1")
+                .header("Sec-Fetch-Site", "same-site");
+        for (HttpRequest rejected : List.of(
+                HttpRequest.newBuilder(gatewayUri("/api/v1/auth/login"))
+                        .header("Content-Type", "application/json")
+                        .header("X-SF-CSRF", "1")
+                        .POST(HttpRequest.BodyPublishers.ofString("{}")).build(),
+                login.copy().setHeader("Origin", "https://evil.test")
+                        .POST(HttpRequest.BodyPublishers.ofString("{}")).build(),
+                login.copy().setHeader("X-SF-CSRF", "0")
+                        .POST(HttpRequest.BodyPublishers.ofString("{}")).build(),
+                login.copy().setHeader("Sec-Fetch-Site", "cross-site")
+                        .POST(HttpRequest.BodyPublishers.ofString("{}")).build(),
+                login.copy().setHeader("Content-Type", "text/plain")
+                        .POST(HttpRequest.BodyPublishers.ofString("{}")).build())) {
+            HttpResponse<String> response = send(rejected);
+            assertEquals(403, response.statusCode());
+            assertTrue(response.body().contains("\"code\":\"BROWSER_REQUEST_REJECTED\""), response.body());
+        }
+    }
+
+    @Test
     void rejectsUndeclaredRouteAndMethodWithProblemDetails() throws IOException, InterruptedException {
         HttpResponse<String> unknownRoute = send("GET", "/not-declared");
         assertEquals(404, unknownRoute.statusCode());
@@ -349,14 +397,14 @@ class GatewayJwksRouteTest {
     void createsTraceContextForMissingOrInvalidInputAndUsesItForGatewayErrors()
             throws IOException, InterruptedException {
         resetObservedRequest("iam");
-        send("POST", "/api/v1/auth/login");
+        send(HttpRequest.newBuilder(gatewayUri("/.well-known/jwks.json")).GET().build());
         assertTrue(TRACEPARENT.matcher(observedRequest("iam").firstHeader("traceparent")).matches());
 
         resetObservedRequest("iam");
-        send(HttpRequest.newBuilder(gatewayUri("/api/v1/auth/login"))
+        send(HttpRequest.newBuilder(gatewayUri("/.well-known/jwks.json"))
                 .header("traceparent", "00-00000000000000000000000000000000-0000000000000000-01")
                 .header("tracestate", "discarded=with-invalid-parent")
-                .POST(HttpRequest.BodyPublishers.noBody())
+                .GET()
                 .build());
         ObservedRequest regenerated = observedRequest("iam");
         assertTrue(TRACEPARENT.matcher(regenerated.firstHeader("traceparent")).matches());
@@ -376,6 +424,9 @@ class GatewayJwksRouteTest {
         resetObservedRequest("iam");
         HttpResponse<String> response = send(HttpRequest.newBuilder(gatewayUri("/api/v1/auth/login?source=portal"))
                 .header("Content-Type", "application/json")
+                .header("Origin", "https://platform.saasforge.test")
+                .header("X-SF-CSRF", "1")
+                .header("Sec-Fetch-Site", "same-site")
                 .header("X-Request-Source", "portal")
                 .POST(HttpRequest.BodyPublishers.ofString("{\"username\":\"alice\"}"))
                 .build());
@@ -404,7 +455,12 @@ class GatewayJwksRouteTest {
                         .GET(), null, null),
                 new ForwardingScenario("iam", HttpRequest.newBuilder(gatewayUri("/api/v1/auth/refresh"))
                         .header("Cookie", "refresh_token=opaque")
-                        .POST(HttpRequest.BodyPublishers.noBody()), null, "refresh_token=opaque"))) {
+                        .header("Content-Type", "application/json")
+                        .header("Origin", "https://console.saasforge.test")
+                        .header("X-SF-CSRF", "1")
+                        .header("Sec-Fetch-Site", "same-site")
+                        .POST(HttpRequest.BodyPublishers.ofString("{\"sessionSlot\":\"TENANT\"}")),
+                        null, "refresh_token=opaque"))) {
             resetObservedRequest(scenario.service());
 
             HttpResponse<String> response = send(withReservedContextHeaders(scenario.request()).build());
@@ -447,6 +503,14 @@ class GatewayJwksRouteTest {
                 .method(method, HttpRequest.BodyPublishers.noBody())
                 .build();
         return send(request);
+    }
+
+    private HttpRequest.Builder controlledBrowserRequest(String path) {
+        return HttpRequest.newBuilder(gatewayUri(path))
+                .header("Content-Type", "application/json")
+                .header("Origin", "https://platform.saasforge.test")
+                .header("X-SF-CSRF", "1")
+                .header("Sec-Fetch-Site", "same-site");
     }
 
     private HttpResponse<String> send(HttpRequest request) throws IOException, InterruptedException {

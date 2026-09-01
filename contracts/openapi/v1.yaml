@@ -37,6 +37,10 @@ paths:
           description: Retained only for v1 compatibility; login does not use it.
           schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
         - $ref: '#/components/parameters/CsrfHeader'
+        - $ref: '#/components/parameters/BrowserOrigin'
+        - $ref: '#/components/parameters/FetchSite'
+        - $ref: '#/components/parameters/OptionalPlatformRefreshTokenCookie'
+        - $ref: '#/components/parameters/OptionalTenantRefreshTokenCookie'
       requestBody:
         required: true
         content:
@@ -68,19 +72,24 @@ paths:
       tags: [Authentication]
       operationId: refreshAccessToken
       x-saasforge-service: iam-service
-      security: [{ RefreshCookieAuth: [] }]
+      security:
+        - PlatformRefreshCookieAuth: []
+        - TenantRefreshCookieAuth: []
       summary: Rotate the browser Refresh Token and issue the current Access Token
       description: The Refresh Token is supplied only by the HttpOnly refresh cookie.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/CsrfHeader'
-        - $ref: '#/components/parameters/RefreshTokenCookie'
+        - $ref: '#/components/parameters/BrowserOrigin'
+        - $ref: '#/components/parameters/FetchSite'
+        - $ref: '#/components/parameters/OptionalPlatformRefreshTokenCookie'
+        - $ref: '#/components/parameters/OptionalTenantRefreshTokenCookie'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/EmptyRequest'
+              $ref: '#/components/schemas/SessionSlotRequest'
       responses:
         '200':
           description: The Refresh Token was rotated.
@@ -105,14 +114,16 @@ paths:
       tags: [Authentication]
       operationId: changeInitialPassword
       x-saasforge-service: iam-service
-      security: [{ RefreshCookieAuth: [] }]
+      security: [{ PlatformRefreshCookieAuth: [] }]
       summary: Replace an initial password and end the restricted session
       description: |
         Accepts only an INITIAL_PASSWORD_CHANGE Refresh Token cookie. A successful
         change revokes the restricted session and requires a new login.
       parameters:
         - $ref: '#/components/parameters/CsrfHeader'
-        - $ref: '#/components/parameters/RefreshTokenCookie'
+        - $ref: '#/components/parameters/BrowserOrigin'
+        - $ref: '#/components/parameters/FetchSite'
+        - $ref: '#/components/parameters/PlatformRefreshTokenCookie'
       requestBody:
         required: true
         content:
@@ -160,7 +171,7 @@ paths:
       tags: [Authentication]
       operationId: selectAuthenticationContext
       x-saasforge-service: iam-service
-      security: [{ RefreshCookieAuth: [] }]
+      security: [{ TenantRefreshCookieAuth: [] }]
       summary: Complete a pending Tenant context selection
       description: |
         The Identity comes only from the USER_TENANT_SELECTION Refresh Token cookie.
@@ -168,7 +179,9 @@ paths:
         rotating the cookie and issuing a Tenant Access Token.
       parameters:
         - $ref: '#/components/parameters/CsrfHeader'
-        - $ref: '#/components/parameters/RefreshTokenCookie'
+        - $ref: '#/components/parameters/BrowserOrigin'
+        - $ref: '#/components/parameters/FetchSite'
+        - $ref: '#/components/parameters/TenantRefreshTokenCookie'
       requestBody:
         required: true
         content:
@@ -212,18 +225,16 @@ paths:
           description: Retained only for v1 compatibility; logout does not use it.
           schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
         - $ref: '#/components/parameters/CsrfHeader'
-        - name: __Host-sf_refresh
-          in: cookie
-          required: false
-          schema:
-            type: string
-            minLength: 1
+        - $ref: '#/components/parameters/BrowserOrigin'
+        - $ref: '#/components/parameters/FetchSite'
+        - $ref: '#/components/parameters/OptionalPlatformRefreshTokenCookie'
+        - $ref: '#/components/parameters/OptionalTenantRefreshTokenCookie'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/EmptyRequest'
+              $ref: '#/components/schemas/SessionSlotRequest'
       responses:
         '204':
           description: The current browser session was logged out.
@@ -244,7 +255,7 @@ paths:
       tags: [Authentication]
       operationId: switchTenantContext
       x-saasforge-service: iam-service
-      security: [{ RefreshCookieAuth: [] }]
+      security: [{ TenantRefreshCookieAuth: [] }]
       summary: Select or switch the session Membership
       description: |
         Accepts only the target Membership. The host-only Refresh Token cookie is the
@@ -257,7 +268,7 @@ paths:
         - $ref: '#/components/parameters/CsrfHeader'
         - $ref: '#/components/parameters/BrowserOrigin'
         - $ref: '#/components/parameters/FetchSite'
-        - $ref: '#/components/parameters/RefreshTokenCookie'
+        - $ref: '#/components/parameters/TenantRefreshTokenCookie'
       requestBody:
         required: true
         content:
@@ -818,11 +829,16 @@ components:
       type: http
       scheme: basic
       description: OAuth Client client_id and client_secret.
-    RefreshCookieAuth:
+    PlatformRefreshCookieAuth:
       type: apiKey
       in: cookie
-      name: __Host-sf_refresh
-      description: Browser Refresh Token cookie used only by IAM session operations.
+      name: __Host-sf_platform_refresh
+      description: Platform Browser Session Slot Refresh Token cookie used only by IAM session operations.
+    TenantRefreshCookieAuth:
+      type: apiKey
+      in: cookie
+      name: __Host-sf_tenant_refresh
+      description: Tenant Browser Session Slot Refresh Token cookie used only by IAM session operations.
     ServiceOAuth2:
       type: oauth2
       description: Service Access Token issued through OAuth 2.0 Client Credentials.
@@ -834,11 +850,11 @@ components:
             runtime:quota:write: Apply runtime quota operations.
   headers:
     RefreshCookie:
-      description: A rotated __Host-sf_refresh HttpOnly, Secure, SameSite=Strict cookie scoped to Path=/.
+      description: A rotated slot-specific HttpOnly, Secure, SameSite=Strict host-only cookie scoped to Path=/.
       required: true
       schema: { type: string }
     ClearedRefreshCookie:
-      description: An expired __Host-sf_refresh cookie with Path=/.
+      description: One or more expired slot-specific or legacy Refresh Token cookies with Path=/.
       required: true
       schema: { type: string }
     JwksCacheControl:
@@ -876,10 +892,31 @@ components:
       schema:
         type: string
         enum: [same-origin, same-site, none]
-    RefreshTokenCookie:
-      name: __Host-sf_refresh
+    PlatformRefreshTokenCookie:
+      name: __Host-sf_platform_refresh
       in: cookie
       required: true
+      schema:
+        type: string
+        minLength: 1
+    TenantRefreshTokenCookie:
+      name: __Host-sf_tenant_refresh
+      in: cookie
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    OptionalPlatformRefreshTokenCookie:
+      name: __Host-sf_platform_refresh
+      in: cookie
+      required: false
+      schema:
+        type: string
+        minLength: 1
+    OptionalTenantRefreshTokenCookie:
+      name: __Host-sf_tenant_refresh
+      in: cookie
+      required: false
       schema:
         type: string
         minLength: 1
@@ -915,6 +952,14 @@ components:
       maxLength: 320
     EmptyRequest:
       type: object
+      additionalProperties: false
+    SessionSlotRequest:
+      type: object
+      required: [sessionSlot]
+      properties:
+        sessionSlot:
+          type: string
+          enum: [PLATFORM, TENANT]
       additionalProperties: false
     LoginRequest:
       type: object

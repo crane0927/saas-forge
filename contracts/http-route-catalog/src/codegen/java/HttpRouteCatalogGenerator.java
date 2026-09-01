@@ -245,10 +245,16 @@ public final class HttpRouteCatalogGenerator {
         SecurityScheme basic = schemes.get("OAuthClientBasic");
         require(basic != null && basic.getType() == SecurityScheme.Type.HTTP
                         && "basic".equalsIgnoreCase(basic.getScheme()), "OAuthClientBasic 非法");
-        SecurityScheme refresh = schemes.get("RefreshCookieAuth");
-        require(refresh != null && refresh.getType() == SecurityScheme.Type.APIKEY
-                        && refresh.getIn() == SecurityScheme.In.COOKIE
-                        && "__Host-sf_refresh".equals(refresh.getName()), "RefreshCookieAuth 非法");
+        SecurityScheme platformRefresh = schemes.get("PlatformRefreshCookieAuth");
+        require(platformRefresh != null && platformRefresh.getType() == SecurityScheme.Type.APIKEY
+                        && platformRefresh.getIn() == SecurityScheme.In.COOKIE
+                        && "__Host-sf_platform_refresh".equals(platformRefresh.getName()),
+                "PlatformRefreshCookieAuth 非法");
+        SecurityScheme tenantRefresh = schemes.get("TenantRefreshCookieAuth");
+        require(tenantRefresh != null && tenantRefresh.getType() == SecurityScheme.Type.APIKEY
+                        && tenantRefresh.getIn() == SecurityScheme.In.COOKIE
+                        && "__Host-sf_tenant_refresh".equals(tenantRefresh.getName()),
+                "TenantRefreshCookieAuth 非法");
         SecurityScheme service = schemes.get("ServiceOAuth2");
         OAuthFlow clientCredentials = service == null || service.getFlows() == null
                 ? null : service.getFlows().getClientCredentials();
@@ -308,13 +314,25 @@ public final class HttpRouteCatalogGenerator {
                     operation.getOperationId() + " 只有 UserBearerAuth 可与 anonymous 组成 optional");
             return new Credential("USER_OPTIONAL", List.of());
         }
+        if (security.size() == 2
+                && security.stream().allMatch(requirement -> requirement.size() == 1)
+                && security.stream().flatMap(requirement -> requirement.keySet().stream()).collect(java.util.stream.Collectors.toSet())
+                        .equals(Set.of("PlatformRefreshCookieAuth", "TenantRefreshCookieAuth"))) {
+            require(security.stream().flatMap(requirement -> requirement.values().stream())
+                            .allMatch(value -> value == null || value.isEmpty()),
+                    operation.getOperationId() + " 的 Browser Session Slot 不允许 Scope");
+            return new Credential("BROWSER_SESSION_SLOT_REQUIRED", List.of());
+        }
         require(security.size() == 1 && security.get(0).size() == 1,
                 operation.getOperationId() + " security alternatives 必须互斥且唯一");
         Map.Entry<String, List<String>> requirement = security.get(0).entrySet().iterator().next();
         List<String> requiredScopes = requirement.getValue() == null ? List.of() : requirement.getValue();
         return switch (requirement.getKey()) {
             case "UserBearerAuth" -> noScopes(operation, requiredScopes, "USER_REQUIRED");
-            case "RefreshCookieAuth" -> noScopes(operation, requiredScopes, "REFRESH_COOKIE_REQUIRED");
+            case "PlatformRefreshCookieAuth" -> noScopes(
+                    operation, requiredScopes, "PLATFORM_REFRESH_COOKIE_REQUIRED");
+            case "TenantRefreshCookieAuth" -> noScopes(
+                    operation, requiredScopes, "TENANT_REFRESH_COOKIE_REQUIRED");
             case "OAuthClientBasic" -> noScopes(operation, requiredScopes, "OAUTH_CLIENT_BASIC_REQUIRED");
             case "ServiceOAuth2" -> serviceCredential(operation, requiredScopes, scopes);
             default -> throw new IllegalArgumentException(

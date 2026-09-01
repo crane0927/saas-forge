@@ -696,7 +696,8 @@ class RepositoryStandardsTest {
         int ownerDeclarations = 0;
         boolean explicitSecurity = false;
         boolean userBearer = false;
-        boolean refreshCookie = false;
+        boolean platformRefreshCookie = false;
+        boolean tenantRefreshCookie = false;
         boolean oauthClientBasic = false;
         boolean anonymousAlternative = false;
         boolean readingSecurity = false;
@@ -708,7 +709,8 @@ class RepositoryStandardsTest {
                 if (method != null) {
                     operations.add(new OpenApiOperation(
                             path, method, tags, owner, operationId, ownerDeclarations,
-                            credentialRequirement(explicitSecurity, userBearer, refreshCookie,
+                            credentialRequirement(explicitSecurity, userBearer,
+                                    platformRefreshCookie, tenantRefreshCookie,
                                     oauthClientBasic, anonymousAlternative)));
                     method = null;
                     tags = Set.of();
@@ -717,7 +719,8 @@ class RepositoryStandardsTest {
                     ownerDeclarations = 0;
                     explicitSecurity = false;
                     userBearer = false;
-                    refreshCookie = false;
+                    platformRefreshCookie = false;
+                    tenantRefreshCookie = false;
                     oauthClientBasic = false;
                     anonymousAlternative = false;
                     readingSecurity = false;
@@ -731,7 +734,8 @@ class RepositoryStandardsTest {
                 if (method != null) {
                     operations.add(new OpenApiOperation(
                             path, method, tags, owner, operationId, ownerDeclarations,
-                            credentialRequirement(explicitSecurity, userBearer, refreshCookie,
+                            credentialRequirement(explicitSecurity, userBearer,
+                                    platformRefreshCookie, tenantRefreshCookie,
                                     oauthClientBasic, anonymousAlternative)));
                 }
                 method = methodMatcher.group(1);
@@ -741,7 +745,8 @@ class RepositoryStandardsTest {
                 ownerDeclarations = 0;
                 explicitSecurity = false;
                 userBearer = false;
-                refreshCookie = false;
+                platformRefreshCookie = false;
+                tenantRefreshCookie = false;
                 oauthClientBasic = false;
                 anonymousAlternative = false;
                 readingSecurity = false;
@@ -754,7 +759,8 @@ class RepositoryStandardsTest {
             if (readingSecurity) {
                 if (line.startsWith("        - ")) {
                     userBearer |= line.contains("UserBearerAuth");
-                    refreshCookie |= line.contains("RefreshCookieAuth");
+                    platformRefreshCookie |= line.contains("PlatformRefreshCookieAuth");
+                    tenantRefreshCookie |= line.contains("TenantRefreshCookieAuth");
                     oauthClientBasic |= line.contains("OAuthClientBasic");
                     anonymousAlternative |= line.trim().equals("- {}");
                     continue;
@@ -786,7 +792,8 @@ class RepositoryStandardsTest {
                 explicitSecurity = true;
                 String inlineSecurity = securityMatcher.group(1);
                 userBearer |= inlineSecurity.contains("UserBearerAuth");
-                refreshCookie |= inlineSecurity.contains("RefreshCookieAuth");
+                platformRefreshCookie |= inlineSecurity.contains("PlatformRefreshCookieAuth");
+                tenantRefreshCookie |= inlineSecurity.contains("TenantRefreshCookieAuth");
                 oauthClientBasic |= inlineSecurity.contains("OAuthClientBasic");
                 anonymousAlternative |= inlineSecurity.contains("{}");
                 readingSecurity = inlineSecurity.isBlank();
@@ -795,7 +802,8 @@ class RepositoryStandardsTest {
         if (method != null) {
             operations.add(new OpenApiOperation(
                     path, method, tags, owner, operationId, ownerDeclarations,
-                    credentialRequirement(explicitSecurity, userBearer, refreshCookie,
+                    credentialRequirement(explicitSecurity, userBearer,
+                            platformRefreshCookie, tenantRefreshCookie,
                             oauthClientBasic, anonymousAlternative)));
         }
         return operations;
@@ -804,14 +812,21 @@ class RepositoryStandardsTest {
     private static String credentialRequirement(
             boolean explicitSecurity,
             boolean userBearer,
-            boolean refreshCookie,
+            boolean platformRefreshCookie,
+            boolean tenantRefreshCookie,
             boolean oauthClientBasic,
             boolean anonymousAlternative) {
         if (!explicitSecurity) {
             return "ANONYMOUS";
         }
-        if (refreshCookie) {
-            return "REFRESH_COOKIE_REQUIRED";
+        if (platformRefreshCookie && tenantRefreshCookie) {
+            return "BROWSER_SESSION_SLOT_REQUIRED";
+        }
+        if (platformRefreshCookie) {
+            return "PLATFORM_REFRESH_COOKIE_REQUIRED";
+        }
+        if (tenantRefreshCookie) {
+            return "TENANT_REFRESH_COOKIE_REQUIRED";
         }
         if (oauthClientBasic) {
             return "OAUTH_CLIENT_BASIC_REQUIRED";

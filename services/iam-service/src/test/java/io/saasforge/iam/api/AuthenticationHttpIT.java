@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -201,7 +202,8 @@ class AuthenticationHttpIT {
     private static final String REDIS_PASSWORD = "redis-auth-test-password";
     private static final String IDEMPOTENCY_KEY = "0198c9d5-0f25-7b21-8d67-31c8652d4c8f";
     private static final String TRACE_ID = "0123456789abcdef0123456789abcdef";
-    private static final Pattern COOKIE_VALUE = Pattern.compile("^__Host-sf_refresh=([^;]+)");
+    private static final Pattern COOKIE_VALUE = Pattern.compile(
+            "^__Host-sf_(?:platform|tenant)_refresh=([^;]+)");
     private static final Path REPOSITORY_ROOT = repositoryRoot();
     private static final UUID IAM_SERVICE_CLIENT_ID = uuidV7(90_001);
     private static final String IAM_SERVICE_CLIENT_SECRET = serviceClientSecret((byte) 90);
@@ -946,7 +948,9 @@ class AuthenticationHttpIT {
         }
 
         MvcResult tenantResponse = mockMvc.perform(post("/api/v1/auth/login")
-                        .header("X-SF-CSRF", "csrf-test")
+                        .header("X-SF-CSRF", "1")
+                        .header("Origin", "https://console.saasforge.test")
+                        .header("Sec-Fetch-Site", "same-site")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"email":"default-tenant@example.test","password":"correct-password"}
@@ -1078,7 +1082,9 @@ class AuthenticationHttpIT {
     void loginRequestRejectsCallerSuppliedTenantOrMembershipIdentifiers() throws Exception {
         TestUser user = createUser("forged-context@example.test", "correct-password", false, Credential.REGULAR);
         mockMvc.perform(post("/api/v1/auth/login")
-                        .header("X-SF-CSRF", "csrf-test")
+                        .header("X-SF-CSRF", "1")
+                        .header("Origin", "https://console.saasforge.test")
+                        .header("Sec-Fetch-Site", "same-site")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"email":"forged-context@example.test","password":"correct-password",
@@ -1087,7 +1093,9 @@ class AuthenticationHttpIT {
                 .andExpect(status().isBadRequest())
                 .andExpect(header().doesNotExist("Set-Cookie"));
         mockMvc.perform(post("/api/v1/auth/login")
-                        .header("X-SF-CSRF", "csrf-test")
+                        .header("X-SF-CSRF", "1")
+                        .header("Origin", "https://console.saasforge.test")
+                        .header("Sec-Fetch-Site", "same-site")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"email":"forged-context@example.test","password":"correct-password",
@@ -1252,8 +1260,10 @@ class AuthenticationHttpIT {
     @Order(14)
     void contextSelectionBodyRejectsFieldsOtherThanMembershipId() throws Exception {
         mockMvc.perform(post("/api/v1/auth/context-selections")
-                        .header("X-SF-CSRF", "csrf-test")
-                        .cookie(new Cookie("__Host-sf_refresh", "not-a-token"))
+                        .header("X-SF-CSRF", "1")
+                        .header("Origin", "https://console.saasforge.test")
+                        .header("Sec-Fetch-Site", "same-site")
+                        .cookie(new Cookie("__Host-sf_tenant_refresh", "not-a-token"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"membershipId":"0198c9d5-0f25-7b21-8d67-31c8652d4cc1",
@@ -1269,13 +1279,18 @@ class AuthenticationHttpIT {
                 "initial-change@example.test", "Initial-Credential-2026!", true, Credential.ACTIVE_INITIAL);
         TENANT_ACCESS_FAILURES.add(user.identity().id());
 
-        MvcResult login = login("initial-change@example.test", "Initial-Credential-2026!", "TENANT")
+        login("initial-change@example.test", "Initial-Credential-2026!", "TENANT")
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("BROWSER_REQUEST_REJECTED"))
+                .andExpect(header().doesNotExist("Set-Cookie"));
+
+        MvcResult login = login("initial-change@example.test", "Initial-Credential-2026!", "PLATFORM")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.contextState").value("PASSWORD_CHANGE_REQUIRED"))
                 .andExpect(jsonPath("$.accessToken").doesNotExist())
                 .andExpect(jsonPath("$.memberships").doesNotExist())
                 .andReturn();
-        Cookie refreshCookie = login.getResponse().getCookie("__Host-sf_refresh");
+        Cookie refreshCookie = login.getResponse().getCookie("__Host-sf_platform_refresh");
         assertNotNull(refreshCookie);
         assertTrue(refreshCookie.getMaxAge() > 0);
         assertTrue(refreshCookie.getMaxAge() <= Duration.ofMinutes(10).getSeconds());
@@ -1583,12 +1598,14 @@ class AuthenticationHttpIT {
     @Order(20)
     void logoutWithoutCookieOrIdempotencyKeyIsStillSuccessfulAndClearsCookie() throws Exception {
         mockMvc.perform(post("/api/v1/auth/logout")
-                        .header("X-SF-CSRF", "csrf-test")
+                        .header("X-SF-CSRF", "1")
+                        .header("Origin", "https://platform.saasforge.test")
+                        .header("Sec-Fetch-Site", "same-site")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
+                        .content("{\"sessionSlot\":\"PLATFORM\"}"))
                 .andExpect(status().isNoContent())
                 .andExpect(header().string("Set-Cookie", org.hamcrest.Matchers.allOf(
-                        org.hamcrest.Matchers.containsString("__Host-sf_refresh="),
+                        org.hamcrest.Matchers.containsString("__Host-sf_platform_refresh="),
                         org.hamcrest.Matchers.containsString("Max-Age=0"),
                         org.hamcrest.Matchers.containsString("Secure"),
                         org.hamcrest.Matchers.containsString("HttpOnly"),
@@ -1896,7 +1913,7 @@ class AuthenticationHttpIT {
                         .header("Idempotency-Key", uuidV7(54_004).toString())
                         .header("X-SF-CSRF", "1")
                         .header("Origin", "https://evil.test")
-                        .cookie(new Cookie("__Host-sf_refresh", refreshToken(session)))
+                        .cookie(new Cookie("__Host-sf_tenant_refresh", refreshToken(session)))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(new ObjectMapper().writeValueAsBytes(Map.of("membershipId", membershipId))))
                 .andExpect(status().isForbidden())
@@ -2762,7 +2779,9 @@ class AuthenticationHttpIT {
         assertEquals(null, jdbc.queryForObject(
                 "SELECT revoked_at FROM iam_access_token_issuances WHERE jti = ?", Object.class, jti));
         mockMvc.perform(post("/api/v1/auth/login")
-                        .header("X-SF-CSRF", "csrf-test")
+                        .header("X-SF-CSRF", "1")
+                        .header("Origin", "https://platform.saasforge.test")
+                        .header("Sec-Fetch-Site", "same-site")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"email":"redis-down@example.test","password":"password","contextType":"PLATFORM"}
@@ -2956,11 +2975,133 @@ class AuthenticationHttpIT {
                 .andExpect(header().doesNotExist("Set-Cookie"));
     }
 
+    @Test
+    @Order(35)
+    void platformAndTenantBrowserSessionSlotsRemainIndependent() throws Exception {
+        TestUser user = createUser("dual-slot@example.test", "correct-password", true, Credential.REGULAR);
+        UUID membershipId = uuidV7(95_001);
+        UUID tenantId = uuidV7(95_002);
+        accessibleMemberships(user.identity().id(), membership(membershipId, tenantId, "Dual Slot Tenant"));
+
+        MvcResult platformLogin = mockMvc.perform(post("/api/v1/auth/login")
+                        .header("X-SF-CSRF", "1")
+                        .header("Origin", "https://platform.saasforge.test")
+                        .header("Sec-Fetch-Site", "same-site")
+                        .cookie(new Cookie("__Host-sf_refresh", "legacy-token"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"dual-slot@example.test","password":"correct-password",
+                                 "contextType":"PLATFORM"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(cookie().exists("__Host-sf_platform_refresh"))
+                .andExpect(cookie().doesNotExist("__Host-sf_tenant_refresh"))
+                .andExpect(header().stringValues(HttpHeaders.SET_COOKIE,
+                        org.hamcrest.Matchers.hasItem(org.hamcrest.Matchers.allOf(
+                                org.hamcrest.Matchers.containsString("__Host-sf_refresh="),
+                                org.hamcrest.Matchers.containsString("Max-Age=0")))))
+                .andReturn();
+        String platformRefresh = platformLogin.getResponse()
+                .getCookie("__Host-sf_platform_refresh").getValue();
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .header("X-SF-CSRF", "1")
+                        .header("Origin", "https://platform.saasforge.test")
+                        .header("Sec-Fetch-Site", "same-site")
+                        .cookie(new Cookie("__Host-sf_platform_refresh", platformRefresh))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"dual-slot@example.test","password":"wrong",
+                                 "contextType":"PLATFORM"}
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SESSION_SLOT_ALREADY_ACTIVE"));
+
+        MvcResult tenantLogin = mockMvc.perform(post("/api/v1/auth/login")
+                        .header("X-SF-CSRF", "1")
+                        .header("Origin", "https://console.saasforge.test")
+                        .header("Sec-Fetch-Site", "same-site")
+                        .cookie(new Cookie("__Host-sf_platform_refresh", platformRefresh))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"dual-slot@example.test","password":"correct-password",
+                                 "contextType":"TENANT"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(cookie().exists("__Host-sf_tenant_refresh"))
+                .andReturn();
+        String tenantRefresh = tenantLogin.getResponse().getCookie("__Host-sf_tenant_refresh").getValue();
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .header("X-SF-CSRF", "1")
+                        .header("Origin", "https://console.saasforge.test")
+                        .header("Sec-Fetch-Site", "same-site")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"dual-slot@example.test","password":"correct-password",
+                                 "contextType":"PLATFORM"}
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("BROWSER_REQUEST_REJECTED"));
+
+        MvcResult refreshedPlatform = mockMvc.perform(post("/api/v1/auth/refresh")
+                        .header("Idempotency-Key", uuidV7(95_003).toString())
+                        .header("X-SF-CSRF", "1")
+                        .header("Origin", "https://platform.saasforge.test")
+                        .header("Sec-Fetch-Site", "same-site")
+                        .cookie(new Cookie("__Host-sf_platform_refresh", platformRefresh))
+                        .cookie(new Cookie("__Host-sf_tenant_refresh", tenantRefresh))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sessionSlot\":\"PLATFORM\"}"))
+                .andExpect(status().isOk())
+                .andExpect(cookie().exists("__Host-sf_platform_refresh"))
+                .andReturn();
+
+        MvcResult refreshedTenant = mockMvc.perform(post("/api/v1/auth/refresh")
+                        .header("Idempotency-Key", uuidV7(95_004).toString())
+                        .header("X-SF-CSRF", "1")
+                        .header("Origin", "https://console.saasforge.test")
+                        .header("Sec-Fetch-Site", "same-site")
+                        .cookie(new Cookie("__Host-sf_platform_refresh", platformRefresh))
+                        .cookie(new Cookie("__Host-sf_tenant_refresh", tenantRefresh))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sessionSlot\":\"TENANT\"}"))
+                .andExpect(status().isOk())
+                .andExpect(cookie().exists("__Host-sf_tenant_refresh"))
+                .andReturn();
+
+        mockMvc.perform(post("/api/v1/auth/logout")
+                        .header("X-SF-CSRF", "1")
+                        .header("Origin", "https://platform.saasforge.test")
+                        .header("Sec-Fetch-Site", "same-site")
+                        .cookie(new Cookie("__Host-sf_platform_refresh", refreshedPlatform.getResponse()
+                                .getCookie("__Host-sf_platform_refresh").getValue()))
+                        .cookie(new Cookie("__Host-sf_tenant_refresh", refreshedTenant.getResponse()
+                                .getCookie("__Host-sf_tenant_refresh").getValue()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sessionSlot\":\"PLATFORM\"}"))
+                .andExpect(status().isNoContent())
+                .andExpect(cookie().maxAge("__Host-sf_platform_refresh", 0));
+
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .header("Idempotency-Key", uuidV7(95_005).toString())
+                        .header("X-SF-CSRF", "1")
+                        .header("Origin", "https://console.saasforge.test")
+                        .header("Sec-Fetch-Site", "same-site")
+                        .cookie(new Cookie("__Host-sf_tenant_refresh", refreshedTenant.getResponse()
+                                .getCookie("__Host-sf_tenant_refresh").getValue()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sessionSlot\":\"TENANT\"}"))
+                .andExpect(status().isOk());
+    }
+
     private org.springframework.test.web.servlet.ResultActions selectContext(String refreshToken, UUID membershipId)
             throws Exception {
         return mockMvc.perform(post("/api/v1/auth/context-selections")
-                .header("X-SF-CSRF", "csrf-test")
-                .cookie(new Cookie("__Host-sf_refresh", refreshToken))
+                .header("X-SF-CSRF", "1")
+                .header("Origin", "https://console.saasforge.test")
+                .header("Sec-Fetch-Site", "same-site")
+                .cookie(new Cookie("__Host-sf_tenant_refresh", refreshToken))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(new ObjectMapper().writeValueAsBytes(Map.of("membershipId", membershipId))));
     }
@@ -2972,7 +3113,7 @@ class AuthenticationHttpIT {
                 .header("X-SF-CSRF", "1")
                 .header("Origin", "https://console.saasforge.test")
                 .header("Sec-Fetch-Site", "same-site")
-                .cookie(new Cookie("__Host-sf_refresh", refreshToken))
+                .cookie(new Cookie("__Host-sf_tenant_refresh", refreshToken))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(new ObjectMapper().writeValueAsBytes(Map.of("membershipId", membershipId)));
     }
@@ -2983,12 +3124,15 @@ class AuthenticationHttpIT {
 
     private org.springframework.test.web.servlet.ResultActions refresh(String refreshToken, UUID idempotencyKey)
             throws Exception {
+        String sessionSlot = sessionSlotFor(refreshToken);
         return mockMvc.perform(post("/api/v1/auth/refresh")
                 .header("Idempotency-Key", idempotencyKey.toString())
-                .header("X-SF-CSRF", "csrf-test")
-                .cookie(new Cookie("__Host-sf_refresh", refreshToken))
+                .header("X-SF-CSRF", "1")
+                .header("Origin", originFor(sessionSlot))
+                .header("Sec-Fetch-Site", "same-site")
+                .cookie(new Cookie(cookieNameFor(sessionSlot), refreshToken))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{}"));
+                .content("{\"sessionSlot\":\"" + sessionSlot + "\"}"));
     }
 
     private List<MvcResult> concurrentRefreshes(String refreshToken, UUID firstKey, UUID secondKey) throws Exception {
@@ -3015,21 +3159,26 @@ class AuthenticationHttpIT {
 
     private org.springframework.test.web.servlet.ResultActions logout(String refreshToken, String accessToken)
             throws Exception {
+        String sessionSlot = sessionSlotFor(refreshToken);
         return mockMvc.perform(post("/api/v1/auth/logout")
-                .header("X-SF-CSRF", "csrf-test")
+                .header("X-SF-CSRF", "1")
+                .header("Origin", originFor(sessionSlot))
+                .header("Sec-Fetch-Site", "same-site")
                 .header("Authorization", "Bearer " + accessToken)
                 .header("traceparent", "00-" + TRACE_ID + "-0123456789abcdef-01")
-                .cookie(new Cookie("__Host-sf_refresh", refreshToken))
+                .cookie(new Cookie(cookieNameFor(sessionSlot), refreshToken))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{}"));
+                .content("{\"sessionSlot\":\"" + sessionSlot + "\"}"));
     }
 
     private org.springframework.test.web.servlet.ResultActions changePassword(String refreshToken, String newPassword)
             throws Exception {
         return mockMvc.perform(post("/api/v1/auth/password-changes")
-                .header("X-SF-CSRF", "csrf-test")
+                .header("X-SF-CSRF", "1")
+                .header("Origin", "https://platform.saasforge.test")
+                .header("Sec-Fetch-Site", "same-site")
                 .header("traceparent", "00-" + TRACE_ID + "-0123456789abcdef-01")
-                .cookie(new Cookie("__Host-sf_refresh", refreshToken))
+                .cookie(new Cookie("__Host-sf_platform_refresh", refreshToken))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(new ObjectMapper().writeValueAsBytes(Map.of("newPassword", newPassword))));
     }
@@ -3045,7 +3194,9 @@ class AuthenticationHttpIT {
     private org.springframework.test.web.servlet.ResultActions login(String email, String password, String contextType)
             throws Exception {
         return mockMvc.perform(post("/api/v1/auth/login")
-                .header("X-SF-CSRF", "csrf-test")
+                .header("X-SF-CSRF", "1")
+                .header("Origin", originFor(contextType))
+                .header("Sec-Fetch-Site", "same-site")
                 .header("traceparent", "00-" + TRACE_ID + "-0123456789abcdef-01")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(new ObjectMapper().writeValueAsBytes(Map.of(
@@ -3055,10 +3206,40 @@ class AuthenticationHttpIT {
     private org.springframework.test.web.servlet.ResultActions loginWithoutContext(String email, String password)
             throws Exception {
         return mockMvc.perform(post("/api/v1/auth/login")
-                .header("X-SF-CSRF", "csrf-test")
+                .header("X-SF-CSRF", "1")
+                .header("Origin", "https://console.saasforge.test")
+                .header("Sec-Fetch-Site", "same-site")
                 .header("traceparent", "00-" + TRACE_ID + "-0123456789abcdef-01")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(new ObjectMapper().writeValueAsBytes(Map.of("email", email, "password", password))));
+    }
+
+    private String sessionSlotFor(String refreshToken) throws Exception {
+        byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(refreshToken.getBytes(StandardCharsets.UTF_8));
+        String purpose = jdbc.queryForObject("""
+                SELECT family.family_purpose
+                FROM iam_refresh_token_families family
+                JOIN iam_refresh_tokens token ON token.family_id = family.id
+                WHERE token.token_digest = ?
+                """, String.class, digest);
+        return switch (purpose) {
+            case "USER_PLATFORM", "INITIAL_PASSWORD_CHANGE" -> "PLATFORM";
+            case "USER_TENANT", "USER_TENANT_SELECTION" -> "TENANT";
+            default -> throw new IllegalStateException("Unsupported family purpose: " + purpose);
+        };
+    }
+
+    private static String cookieNameFor(String sessionSlot) {
+        return "PLATFORM".equals(sessionSlot)
+                ? "__Host-sf_platform_refresh"
+                : "__Host-sf_tenant_refresh";
+    }
+
+    private static String originFor(String sessionSlot) {
+        return "PLATFORM".equals(sessionSlot)
+                ? "https://platform.saasforge.test"
+                : "https://console.saasforge.test";
     }
 
     private static JsonNode tokenClaims(MvcResult response) {

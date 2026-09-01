@@ -222,13 +222,18 @@ request() {
   local body="${4:-}"
   local bearer="${5:-}"
   local idempotency_key="${6:-}"
+  local browser_origin='https://console.saasforge.test'
   local status
+  if [[ "$path" == "/api/v1/auth/password-changes" || "$body" == *'"contextType":"PLATFORM"'* \
+      || "$body" == *'"sessionSlot":"PLATFORM"'* ]]; then
+    browser_origin='https://platform.saasforge.test'
+  fi
   local -a arguments=(
     --silent --show-error --request "$method"
     --dump-header "$response_headers" --output "$response_body" --write-out '%{http_code}'
     --header 'Content-Type: application/json'
     --header 'X-SF-CSRF: 1'
-    --header 'Origin: https://console.saasforge.test'
+    --header "Origin: $browser_origin"
     --header 'Sec-Fetch-Site: same-site'
     --cookie "$cookie_jar" --cookie-jar "$cookie_jar"
   )
