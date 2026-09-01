@@ -64,13 +64,20 @@ async function waitForLayout() {
 
 describe('三个 Design System 消费者的真实浏览器契约', () => {
   it.each([
-    ['Platform Console', <PlatformConsoleApp bootstrap={readyBootstrap()} />],
-    ['Tenant Console', <TenantConsoleShellApp bootstrap={readyBootstrap()} />],
-  ])('%s 共享启动状态进入路由并恢复到页面标题焦点', async (_name, app) => {
+    [
+      'Platform Console',
+      <PlatformConsoleApp
+        bootstrap={readyBootstrap()}
+        authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
+      />,
+      '登录 Platform Console',
+    ],
+    ['Tenant Console', <TenantConsoleShellApp bootstrap={readyBootstrap()} />, '页面不存在'],
+  ])('%s 共享启动状态进入首个可操作页面并恢复标题焦点', async (_name, app, titleName) => {
     render(<DesignSystemProvider>{app}</DesignSystemProvider>);
 
     await expect.element(page.getByText('正在启动')).toBeInTheDocument();
-    const title = page.getByRole('heading', { name: '页面不存在' });
+    const title = page.getByRole('heading', { name: titleName });
     await expect.element(title).toBeInTheDocument();
     await expect.element(title).toHaveFocus();
     expect(document.querySelectorAll('.sf-design-system-root')).toHaveLength(1);

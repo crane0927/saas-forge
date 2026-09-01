@@ -1,33 +1,36 @@
 {
-  "name": "@saas-forge/platform-console",
+  "name": "@saas-forge/react-shell",
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "types": "./src/index.ts",
   "scripts": {
-    "dev": "vite",
     "typecheck": "tsc --project tsconfig.json",
-    "lint": "eslint .",
-    "format:check": "prettier --check . --ignore-path ../.prettierignore",
     "test": "vitest run",
-    "build": "vite build",
-    "verify": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run test && pnpm run build"
+    "lint": "eslint .",
+    "format:check": "prettier --check .",
+    "verify": "pnpm run typecheck && pnpm run test && pnpm run lint && pnpm run format:check"
   },
   "dependencies": {
     "@saas-forge/app-runtime": "workspace:*",
-    "@saas-forge/design-system": "workspace:*",
-    "@saas-forge/react-shell": "workspace:*",
+    "@saas-forge/design-system": "workspace:*"
+  },
+  "peerDependencies": {
     "react": "catalog:",
-    "react-dom": "catalog:",
     "react-router": "catalog:"
   },
   "devDependencies": {
     "@testing-library/react": "catalog:",
     "@types/react": "catalog:",
-    "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "jsdom": "catalog:",
     "typescript": "catalog:",
-    "vite": "catalog:",
     "vitest": "catalog:"
   }
 }

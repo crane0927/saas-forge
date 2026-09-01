@@ -1,0 +1,96 @@
+import { readFile, readdir } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const workspaceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+export async function findAuthenticationShellBoundaryViolations(root = workspaceRoot) {
+  const violations = [];
+  const shellRoot = path.join(root, 'shared/react-shell');
+  const shellManifest = JSON.parse(await readFile(path.join(shellRoot, 'package.json'), 'utf8'));
+  const dependencies = Object.keys(shellManifest.dependencies ?? {}).toSorted();
+  if (
+    JSON.stringify(dependencies) !==
+    JSON.stringify(['@saas-forge/app-runtime', '@saas-forge/design-system'])
+  ) {
+    violations.push('shared/react-shell 只能依赖 app-runtime 与 design-system');
+  }
+  if (JSON.stringify(Object.keys(shellManifest.exports ?? {})) !== JSON.stringify(['.'])) {
+    violations.push('shared/react-shell 只能暴露公共根入口');
+  }
+
+  const allowedShellImports = new Set([
+    '@saas-forge/app-runtime',
+    '@saas-forge/design-system',
+    'react',
+    'react-router',
+  ]);
+  for (const sourceFile of await listSourceFiles(path.join(shellRoot, 'src'))) {
+    const source = await readFile(sourceFile, 'utf8');
+    for (const specifier of importSpecifiers(source)) {
+      if (!specifier.startsWith('.') && !allowedShellImports.has(specifier)) {
+        violations.push(`${relative(root, sourceFile)} 使用了未允许的依赖 ${specifier}`);
+      }
+      if (
+        specifier.startsWith('@saas-forge/app-runtime/') ||
+        specifier.startsWith('@saas-forge/design-system/')
+      ) {
+        violations.push(`${relative(root, sourceFile)} 必须使用共享包公共根入口`);
+      }
+    }
+    if (/\bfetch\s*\(|credentials\s*:|Authorization|X-SF-CSRF|\bCookie\b/.test(source)) {
+      violations.push(`${relative(root, sourceFile)} 不得实现凭据型 HTTP`);
+    }
+  }
+
+  const platformRoot = path.join(root, 'platform-console');
+  const platformManifest = JSON.parse(
+    await readFile(path.join(platformRoot, 'package.json'), 'utf8'),
+  );
+  if (platformManifest.dependencies?.['@saas-forge/react-shell'] !== 'workspace:*') {
+    violations.push('Platform Console 必须消费共享 React Shell');
+  }
+  let runtimeCreationCount = 0;
+  let fetchForwardingCount = 0;
+  for (const sourceFile of await listSourceFiles(path.join(platformRoot, 'src'))) {
+    const source = await readFile(sourceFile, 'utf8');
+    runtimeCreationCount += occurrences(source, 'createAuthenticationRuntimeAfterConfig(');
+    fetchForwardingCount += occurrences(source, 'fetch(input, init)');
+    if (/credentials\s*:|Authorization|X-SF-CSRF|\bCookie\b|new\s+AuthenticationApi/.test(source)) {
+      violations.push(`${relative(root, sourceFile)} 不得实现第二套认证或凭据请求`);
+    }
+  }
+  if (runtimeCreationCount !== 1) {
+    violations.push('Platform Console 必须且只能在宿主边界创建一个认证 Runtime');
+  }
+  if (fetchForwardingCount !== 1) {
+    violations.push('Platform Console 只能向共享 Runtime 提供一次原生 fetch 转发');
+  }
+  return violations;
+}
+
+async function listSourceFiles(directory) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const nested = await Promise.all(
+    entries.map(async (entry) => {
+      const absolutePath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        return listSourceFiles(absolutePath);
+      }
+      return /\.[cm]?[jt]sx?$/.test(entry.name) ? [absolutePath] : [];
+    }),
+  );
+  return nested.flat();
+}
+
+function importSpecifiers(source) {
+  return [...source.matchAll(/from\s+['"]([^'"]+)['"]/g)].map((match) => match[1]);
+}
+
+function occurrences(source, value) {
+  return source.split(value).length - 1;
+}
+
+function relative(root, file) {
+  return path.relative(root, file);
+}

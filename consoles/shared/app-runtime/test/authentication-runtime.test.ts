@@ -519,6 +519,38 @@ describe('createAuthenticationRuntime', () => {
     expect(new Headers(logoutCalls[1]?.[1]?.headers).has('Authorization')).toBe(false);
   });
 
+  it('allows an explicit selected-slot logout after login reports an active slot', async () => {
+    const fetch = vi
+      .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValueOnce(problemResponse(409, 'SESSION_SLOT_ALREADY_ACTIVE'))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const runtime = createRuntime({
+      realm: {},
+      intent: 'PLATFORM',
+      fetch,
+      createIdempotencyKey: () => '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6073',
+    });
+
+    await expect(
+      runtime.login({ email: 'admin@example.test', password: 'secret' }),
+    ).resolves.toEqual({
+      ok: false,
+      problem: {
+        code: 'SESSION_SLOT_ALREADY_ACTIVE',
+        status: 409,
+        traceId: '0123456789abcdef0123456789abcdef',
+      },
+    });
+    await expect(runtime.logout()).resolves.toEqual({
+      ok: true,
+      state: { status: 'anonymous', transition: null },
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[1]?.[0]).toBe('https://api.example.test/api/v1/auth/logout');
+    expect(fetch.mock.calls[1]?.[1]?.body).toBe(JSON.stringify({ sessionSlot: 'PLATFORM' }));
+  });
+
   it('refreshes at the 30 second boundary before a typed read operation', async () => {
     let currentTime = 1_000;
     const clientId = '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6076';

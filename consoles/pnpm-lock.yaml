@@ -165,15 +165,15 @@ importers:
 
   platform-console:
     dependencies:
-      '@saas-forge/api-client':
-        specifier: workspace:*
-        version: link:../shared/api-client
       '@saas-forge/app-runtime':
         specifier: workspace:*
         version: link:../shared/app-runtime
       '@saas-forge/design-system':
         specifier: workspace:*
         version: link:../shared/design-system
+      '@saas-forge/react-shell':
+        specifier: workspace:*
+        version: link:../shared/react-shell
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -267,6 +267,40 @@ importers:
       vite:
         specifier: 'catalog:'
         version: 8.1.5(@types/node@24.13.3)
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@types/node@24.13.3)(@vitest/browser-playwright@4.1.11)(jsdom@30.0.1)(vite@8.1.5(@types/node@24.13.3))
+
+  shared/react-shell:
+    dependencies:
+      '@saas-forge/app-runtime':
+        specifier: workspace:*
+        version: link:../app-runtime
+      '@saas-forge/design-system':
+        specifier: workspace:*
+        version: link:../design-system
+      react:
+        specifier: 'catalog:'
+        version: 19.2.8
+      react-router:
+        specifier: 'catalog:'
+        version: 8.3.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+    devDependencies:
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.3(@testing-library/dom@10.4.1)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.18
+      '@vitejs/plugin-react':
+        specifier: 'catalog:'
+        version: 6.1.1(vite@8.1.5(@types/node@24.13.3))
+      jsdom:
+        specifier: 'catalog:'
+        version: 30.0.1
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
       vitest:
         specifier: 'catalog:'
         version: 4.1.11(@types/node@24.13.3)(@vitest/browser-playwright@4.1.11)(jsdom@30.0.1)(vite@8.1.5(@types/node@24.13.3))

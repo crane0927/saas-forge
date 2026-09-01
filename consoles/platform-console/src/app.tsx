@@ -1,21 +1,33 @@
 import {
+  createAuthenticationRuntimeAfterConfig,
   createRuntimeConfigBootstrap,
+  type AuthenticationFetch,
   type BootstrapState,
+  type RuntimeConfig,
   type RuntimeConfigBootstrap,
 } from '@saas-forge/app-runtime';
 import { ApplicationLoading, ConfigurationFailure } from '@saas-forge/design-system';
-import { useEffect, useSyncExternalStore } from 'react';
+import { AuthenticationShell } from '@saas-forge/react-shell';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { BrowserRouter } from 'react-router';
 
-import { PlatformRoutes } from './routes';
+import { platformAuthenticationRoutes } from './routes';
 
 interface PlatformConsoleAppProps {
   readonly bootstrap?: RuntimeConfigBootstrap;
+  readonly authenticationFetch?: AuthenticationFetch;
+  readonly realm?: object;
 }
 
 const defaultBootstrap = createRuntimeConfigBootstrap();
+const defaultRealm = {};
+const defaultAuthenticationFetch: AuthenticationFetch = (input, init) => fetch(input, init);
 
-export function PlatformConsoleApp({ bootstrap = defaultBootstrap }: PlatformConsoleAppProps) {
+export function PlatformConsoleApp({
+  bootstrap = defaultBootstrap,
+  authenticationFetch = defaultAuthenticationFetch,
+  realm = defaultRealm,
+}: PlatformConsoleAppProps) {
   const state = useSyncExternalStore(
     (listener) => bootstrap.subscribe(listener),
     () => bootstrap.getState(),
@@ -25,20 +37,35 @@ export function PlatformConsoleApp({ bootstrap = defaultBootstrap }: PlatformCon
     void bootstrap.start();
   }, [bootstrap]);
 
-  return <BootstrapSurface bootstrap={bootstrap} state={state} />;
+  return (
+    <BootstrapSurface
+      bootstrap={bootstrap}
+      state={state}
+      authenticationFetch={authenticationFetch}
+      realm={realm}
+    />
+  );
 }
 
 function BootstrapSurface({
   bootstrap,
   state,
+  authenticationFetch,
+  realm,
 }: {
   readonly bootstrap: RuntimeConfigBootstrap;
   readonly state: BootstrapState;
+  readonly authenticationFetch: AuthenticationFetch;
+  readonly realm: object;
 }) {
   if (state.status === 'ready') {
     return (
       <BrowserRouter>
-        <PlatformRoutes />
+        <PlatformAuthenticationPath
+          config={state.config}
+          authenticationFetch={authenticationFetch}
+          realm={realm}
+        />
       </BrowserRouter>
     );
   }
@@ -54,4 +81,40 @@ function BootstrapSurface({
   }
 
   return <ApplicationLoading applicationName="Platform Console" />;
+}
+
+function PlatformAuthenticationPath({
+  config,
+  authenticationFetch,
+  realm,
+}: {
+  readonly config: RuntimeConfig;
+  readonly authenticationFetch: AuthenticationFetch;
+  readonly realm: object;
+}) {
+  const [runtimeResult] = useState(() =>
+    createAuthenticationRuntimeAfterConfig(
+      { ok: true, config },
+      { realm, intent: 'PLATFORM', fetch: authenticationFetch },
+    ),
+  );
+  if (!runtimeResult.ok) {
+    return (
+      <ConfigurationFailure
+        applicationName="Platform Console"
+        errorCode={runtimeResult.error.code}
+        onRetry={() => {
+          window.location.reload();
+        }}
+      />
+    );
+  }
+  return (
+    <AuthenticationShell
+      applicationName="Platform Console"
+      runtime={runtimeResult.runtime}
+      defaultPath="/"
+      routes={platformAuthenticationRoutes}
+    />
+  );
 }

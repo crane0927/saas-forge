@@ -1,45 +1,30 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { MemoryRouter } from 'react-router';
 
-import {
-  PlatformProtectedAreaOutlet,
-  PlatformPublicAreaOutlet,
-  PlatformRoutes,
-} from '../src/routes';
+import { platformAuthenticationRoutes } from '../src/routes';
 
 afterEach(cleanup);
 
 describe('Platform route tree', () => {
-  it('renders an honest 404 and moves route focus to its title', async () => {
-    render(
-      <MemoryRouter initialEntries={['/not-implemented']}>
-        <PlatformRoutes />
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByRole('heading', { name: '页面不存在' })).toBeTruthy();
-    expect(screen.getByText('404')).toBeTruthy();
-    await waitFor(() => {
-      expect(document.activeElement).toBe(screen.getByRole('heading', { name: '页面不存在' }));
-    });
-    expect(screen.getByRole('status').textContent).toBe('页面不存在');
+  it('registers only the Platform local routes consumed by the shared shell', () => {
+    expect(platformAuthenticationRoutes.map(({ path, label }) => ({ path, label }))).toEqual([
+      { path: '/', label: '首页' },
+      { path: '/oauth-clients', label: 'OAuth Client' },
+    ]);
   });
 
-  it.each([
-    ['public', PlatformPublicAreaOutlet],
-    ['protected', PlatformProtectedAreaOutlet],
-  ])('keeps the future %s area as an outlet', (area, AreaOutlet) => {
+  it('moves focus and announces the Platform overview route', async () => {
     render(
-      <MemoryRouter initialEntries={['/future']}>
-        <Routes>
-          <Route element={<AreaOutlet />}>
-            <Route path="/future" element={<p>{area} route outlet</p>} />
-          </Route>
-        </Routes>
+      <MemoryRouter initialEntries={['/']}>
+        {platformAuthenticationRoutes[0]?.element}
       </MemoryRouter>,
     );
 
-    expect(screen.getByText(`${area} route outlet`)).toBeTruthy();
+    const heading = screen.getByRole('heading', { name: 'Platform 总览' });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(heading);
+    });
+    expect(screen.getByRole('status').textContent).toBe('Platform 总览');
   });
 });

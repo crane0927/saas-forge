@@ -219,6 +219,7 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
   let accessToken: string | undefined;
   let expiresAt: number | undefined;
   let logoutIdempotencyKey: string | undefined;
+  let slotLogoutAllowed = false;
   let refreshPromise: Promise<AuthenticationProblem | undefined> | undefined;
   const operationKeys = new WeakMap<IdempotentOperationHandle, string>();
   const listeners = new Set<AuthenticationListener>();
@@ -539,7 +540,9 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
         );
       } catch (error) {
         publish({ status: 'anonymous', transition: null });
-        return { ok: false, problem: await normalizeOperationError(error) };
+        const problem = await normalizeOperationError(error);
+        slotLogoutAllowed = problem.code === 'SESSION_SLOT_ALREADY_ACTIVE';
+        return { ok: false, problem };
       }
       const authenticatedState = parseAuthenticationResponse(response, options.intent);
       if (authenticatedState === undefined) {
@@ -547,6 +550,7 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
         return { ok: false, problem: { code: 'INVALID_SERVICE_RESPONSE' } };
       }
       if (authenticatedState.status === 'authenticated') {
+        slotLogoutAllowed = false;
         accessToken = authenticatedState.accessToken;
         expiresAt = now() + authenticatedState.expiresIn * 1_000;
         publish({ status: 'authenticated', transition: null });
@@ -749,7 +753,7 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
       return { ok: true, state };
     },
     logout: async (signal) => {
-      if (state.status === 'anonymous' || state.transition !== null) {
+      if ((state.status === 'anonymous' && !slotLogoutAllowed) || state.transition !== null) {
         return { ok: false, problem: { code: 'INVALID_AUTHENTICATION_TRANSITION' } };
       }
       logoutIdempotencyKey ??= createIdempotencyKey();
@@ -776,6 +780,7 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
       accessToken = undefined;
       expiresAt = undefined;
       logoutIdempotencyKey = undefined;
+      slotLogoutAllowed = false;
       publish({ status: 'anonymous', transition: null });
       return { ok: true, state };
     },

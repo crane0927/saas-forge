@@ -1,51 +1,42 @@
 import { RouteFocusAnnouncement } from '@saas-forge/design-system';
-import { Outlet, Route, Routes, useLocation } from 'react-router';
+import type { AuthenticationShellRoute } from '@saas-forge/react-shell';
+import { useLocation } from 'react-router';
 
-export function PlatformPublicAreaOutlet() {
-  return <Outlet />;
-}
+export const platformAuthenticationRoutes: readonly AuthenticationShellRoute[] = [
+  { path: '/', label: '首页', element: <PlatformOverview /> },
+  { path: '/oauth-clients', label: 'OAuth Client', element: <OAuthClientsPage /> },
+];
 
-export function PlatformProtectedAreaOutlet() {
-  return <Outlet />;
-}
-
-export function PlatformRoutes() {
+function PlatformOverview() {
+  const location = useLocation();
   return (
-    <Routes>
-      <Route path="/" element={<PlatformApplicationRoot />}>
-        <Route index element={<NotFound />} />
-        <Route path="public" element={<PlatformPublicAreaOutlet />}>
-          <Route path="*" element={<NotFound />} />
-        </Route>
-        <Route path="protected" element={<PlatformProtectedAreaOutlet />}>
-          <Route path="*" element={<NotFound />} />
-        </Route>
-        <Route path="*" element={<NotFound />} />
-      </Route>
-    </Routes>
+    <section aria-labelledby="platform-overview-title">
+      <RouteFocusAnnouncement
+        routeKey={location.key}
+        pageTitle="Platform 总览"
+        focusTargetId="platform-overview-title"
+      />
+      <h1 id="platform-overview-title" tabIndex={-1}>
+        Platform 总览
+      </h1>
+      <p>当前会话已通过 Platform 认证 Runtime 恢复或登录。</p>
+    </section>
   );
 }
 
-function PlatformApplicationRoot() {
-  return <Outlet />;
-}
-
-function NotFound() {
+function OAuthClientsPage() {
   const location = useLocation();
   return (
-    <main className="sf-runtime-surface">
-      <section className="sf-runtime-panel" aria-labelledby="not-found-title">
-        <RouteFocusAnnouncement
-          routeKey={location.key}
-          pageTitle="页面不存在"
-          focusTargetId="not-found-title"
-        />
-        <h1 id="not-found-title" tabIndex={-1}>
-          页面不存在
-        </h1>
-        <p>Platform Console 尚未提供此路由。</p>
-        <p className="sf-runtime-code">404</p>
-      </section>
-    </main>
+    <section aria-labelledby="oauth-clients-title">
+      <RouteFocusAnnouncement
+        routeKey={location.key}
+        pageTitle="OAuth Client 管理"
+        focusTargetId="oauth-clients-title"
+      />
+      <h1 id="oauth-clients-title" tabIndex={-1}>
+        OAuth Client 管理
+      </h1>
+      <p>该入口只注册 Platform 本地路由，不加载动态 Remote。</p>
+    </section>
   );
 }

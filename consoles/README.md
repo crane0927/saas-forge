@@ -6,7 +6,9 @@
 
 `shared/api-client` 是无状态 TypeScript REST Client。Maven/OpenAPI Generator 是唯一生成权威，生成物位于被 Git 忽略的 `.generated`；手写代码只允许从 `@saas-forge/api-client` 公开入口导入 API、模型和运行时类型，不得直接导入生成目录。它不实现认证、Cookie、CSRF 或 Token 存储。
 
-`shared/app-runtime` 是依赖无关的 Runtime Config 与 Bootstrap 内核。它从同 Origin 的 `/runtime-config.json` 加载严格的 `schemaVersion`、`apiBaseUrl` 两字段契约，只接受绝对 HTTPS API Origin，并向应用暴露稳定的失败码和显式用户重试状态。它不依赖 React、路由、认证或生成 API Client 的请求实例。
+`shared/app-runtime` 是不依赖 React 与路由的 Runtime Config、Bootstrap 和认证状态机内核。它从同 Origin 的 `/runtime-config.json` 加载严格的 `schemaVersion`、`apiBaseUrl` 两字段契约，只接受绝对 HTTPS API Origin，并通过生成 API Client 执行恢复、登录、首次改密与退出。它向上层暴露稳定状态和失败码，不持久化 Token，也不实现页面或导航。
+
+`shared/react-shell` 是 Console 共用的 React 应用壳。它只消费 `app-runtime` 与 `design-system` 的公共入口，负责恢复等待、登录、首次改密、会话冲突、退出待重试、受保护路由、全局导航和分层错误边界。产品宿主固定自己的认证意图并传入唯一 Runtime；页面和 Remote 不得创建第二套认证状态、读取凭据或直接发起认证 HTTP。
 
 `shared/design-system` 是唯一公共 UI 包，内部封装 Ant Design 6.6.2，并通过根入口提供 Theme Provider、语义 Token 和共享启动状态。两个 Console 与 Remote 不得直接依赖 `antd`、导入 Design System 内部路径、注入全局 CSS、覆盖公共组件内部选择器或重复实现已有公共组件；聚合测试包含对应静态和制品边界门禁。
 
@@ -52,4 +54,4 @@ pnpm run verify
 
 ## 证据边界
 
-当前门禁证明 Platform/Tenant 应用宿主与最小 Remote 夹具消费同一 Design System 版本、唯一 Provider/全局样式入口和共享浏览器交互。它不证明登录、真实 API 调用、受控 TLS Origin、产品业务 Remote、原生 Safari 或部署后闭环；WebKit 只作为 CI 中可复现的 Safari 引擎兼容约定。
+当前门禁证明 Platform/Tenant 应用宿主与最小 Remote 夹具消费同一 Design System 版本、唯一 Provider/全局样式入口和共享浏览器交互；同时证明 React Shell 只依赖公共 Runtime/UI 边界，Platform 只创建一个固定 `PLATFORM` 意图的认证 Runtime。它不证明已部署环境中的真实账户登录、受控 TLS Origin、产品业务 Remote、原生 Safari 或部署后闭环；WebKit 只作为 CI 中可复现的 Safari 引擎兼容约定。

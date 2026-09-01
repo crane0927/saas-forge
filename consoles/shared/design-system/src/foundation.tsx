@@ -30,6 +30,7 @@ export interface PageTitleProps {
   readonly children: ReactNode;
   readonly description?: ReactNode;
   readonly actions?: ReactNode;
+  readonly headingId?: string;
 }
 
 export type PageLayoutWidth = 'standard' | 'wide';
@@ -38,6 +39,20 @@ export interface PageLayoutProps {
   readonly title: ReactNode;
   readonly children: ReactNode;
   readonly width?: PageLayoutWidth;
+}
+
+export interface ApplicationShellNavigationItem {
+  readonly href: string;
+  readonly label: string;
+  readonly current?: boolean;
+}
+
+export interface ApplicationShellProps {
+  readonly applicationName: string;
+  readonly navigationItems: readonly ApplicationShellNavigationItem[];
+  readonly onNavigate: (href: string) => void;
+  readonly actions?: ReactNode;
+  readonly children: ReactNode;
 }
 
 export type ResponsiveGridIntent = 'content' | 'compact-statistics';
@@ -169,11 +184,13 @@ export function Link({ children, href, external = false }: LinkProps) {
   );
 }
 
-export function PageTitle({ children, description, actions }: PageTitleProps) {
+export function PageTitle({ children, description, actions, headingId }: PageTitleProps) {
   return (
     <header className="sf-page-title">
       <div>
-        <h1 tabIndex={-1}>{children}</h1>
+        <h1 id={headingId} tabIndex={-1}>
+          {children}
+        </h1>
         {description === undefined ? null : <p>{description}</p>}
       </div>
       {actions === undefined ? null : <div className="sf-page-title-actions">{actions}</div>}
@@ -190,6 +207,43 @@ export function PageLayout({ title, children, width = 'standard' }: PageLayoutPr
       {title}
       <div className="sf-page-content">{children}</div>
     </main>
+  );
+}
+
+export function ApplicationShell({
+  applicationName,
+  navigationItems,
+  onNavigate,
+  actions,
+  children,
+}: ApplicationShellProps) {
+  return (
+    <div className="sf-application-shell">
+      <header className="sf-application-header">
+        <strong className="sf-application-name">{applicationName}</strong>
+        <nav aria-label={`${applicationName} 全局导航`}>
+          <ul className="sf-application-navigation">
+            {navigationItems.map((item) => (
+              <li key={item.href}>
+                <a
+                  className="sf-application-navigation-link"
+                  href={item.href}
+                  aria-current={item.current ? 'page' : undefined}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    onNavigate(item.href);
+                  }}
+                >
+                  {item.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        {actions === undefined ? null : <div className="sf-application-actions">{actions}</div>}
+      </header>
+      <main className="sf-application-content">{children}</main>
+    </div>
   );
 }
 

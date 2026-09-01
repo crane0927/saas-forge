@@ -4,6 +4,7 @@ packages:
   - shared/api-client
   - shared/app-runtime
   - shared/design-system
+  - shared/react-shell
   - tenant-console-shell
 
 verifyDepsBeforeRun: error

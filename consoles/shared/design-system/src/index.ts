@@ -7,6 +7,7 @@ export {
   type ApplicationFatalErrorProps,
 } from './bootstrap-status';
 export {
+  ApplicationShell,
   Button,
   DesignIcon,
   Link,
@@ -14,6 +15,8 @@ export {
   PageTitle,
   ResponsiveGrid,
   SplitLayout,
+  type ApplicationShellNavigationItem,
+  type ApplicationShellProps,
   type ButtonProps,
   type DesignIconName,
   type DesignIconProps,
