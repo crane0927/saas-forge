@@ -41,6 +41,17 @@ class V1ContractCompatibilityTest {
             "minimum", "exclusiveMinimum", "minLength", "minItems", "minProperties");
     private static final List<String> UPPER_BOUND_KEYWORDS = List.of(
             "maximum", "exclusiveMaximum", "maxLength", "maxItems", "maxProperties");
+    private static final Set<String> ADR_0038_REQUIRED_SESSION_SLOT_LOCATIONS = Set.of(
+            "POST /api/v1/auth/refresh requestBody media type application/json",
+            "POST /api/v1/auth/logout requestBody media type application/json");
+    private static final Map<String, Set<String>> ADR_0038_REFRESH_COOKIE_REPLACEMENTS = Map.of(
+            "POST /api/v1/auth/refresh",
+            Set.of("cookie:__Host-sf_platform_refresh", "cookie:__Host-sf_tenant_refresh"),
+            "POST /api/v1/auth/password-changes", Set.of("cookie:__Host-sf_platform_refresh"),
+            "POST /api/v1/auth/context-selections", Set.of("cookie:__Host-sf_tenant_refresh"),
+            "POST /api/v1/auth/logout",
+            Set.of("cookie:__Host-sf_platform_refresh", "cookie:__Host-sf_tenant_refresh"),
+            "POST /api/v1/auth/tenant-switches", Set.of("cookie:__Host-sf_tenant_refresh"));
     private static final Pattern PACKAGE = Pattern.compile("(?m)^\\s*package\\s+([A-Za-z0-9_.]+)\\s*;");
     private static final Pattern FIELD = Pattern.compile(
             "(?m)^\\s*(?:(repeated|optional)\\s+)?([A-Za-z][A-Za-z0-9_.]*(?:<[A-Za-z][A-Za-z0-9_., ]*>)?)\\s+"
@@ -120,6 +131,14 @@ class V1ContractCompatibilityTest {
             Map<String, Object> baseline = resolveOpenApiMap(parameter, baselineDocuments, "v1.yaml");
             String identity = parameterIdentity(baseline);
             Map<String, Object> current = currentByIdentity.get(identity);
+            if (current == null && "cookie:__Host-sf_refresh".equals(identity)) {
+                Set<String> replacements = ADR_0038_REFRESH_COOKIE_REPLACEMENTS.get(location);
+                if (replacements != null) {
+                    assertTrue(currentByIdentity.keySet().containsAll(replacements),
+                            location + " 未完整替换 ADR 0038 Browser Session Slot Cookie");
+                    continue;
+                }
+            }
             assertNotNull(current, location + " 删除了参数 " + identity);
             assertFalse(!required(baseline) && required(current),
                     location + " 将可选参数改为必填: " + identity);
@@ -291,7 +310,12 @@ class V1ContractCompatibilityTest {
             assertTrue(list(current.get("enum")).containsAll(list(baseline.get("enum"))),
                     location + " 收紧或删除了 enum 值");
         }
-        assertEquals(new LinkedHashSet<>(list(baseline.get("required"))), new LinkedHashSet<>(list(current.get("required"))),
+        Set<Object> baselineRequired = new LinkedHashSet<>(list(baseline.get("required")));
+        Set<Object> expectedRequired = new LinkedHashSet<>(baselineRequired);
+        if (ADR_0038_REQUIRED_SESSION_SLOT_LOCATIONS.contains(location)) {
+            expectedRequired.add("sessionSlot");
+        }
+        assertEquals(expectedRequired, new LinkedHashSet<>(list(current.get("required"))),
                 location + " 改变了 required 字段");
         for (String keyword : LOWER_BOUND_KEYWORDS) {
             assertBoundNotTightened(baseline, current, keyword, true, location);

@@ -227,7 +227,7 @@ class HttpReceiverAuthenticationFilterTest {
                 route("anonymous", HttpRouteCatalog.HttpMethod.GET, "/api/anonymous",
                         HttpRouteCatalog.CredentialRequirement.ANONYMOUS, List.of()),
                 route("cookie", HttpRouteCatalog.HttpMethod.POST, "/api/cookie",
-                        HttpRouteCatalog.CredentialRequirement.REFRESH_COOKIE_REQUIRED, List.of())));
+                        HttpRouteCatalog.CredentialRequirement.BROWSER_SESSION_SLOT_REQUIRED, List.of())));
     }
 
     private static HttpRouteCatalog.Route route(

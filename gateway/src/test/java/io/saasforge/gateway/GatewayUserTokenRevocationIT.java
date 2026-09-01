@@ -116,7 +116,11 @@ class GatewayUserTokenRevocationIT {
         int iamBeforeLogout = IAM_REQUESTS.get();
         HttpResponse<String> optional = send(HttpRequest.newBuilder(gatewayUri("/api/v1/auth/logout"))
                 .header("Authorization", "Bearer malformed")
-                .POST(HttpRequest.BodyPublishers.noBody())
+                .header("Content-Type", "application/json")
+                .header("Origin", "https://platform.saasforge.test")
+                .header("X-SF-CSRF", "1")
+                .header("Sec-Fetch-Site", "same-site")
+                .POST(HttpRequest.BodyPublishers.ofString("{\"sessionSlot\":\"PLATFORM\"}"))
                 .build());
         assertEquals(200, optional.statusCode());
         assertEquals(iamBeforeLogout + 1, IAM_REQUESTS.get());

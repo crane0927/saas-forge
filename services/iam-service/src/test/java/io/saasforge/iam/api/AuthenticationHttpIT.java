@@ -192,6 +192,7 @@ import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
         "security.login-protection.maximum-failures=5",
         "security.login-protection.lock-duration=PT15M",
         "security.revocation-index.recovery-delay=PT1H",
+        "saasforge.iam.session-revocation.worker-delay=PT1H",
         "saasforge.iam.tenant-context-switch.recovery-delay=PT1H",
         "saasforge.iam.outbox.publish-delay=PT0.1S"
 })
@@ -1364,7 +1365,7 @@ class AuthenticationHttpIT {
         TestUser user = createUser(
                 "password-boundaries@example.test", "Initial-Boundaries-2026!", false, Credential.ACTIVE_INITIAL);
         String refreshToken = refreshToken(login(
-                "password-boundaries@example.test", "Initial-Boundaries-2026!", "TENANT").andReturn());
+                "password-boundaries@example.test", "Initial-Boundaries-2026!", "PLATFORM").andReturn());
 
         changePassword(refreshToken, "12345678901")
                 .andExpect(status().isBadRequest())
@@ -1389,7 +1390,7 @@ class AuthenticationHttpIT {
         TestUser user = createUser(
                 "password-rollback@example.test", "Initial-Rollback-2026!", false, Credential.ACTIVE_INITIAL);
         String refreshToken = refreshToken(login(
-                "password-rollback@example.test", "Initial-Rollback-2026!", "TENANT").andReturn());
+                "password-rollback@example.test", "Initial-Rollback-2026!", "PLATFORM").andReturn());
 
         assertThrows(IllegalArgumentException.class, () -> passwordChangeService.change(
                 refreshToken, "Unique-Rollback-2026!", "invalid-trace-id"));
@@ -1567,7 +1568,7 @@ class AuthenticationHttpIT {
         TestUser initial = createUser(
                 "refresh-initial@example.test", "Initial-Refresh-2026!", false, Credential.ACTIVE_INITIAL);
         String initialToken = refreshToken(
-                login("refresh-initial@example.test", "Initial-Refresh-2026!", "TENANT").andReturn());
+                login("refresh-initial@example.test", "Initial-Refresh-2026!", "PLATFORM").andReturn());
         refresh(initialToken)
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("REFRESH_SESSION_INVALID"))
