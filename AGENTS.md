@@ -15,6 +15,10 @@
 - Nacos 配置按环境 namespace 和应用专属资源维护，当前不得新增共享资源。跨服务必须一致的非敏感值应分别写入各自资源，并增加或更新一致性校验；迁移前必须先确认每个环境的实际值，不能臆造 staging/prod 值。
 - 修改 `deploy/nacos/<environment>/` 后必须递增对应 `configuration-revision`，运行 `bash scripts/validate-nacos-config.sh` 与相关服务验证；发布只能通过受控发布流程，Console 应急变更必须回写 Git。
 
+### Console 与浏览器 HTTP
+
+- HttpOnly Cookie、`Origin` 与 `Sec-Fetch-*` 是由浏览器管理的安全边界，不得暴露为 Console 或 Remote 的业务调用参数；消费者只能通过共享类型化 HTTP Client 调用正式 API operation，不得自行注入 Cookie、Origin、Fetch Metadata 或 Bearer Token。
+
 ### Issue tracker
 
 问题与 PRD 通过本仓库的 GitHub Issues 跟踪。详见 `docs/agents/issue-tracker.md`。

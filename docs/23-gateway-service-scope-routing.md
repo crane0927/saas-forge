@@ -150,7 +150,8 @@ IAM `OAuthScope`、Reserved Client固定授权、OpenAPI Scheme和 Route Catalog
 
 新增：
 
-- `RefreshCookieAuth`：`apiKey`、`in: cookie`、`name: __Host-sf_refresh`；
+- `PlatformRefreshCookieAuth`：`apiKey`、`in: cookie`、`name: __Host-sf_platform_refresh`；
+- `TenantRefreshCookieAuth`：`apiKey`、`in: cookie`、`name: __Host-sf_tenant_refresh`；
 - `ServiceOAuth2`：标准 OAuth2 `clientCredentials` flow，`tokenUrl: /oauth2/token`，scopes来自固定 Registry。
 
 每个 operation生成一个互斥分类：
@@ -164,7 +165,7 @@ IAM `OAuthScope`、Reserved Client固定授权、OpenAPI Scheme和 Route Catalog
 | `USER_REQUIRED` | 严格验证 User Token | Starter再次验证并建立 User Context |
 | `SERVICE_REQUIRED` | 严格验证 Service Token和全部 required scopes | Starter再次验证并建立 Service Context |
 
-Tenant Switch、Refresh、Initial Password Change和 Context Selection使用 `RefreshCookieAuth`；登录、Password Setup、JWKS为 Anonymous；Token issuance使用 OAuth Client Basic；Logout保持 User Optional；Platform/Tenant用户接口保持 User Required。
+Tenant Switch 与 Context Selection 使用 `TenantRefreshCookieAuth`，Initial Password Change 使用 `PlatformRefreshCookieAuth`；Refresh 依必填 `sessionSlot` 选择两者之一。登录、Password Setup、JWKS为 Anonymous；Token issuance使用 OAuth Client Basic；Logout保持 User Optional，并依必填 `sessionSlot` 只处理所选 Cookie；Platform/Tenant用户接口保持 User Required。双 Cookie、Origin 与 Intent/Slot 配对规则见 [ADR 0038](adr/0038-browser-sessions-use-intent-bound-slots.md)。
 
 同一 operation不得混合 User与 Service Bearer。Service-required scopes采用 AND：Token必须包含全部 required scopes，可以包含其他已登记且该 Client合法获授的 Scope。
 

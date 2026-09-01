@@ -9,3 +9,5 @@ Refresh Token 固定使用由 `api.<root>` 签发的 `__Host-sf_refresh` host-on
 每个环境以非敏感部署配置 `browser.rootDomain` 推导固定 CORS 值。API Gateway 仅对 `https://platform.<root>` 与 `https://console.<root>` 允许凭据型 CORS；允许的方法为 `GET`、`HEAD`、`POST`、`PUT`、`PATCH`、`DELETE`、`OPTIONS`，请求头为 `Authorization`、`Content-Type`、`Idempotency-Key`、`X-SF-CSRF`、`traceparent`、`tracestate`，只暴露 `Location` 与 `Retry-After`，预检缓存 10 分钟并返回 `Vary: Origin`。Remote 静态资源仅允许 `console.<root>` 无凭据加载。未匹配 Origin 不返回 CORS 许可，禁止通配符、`null` Origin 和 Manifest/运行时扩展。
 
 开发与端到端测试也采用相同主机分离模型，使用 `platform.saasforge.test`、`console.saasforge.test`、`api.saasforge.test` 与 `remote.saasforge.test`。这些名称映射到 `127.0.0.1`，经本地受信 TLS 反向代理提供 HTTPS，并以 `browser.rootDomain=saasforge.test` 推导 Cookie、CSRF 和 CORS 配置；不得用不同 `localhost` 端口替代该验收拓扑。
+
+Platform 与 Tenant 后续改为绑定受控 Origin 的两个 Browser Session Slot，不再共享本 ADR 当时记录的单一 `__Host-sf_refresh` Cookie；该局部覆盖及其迁移代价见 [ADR 0038](0038-browser-sessions-use-intent-bound-slots.md)。受控根域、host-only Cookie、精确 CORS、CSRF 与本地 TLS 拓扑继续有效。

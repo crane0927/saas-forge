@@ -17,13 +17,15 @@ Browser / Business Application
 
 API Gateway 是唯一公网入口，负责 TLS 终止、JWT 初步校验、限流、路由、CORS 与 `traceId` 透传。领域服务不直接暴露公网。
 
+Console 浏览器认证、双 Browser Session Slot、共享 HTTP Client 与 Problem 恢复规则见 [Console 认证 Runtime 与浏览器会话规格](28-console-authentication-runtime.md)。
+
 Gateway 的凭据分类由正式 OpenAPI 操作的 `security` 声明生成或校验，不另维护可漂移的路径列表。公共契约只使用 `UserBearerAuth`、`ServiceOAuth2`、`OAuthClientBasic` 与 Refresh Cookie 语义，并归一为 `ANONYMOUS`、`REFRESH_COOKIE_REQUIRED`、`OAUTH_CLIENT_BASIC_REQUIRED`、`USER_OPTIONAL`、`USER_REQUIRED`、`SERVICE_REQUIRED` 六类。必需 User 或 Service Token 的操作在转发前完成对应验证；匿名操作不要求 Token；登出等同时声明 `UserBearerAuth` 与匿名的操作必须允许请求到达下游以完成 Cookie 清理，不得因可选 Bearer 无效或已撤销而提前拒绝。完整生成与门禁规则见 [Gateway Service Scope 路由设计](23-gateway-service-scope-routing.md)。
 
 ## 契约与版本
 
 - OpenAPI 3.1 是正式且受版本控制的 REST 契约；Swagger UI 只可作为查看和调试界面。
 - 契约采用 spec-first：先审查 OpenAPI，再生成服务端接口骨架、Java REST Client 与前端 API Client；实现不得反向修改契约。
-- 平台自有公共 REST API 只使用 URI 主版本，例如 `/api/v1/...`，不同时使用自定义版本请求头或媒体类型参数。`/oauth2/token`、`/.well-known/jwks.json` 等受标准路径约束的端点保持既有非版本路径。删除、重命名或改变字段类型/语义，收紧既有有效输入，或新增必填字段均为破坏性变更，必须进入新的主版本；同一主版本只允许新增可选字段、枚举值或可选能力等向后兼容变更。
+- 平台自有公共 REST API 只使用 URI 主版本，例如 `/api/v1/...`，不同时使用自定义版本请求头或媒体类型参数。`/oauth2/token`、`/.well-known/jwks.json` 等受标准路径约束的端点保持既有非版本路径。删除、重命名或改变字段类型/语义，收紧既有有效输入，或新增必填字段均为破坏性变更，必须进入新的主版本；同一主版本只允许新增可选字段、枚举值或可选能力等向后兼容变更。唯一新增的受控例外是 [ADR 0038](adr/0038-browser-sessions-use-intent-bound-slots.md) 列明的现有浏览器认证 operation、Cookie/security 语义与必填 `sessionSlot` 迁移；该例外不改变其他 v1 契约的无豁免规则。
 - 内部同步接口使用版本化 Protobuf；Kafka 事件使用 CloudEvents JSON 与版本化类型，例如 `com.saasforge.tenant.suspended.v1`。
 
 ## v1 资源边界
@@ -47,7 +49,7 @@ Client Credentials 的身份与授权语义只限 `client_id` 与显式 `scope`�
 
 OAuth Client 管理只接受 Platform Admin 的 Platform User Access Token。Client 创建、Secret 轮换或签发恢复只在首次成功响应中展示 Secret；它们不适用普通响应体重放，具体接口与安全例外见 [OAuth 2.0 Client Credentials 管理规格](22-oauth-client-credentials-management.md)。
 
-Tenant 切换为 IAM 的 `POST /api/v1/auth/tenant-switches`：请求通过必需的 Refresh Token Cookie 定位当前 `USER_TENANT` Family，Body 只携带目标 `membershipId`，Bearer Access Token 不参与定位。IAM 必须同步向 Tenant Access 分别验证当前与目标 Membership 属于该 Identity、仍启用且所属 Tenant 可访问；实际切换撤销该 Family 切换前签发且未过期的全部 User Access Token，只更新该 Family 的上下文并返回 `204 No Content`。Tenant Console Shell 随后调用刷新接口取得新 Access Token，刷新完成前不得再次切换。Invitation 激活为 Tenant Access 的 `POST /api/v1/tenant/invitation-activations`：它不接受客户端提供的 Tenant 上下文，而是由 Invitation 令牌解析所属 Tenant。初始管理员 Password Setup Challenge 由 IAM 的 `POST /api/v1/auth/password-setups` 匿名兑换；Platform Admin 请求首次投递或重发使用 Tenant Access 的 `POST /api/v1/platform/tenants/{tenantId}/administrator-password-setups`，后者不得返回 Token、邮箱或投递内容。
+Tenant 切换为 IAM 的 `POST /api/v1/auth/tenant-switches`：请求固定通过 Tenant Browser Session Slot 的 `__Host-sf_tenant_refresh` Cookie 定位当前 `USER_TENANT` Family，Body 只携带目标 `membershipId`，Bearer Access Token 不参与定位。IAM 必须同步向 Tenant Access 分别验证当前与目标 Membership 属于该 Identity、仍启用且所属 Tenant 可访问；实际切换撤销该 Family 切换前签发且未过期的全部 User Access Token，只更新该 Family 的上下文并返回 `204 No Content`。Tenant Console Shell 随后调用 Tenant 槽位刷新取得新 Access Token；`204` 后旧 Token 不可回滚，刷新完成前不得发送业务请求或再次切换。Invitation 激活为 Tenant Access 的 `POST /api/v1/tenant/invitation-activations`：它不接受客户端提供的 Tenant 上下文，而是由 Invitation 令牌解析所属 Tenant。初始管理员 Password Setup Challenge 由 IAM 的 `POST /api/v1/auth/password-setups` 匿名兑换；Platform Admin 请求首次投递或重发使用 Tenant Access 的 `POST /api/v1/platform/tenants/{tenantId}/administrator-password-setups`，后者不得返回 Token、邮箱或投递内容。
 
 Password Setup 邮件链接只允许使用 `https://console.<root>/password-setup#token=<token>`，其中 Token 为 43 字符无填充 Base64URL。Token 不得放入查询参数；控制台读取 Fragment 后立即从地址栏移除，并仅通过 `POST /api/v1/auth/password-setups` 的 JSON Body 提交。该端点不接受 Identity、Membership、Tenant 或邮箱字段。
 
@@ -104,10 +106,12 @@ IAM 的 JWKS 响应以 `Cache-Control: max-age=300` 发布。验证方遇到未�
 
 ## 认证、来源与限流
 
-- 用户请求使用约 15 分钟的 JWT Access Token；刷新令牌仅由 `api.<root>` 以 `__Host-sf_refresh; Secure; HttpOnly; SameSite=Strict; Path=/` Cookie 携带，且不设置 `Domain`。
+- 用户请求使用约 15 分钟的 JWT Access Token；刷新令牌仅由 `api.<root>` 的 Browser Session Slot Cookie 携带。Platform 使用 `__Host-sf_platform_refresh`，Tenant 使用 `__Host-sf_tenant_refresh`；两者均为 `Secure; HttpOnly; SameSite=Strict; Path=/` 且不设置 `Domain`。
 - Client Credentials 按 OAuth 2.0 标准实现；服务令牌的身份与授权语义只限 `client_id` 与显式 `scope`，不建立用户 Tenant Context，也不得伪造用户、Membership、Tenant 或用户 RBAC 上下文。
 - CORS 默认拒绝。各环境由非敏感部署配置 `browser.rootDomain` 推导精确 Origin：API Gateway 仅允许 `https://platform.<root>` 与 `https://console.<root>` 的凭据型请求，允许 `GET`、`HEAD`、`POST`、`PUT`、`PATCH`、`DELETE`、`OPTIONS` 方法和 `Authorization`、`Content-Type`、`Idempotency-Key`、`X-SF-CSRF`、`traceparent`、`tracestate` 请求头，只暴露 `Location`、`Retry-After`，预检缓存 10 分钟并返回 `Vary: Origin`。`https://remote.<root>` 不可直接调用 API；Remote 静态资源仅允许 `https://console.<root>` 无凭据加载。未匹配 Origin 不返回 CORS 许可，禁止通配符、`null` Origin 和 Manifest/运行时扩展白名单。
 - 所有浏览器非安全方法，以及 `/api/v1/auth/login`、`/api/v1/auth/refresh`、`/api/v1/auth/logout`，必须使用 `application/json` 并带 `X-SF-CSRF: 1`。Gateway 仅接受 `Origin` 为 `https://platform.<root>` 或 `https://console.<root>` 的此类请求，拒绝 `remote.<root>` 和外站 Origin；`Sec-Fetch-Site: cross-site` 一律拒绝，缺失 Fetch Metadata 时仍以 Origin 精确校验。Client Credentials 服务请求不携带浏览器 Cookie，不适用该校验。
+- 登录 `contextType` 表达 Login Context Intent；刷新与登出必须以 JSON `sessionSlot: PLATFORM | TENANT` 选择 Browser Session Slot。Platform/Tenant 受控 Origin 必须与显式 Intent/Slot 精确配对，但 IAM 仍必须独立校验授权上下文与 Family Purpose。
+- HttpOnly Cookie、`Origin` 和 Fetch Metadata 是正式安全契约，但不得暴露为 Console 或 Remote 需要提供的业务调用参数；它们只能经共享类型化 HTTP Client 调用正式 operation。
 - Gateway 基于 Redis 令牌桶，按 IP、Identity、Client、Tenant 维度限流；阈值由环境配置，不写死在代码中。
 
 ## 业务能力与前端模块注册

@@ -7,3 +7,5 @@ Design System 独占全局样式入口、Theme Provider 和全部公共组件外
 MVP 阶段的两个 Console 与全部官方 Remote 必须使用完全相同的 Design System 版本。前端工作区门禁必须按目录边界自动发现当前及后续新增的 Console 与官方 Remote，不依赖人工登记消费者名单；Shell 独占全局样式和当前 Theme Provider，Remote 不得重复注入全局样式。后续 Manifest 必须声明 Design System 版本，不一致时在执行 Remote 代码前拒绝加载。是否支持第三方 Remote 的兼容版本范围留待出现真实需求后另行决策。
 
 底层组件基础采用 Ant Design 6.6.2，并隐藏在 Design System 后。Design System 使用其 `ConfigProvider`、主题算法和 Design Token 构建统一主题，再向消费者提供由本项目控制的稳定组件接口；消费者不得在任何依赖分区直接声明或导入 `antd`，也不得覆盖 Ant Design 或 Design System 的内部选择器、受控 Token 和全局样式。该决定来自相同数据表格、校验表单和危险确认弹窗的隔离原型比较，并已由用户确认。MVP 固定使用 6.6.2；后续升级只能作为 Design System 内的独立受控工作统一进行，评审上游变更并通过组件、键盘、焦点、无障碍、视觉、Console 与代表性 Remote 回归后同步更新版本记录，不允许消费者自行升级或多版本共存。Ant Design 带来的较大初始文件、底层 API 升级和复杂表格事件耦合，由 Design System 的按需加载、版本锁定和自动化回归测试控制。
+
+共享认证状态、HTTP 和路由组合不归 Design System 所有。[ADR 0039](0039-consoles-share-one-authentication-runtime.md) 保持 `app-runtime` 无 UI，另以共享 React Shell 组合认证 Provider、路由守卫、导航和错误边界；Design System 只继续提供它们使用的唯一视觉与交互实现。
