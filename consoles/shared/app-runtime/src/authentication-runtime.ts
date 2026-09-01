@@ -177,6 +177,7 @@ export interface ConsoleApiClient {
 }
 
 export interface AuthenticationRuntime {
+  readonly intent: AuthenticationIntent;
   readonly client: ConsoleApiClient;
   getState(): AuthenticationState;
   subscribe(listener: AuthenticationListener): () => void;
@@ -452,6 +453,7 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
   };
 
   const runtime: AuthenticationRuntime = {
+    intent: options.intent,
     client,
     getState: () => state,
     subscribe: (listener) => {

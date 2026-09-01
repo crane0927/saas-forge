@@ -72,7 +72,15 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
       />,
       '登录 Platform Console',
     ],
-    ['Tenant Console', <TenantConsoleShellApp bootstrap={readyBootstrap()} />, '页面不存在'],
+    [
+      'Tenant Console',
+      <TenantConsoleShellApp
+        bootstrap={readyBootstrap()}
+        authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
+        realm={{}}
+      />,
+      '登录 Tenant Console',
+    ],
   ])('%s 共享启动状态进入首个可操作页面并恢复标题焦点', async (_name, app, titleName) => {
     render(<DesignSystemProvider>{app}</DesignSystemProvider>);
 
@@ -81,6 +89,123 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
     await expect.element(title).toBeInTheDocument();
     await expect.element(title).toHaveFocus();
     expect(document.querySelectorAll('.sf-design-system-root')).toHaveLength(1);
+  });
+
+  it('Tenant Membership 选择只停留在发起标签页内存并支持窄屏键盘操作', async () => {
+    const storageWrite = vi.spyOn(Storage.prototype, 'setItem');
+    const indexedDbOpen = vi.spyOn(indexedDB, 'open');
+    const consoleLog = vi.spyOn(console, 'log');
+    const consoleError = vi.spyOn(console, 'error');
+    const consoleWarning = vi.spyOn(console, 'warn');
+    const broadcastMessages: unknown[] = [];
+    const OriginalBroadcastChannel = window.BroadcastChannel;
+    class ObservedBroadcastChannel extends EventTarget implements BroadcastChannel {
+      public readonly name: string;
+      public onmessage: ((this: BroadcastChannel, event: MessageEvent) => unknown) | null = null;
+      public onmessageerror: ((this: BroadcastChannel, event: MessageEvent) => unknown) | null =
+        null;
+
+      public constructor(name: string) {
+        super();
+        this.name = name;
+      }
+
+      public close(): void {}
+
+      public postMessage(message: unknown): void {
+        broadcastMessages.push(message);
+      }
+    }
+    window.BroadcastChannel = ObservedBroadcastChannel;
+
+    const secondMembershipId = '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6074';
+    const authenticationFetch = vi
+      .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'CONTEXT_SELECTION_REQUIRED',
+          memberships: [
+            {
+              membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6071',
+              tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6072',
+              tenantDisplayName: '北辰科技',
+            },
+            {
+              membershipId: secondMembershipId,
+              tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6075',
+              tenantDisplayName: '云帆数据',
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'selected-tenant-token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      );
+
+    try {
+      render(
+        <DesignSystemProvider>
+          <TenantConsoleShellApp
+            bootstrap={readyBootstrap()}
+            authenticationFetch={authenticationFetch}
+            realm={{}}
+          />
+        </DesignSystemProvider>,
+      );
+
+      await page.getByRole('textbox', { name: '邮箱' }).fill('member@example.test');
+      await page.getByLabelText('密码').fill('secret');
+      await page.getByRole('button', { name: '登录' }).click();
+
+      const title = page.getByRole('heading', { name: '选择 Tenant' });
+      await expect.element(title).toHaveFocus();
+      expect(
+        Array.from(document.querySelectorAll('li'), (candidate) => candidate.textContent),
+      ).toEqual(['北辰科技进入 北辰科技', '云帆数据进入 云帆数据']);
+      expect(window.location.pathname).toBe('/select-context');
+      expect(window.location.href).not.toContain('北辰科技');
+      expect(window.location.href).not.toContain(secondMembershipId);
+      expect(storageWrite).not.toHaveBeenCalled();
+      expect(indexedDbOpen).not.toHaveBeenCalled();
+      expect(broadcastMessages).toEqual([]);
+      expect(consoleLog).not.toHaveBeenCalled();
+      expect(consoleError).not.toHaveBeenCalled();
+      expect(consoleWarning).not.toHaveBeenCalled();
+
+      await page.viewport(390, 844);
+      await waitForLayout();
+      expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
+      const firstMembership = page.getByRole('button', { name: '进入 北辰科技' });
+      firstMembership.element().focus();
+      await userEvent.tab();
+      const secondMembership = page.getByRole('button', { name: '进入 云帆数据' });
+      await expect.element(secondMembership).toHaveFocus();
+      await userEvent.keyboard('{Enter}');
+
+      await expect
+        .element(page.getByRole('heading', { name: 'Tenant 工作台' }))
+        .toBeInTheDocument();
+      const selectionBody = authenticationFetch.mock.calls[2]?.[1]?.body;
+      if (typeof selectionBody !== 'string') {
+        throw new Error('Tenant Membership 选择请求缺少 JSON body。');
+      }
+      expect(JSON.parse(selectionBody)).toEqual({
+        membershipId: secondMembershipId,
+      });
+    } finally {
+      window.BroadcastChannel = OriginalBroadcastChannel;
+      storageWrite.mockRestore();
+      indexedDbOpen.mockRestore();
+      consoleLog.mockRestore();
+      consoleError.mockRestore();
+      consoleWarning.mockRestore();
+    }
   });
 
   it('Remote 从 Shell 继承主题、完成共享表单反馈且恢复键盘焦点', async () => {

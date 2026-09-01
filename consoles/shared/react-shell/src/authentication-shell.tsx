@@ -135,6 +135,10 @@ export function AuthenticationShell({
     }
     if (state.status === 'passwordChangeRequired' && location.pathname !== '/change-password') {
       void navigate('/change-password', { replace: true });
+      return;
+    }
+    if (state.status === 'contextSelectionRequired' && location.pathname !== '/select-context') {
+      void navigate('/select-context', { replace: true });
     }
   }, [defaultPath, location, navigate, recoveryComplete, recoveryProblem, routes, state]);
 
@@ -207,6 +211,10 @@ export function AuthenticationShell({
         }}
       />
     );
+  }
+
+  if (state.status === 'contextSelectionRequired') {
+    return <ContextSelectionPage runtime={runtime} memberships={state.memberships} />;
   }
 
   if (state.status === 'logoutPending') {
@@ -288,7 +296,7 @@ function LogoutPendingPage({ runtime }: { readonly runtime: AuthenticationRuntim
   );
 }
 
-const AUTHENTICATION_PATHS = new Set(['/login', '/change-password', '/recover']);
+const AUTHENTICATION_PATHS = new Set(['/login', '/change-password', '/select-context', '/recover']);
 
 function isAuthenticationPath(pathname: string): boolean {
   return AUTHENTICATION_PATHS.has(pathname);
@@ -387,9 +395,9 @@ function LoginPage({
       {passwordChanged ? <SuccessFeedback message="密码已更新，请使用新密码重新登录。" /> : null}
       {problem?.code === 'SESSION_SLOT_ALREADY_ACTIVE' ? (
         <PersistentError
-          title="当前 Platform 会话槽位已有活动会话。"
+          title={`当前 ${runtime.intent === 'PLATFORM' ? 'Platform' : 'Tenant'} 会话槽位已有活动会话。`}
           action={{
-            label: '先登出当前会话',
+            label: `先登出当前 ${runtime.intent === 'PLATFORM' ? 'Platform' : 'Tenant'} 会话`,
             onAction: () => {
               void runtime.logout().then((result) => {
                 if (result.ok) {
@@ -399,6 +407,16 @@ function LoginPage({
             },
           }}
         />
+      ) : problem?.code === 'ACCESS_CONTEXT_UNAVAILABLE' && runtime.intent === 'TENANT' ? (
+        <PersistentError title="无法进入 Tenant">
+          <p>当前 Identity 没有可进入的 Tenant，请联系 Tenant 管理员。</p>
+          <p>错误代码：{problem.code}</p>
+        </PersistentError>
+      ) : problem?.code === 'ACCESSIBLE_MEMBERSHIP_LIMIT_EXCEEDED' ? (
+        <PersistentError title="无法显示 Membership 候选">
+          <p>Accessible Membership 数量超过当前选择上限，请联系平台管理员。</p>
+          <p>错误代码：{problem.code}</p>
+        </PersistentError>
       ) : problem === undefined ? null : (
         <PersistentError title="登录失败">错误代码：{problem.code}</PersistentError>
       )}
@@ -529,6 +547,65 @@ function InitialPasswordChangePage({
           更新密码
         </Button>
       </FormLayout>
+    </PageLayout>
+  );
+}
+
+function ContextSelectionPage({
+  runtime,
+  memberships,
+}: {
+  readonly runtime: AuthenticationRuntime;
+  readonly memberships: readonly {
+    readonly membershipId: string;
+    readonly tenantDisplayName: string;
+  }[];
+}) {
+  const [selectedMembershipId, setSelectedMembershipId] = useState<string>();
+  const [problem, setProblem] = useState<AuthenticationProblem>();
+
+  return (
+    <PageLayout
+      title={
+        <ShellPageTitle
+          headingId="context-selection-title"
+          title="选择 Tenant"
+          description="选择本次会话要进入的 Accessible Membership。"
+        />
+      }
+    >
+      {problem === undefined ? null : (
+        <PersistentError title="无法进入所选 Tenant">错误代码：{problem.code}</PersistentError>
+      )}
+      <ul aria-label="Accessible Membership">
+        {memberships.map((membership) => (
+          <li key={membership.membershipId}>
+            <span>{membership.tenantDisplayName}</span>
+            <Button
+              variant="primary"
+              loading={selectedMembershipId === membership.membershipId}
+              loadingLabel={`正在进入 ${membership.tenantDisplayName}`}
+              disabled={selectedMembershipId !== undefined}
+              onClick={() => {
+                setSelectedMembershipId(membership.membershipId);
+                setProblem(undefined);
+                void runtime
+                  .selectAuthenticationContext({ membershipId: membership.membershipId })
+                  .then((result) => {
+                    if (!result.ok) {
+                      setProblem(result.problem);
+                    }
+                  })
+                  .finally(() => {
+                    setSelectedMembershipId(undefined);
+                  });
+              }}
+            >
+              进入 {membership.tenantDisplayName}
+            </Button>
+          </li>
+        ))}
+      </ul>
     </PageLayout>
   );
 }

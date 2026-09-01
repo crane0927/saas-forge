@@ -43,28 +43,41 @@ export async function findAuthenticationShellBoundaryViolations(root = workspace
     }
   }
 
-  const platformRoot = path.join(root, 'platform-console');
-  const platformManifest = JSON.parse(
-    await readFile(path.join(platformRoot, 'package.json'), 'utf8'),
-  );
-  if (platformManifest.dependencies?.['@saas-forge/react-shell'] !== 'workspace:*') {
-    violations.push('Platform Console 必须消费共享 React Shell');
-  }
-  let runtimeCreationCount = 0;
-  let fetchForwardingCount = 0;
-  for (const sourceFile of await listSourceFiles(path.join(platformRoot, 'src'))) {
-    const source = await readFile(sourceFile, 'utf8');
-    runtimeCreationCount += occurrences(source, 'createAuthenticationRuntimeAfterConfig(');
-    fetchForwardingCount += occurrences(source, 'fetch(input, init)');
-    if (/credentials\s*:|Authorization|X-SF-CSRF|\bCookie\b|new\s+AuthenticationApi/.test(source)) {
-      violations.push(`${relative(root, sourceFile)} 不得实现第二套认证或凭据请求`);
+  for (const host of [
+    { directory: 'platform-console', name: 'Platform Console' },
+    { directory: 'tenant-console-shell', name: 'Tenant Console' },
+  ]) {
+    const hostRoot = path.join(root, host.directory);
+    const hostManifest = JSON.parse(await readFile(path.join(hostRoot, 'package.json'), 'utf8'));
+    if (hostManifest.dependencies?.['@saas-forge/react-shell'] !== 'workspace:*') {
+      violations.push(`${host.name} 必须消费共享 React Shell`);
     }
-  }
-  if (runtimeCreationCount !== 1) {
-    violations.push('Platform Console 必须且只能在宿主边界创建一个认证 Runtime');
-  }
-  if (fetchForwardingCount !== 1) {
-    violations.push('Platform Console 只能向共享 Runtime 提供一次原生 fetch 转发');
+    if (hostManifest.dependencies?.['@saas-forge/api-client'] !== undefined) {
+      violations.push(`${host.name} 不得直接依赖生成 API Client`);
+    }
+    let runtimeCreationCount = 0;
+    let fetchForwardingCount = 0;
+    for (const sourceFile of await listSourceFiles(path.join(hostRoot, 'src'))) {
+      const source = await readFile(sourceFile, 'utf8');
+      runtimeCreationCount += occurrences(source, 'createAuthenticationRuntimeAfterConfig(');
+      fetchForwardingCount += occurrences(source, 'fetch(input, init)');
+      if (
+        /credentials\s*:|Authorization|X-SF-CSRF|\bCookie\b|new\s+AuthenticationApi|@saas-forge\/api-client/.test(
+          source,
+        )
+      ) {
+        violations.push(`${relative(root, sourceFile)} 不得实现第二套认证或凭据请求`);
+      }
+      if (/class\s+\w*ErrorBoundary\s+extends/.test(source)) {
+        violations.push(`${relative(root, sourceFile)} 必须复用共享 React Shell 错误边界`);
+      }
+    }
+    if (runtimeCreationCount !== 1) {
+      violations.push(`${host.name} 必须且只能在宿主边界创建一个认证 Runtime`);
+    }
+    if (fetchForwardingCount !== 1) {
+      violations.push(`${host.name} 只能向共享 Runtime 提供一次原生 fetch 转发`);
+    }
   }
   return violations;
 }

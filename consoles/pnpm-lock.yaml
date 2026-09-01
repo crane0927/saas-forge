@@ -307,15 +307,15 @@ importers:
 
   tenant-console-shell:
     dependencies:
-      '@saas-forge/api-client':
-        specifier: workspace:*
-        version: link:../shared/api-client
       '@saas-forge/app-runtime':
         specifier: workspace:*
         version: link:../shared/app-runtime
       '@saas-forge/design-system':
         specifier: workspace:*
         version: link:../shared/design-system
+      '@saas-forge/react-shell':
+        specifier: workspace:*
+        version: link:../shared/react-shell
       react:
         specifier: 'catalog:'
         version: 19.2.8

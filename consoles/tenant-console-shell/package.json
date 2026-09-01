@@ -13,9 +13,9 @@
     "verify": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run test && pnpm run build"
   },
   "dependencies": {
-    "@saas-forge/api-client": "workspace:*",
     "@saas-forge/app-runtime": "workspace:*",
     "@saas-forge/design-system": "workspace:*",
+    "@saas-forge/react-shell": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-router": "catalog:"

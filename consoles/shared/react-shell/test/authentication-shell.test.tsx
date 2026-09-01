@@ -9,6 +9,84 @@ import { AuthenticationRootErrorBoundary, AuthenticationShell } from '../src';
 afterEach(cleanup);
 
 describe('AuthenticationShell', () => {
+  it('shows server-ordered Tenant Memberships and opens protected routes only after selection', async () => {
+    const firstMembershipId = '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6071';
+    const secondMembershipId = '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6074';
+    const fetch = vi
+      .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'CONTEXT_SELECTION_REQUIRED',
+          memberships: [
+            {
+              membershipId: firstMembershipId,
+              tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6072',
+              tenantDisplayName: '北辰科技',
+            },
+            {
+              membershipId: secondMembershipId,
+              tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6075',
+              tenantDisplayName: '云帆数据',
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'selected-tenant-token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      );
+    const runtimeResult = createAuthenticationRuntimeAfterConfig(
+      {
+        ok: true,
+        config: { schemaVersion: 1, apiBaseUrl: 'https://api.example.test' },
+      },
+      { realm: {}, intent: 'TENANT', fetch },
+    );
+    if (!runtimeResult.ok) {
+      throw new Error('test runtime creation failed');
+    }
+
+    render(
+      <DesignSystemProvider>
+        <MemoryRouter>
+          <AuthenticationShell
+            applicationName="Tenant Console"
+            runtime={runtimeResult.runtime}
+            defaultPath="/"
+            routes={[{ path: '/', label: '工作台', element: <h1>Tenant 工作台</h1> }]}
+          />
+        </MemoryRouter>
+      </DesignSystemProvider>,
+    );
+
+    fireEvent.change(await screen.findByLabelText(/^邮箱/), {
+      target: { value: 'member@example.test' },
+    });
+    fireEvent.change(screen.getByLabelText(/^密码/), { target: { value: 'secret' } });
+    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+
+    const heading = await screen.findByRole('heading', { name: '选择 Tenant' });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(heading);
+    });
+    const candidates = screen.getAllByRole('listitem');
+    expect(candidates.map((candidate) => candidate.textContent)).toEqual([
+      '北辰科技进入 北辰科技',
+      '云帆数据进入 云帆数据',
+    ]);
+    expect(screen.queryByRole('navigation')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '进入 云帆数据' }));
+
+    expect(await screen.findByRole('heading', { name: 'Tenant 工作台' })).toBeTruthy();
+    expect(jsonRequestBody(fetch.mock.calls[2])).toEqual({ membershipId: secondMembershipId });
+  });
+
   it('shows the Platform login after cold-start recovery finds no valid session', async () => {
     const runtimeResult = createAuthenticationRuntimeAfterConfig(
       {
@@ -337,7 +415,7 @@ describe('AuthenticationShell', () => {
     fireEvent.click(screen.getByRole('button', { name: '登录' }));
 
     expect(await screen.findByText('当前 Platform 会话槽位已有活动会话。')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '先登出当前会话' }));
+    fireEvent.click(screen.getByRole('button', { name: '先登出当前 Platform 会话' }));
 
     expect(await screen.findByRole('heading', { name: '登录 Platform Console' })).toBeTruthy();
     expect(fetch).toHaveBeenCalledTimes(3);
