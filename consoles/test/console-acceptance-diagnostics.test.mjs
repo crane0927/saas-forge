@@ -64,3 +64,40 @@ not ok 2 - PRIVATE_TEST_TITLE
     ].join('\n'),
   );
 });
+
+test('reports compatibility failures without exposing test titles or assertion payloads', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'sf-compatibility-diagnostics-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const log = join(directory, 'compatibility.log');
+  await writeFile(
+    log,
+    [
+      '\u001b[31m✖ PRIVATE_TEST_TITLE (30ms)\u001b[39m',
+      '  AssertionError: PRIVATE_ERROR_BODY',
+      '  actual: PRIVATE_ACCESS_TOKEN',
+      '  expected: PRIVATE_PASSWORD',
+      '  at TestContext.<anonymous> (/runner/consoles/integration-test/session-tabs.test.mjs:137:10)',
+      ' ❯ browser-test/design-system-consumers.browser.test.tsx:52:9',
+      ' ❯ browser-test/showcase.browser.test.tsx:28:3',
+      '  ERR_MODULE_NOT_FOUND: PRIVATE_IMPORT_TARGET',
+      'PRIVATE_STACK_VALUE',
+    ].join('\n'),
+  );
+  const script = fileURLToPath(
+    new URL('../scripts/summarize-authentication-failure.mjs', import.meta.url),
+  );
+  const { stdout, stderr } = await promisify(execFile)(process.execPath, [script, log]);
+  assert.equal(stderr, '');
+  assert.equal(
+    stdout,
+    [
+      'FAIL: compatibility test',
+      'CODE: AssertionError',
+      'AT: consoles/integration-test/session-tabs.test.mjs:137:10',
+      'AT: consoles/browser-test/design-system-consumers.browser.test.tsx:52:9',
+      'AT: consoles/shared/design-system/browser-test/showcase.browser.test.tsx:28:3',
+      'CODE: ERR_MODULE_NOT_FOUND',
+      '',
+    ].join('\n'),
+  );
+});

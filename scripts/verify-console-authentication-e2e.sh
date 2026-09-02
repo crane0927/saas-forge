@@ -73,8 +73,10 @@ stage() {
     local diagnostic_directory
     diagnostic_directory="$(mktemp -d "${TMPDIR:-/tmp}/sf-console-e2e-diagnostics.XXXXXX")"
     cp "$work_directory/$name.log" "$diagnostic_directory/$name.log"
-    if [[ "$name" == product-* ]]; then
+    if [[ "$name" == product-* || "$name" == console-browser-* ]]; then
       node "$repository_root/consoles/scripts/summarize-authentication-failure.mjs" "$work_directory/$name.log"
+    fi
+    if [[ "$name" == product-* ]]; then
       compose ps --format json >"$diagnostic_directory/compose-status.json" 2>&1 || true
       compose logs --no-color console-tls >"$diagnostic_directory/tls.log" 2>&1 || true
       compose logs --no-color gateway iam-service entitlement-service >"$diagnostic_directory/services.log" 2>&1 || true
@@ -262,7 +264,9 @@ if [[ -n "${SF_PRODUCT_CHANNEL:-}" ]]; then
   echo 'PASS: 聚焦产品用例通过；本命令不包含其他渠道或 Maven/workspace 门禁。'
   exit 0
 elif [[ "$acceptance_target" == ci ]]; then
-  stage console-browser-compatibility pnpm --dir "$repository_root/consoles" run test:browser:compatibility
+  for channel in chrome edge firefox webkit; do
+    stage "console-browser-$channel" pnpm --dir "$repository_root/consoles" run "test:browser:$channel"
+  done
 else
   stage console-browser-chrome pnpm --dir "$repository_root/consoles" run test:browser:chrome
   stage console-browser-webkit pnpm --dir "$repository_root/consoles" run test:browser:webkit

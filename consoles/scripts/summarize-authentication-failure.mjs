@@ -1,10 +1,11 @@
 import { readFile } from 'node:fs/promises';
+import { stripVTControlCharacters } from 'node:util';
 
 const log = await readFile(process.argv[2], 'utf8');
 // TAP 的标题、error、actual、expected 和堆栈文本都可能含凭据；只输出固定字段及已知源码位置。
 let diagnosticIndent;
 let field;
-for (const line of log.split('\n')) {
+for (const line of stripVTControlCharacters(log).split('\n')) {
   const indent = /^\s*/.exec(line)[0].length;
   if (diagnosticIndent === undefined && line.trim() === '---') {
     diagnosticIndent = indent;
@@ -42,13 +43,31 @@ for (const line of log.split('\n')) {
       (field === 'stack' && indent > diagnosticIndent)
     ) {
       const source =
-        /\b(consoles\/integration-test\/(?:console-authentication\.test|console-client-acceptance|console-problem-acceptance)\.mjs:\d+:\d+)\b/.exec(
+        /\b(consoles\/integration-test\/(?:console-authentication\.test|console-client-acceptance|console-problem-acceptance|session-tabs\.test|console-default-realm\.test)\.mjs:\d+:\d+)\b/.exec(
           line,
         );
       if (source) console.info(`AT: ${source[1]}`);
     }
     continue;
   }
+  // Vitest 和 Node spec reporter 不使用 TAP 字段；仅保留固定错误码及已知测试文件位置。
+  if (/^\s*[✖×] /.test(line)) console.info('FAIL: compatibility test');
+  const compatibilityCode =
+    /\b(AssertionError|TimeoutError|ERR_ASSERTION|ERR_MODULE_NOT_FOUND|ERR_PNPM_NO_SCRIPT|ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL|ERR_PNPM_UNSUPPORTED_ENGINE|ECONNREFUSED|EADDRINUSE|ENOSPC|EACCES|ETIMEDOUT)\b/.exec(
+      line,
+    );
+  if (compatibilityCode) console.info(`CODE: ${compatibilityCode[1]}`);
+  const compatibilitySource =
+    /\b(consoles\/integration-test\/(?:session-tabs|console-default-realm)\.test\.mjs:\d+:\d+)\b/.exec(
+      line,
+    );
+  if (compatibilitySource) console.info(`AT: ${compatibilitySource[1]}`);
+  const consumer = /\bbrowser-test\/design-system-consumers\.browser\.test\.tsx:\d+:\d+\b/.exec(
+    line,
+  );
+  if (consumer) console.info(`AT: consoles/${consumer[0]}`);
+  const showcase = /\bbrowser-test\/showcase\.browser\.test\.tsx:\d+:\d+\b/.exec(line);
+  if (showcase) console.info(`AT: consoles/shared/design-system/${showcase[0]}`);
   const failure = /^\s*not ok (\d+)\b/.exec(line);
   if (failure) console.info(`FAIL: test ${failure[1]}`);
   if (/^# (?:tests|pass|fail|cancelled|skipped|todo|duration_ms) \d+(?:\.\d+)?$/.test(line)) {

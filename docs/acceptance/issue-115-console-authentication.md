@@ -1,16 +1,14 @@
 # Issue #115：Console 真实产品聚合验收
 
-状态：**未完成；CI 示例根域对照已使 Linux WebKit 全部产品用例通过，Firefox 证书信任也已通过真实 TLS 验证。最新 Firefox 产品为 15/16，剩余失败在安全负向的 CORS 控制台观察断言；正在补充真实上游响应证据。** 本文不构成 PRD #108 完成证据，远端 Issue 中原有 `.saasforge.test` 条款尚未调整。
+状态：**五渠道真实产品用例已全部通过，完整聚合仍未通过：末尾兼容门禁汇总失败，其失败明细尚未取得。** 本文不构成 PRD #108 完成证据，远端 Issue 中原有 `.saasforge.test` 条款尚未调整。
 
 | 最新门禁 | 当前直接结果 |
 | --- | --- |
 | 本地 Chromium / WebKit / Chrome 真实产品 | 各 16 通过，0 失败，0 跳过；本地聚合补跑曾遇到 TLS 连接中断 |
-| CI 示例根域 WebKit / Chromium 真实产品 | `9600669` 各 16/16，0 失败/跳过 |
-| CI Firefox 真实产品 | `647191d` 15/16，0 跳过；失败在 CORS 控制台观察 |
-| CI Chrome / Edge 真实产品 | 尚未完成 |
-| 五渠道真实 TLS 预检 | `647191d` 全部通过，包括 Firefox / Edge |
-| CI Verify | `647191d` 首次运行全部通过：四个兼容渠道、JDK 17/21、Nacos、生命周期 E2E |
-| 最新完整产品聚合 | 仍未通过；后续渠道受前面失败阻断 |
+| CI 五渠道真实产品 | `cef0569` 的 Firefox、WebKit、Chromium、Chrome、Edge 各 16/16，0 失败/跳过 |
+| 五渠道真实 TLS 预检 | `cef0569` 全部通过 |
+| CI Verify | `cef0569` 首次运行全部通过：四个兼容渠道、JDK 17/21、Nacos、生命周期 E2E |
+| 最新完整产品聚合 | Maven、构建、五次 Fresh Compose / TLS / 产品测试通过；末尾兼容门禁汇总失败 |
 
 以下历史记录保留各轮失败、修复与证据范围；上述结果表只汇总最新确认状态。
 
@@ -263,6 +261,12 @@ CI 安装的是 libsoup `3.4.4-5ubuntu0.7`。[libsoup Cookie 接收逻辑](https
 提交 `647191d` 的 [Verify](https://github.com/crane0927/saas-forge/actions/runs/33640770715) 首次运行全部通过。[产品验收](https://github.com/crane0927/saas-forge/actions/runs/33640770708) 五渠道临时 TLS 导航均通过，Firefox 正式产品 15/16、0 跳过；首次改密、双槽位、多标签页、Lease 回退等产品路径已通过。唯一失败位于 `console-authentication.test.mjs:920`：非法 CSRF 请求的 fetch 已被拒绝，但观察器未收到匹配的 CORS 控制台文本。其前的正常请求 204 和浏览器管理的 Origin / same-site 断言已通过；尚不能凭该日志判断控制台消息缺失的具体原因。
 
 修正只涉及验收取证：复用现有随机 `acceptanceProbe`，由隔离 TLS 代理记录原样转发的上游响应是否为 403、是否存在 Access-Control-Allow-Origin，不输出响应体、头值或凭据。两个 CORS 负向请求必须同时满足浏览器 fetch 拒绝、真实 Gateway 403、无允许头、前后健康请求 204 与最终无 Cookie；不依赖各引擎的控制台文案。Intent 403、opaque cross-site 和全部安全策略保持原样。相关 ESLint、格式、语法与 diff 检查通过，真实五渠道仍待下一轮 CI；未本地执行 Firefox/Edge。
+
+## 五渠道产品通过，兼容汇总待定位
+
+提交 `cef0569` 的 [Verify](https://github.com/crane0927/saas-forge/actions/runs/33643294888) 全部通过。[完整产品任务](https://github.com/crane0927/saas-forge/actions/runs/33643294905) 按 Firefox → WebKit → Chromium → Chrome → Edge 执行，每个渠道均为 16 通过、0 失败、0 跳过，各自重新创建数据卷、引导账户、启动服务并验证受信 TLS。CORS 负向修正已由五渠道真实 Gateway 403 / 无允许头及浏览器拒绝证据通过验证。
+
+产品之后的 `console-browser-compatibility` 返回非零。该阶段原先只保留 runner 临时原始日志，未输出安全摘要，任务结束后无法取得具体失败；不能用同提交独立兼容任务均通过推断汇总成功。现将相同四个兼容命令分别记账，并扩展摘要支持 Vitest / Node spec reporter 的固定错误码和已知测试位置；不输出测试标题、断言值、任意堆栈或响应。公开 CLI 回归先 RED 后 GREEN，全部 13 条边界/诊断测试、lint、格式、Shell 语法与 diff 检查通过。未调整产品行为或测试时序，待 CI 给出剩余失败证据。
 
 ## 最终验收待办
 
