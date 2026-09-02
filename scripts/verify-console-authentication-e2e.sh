@@ -227,11 +227,11 @@ console.info('All three host HTTPS entrypoints returned 200 with certificate ver
 JS
 }
 
-# 各渠道使用独立数据卷；优先验证当前需要定位的 WebKit，避免晚到的失败反馈。
+# 各渠道使用独立数据卷；CI 优先验证本次补齐证书信任的 Firefox。
 engines=(webkit chromium)
 channels=(chrome)
 if [[ "$acceptance_target" == ci ]]; then
-  engines+=(firefox)
+  engines=(firefox webkit chromium)
   channels+=(msedge)
 fi
 if [[ -n "${SF_PRODUCT_CHANNEL:-}" ]]; then

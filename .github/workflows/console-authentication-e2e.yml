@@ -90,17 +90,15 @@ jobs:
             certutil -A -d "sql:$nss_directory" -n 'SaaS Forge CI Acceptance CA' \
               -t 'C,,' -i "$tls_directory/root-ca.pem"
           done
-          # Playwright Firefox 的临时 profile 通过正式企业证书策略导入本次 CA。
-          firefox_directory="$(node -p "require('node:path').dirname(require('playwright').firefox.executablePath())")"
-          mkdir -p "$firefox_directory/distribution"
-          test ! -e "$firefox_directory/distribution/policies.json"
+          # Playwright 指定 alternatePath，必须显式传入企业证书策略文件。
           node -e 'require("node:fs").writeFileSync(process.argv[1], JSON.stringify({policies:{Certificates:{Install:[process.argv[2]]}}}))' \
-            "$firefox_directory/distribution/policies.json" "$tls_directory/root-ca.pem"
+            "$tls_directory/firefox-policies.json" "$tls_directory/root-ca.pem"
           printf '\n127.0.0.1 platform.saasforge.example.com console.saasforge.example.com api.saasforge.example.com\n' | sudo tee -a /etc/hosts >/dev/null
           {
             printf 'SF_ACCEPTANCE_TLS_CERT=%s\n' "$tls_directory/server.pem"
             printf 'SF_ACCEPTANCE_TLS_KEY=%s\n' "$tls_directory/server.key"
             printf 'NODE_EXTRA_CA_CERTS=%s\n' "$tls_directory/root-ca.pem"
+            printf 'PLAYWRIGHT_FIREFOX_POLICIES_JSON=%s\n' "$tls_directory/firefox-policies.json"
           } >> "$GITHUB_ENV"
       - name: Verify actual Console product paths through fresh services
         run: bash scripts/verify-console-authentication-e2e.sh

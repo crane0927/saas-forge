@@ -1,6 +1,7 @@
 import { X509Certificate, createPublicKey } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { readFile } from 'node:fs/promises';
+import { createServer } from 'node:https';
 import { createConnection } from 'node:net';
 import { isAbsolute } from 'node:path';
 import { chromium, firefox, webkit } from 'playwright';
@@ -76,19 +77,60 @@ else
   console.info(
     'SCOPE: local；Firefox 与 Microsoft Edge 必须由真实产品 CI 补齐，不能据此声明聚合通过',
   );
+// 在长时间构建前验证浏览器实际信任；临时监听仅绑定回环随机端口，不替代正式 443 产品路径。
+let tlsServer;
+if (problems.length === 0) {
+  tlsServer = createServer(
+    { cert: await readFile(certFile), key: await readFile(keyFile) },
+    (_request, response) => response.end('TLS acceptance preflight'),
+  );
+  await new Promise((resolve, reject) => {
+    tlsServer.once('error', reject);
+    tlsServer.listen(0, '127.0.0.1', resolve);
+  });
+}
 for (const [name, engine, channel] of browsers) {
+  let browser;
   try {
-    const browser = await engine.launch({ channel });
+    browser = await engine.launch({ channel });
+    if (tlsServer) {
+      const page = await browser.newPage({ ignoreHTTPSErrors: false });
+      for (const host of hosts) {
+        const response = await page.goto(`https://${host}:${tlsServer.address().port}/`, {
+          timeout: 10_000,
+        });
+        if (response.status() !== 200) throw new Error('TLS preflight response unavailable');
+      }
+    }
     console.info(`READY: ${name} ${browser.version()}`);
-    await browser.close();
-  } catch {
-    blocked(`${name} 无法启动；必须安装对应引擎/实机渠道，不得跳过`);
+  } catch (error) {
+    const code = [
+      'SEC_ERROR_UNKNOWN_ISSUER',
+      'SEC_ERROR_EXPIRED_CERTIFICATE',
+      'SSL_ERROR_BAD_CERT_DOMAIN',
+      'MOZILLA_PKIX_ERROR_SELF_SIGNED_CERT',
+      'NS_ERROR_UNKNOWN_HOST',
+      'NS_ERROR_CONNECTION_REFUSED',
+      'NS_ERROR_NET_RESET',
+      'ERR_CERT_AUTHORITY_INVALID',
+      'ERR_CERT_COMMON_NAME_INVALID',
+      'ERR_CERT_DATE_INVALID',
+    ].find((value) => error?.message?.includes(value));
+    blocked(
+      `${name} 无法启动或未通过真实 TLS 导航预检${code ? ` [${code}]` : ''}；不得跳过或忽略证书错误`,
+    );
+  } finally {
+    await browser?.close();
   }
+}
+if (tlsServer) {
+  tlsServer.closeAllConnections();
+  await new Promise((resolve) => tlsServer.close(resolve));
 }
 
 if (problems.length) {
   process.exitCode = 1;
 } else {
-  console.info(`PASS: ${target} 的 DNS、证书材料、443 端口及浏览器渠道预检通过`);
-  console.info('证书信任仍须由各浏览器在 ignoreHTTPSErrors=false 下访问真实 TLS 入口验证。');
+  console.info(`PASS: ${target} 的 DNS、证书材料、443 端口及浏览器 TLS 导航预检通过`);
+  console.info('正式 443 产品路径仍须经过 Fresh Compose 和真实服务验证。');
 }

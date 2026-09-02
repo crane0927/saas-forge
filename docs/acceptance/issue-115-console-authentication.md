@@ -31,7 +31,7 @@
 
 ## 入口与环境约束
 
-- `scripts/verify-console-authentication-e2e.sh --preflight`：检查固定 Node/pnpm、Docker、证书材料、DNS、443 监听冲突与当前执行环境要求的浏览器渠道。`SF_ACCEPTANCE_TARGET=local`（默认）要求 Chromium/Chrome/WebKit；`ci` 要求全部五个渠道。
+- `scripts/verify-console-authentication-e2e.sh --preflight`：检查固定 Node/pnpm、Docker、证书材料、DNS、443 监听冲突与当前执行环境要求的浏览器渠道，并以回环临时 HTTPS 验证三个 Host 的浏览器证书信任。`SF_ACCEPTANCE_TARGET=local`（默认）要求 Chromium/Chrome/WebKit；`ci` 要求全部五个渠道。
 - `scripts/verify-console-authentication-e2e.sh --product`：用于 TDD 重跑当前产品切片及当前环境的浏览器门禁，复用已有 JAR/dist，不重跑 Maven/workspace 门禁；不能作为完整聚合命令的成功证据。
 - 本地 TDD 可设置 `SF_PRODUCT_CHANNEL=chromium|webkit|chrome` 并使用 `--product`，仅执行所选产品渠道，跳过其他渠道和兼容门禁；该选项禁止用于 CI 或完整入口。用例通过时返回 0，并明确列出未执行的门禁。
 - `scripts/verify-console-authentication-e2e.sh`：预检成功后才执行 Maven/Console 验证、构建独立应用镜像、创建全新随机 Compose 项目、初始化 Signing Key/引导账户、启动三个 TLS Origin 并运行现有产品切片。
@@ -258,6 +258,10 @@ CI 安装的是 libsoup `3.4.4-5ubuntu0.7`。[libsoup Cookie 接收逻辑](https
 新增 Linux libsoup 公共函数对照观察，只输出两组公开域名是否具有相同基础域，不输出 Cookie 或凭据。本地 12 条边界/诊断测试、相关 ESLint、JS/Shell 语法、YAML 和 diff 检查通过；使用占位配置验证两个根域均准确传入 Gateway、IAM 和三个入口。尚待本次 CI 的真实产品结果；未修改本机 hosts、信任库或浏览器安装，未修改远端 Issue 验收条款。
 
 提交 `1efe67b` 的 [Verify](https://github.com/crane0927/saas-forge/actions/runs/33635862151) 全部通过。[产品对照](https://github.com/crane0927/saas-forge/actions/runs/33635862213) 直接输出 `saasforge.test sharedBase=false`、`saasforge.example.com sharedBase=true`。WebKit 首次改密及其后的双槽位、Membership、Tenant Switch、多标签页、Lease 回退、路由错误与正式 Client 场景已进入并通过；共执行 16 条，13 通过、3 失败（两个叶子断言失败及其父测试）。剩余断言位于存储安全检查和请求错误检查，二者的会话键白名单正则仍写死 `.saasforge.test`。本次只将这两处改为配置根域下的精确键名比较，继续限制 PLATFORM/TENANT、generation/logoutPending 以及原有值校验；相关 lint/格式通过，需下一轮 CI 复验。
+
+提交 `9600669` 的[产品验收](https://github.com/crane0927/saas-forge/actions/runs/33637759472)中，WebKit、Chromium 均为 16/16、0 失败/跳过，证明根域对照和存储检查已通过。Firefox 随后在初始导航阶段 6/6 失败，尚未进入认证断言，Chrome/Edge 产品渠道未执行。[Verify](https://github.com/crane0927/saas-forge/actions/runs/33637759471) 的 Nacos 初始化首次失败于 `nacos-init` 退出 1，同一提交单独重跑该任务后 4m23s 通过，其他门禁均通过；首次初始化失败的具体原因尚未确定，未修改 Nacos 代码或配置。
+
+检查实际缓存的 Firefox 1538 `playwright.cfg` 及[官方源码](https://github.com/microsoft/playwright/blob/main/browser_patches/firefox/preferences/playwright.cfg)，确认策略通过 `PLAYWRIGHT_FIREFOX_POLICIES_JSON` 指定，而原工作流仅写普通 Firefox 的 distribution 目录。现将相同证书安装策略保存在本次临时 TLS 目录并导出该环境变量；不设置忽略 TLS、不调整浏览器安全边界。新增预检用本次证书在回环随机端口提供临时 HTTPS，并由每个所需浏览器正常验证三个受控 Host，提前发现信任问题；正式产品仍必须通过 443 与全部真实服务。CI 优先运行 Firefox，但保留所有渠道及原断言。上述修正尚待 CI 复验，未在本机安装或运行 Firefox/Edge。
 
 ## 最终验收待办
 
