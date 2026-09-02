@@ -17,6 +17,35 @@ tags:
   - name: Platform entitlement bootstrap
   - name: OAuth clients
 paths:
+  /api/v1/auth/context:
+    get:
+      tags: [Authentication]
+      operationId: getCurrentTenantContext
+      x-saasforge-service: iam-service
+      summary: Read the current Tenant Context without rotating the browser session
+      description: |
+        Uses only the verified User Access Token to select the current Membership and Tenant.
+        Returns the authoritative Accessible Membership and brand snapshot for this tab.
+        Does not accept a client-selected Tenant, consume a Refresh Token or set cookies.
+        Platform and Service Access Tokens cannot read a Tenant Context.
+      security: [{ UserBearerAuth: [] }]
+      responses:
+        '200':
+          description: Current Tenant Context; never cached.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantAuthenticationContext' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
   /api/v1/auth/login:
     post:
       tags: [Authentication]

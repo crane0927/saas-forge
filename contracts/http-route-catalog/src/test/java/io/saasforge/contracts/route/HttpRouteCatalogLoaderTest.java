@@ -16,7 +16,7 @@ class HttpRouteCatalogLoaderTest {
                 .anyMatch(route -> "acceptPlatformMechanismServiceToken".equals(route.operationId()));
 
         assertEquals(HttpRouteCatalogLoader.SUPPORTED_SCHEMA_VERSION, catalog.schemaVersion());
-        assertEquals(acceptanceOverlay ? 26 : 25, catalog.routes().size());
+        assertEquals(acceptanceOverlay ? 27 : 26, catalog.routes().size());
     }
 
     @Test

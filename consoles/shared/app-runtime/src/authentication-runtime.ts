@@ -10,6 +10,7 @@ import {
 } from '@saas-forge/api-client';
 
 import type { RuntimeConfig, RuntimeConfigError, RuntimeConfigResult } from './runtime-config';
+import { createBrowserSession } from './browser-session';
 
 export type AuthenticationIntent = 'PLATFORM' | 'TENANT';
 export type AuthenticationTransition =
@@ -20,6 +21,7 @@ export type AuthenticationTransition =
   | 'logout'
   | 'refresh'
   | 'tenantSwitch'
+  | 'sessionSync'
   | 'tenantSwitchRefresh';
 
 export interface AnonymousAuthenticationState {
@@ -31,6 +33,7 @@ export interface AuthenticatedAuthenticationState {
   readonly status: 'authenticated';
   readonly transition: AuthenticationTransition | null;
   readonly tenantContext?: TenantAuthenticationContext;
+  readonly synchronizationProblem?: AuthenticationProblem;
 }
 
 export interface TenantBrandProfileSnapshot {
@@ -234,8 +237,16 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
   let accessToken: string | undefined;
   let expiresAt: number | undefined;
   let logoutIdempotencyKey: string | undefined;
+  let logoutAccessToken: string | undefined;
   let slotLogoutAllowed = false;
   let refreshPromise: Promise<AuthenticationProblem | undefined> | undefined;
+  let businessRefreshKey: string | undefined;
+  let businessRefreshEpoch = 0;
+  let businessRetryAt = 0;
+  let businessRetryProblem: AuthenticationProblem | undefined;
+  let switchRefreshKey: string | undefined;
+  let switchRetryAt = 0;
+  let switchRetryProblem: AuthenticationProblem | undefined;
   const operationKeys = new WeakMap<IdempotentOperationHandle, string>();
   const listeners = new Set<AuthenticationListener>();
   const publish = (nextState: AuthenticationState): void => {
@@ -244,9 +255,56 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
       listener(state);
     }
   };
+  let sessionEpoch = 0;
+  const now = options.now ?? Date.now;
+  let synchronizationRetryAt = 0;
+  const session = createBrowserSession(
+    options.realm,
+    options.config.apiBaseUrl,
+    options.intent,
+    async (message) => {
+      const epoch = ++sessionEpoch;
+      if (message.event === 'session-ended') {
+        accessToken = undefined;
+        expiresAt = undefined;
+        publish({ status: 'anonymous', transition: null });
+        return;
+      }
+      accessToken = message.accessToken;
+      expiresAt = message.expiresAt;
+      if (options.intent === 'TENANT') {
+        publish({ status: 'authenticated', transition: 'sessionSync' });
+        await synchronizeTenantContext(epoch);
+        return;
+      }
+      publish({ status: 'authenticated', transition: null });
+    },
+    () => {
+      sessionEpoch += 1;
+      accessToken = undefined;
+      expiresAt = undefined;
+      publish({ status: 'logoutPending', transition: null });
+    },
+    () => {
+      sessionEpoch += 1;
+      accessToken = undefined;
+      expiresAt = undefined;
+      if (state.status === 'authenticated')
+        publish({
+          status: 'authenticated',
+          transition: 'sessionSync',
+          synchronizationProblem: { code: 'SESSION_CHANGED' },
+        });
+      else if (state.status !== 'logoutPending') publish({ status: 'anonymous', transition: null });
+    },
+    now,
+  );
+  if (session.isLogoutPending()) state = { status: 'logoutPending', transition: null };
   let recoveryAttempted = false;
   let recoveryPending = false;
-  const now = options.now ?? Date.now;
+  let recoveryKey: string | undefined;
+  let recoveryRetryAt = 0;
+  let recoveryRetryProblem: AuthenticationProblem | undefined;
   const createIdempotencyKey = options.createIdempotencyKey ?? (() => createUuidV7(now()));
   const generatedFetch: AuthenticationFetch = async (input, init) => {
     const response = await options.fetch(input, sanitizeBrowserRequest(init));
@@ -279,6 +337,48 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
     }),
   );
 
+  async function synchronizeTenantContext(
+    epoch: number,
+    signal?: AbortSignal,
+  ): Promise<AuthenticationOperationResult> {
+    let problem: AuthenticationProblem;
+    try {
+      const context = parseTenantAuthenticationContext(
+        await authenticationApi.getCurrentTenantContext({ signal }),
+      );
+      if (epoch !== sessionEpoch || session.isLogoutPending())
+        return { ok: false, problem: { code: 'SESSION_ENDED' } };
+      if (context !== undefined) {
+        publish(authenticatedTransitionState(null, context));
+        synchronizationRetryAt = 0;
+        return { ok: true, state };
+      }
+      problem = { code: 'INVALID_SERVICE_RESPONSE' };
+    } catch (error) {
+      if (epoch !== sessionEpoch || session.isLogoutPending())
+        return { ok: false, problem: { code: 'SESSION_ENDED' } };
+      problem = await normalizeOperationError(error);
+      if (epoch !== sessionEpoch || session.isLogoutPending())
+        return { ok: false, problem: { code: 'SESSION_ENDED' } };
+      if (
+        error instanceof ResponseError &&
+        (error.response.status === 401 || error.response.status === 403)
+      ) {
+        publish({ status: 'anonymous', transition: null });
+        // 广播接收不持锁；先完成接收再排队发布失效，避免等待自己的 receipt。
+        void invalidateRejectedToken(accessToken);
+        return { ok: false, problem };
+      }
+    }
+    synchronizationRetryAt = now() + (problem.retryAfterSeconds ?? 0) * 1_000;
+    publish({
+      status: 'authenticated',
+      transition: 'sessionSync',
+      synchronizationProblem: problem,
+    });
+    return { ok: false, problem };
+  }
+
   async function refreshForBusinessRequest(
     signal?: AbortSignal,
   ): Promise<AuthenticationProblem | undefined> {
@@ -292,9 +392,31 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
       return { code: 'INVALID_AUTHENTICATION_TRANSITION' };
     }
     const currentTenantContext = state.tenantContext;
+    if (businessRefreshEpoch !== sessionEpoch) {
+      businessRefreshEpoch = sessionEpoch;
+      businessRefreshKey = undefined;
+      businessRetryAt = 0;
+      businessRetryProblem = undefined;
+    }
+    if (now() < businessRetryAt && businessRetryProblem !== undefined) {
+      return {
+        ...businessRetryProblem,
+        retryAfterSeconds: Math.ceil((businessRetryAt - now()) / 1_000),
+      };
+    }
     publish(authenticatedTransitionState('refresh', currentTenantContext));
-    refreshPromise = (async () => {
-      const idempotencyKey = createIdempotencyKey();
+    refreshPromise = session.run(async (changed) => {
+      if (
+        changed &&
+        state.status === 'authenticated' &&
+        accessToken !== undefined &&
+        expiresAt !== undefined &&
+        expiresAt > now()
+      ) {
+        return undefined;
+      }
+      const epoch = sessionEpoch;
+      const idempotencyKey = (businessRefreshKey ??= createIdempotencyKey());
       if (!UUID_V7.test(idempotencyKey)) {
         publish(authenticatedTransitionState(null, currentTenantContext));
         return { code: 'INVALID_IDEMPOTENCY_KEY' };
@@ -311,6 +433,7 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
           { signal },
         );
       } catch (error) {
+        if (session.isLogoutPending() || epoch !== sessionEpoch) return { code: 'SESSION_ENDED' };
         if (
           error instanceof ResponseError &&
           (error.response.status === 401 || error.response.status === 403)
@@ -318,11 +441,17 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
           accessToken = undefined;
           expiresAt = undefined;
           publish({ status: 'anonymous', transition: null });
+          sessionEpoch += 1;
+          session.ended();
+          businessRefreshKey = undefined;
           return { code: 'SESSION_ENDED' };
         }
         publish(authenticatedTransitionState(null, currentTenantContext));
-        return normalizeOperationError(error);
+        businessRetryProblem = await normalizeOperationError(error);
+        businessRetryAt = now() + (businessRetryProblem.retryAfterSeconds ?? 0) * 1_000;
+        return businessRetryProblem;
       }
+      if (session.isLogoutPending() || epoch !== sessionEpoch) return { code: 'SESSION_ENDED' };
       const parsed = parseAuthenticationResponse(response, options.intent);
       if (parsed?.status !== 'authenticated') {
         publish(authenticatedTransitionState(null, currentTenantContext));
@@ -331,8 +460,11 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
       accessToken = parsed.accessToken;
       expiresAt = now() + parsed.expiresIn * 1_000;
       publish(toAuthenticatedState(parsed));
+      session.authenticated(accessToken, expiresAt);
+      businessRefreshKey = undefined;
+      businessRetryAt = 0;
       return undefined;
-    })();
+    });
     try {
       return await refreshPromise;
     } finally {
@@ -366,6 +498,7 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
       operationKeys.set(handle, idempotencyKey);
     }
     if (
+      session.isLogoutPending() ||
       state.status !== 'authenticated' ||
       (state.transition !== null && state.transition !== 'refresh') ||
       accessToken === undefined ||
@@ -383,25 +516,34 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
         return { ok: false, problem, operationHandle: handle };
       }
     }
+    let requestEpoch = sessionEpoch;
     try {
       const value = await execute(idempotencyKey);
+      if (requestEpoch !== sessionEpoch)
+        return { ok: false, problem: { code: 'SESSION_CHANGED' }, operationHandle: handle };
       operationKeys.delete(handle);
       return { ok: true, value };
     } catch (error) {
+      if (requestEpoch !== sessionEpoch)
+        return { ok: false, problem: { code: 'SESSION_CHANGED' }, operationHandle: handle };
       if (error instanceof ResponseError && error.response.status === 401) {
         const problem = await refreshForBusinessRequest(signal);
         if (problem !== undefined) {
           return { ok: false, problem, operationHandle: handle };
         }
+        const replayToken = accessToken;
+        requestEpoch = sessionEpoch;
         try {
           const value = await execute(idempotencyKey);
+          if (requestEpoch !== sessionEpoch)
+            return { ok: false, problem: { code: 'SESSION_CHANGED' }, operationHandle: handle };
           operationKeys.delete(handle);
           return { ok: true, value };
         } catch (replayError) {
+          if (requestEpoch !== sessionEpoch)
+            return { ok: false, problem: { code: 'SESSION_CHANGED' }, operationHandle: handle };
           if (replayError instanceof ResponseError && replayError.response.status === 401) {
-            accessToken = undefined;
-            expiresAt = undefined;
-            publish({ status: 'anonymous', transition: null });
+            await invalidateRejectedToken(replayToken);
             return {
               ok: false,
               problem: { code: 'SESSION_ENDED' },
@@ -426,6 +568,7 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
   const client: ConsoleApiClient = {
     getOAuthClient: async ({ clientId, signal }) => {
       if (
+        session.isLogoutPending() ||
         state.status !== 'authenticated' ||
         (state.transition !== null && state.transition !== 'refresh') ||
         accessToken === undefined ||
@@ -439,23 +582,32 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
           return { ok: false, problem };
         }
       }
+      let requestEpoch = sessionEpoch;
       try {
         const value = await oauthClientsApi.getOAuthClient({ clientId }, { signal });
+        if (requestEpoch !== sessionEpoch)
+          return { ok: false, problem: { code: 'SESSION_CHANGED' } };
         return { ok: true, value };
       } catch (error) {
+        if (requestEpoch !== sessionEpoch)
+          return { ok: false, problem: { code: 'SESSION_CHANGED' } };
         if (error instanceof ResponseError && error.response.status === 401) {
           const refreshProblem = await refreshForBusinessRequest(signal);
           if (refreshProblem !== undefined) {
             return { ok: false, problem: refreshProblem };
           }
+          const replayToken = accessToken;
+          requestEpoch = sessionEpoch;
           try {
             const value = await oauthClientsApi.getOAuthClient({ clientId }, { signal });
+            if (requestEpoch !== sessionEpoch)
+              return { ok: false, problem: { code: 'SESSION_CHANGED' } };
             return { ok: true, value };
           } catch (replayError) {
+            if (requestEpoch !== sessionEpoch)
+              return { ok: false, problem: { code: 'SESSION_CHANGED' } };
             if (replayError instanceof ResponseError && replayError.response.status === 401) {
-              accessToken = undefined;
-              expiresAt = undefined;
-              publish({ status: 'anonymous', transition: null });
+              await invalidateRejectedToken(replayToken);
               return { ok: false, problem: { code: 'SESSION_ENDED' } };
             }
             return { ok: false, problem: await normalizeOperationError(replayError) };
@@ -473,6 +625,17 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
       ),
   };
 
+  async function invalidateRejectedToken(rejectedToken: string | undefined): Promise<void> {
+    await session.run(() => {
+      if (session.isLogoutPending() || accessToken !== rejectedToken) return;
+      sessionEpoch += 1;
+      accessToken = undefined;
+      expiresAt = undefined;
+      publish({ status: 'anonymous', transition: null });
+      session.ended();
+    });
+  }
+
   const runtime: AuthenticationRuntime = {
     intent: options.intent,
     client,
@@ -482,6 +645,7 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
       return () => listeners.delete(listener);
     },
     recover: async (signal) => {
+      const epoch = sessionEpoch;
       if (recoveryAttempted) {
         return { ok: false, problem: { code: 'RECOVERY_ALREADY_ATTEMPTED' } };
       }
@@ -490,7 +654,7 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
       }
       recoveryAttempted = true;
       publish({ ...state, transition: 'recover' });
-      const idempotencyKey = createIdempotencyKey();
+      const idempotencyKey = (recoveryKey ??= createIdempotencyKey());
       if (!UUID_V7.test(idempotencyKey)) {
         publish({ status: 'anonymous', transition: null });
         return { ok: false, problem: { code: 'INVALID_IDEMPOTENCY_KEY' } };
@@ -507,6 +671,8 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
           { signal },
         );
       } catch (error) {
+        if (epoch !== sessionEpoch || session.isLogoutPending())
+          return { ok: false, problem: { code: 'SESSION_ENDED' } };
         publish({ status: 'anonymous', transition: null });
         if (
           error instanceof ResponseError &&
@@ -515,14 +681,20 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
           accessToken = undefined;
           expiresAt = undefined;
           recoveryPending = false;
+          recoveryKey = undefined;
+          session.ended();
           return { ok: true, state };
         }
         recoveryPending =
           error instanceof FetchError ||
           (error instanceof ResponseError &&
             (error.response.status === 409 || error.response.status === 503));
-        return { ok: false, problem: await normalizeOperationError(error) };
+        recoveryRetryProblem = await normalizeOperationError(error);
+        recoveryRetryAt = now() + (recoveryRetryProblem.retryAfterSeconds ?? 0) * 1_000;
+        return { ok: false, problem: recoveryRetryProblem };
       }
+      if (epoch !== sessionEpoch || session.isLogoutPending())
+        return { ok: false, problem: { code: 'SESSION_ENDED' } };
       const authenticatedState = parseAuthenticationResponse(response, options.intent);
       if (authenticatedState === undefined) {
         publish({ status: 'anonymous', transition: null });
@@ -536,17 +708,55 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
         publish(authenticatedState.state);
       }
       recoveryPending = false;
+      recoveryKey = undefined;
       return { ok: true, state };
     },
     retryRecovery: async (signal) => {
+      if (
+        state.status === 'authenticated' &&
+        state.transition === 'sessionSync' &&
+        accessToken === undefined &&
+        !session.isLogoutPending()
+      ) {
+        publish({ status: 'anonymous', transition: null });
+        recoveryAttempted = false;
+        recoveryKey = undefined;
+        return runtime.recover(signal);
+      }
+      if (
+        state.status === 'authenticated' &&
+        state.transition === 'sessionSync' &&
+        state.synchronizationProblem !== undefined
+      ) {
+        if (now() < synchronizationRetryAt)
+          return {
+            ok: false,
+            problem: {
+              ...state.synchronizationProblem,
+              retryAfterSeconds: Math.ceil((synchronizationRetryAt - now()) / 1_000),
+            },
+          };
+        publish({ status: 'authenticated', transition: 'sessionSync' });
+        return synchronizeTenantContext(sessionEpoch, signal);
+      }
       if (!recoveryPending || state.status !== 'anonymous' || state.transition !== null) {
         return { ok: false, problem: { code: 'INVALID_AUTHENTICATION_TRANSITION' } };
+      }
+      if (now() < recoveryRetryAt && recoveryRetryProblem !== undefined) {
+        return {
+          ok: false,
+          problem: {
+            ...recoveryRetryProblem,
+            retryAfterSeconds: Math.ceil((recoveryRetryAt - now()) / 1_000),
+          },
+        };
       }
       recoveryPending = false;
       recoveryAttempted = false;
       return runtime.recover(signal);
     },
     login: async ({ email, password, signal }) => {
+      const epoch = sessionEpoch;
       if (state.status !== 'anonymous' || state.transition !== null) {
         return { ok: false, problem: { code: 'INVALID_AUTHENTICATION_TRANSITION' } };
       }
@@ -562,11 +772,15 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
           { signal },
         );
       } catch (error) {
+        if (epoch !== sessionEpoch || session.isLogoutPending())
+          return { ok: false, problem: { code: 'SESSION_ENDED' } };
         publish({ status: 'anonymous', transition: null });
         const problem = await normalizeOperationError(error);
         slotLogoutAllowed = problem.code === 'SESSION_SLOT_ALREADY_ACTIVE';
         return { ok: false, problem };
       }
+      if (epoch !== sessionEpoch || session.isLogoutPending())
+        return { ok: false, problem: { code: 'SESSION_ENDED' } };
       const authenticatedState = parseAuthenticationResponse(response, options.intent);
       if (authenticatedState === undefined) {
         publish({ status: 'anonymous', transition: null });
@@ -611,6 +825,7 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
       return { ok: true, state };
     },
     selectAuthenticationContext: async ({ membershipId, signal }) => {
+      const epoch = sessionEpoch;
       if (
         options.intent !== 'TENANT' ||
         state.status !== 'contextSelectionRequired' ||
@@ -633,9 +848,13 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
           { signal },
         );
       } catch (error) {
+        if (epoch !== sessionEpoch || session.isLogoutPending())
+          return { ok: false, problem: { code: 'SESSION_ENDED' } };
         publish({ status: 'contextSelectionRequired', transition: null, memberships });
         return { ok: false, problem: await normalizeOperationError(error) };
       }
+      if (epoch !== sessionEpoch || session.isLogoutPending())
+        return { ok: false, problem: { code: 'SESSION_ENDED' } };
       const authenticatedState = parseAuthenticationResponse(response, options.intent);
       if (authenticatedState?.status !== 'authenticated') {
         publish({ status: 'contextSelectionRequired', transition: null, memberships });
@@ -647,6 +866,7 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
       return { ok: true, state };
     },
     switchTenantContext: async ({ membershipId, operationHandle, signal }) => {
+      let epoch = sessionEpoch;
       if (
         options.intent !== 'TENANT' ||
         state.status !== 'authenticated' ||
@@ -694,6 +914,8 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
           { signal },
         );
       } catch (error) {
+        if (epoch !== sessionEpoch || session.isLogoutPending())
+          return { ok: false, problem: { code: 'SESSION_ENDED' } };
         publish(authenticatedTransitionState(null, previousTenantContext));
         return {
           ok: false,
@@ -701,11 +923,15 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
           operationHandle: handle,
         };
       }
+      if (epoch !== sessionEpoch || session.isLogoutPending())
+        return { ok: false, problem: { code: 'SESSION_ENDED' } };
       operationKeys.delete(handle);
+      session.changed();
+      epoch = ++sessionEpoch;
       accessToken = undefined;
       expiresAt = undefined;
       publish({ status: 'authenticated', transition: 'tenantSwitchRefresh' });
-      const refreshKey = createIdempotencyKey();
+      const refreshKey = (switchRefreshKey = createIdempotencyKey());
       if (!UUID_V7.test(refreshKey)) {
         return { ok: false, problem: { code: 'INVALID_IDEMPOTENCY_KEY' } };
       }
@@ -721,14 +947,22 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
           { signal },
         );
       } catch (error) {
+        if (epoch !== sessionEpoch || session.isLogoutPending())
+          return { ok: false, problem: { code: 'SESSION_ENDED' } };
         if (
           error instanceof ResponseError &&
           (error.response.status === 401 || error.response.status === 403)
         ) {
           publish({ status: 'anonymous', transition: null });
+          sessionEpoch += 1;
+          session.ended();
         }
-        return { ok: false, problem: await normalizeOperationError(error) };
+        switchRetryProblem = await normalizeOperationError(error);
+        switchRetryAt = now() + (switchRetryProblem.retryAfterSeconds ?? 0) * 1_000;
+        return { ok: false, problem: switchRetryProblem };
       }
+      if (epoch !== sessionEpoch || session.isLogoutPending())
+        return { ok: false, problem: { code: 'SESSION_ENDED' } };
       const parsed = parseAuthenticationResponse(response, options.intent);
       if (parsed?.status !== 'authenticated') {
         return { ok: false, problem: { code: 'INVALID_SERVICE_RESPONSE' } };
@@ -739,6 +973,7 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
       return { ok: true, state };
     },
     retryTenantSwitchRefresh: async (signal) => {
+      const epoch = sessionEpoch;
       if (
         options.intent !== 'TENANT' ||
         state.status !== 'authenticated' ||
@@ -747,7 +982,16 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
       ) {
         return { ok: false, problem: { code: 'INVALID_AUTHENTICATION_TRANSITION' } };
       }
-      const refreshKey = createIdempotencyKey();
+      if (now() < switchRetryAt && switchRetryProblem !== undefined) {
+        return {
+          ok: false,
+          problem: {
+            ...switchRetryProblem,
+            retryAfterSeconds: Math.ceil((switchRetryAt - now()) / 1_000),
+          },
+        };
+      }
+      const refreshKey = (switchRefreshKey ??= createIdempotencyKey());
       if (!UUID_V7.test(refreshKey)) {
         return { ok: false, problem: { code: 'INVALID_IDEMPOTENCY_KEY' } };
       }
@@ -763,14 +1007,22 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
           { signal },
         );
       } catch (error) {
+        if (epoch !== sessionEpoch || session.isLogoutPending())
+          return { ok: false, problem: { code: 'SESSION_ENDED' } };
         if (
           error instanceof ResponseError &&
           (error.response.status === 401 || error.response.status === 403)
         ) {
           publish({ status: 'anonymous', transition: null });
+          sessionEpoch += 1;
+          session.ended();
         }
-        return { ok: false, problem: await normalizeOperationError(error) };
+        switchRetryProblem = await normalizeOperationError(error);
+        switchRetryAt = now() + (switchRetryProblem.retryAfterSeconds ?? 0) * 1_000;
+        return { ok: false, problem: switchRetryProblem };
       }
+      if (epoch !== sessionEpoch || session.isLogoutPending())
+        return { ok: false, problem: { code: 'SESSION_ENDED' } };
       const parsed = parseAuthenticationResponse(response, options.intent);
       if (parsed?.status !== 'authenticated') {
         return { ok: false, problem: { code: 'INVALID_SERVICE_RESPONSE' } };
@@ -797,14 +1049,21 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
             sessionSlotRequest: { sessionSlot: options.intent },
             idempotencyKey: logoutIdempotencyKey,
           },
-          { signal },
+          ({ init }) => {
+            const headers = new Headers(init.headers);
+            if (logoutAccessToken !== undefined)
+              headers.set('Authorization', `Bearer ${logoutAccessToken}`);
+            return Promise.resolve({ ...init, signal, headers });
+          },
         );
       } catch (error) {
+        logoutAccessToken = undefined;
         accessToken = undefined;
         expiresAt = undefined;
         publish({ status: 'logoutPending', transition: null });
         return { ok: false, problem: await normalizeOperationError(error) };
       }
+      logoutAccessToken = undefined;
       accessToken = undefined;
       expiresAt = undefined;
       logoutIdempotencyKey = undefined;
@@ -812,6 +1071,88 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
       publish({ status: 'anonymous', transition: null });
       return { ok: true, state };
     },
+  };
+  const recover = runtime.recover.bind(runtime);
+  runtime.recover = (signal) => {
+    if (session.isLogoutPending())
+      return Promise.resolve({ ok: false, problem: { code: 'INVALID_AUTHENTICATION_TRANSITION' } });
+    return session.run(async (changed) => {
+      if (changed && state.status === 'authenticated') return { ok: true, state };
+      const result = await recover(signal);
+      if (result.ok && accessToken !== undefined && expiresAt !== undefined) {
+        session.authenticated(accessToken, expiresAt);
+      } else if (result.ok && state.status !== 'anonymous') {
+        session.changed();
+      }
+      return result;
+    });
+  };
+  const login = runtime.login.bind(runtime);
+  runtime.login = (input) =>
+    session.run(async (changed) => {
+      if (changed && state.status === 'authenticated') return { ok: true, state };
+      const result = await login(input);
+      if (result.ok && accessToken !== undefined && expiresAt !== undefined) {
+        session.authenticated(accessToken, expiresAt);
+      } else if (result.ok) {
+        session.changed();
+      }
+      return result;
+    });
+  const selectContext = runtime.selectAuthenticationContext.bind(runtime);
+  runtime.selectAuthenticationContext = (input) =>
+    session.run(async (changed) => {
+      if (changed && state.status === 'authenticated') return { ok: true, state };
+      const result = await selectContext(input);
+      if (result.ok && accessToken !== undefined && expiresAt !== undefined)
+        session.authenticated(accessToken, expiresAt);
+      return result;
+    });
+  const logout = runtime.logout.bind(runtime);
+  const switchTenant = runtime.switchTenantContext.bind(runtime);
+  runtime.switchTenantContext = (input) =>
+    session.run(async () => {
+      const previousToken = accessToken;
+      const result = await switchTenant(input);
+      if (
+        result.ok &&
+        accessToken !== undefined &&
+        expiresAt !== undefined &&
+        accessToken !== previousToken
+      )
+        session.authenticated(accessToken, expiresAt);
+      return result;
+    });
+  const retrySwitch = runtime.retryTenantSwitchRefresh.bind(runtime);
+  runtime.retryTenantSwitchRefresh = (signal) =>
+    session.run(async () => {
+      const result = await retrySwitch(signal);
+      if (result.ok && accessToken !== undefined && expiresAt !== undefined)
+        session.authenticated(accessToken, expiresAt);
+      return result;
+    });
+  const changePassword = runtime.changeInitialPassword.bind(runtime);
+  runtime.changeInitialPassword = (input) =>
+    session.run(async () => {
+      const result = await changePassword(input);
+      if (result.ok) session.ended();
+      return result;
+    });
+  runtime.logout = (signal) => {
+    if (
+      (state.status === 'anonymous' && !slotLogoutAllowed) ||
+      (state.transition !== null && state.transition !== 'refresh')
+    ) {
+      return Promise.resolve({ ok: false, problem: { code: 'INVALID_AUTHENTICATION_TRANSITION' } });
+    }
+    logoutAccessToken = accessToken;
+    session.requestLogout();
+    return session.run(async (changed) => {
+      if (changed && state.status === 'anonymous') return { ok: true, state };
+      const result = await logout(signal);
+      if (result.ok) session.ended();
+      return result;
+    });
   };
   const runtimesByIntent =
     realmRuntimes.get(options.realm) ?? new Map<AuthenticationIntent, AuthenticationRuntime>();

@@ -2,6 +2,8 @@ package io.saasforge.iam.config;
 
 import io.saasforge.contracts.tenantaccess.membership.v1.AccessibleMembershipQueryServiceGrpc;
 import io.saasforge.iam.application.authentication.AccessibleMemberships;
+import io.saasforge.iam.application.authentication.CurrentTenantContextQuery;
+import io.saasforge.sdk.auth.UserAccessTokenSignatureVerifier;
 import io.saasforge.iam.application.authentication.ContextSelectionService;
 import io.saasforge.iam.application.authentication.ClientCredentialsTokenService;
 import io.saasforge.iam.application.authentication.CompromisedPasswordChecker;
@@ -89,6 +91,17 @@ import tools.jackson.databind.ObjectMapper;
 
 @Configuration(proxyBeanMethods = false)
 public class AuthenticationConfiguration {
+    @Bean
+    CurrentTenantContextQuery currentTenantContextQuery(
+            SigningKeyRepository signingKeys, AccessibleMemberships memberships,
+            RevocationIndex revocations, Clock clock,
+            @Value("${security.jwt.issuer}") String issuer) {
+        return new CurrentTenantContextQuery(
+                new UserAccessTokenSignatureVerifier(
+                        new IamJwtVerificationKeyResolver(signingKeys),
+                        clock, issuer, "saasforge-api", Duration.ofSeconds(30)), memberships, revocations);
+    }
+
     @Bean
     @ConditionalOnMissingBean
     Clock clock() {

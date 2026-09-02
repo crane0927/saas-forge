@@ -29,6 +29,7 @@ import io.saasforge.iam.application.authentication.TenantContextSwitchAccessReje
 import io.saasforge.iam.application.authentication.TenantContextSwitchConflictException;
 import io.saasforge.iam.application.authentication.TenantContextSwitchPendingException;
 import io.saasforge.iam.application.authentication.TenantContextSwitchSessionInvalidException;
+import io.saasforge.sdk.auth.UserAccessTokenInvalidException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
 import java.security.SecureRandom;
@@ -50,6 +51,13 @@ public class AuthenticationExceptionHandler {
     private static final Pattern TRACE_PARENT = Pattern.compile(
             "^[0-9a-f]{2}-((?!0{32})[0-9a-f]{32})-(?!0{16})[0-9a-f]{16}-[0-9a-f]{2}$");
     private static final SecureRandom RANDOM = new SecureRandom();
+
+    @ExceptionHandler(UserAccessTokenInvalidException.class)
+    ResponseEntity<Problem> accessTokenInvalid(
+            UserAccessTokenInvalidException exception, HttpServletRequest request) {
+        return problem(HttpStatus.UNAUTHORIZED, "ACCESS_TOKEN_INVALID",
+                "Access token invalid", "User Access Token 无效", request);
+    }
 
     @ExceptionHandler(ClientCredentialsGrantInvalidException.class)
     ResponseEntity<Problem> clientCredentialsGrantInvalid(

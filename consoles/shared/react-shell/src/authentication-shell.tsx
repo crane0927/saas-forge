@@ -157,6 +157,18 @@ export function AuthenticationShell({
     return <ApplicationLoading applicationName={applicationName} />;
   }
 
+  if (state.status === 'authenticated' && state.transition === 'sessionSync') {
+    return state.synchronizationProblem === undefined ? (
+      <ApplicationLoading applicationName={applicationName} />
+    ) : (
+      <RecoveryPage
+        runtime={runtime}
+        problem={state.synchronizationProblem}
+        onProblemChange={() => undefined}
+      />
+    );
+  }
+
   if (recoveryProblem !== undefined) {
     return (
       <RecoveryPage

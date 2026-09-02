@@ -1,6 +1,8 @@
 package io.saasforge.iam.api;
 
 import io.saasforge.iam.application.authentication.AccessTokenLoginResult;
+import io.saasforge.iam.application.authentication.CurrentTenantContextQuery;
+import io.saasforge.iam.application.authentication.TenantAuthenticationContextSnapshot;
 import io.saasforge.iam.application.authentication.BrowserSessionSlot;
 import io.saasforge.iam.application.authentication.ContextSelectionLoginResult;
 import io.saasforge.iam.application.authentication.ContextSelectionService;
@@ -39,6 +41,7 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
@@ -61,6 +64,7 @@ public class AuthenticationController implements AuthenticationApi {
     private final ClientCredentialsTokenService clientCredentialsTokenService;
     private final TenantContextSwitchService tenantContextSwitchService;
     private final BrowserRequestSecurity browserRequestSecurity;
+    private final CurrentTenantContextQuery currentTenantContext;
 
     public AuthenticationController(
             PasswordLoginService loginService,
@@ -71,7 +75,8 @@ public class AuthenticationController implements AuthenticationApi {
             LogoutService logoutService,
             ClientCredentialsTokenService clientCredentialsTokenService,
             TenantContextSwitchService tenantContextSwitchService,
-            BrowserRequestSecurity browserRequestSecurity) {
+            BrowserRequestSecurity browserRequestSecurity,
+            CurrentTenantContextQuery currentTenantContext) {
         this.loginService = loginService;
         this.contextSelectionService = contextSelectionService;
         this.passwordChangeService = passwordChangeService;
@@ -81,6 +86,14 @@ public class AuthenticationController implements AuthenticationApi {
         this.clientCredentialsTokenService = clientCredentialsTokenService;
         this.tenantContextSwitchService = tenantContextSwitchService;
         this.browserRequestSecurity = browserRequestSecurity;
+        this.currentTenantContext = currentTenantContext;
+    }
+
+    @Override
+    public ResponseEntity<TenantAuthenticationContext> getCurrentTenantContext() {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(tenantContextBody(currentTenantContext.read(
+                        currentRequest().getHeader(HttpHeaders.AUTHORIZATION))));
     }
 
     @Override
@@ -249,29 +262,34 @@ public class AuthenticationController implements AuthenticationApi {
                 .tokenType(AccessTokenResult.TokenTypeEnum.BEARER)
                 .expiresIn(result.accessToken().expiresInSeconds());
         if (result.tenantContext() != null) {
-            var current = result.tenantContext().currentMembership();
-            var tenantContext = new TenantAuthenticationContext()
-                    .membershipId(current.membershipId())
-                    .tenantId(current.tenantId())
-                    .tenantDisplayName(current.tenantDisplayName())
-                    .accessibleMemberships(result.tenantContext().accessibleMemberships().stream()
-                            .map(membership -> new MembershipCandidate()
-                                    .membershipId(membership.membershipId())
-                                    .tenantId(membership.tenantId())
-                                    .tenantDisplayName(membership.tenantDisplayName()))
-                            .toList());
-            if (current.brandProfile() != null) {
-                var brand = current.brandProfile();
-                tenantContext.brandProfile(new TenantBrandProfile()
-                        .displayName(brand.displayName())
-                        .logoUrl(brand.logoUrl())
-                        .faviconUrl(brand.faviconUrl())
-                        .primaryColor(brand.primaryColor())
-                        .accentColor(brand.accentColor()));
-            }
-            response.tenantContext(tenantContext);
+            response.tenantContext(tenantContextBody(result.tenantContext()));
         }
         return response;
+    }
+
+    private TenantAuthenticationContext tenantContextBody(
+            TenantAuthenticationContextSnapshot snapshot) {
+        var current = snapshot.currentMembership();
+        var tenantContext = new TenantAuthenticationContext()
+                .membershipId(current.membershipId())
+                .tenantId(current.tenantId())
+                .tenantDisplayName(current.tenantDisplayName())
+                .accessibleMemberships(snapshot.accessibleMemberships().stream()
+                        .map(membership -> new MembershipCandidate()
+                                .membershipId(membership.membershipId())
+                                .tenantId(membership.tenantId())
+                                .tenantDisplayName(membership.tenantDisplayName()))
+                        .toList());
+        if (current.brandProfile() != null) {
+            var brand = current.brandProfile();
+            tenantContext.brandProfile(new TenantBrandProfile()
+                    .displayName(brand.displayName())
+                    .logoUrl(brand.logoUrl())
+                    .faviconUrl(brand.faviconUrl())
+                    .primaryColor(brand.primaryColor())
+                    .accentColor(brand.accentColor()));
+        }
+        return tenantContext;
     }
 
     private ResponseCookie refreshCookie(BrowserSessionSlot slot, LoginResult result) {

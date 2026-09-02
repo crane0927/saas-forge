@@ -359,6 +359,7 @@ describe('createAuthenticationRuntime', () => {
   });
 
   it('allows only explicit manual recovery after a recoverable cold-start refresh', async () => {
+    let now = 0;
     const fetch = vi
       .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
       .mockResolvedValueOnce(problemResponse(503, 'REFRESH_LEASE_BUSY', '999'))
@@ -374,6 +375,7 @@ describe('createAuthenticationRuntime', () => {
       realm: {},
       intent: 'TENANT',
       fetch,
+      now: () => now,
       createIdempotencyKey: () => '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6073',
     });
 
@@ -387,6 +389,7 @@ describe('createAuthenticationRuntime', () => {
       },
     });
     expect(fetch).toHaveBeenCalledOnce();
+    now = 300_000;
     await expect(runtime.retryRecovery()).resolves.toEqual({
       ok: true,
       state: { status: 'authenticated', transition: null },
@@ -1063,6 +1066,7 @@ describe('createAuthenticationRuntime', () => {
   });
 
   it('keeps a committed Tenant switch pending across a recoverable refresh failure', async () => {
+    let now = 0;
     const membershipId = '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6071';
     const currentMembership = {
       membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6070',
@@ -1107,6 +1111,7 @@ describe('createAuthenticationRuntime', () => {
       intent: 'TENANT',
       fetch,
       createIdempotencyKey: () => '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6073',
+      now: () => now,
     });
     await runtime.login({ email: 'user@example.test', password: 'secret' });
 
@@ -1123,6 +1128,7 @@ describe('createAuthenticationRuntime', () => {
       status: 'authenticated',
       transition: 'tenantSwitchRefresh',
     });
+    now = 300_000;
     await expect(runtime.retryTenantSwitchRefresh()).resolves.toEqual({
       ok: true,
       state: {

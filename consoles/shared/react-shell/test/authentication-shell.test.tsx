@@ -228,6 +228,7 @@ describe('AuthenticationShell', () => {
   });
 
   it('keeps a recoverable cold-start failure separate from the anonymous login', async () => {
+    let now = 0;
     const fetch = vi
       .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
       .mockResolvedValueOnce(problemResponse(503, 'REFRESH_LEASE_BUSY'))
@@ -244,7 +245,7 @@ describe('AuthenticationShell', () => {
         ok: true,
         config: { schemaVersion: 1, apiBaseUrl: 'https://api.example.test' },
       },
-      { realm: {}, intent: 'PLATFORM', fetch },
+      { realm: {}, intent: 'PLATFORM', fetch, now: () => now },
     );
     if (!runtimeResult.ok) {
       throw new Error('test runtime creation failed');
@@ -267,6 +268,7 @@ describe('AuthenticationShell', () => {
     expect(screen.queryByRole('heading', { name: '登录 Platform Console' })).toBeNull();
     expect(screen.queryByText('raw service detail')).toBeNull();
 
+    now = 1_000;
     fireEvent.click(screen.getByRole('button', { name: '重试恢复' }));
 
     expect(await screen.findByRole('heading', { name: '恢复后的首页' })).toBeTruthy();
