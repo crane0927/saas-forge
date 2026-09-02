@@ -1017,20 +1017,29 @@ async function expectRouteAccessibility(page, title) {
 }
 
 async function expectSafeStorage(page) {
-  const summary = await page.evaluate(async () => ({
-    localSafe: Object.keys(localStorage).every((key) => {
-      const value = localStorage.getItem(key);
-      if (/^sf:session:https:\/\/api\.saasforge\.test:(PLATFORM|TENANT):generation$/.test(key))
-        return /^\d+$/.test(value) && Number.isSafeInteger(Number(value));
-      return (
-        /^sf:session:https:\/\/api\.saasforge\.test:(PLATFORM|TENANT):logoutPending$/.test(key) &&
-        (value === 'true' || value === 'false')
-      );
+  const summary = await page.evaluate(
+    async (rootDomain) => ({
+      localSafe: Object.keys(localStorage).every((key) => {
+        const value = localStorage.getItem(key);
+        if (
+          ['PLATFORM', 'TENANT'].some(
+            (slot) => key === `sf:session:https://api.${rootDomain}:${slot}:generation`,
+          )
+        )
+          return /^\d+$/.test(value) && Number.isSafeInteger(Number(value));
+        return (
+          ['PLATFORM', 'TENANT'].some(
+            (slot) => key === `sf:session:https://api.${rootDomain}:${slot}:logoutPending`,
+          ) &&
+          (value === 'true' || value === 'false')
+        );
+      }),
+      sessionEmpty: sessionStorage.length === 0,
+      databasesEmpty: (await globalThis.indexedDB.databases()).length === 0,
+      readableCookieEmpty: document.cookie === '',
     }),
-    sessionEmpty: sessionStorage.length === 0,
-    databasesEmpty: (await globalThis.indexedDB.databases()).length === 0,
-    readableCookieEmpty: document.cookie === '',
-  }));
+    rootDomain,
+  );
   // 失败只显示布尔结果；不能让存储或 Cookie 的原始值进入测试报告。
   assert.deepEqual(summary, {
     localSafe: true,

@@ -54,7 +54,7 @@ mise exec node@24.14.1 -- bash scripts/verify-console-authentication-e2e.sh --pr
 mise exec node@24.14.1 -- bash scripts/verify-console-authentication-e2e.sh
 ```
 
-固定域名解析必须为：
+本地默认域名解析如下；经确认的 CI 对照使用同样的三个前缀与 `saasforge.example.com` 根域：
 
 ```text
 127.0.0.1 platform.saasforge.test console.saasforge.test api.saasforge.test
@@ -256,6 +256,8 @@ CI 安装的是 libsoup `3.4.4-5ubuntu0.7`。[libsoup Cookie 接收逻辑](https
 用户已确认仅在 CI 对照使用 `platform.saasforge.example.com`、`console.saasforge.example.com` 与 `api.saasforge.example.com`。`SF_ACCEPTANCE_ROOT_DOMAIN` 默认仍为 `saasforge.test`；CI 明确设置为 `saasforge.example.com`，同步临时证书 SAN/CA 约束、hosts、Gateway/IAM 根域、三个入口和浏览器夹具。代理只接受配置根域下的三个 Host，根域只允许上述两个值；HttpOnly/Secure/SameSite、Origin/Fetch Metadata 和 TLS 校验保持原样。测试账号邮箱与 JWT issuer 作为固定身份数据保持原值。
 
 新增 Linux libsoup 公共函数对照观察，只输出两组公开域名是否具有相同基础域，不输出 Cookie 或凭据。本地 12 条边界/诊断测试、相关 ESLint、JS/Shell 语法、YAML 和 diff 检查通过；使用占位配置验证两个根域均准确传入 Gateway、IAM 和三个入口。尚待本次 CI 的真实产品结果；未修改本机 hosts、信任库或浏览器安装，未修改远端 Issue 验收条款。
+
+提交 `1efe67b` 的 [Verify](https://github.com/crane0927/saas-forge/actions/runs/33635862151) 全部通过。[产品对照](https://github.com/crane0927/saas-forge/actions/runs/33635862213) 直接输出 `saasforge.test sharedBase=false`、`saasforge.example.com sharedBase=true`。WebKit 首次改密及其后的双槽位、Membership、Tenant Switch、多标签页、Lease 回退、路由错误与正式 Client 场景已进入并通过；共执行 16 条，13 通过、3 失败（两个叶子断言失败及其父测试）。剩余断言位于存储安全检查和请求错误检查，二者的会话键白名单正则仍写死 `.saasforge.test`。本次只将这两处改为配置根域下的精确键名比较，继续限制 PLATFORM/TENANT、generation/logoutPending 以及原有值校验；相关 lint/格式通过，需下一轮 CI 复验。
 
 ## 最终验收待办
 

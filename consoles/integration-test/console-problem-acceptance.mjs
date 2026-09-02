@@ -88,14 +88,17 @@ export async function verifyRequestProblemSurfaces(browser) {
         );
         assert.equal(
           await page.evaluate(
-            () =>
+            (rootDomain) =>
               sessionStorage.length === 0 &&
               document.cookie === '' &&
               Object.keys(localStorage).every((key) =>
-                /^sf:session:https:\/\/api\.saasforge\.test:(PLATFORM|TENANT):(generation|logoutPending)$/.test(
-                  key,
+                ['PLATFORM', 'TENANT'].some((slot) =>
+                  ['generation', 'logoutPending'].some(
+                    (field) => key === `sf:session:https://api.${rootDomain}:${slot}:${field}`,
+                  ),
                 ),
               ),
+            rootDomain,
           ),
           true,
         );
