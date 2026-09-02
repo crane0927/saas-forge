@@ -41,12 +41,12 @@ function proxy(incoming, outgoing) {
   const probe = url.searchParams.get("acceptanceProbe");
   // 浏览器工具不保证暴露 opaque 响应的原始安全头；只记录显式探针的枚举元数据。
   // 不记录任意 Origin 文本、其他请求头、Cookie 或请求体，也不补造/更改转发头。
-  if (
+  const observedProbe =
     incoming.headers.host === `api.${rootDomain}` &&
     incoming.method === "POST" &&
     url.pathname === "/api/v1/auth/logout" &&
-    /^[0-9a-f-]{36}$/.test(probe ?? "")
-  ) {
+    /^[0-9a-f-]{36}$/.test(probe ?? "");
+  if (observedProbe) {
     console.info(JSON.stringify({
       event: "acceptance-browser-metadata",
       probe,
@@ -71,6 +71,15 @@ function proxy(incoming, outgoing) {
       headers: { ...incoming.headers, connection: "close" },
     },
     (response) => {
+      // CORS 拒绝可隐藏浏览器响应；只记录探针对应的拒绝状态和允许头是否存在。
+      if (observedProbe) {
+        console.info(JSON.stringify({
+          event: "acceptance-browser-response",
+          probe,
+          status: response.statusCode === 403 ? 403 : "other",
+          allowOrigin: Object.hasOwn(response.headers, "access-control-allow-origin"),
+        }));
+      }
       outgoing.writeHead(response.statusCode, response.headers);
       response.on("error", () => outgoing.destroy());
       response.pipe(outgoing);

@@ -869,32 +869,27 @@ test('browser-managed Origins reject mismatched Intent and invalid CSRF or media
   const page = await context.newPage();
   await page.goto(`https://platform.${rootDomain}/`);
   await page.getByRole('heading', { name: '登录 Platform Console', exact: true }).waitFor();
-  let corsRejections = 0;
-  page.on('console', (message) => {
-    if (
-      message.type() === 'error' &&
-      /cors|access-control-allow-origin|cross-origin/i.test(message.text())
-    ) {
-      corsRejections += 1;
-    }
-  });
-  const attempt = (slot, csrf, contentType) =>
+  const deniedProbes = [];
+  const attempt = (slot, csrf, contentType, probe = '') =>
     page.evaluate(
-      async ({ slot, csrf, contentType, rootDomain }) => {
+      async ({ slot, csrf, contentType, rootDomain, probe }) => {
         // 此处刻意构造不合法请求，只用于安全负向；Origin、Cookie 和 Fetch Metadata 仍由浏览器管理。
         try {
-          const response = await fetch(`https://api.${rootDomain}/api/v1/auth/logout`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': contentType, 'X-SF-CSRF': csrf },
-            body: JSON.stringify({ sessionSlot: slot }),
-          });
+          const response = await fetch(
+            `https://api.${rootDomain}/api/v1/auth/logout?acceptanceProbe=${probe}`,
+            {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': contentType, 'X-SF-CSRF': csrf },
+              body: JSON.stringify({ sessionSlot: slot }),
+            },
+          );
           return response.status;
         } catch {
           return null;
         }
       },
-      { slot, csrf, contentType, rootDomain },
+      { slot, csrf, contentType, rootDomain, probe },
     );
   for (const [name, slot, csrf, contentType, expected] of [
     ['mismatched Intent', 'TENANT', '1', 'application/json', 403],
@@ -910,14 +905,11 @@ test('browser-managed Origins reject mismatched Intent and invalid CSRF or media
     const control = await controlRequest;
     assert.equal(await control.headerValue('origin'), `https://platform.${rootDomain}`);
     assert.equal(await control.headerValue('sec-fetch-site'), 'same-site');
-    const before = corsRejections;
+    const probe = expected === null ? randomUUID() : '';
+    if (probe) deniedProbes.push(probe);
     const outgoing = page.waitForRequest(isAuthRequest('logout'));
-    const status = await attempt(slot, csrf, contentType);
+    const status = await attempt(slot, csrf, contentType, probe);
     assert.equal(status, expected, name);
-    // Gateway 在 CORS 前拒绝 CSRF/Content-Type，浏览器只暴露明确的 CORS 拒绝信号。
-    // 前后成功请求排除服务不可用；服务端聚焦测试负责证明具体 403 拒绝分支。
-    if (expected === null)
-      assert.ok(corsRejections > before, `${name} must produce a CORS rejection`);
     const request = await outgoing;
     assert.equal(new URL(request.frame().url()).origin, `https://platform.${rootDomain}`);
     assert.equal(
@@ -926,6 +918,37 @@ test('browser-managed Origins reject mismatched Intent and invalid CSRF or media
       'service remains reachable',
     );
   }
+  // 浏览器控制台不保证提供 CORS 文本；通过原样转发的真实 HTTP 响应排除断网误判。
+  const project = process.env.SF_ACCEPTANCE_PROJECT;
+  assert.match(project ?? '', /^saas-forge-console-\d+-\d+-[a-f0-9]{6}$/);
+  let logs;
+  try {
+    logs = execFileSync('docker', ['logs', `${project}-console-tls-1`], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch {
+    throw new Error('acceptance response metadata unavailable');
+  }
+  const observations = logs.split('\n').flatMap((line) => {
+    try {
+      const value = JSON.parse(line);
+      return value.event === 'acceptance-browser-response' && deniedProbes.includes(value.probe)
+        ? [value]
+        : [];
+    } catch {
+      return [];
+    }
+  });
+  assert.deepEqual(
+    observations,
+    deniedProbes.map((probe) => ({
+      event: 'acceptance-browser-response',
+      probe,
+      status: 403,
+      allowOrigin: false,
+    })),
+  );
   assert.equal(
     (await context.cookies()).length,
     0,
