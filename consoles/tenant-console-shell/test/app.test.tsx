@@ -1,10 +1,15 @@
 import { createRuntimeConfigBootstrap, type RuntimeConfigResult } from '@saas-forge/app-runtime';
+import { DesignSystemProvider } from '@saas-forge/design-system';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { TenantConsoleShellApp } from '../src/app';
+import { TenantConsoleShellApp, type TenantConsoleRootProps } from '../src/app';
 
 afterEach(cleanup);
+
+function TenantConsoleTestRoot({ children, tenantBrand }: TenantConsoleRootProps) {
+  return <DesignSystemProvider tenantBrand={tenantBrand}>{children}</DesignSystemProvider>;
+}
 
 describe('TenantConsoleShellApp', () => {
   it('switches Tenant context, brand, and favicon only after the committed refresh succeeds', async () => {
@@ -50,6 +55,7 @@ describe('TenantConsoleShellApp', () => {
 
     render(
       <TenantConsoleShellApp
+        root={TenantConsoleTestRoot}
         bootstrap={createRuntimeConfigBootstrap(() => Promise.resolve(success()))}
         authenticationFetch={authenticationFetch}
         realm={{}}
@@ -108,6 +114,7 @@ describe('TenantConsoleShellApp', () => {
 
     render(
       <TenantConsoleShellApp
+        root={TenantConsoleTestRoot}
         bootstrap={createRuntimeConfigBootstrap(() => Promise.resolve(success()))}
         authenticationFetch={authenticationFetch}
         realm={{}}
@@ -155,6 +162,7 @@ describe('TenantConsoleShellApp', () => {
 
     render(
       <TenantConsoleShellApp
+        root={TenantConsoleTestRoot}
         bootstrap={createRuntimeConfigBootstrap(() => Promise.resolve(success()))}
         authenticationFetch={authenticationFetch}
         realm={{}}
@@ -186,6 +194,7 @@ describe('TenantConsoleShellApp', () => {
 
     render(
       <TenantConsoleShellApp
+        root={TenantConsoleTestRoot}
         bootstrap={createRuntimeConfigBootstrap(loader)}
         authenticationFetch={authenticationFetch}
         realm={{}}
@@ -215,6 +224,7 @@ describe('TenantConsoleShellApp', () => {
 
     render(
       <TenantConsoleShellApp
+        root={TenantConsoleTestRoot}
         bootstrap={createRuntimeConfigBootstrap(() => Promise.resolve(success()))}
         authenticationFetch={authenticationFetch}
         realm={{}}
@@ -243,6 +253,7 @@ describe('TenantConsoleShellApp', () => {
 
     render(
       <TenantConsoleShellApp
+        root={TenantConsoleTestRoot}
         bootstrap={createRuntimeConfigBootstrap(() => Promise.resolve(success()))}
         authenticationFetch={authenticationFetch}
         realm={{}}
@@ -272,6 +283,7 @@ describe('TenantConsoleShellApp', () => {
 
     render(
       <TenantConsoleShellApp
+        root={TenantConsoleTestRoot}
         bootstrap={createRuntimeConfigBootstrap(() => Promise.resolve(success()))}
         authenticationFetch={authenticationFetch}
         realm={{}}
@@ -309,6 +321,7 @@ describe('TenantConsoleShellApp', () => {
 
     render(
       <TenantConsoleShellApp
+        root={TenantConsoleTestRoot}
         bootstrap={createRuntimeConfigBootstrap(() => Promise.resolve(success()))}
         authenticationFetch={authenticationFetch}
         realm={{}}
@@ -329,6 +342,7 @@ describe('TenantConsoleShellApp', () => {
 
     render(
       <TenantConsoleShellApp
+        root={TenantConsoleTestRoot}
         bootstrap={createRuntimeConfigBootstrap(loader)}
         authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
         realm={{}}
@@ -348,6 +362,7 @@ describe('TenantConsoleShellApp', () => {
 
     render(
       <TenantConsoleShellApp
+        root={TenantConsoleTestRoot}
         bootstrap={createRuntimeConfigBootstrap(loader)}
         authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
         realm={{}}

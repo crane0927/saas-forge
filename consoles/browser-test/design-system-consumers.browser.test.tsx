@@ -8,7 +8,10 @@ import { DesignSystemConsumerRemote } from '../business-remotes/design-system-co
 import { PlatformConsoleApp } from '../platform-console/src/app';
 import { createRuntimeConfigBootstrap } from '../shared/app-runtime/src';
 import { DesignSystemProvider } from '../shared/design-system/src';
-import { TenantConsoleShellApp } from '../tenant-console-shell/src/app';
+import {
+  TenantConsoleShellApp,
+  type TenantConsoleRootProps,
+} from '../tenant-console-shell/src/app';
 
 let renderedRoot: Root | undefined;
 let renderedContainer: HTMLDivElement | undefined;
@@ -37,6 +40,10 @@ function readyBootstrap() {
       config: { schemaVersion: 1, apiBaseUrl: 'https://api.saasforge.test' },
     }),
   );
+}
+
+function TenantConsoleTestRoot({ children, tenantBrand }: TenantConsoleRootProps) {
+  return <DesignSystemProvider tenantBrand={tenantBrand}>{children}</DesignSystemProvider>;
 }
 
 function renderedColumns(itemTestId: string) {
@@ -76,6 +83,7 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
     [
       'Tenant Console',
       <TenantConsoleShellApp
+        root={TenantConsoleTestRoot}
         bootstrap={readyBootstrap()}
         authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
         realm={{}}
@@ -156,6 +164,7 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
     try {
       render(
         <TenantConsoleShellApp
+          root={TenantConsoleTestRoot}
           bootstrap={readyBootstrap()}
           authenticationFetch={authenticationFetch}
           realm={{}}
@@ -257,6 +266,7 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
 
     render(
       <TenantConsoleShellApp
+        root={TenantConsoleTestRoot}
         bootstrap={readyBootstrap()}
         authenticationFetch={authenticationFetch}
         realm={{}}

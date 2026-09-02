@@ -10,10 +10,16 @@ import {
 import {
   ApplicationLoading,
   ConfigurationFailure,
-  DesignSystemProvider,
+  type TenantBrandProfile,
 } from '@saas-forge/design-system';
 import { AuthenticationShell } from '@saas-forge/react-shell';
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import {
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type ComponentType,
+  type ReactNode,
+} from 'react';
 import { BrowserRouter } from 'react-router';
 
 import { tenantAuthenticationRoutes } from './routes';
@@ -22,6 +28,12 @@ interface TenantConsoleShellAppProps {
   readonly bootstrap?: RuntimeConfigBootstrap;
   readonly authenticationFetch?: AuthenticationFetch;
   readonly realm?: object;
+  readonly root: ComponentType<TenantConsoleRootProps>;
+}
+
+export interface TenantConsoleRootProps {
+  readonly children: ReactNode;
+  readonly tenantBrand?: TenantBrandProfile;
 }
 
 const defaultBootstrap = createRuntimeConfigBootstrap();
@@ -32,6 +44,7 @@ export function TenantConsoleShellApp({
   bootstrap = defaultBootstrap,
   authenticationFetch = defaultAuthenticationFetch,
   realm = defaultRealm,
+  root,
 }: TenantConsoleShellAppProps) {
   const state = useSyncExternalStore(
     (listener) => bootstrap.subscribe(listener),
@@ -48,6 +61,7 @@ export function TenantConsoleShellApp({
       state={state}
       authenticationFetch={authenticationFetch}
       realm={realm}
+      root={root}
     />
   );
 }
@@ -57,11 +71,13 @@ function BootstrapSurface({
   state,
   authenticationFetch,
   realm,
+  root: Root,
 }: {
   readonly bootstrap: RuntimeConfigBootstrap;
   readonly state: BootstrapState;
   readonly authenticationFetch: AuthenticationFetch;
   readonly realm: object;
+  readonly root: ComponentType<TenantConsoleRootProps>;
 }) {
   if (state.status === 'ready') {
     return (
@@ -70,6 +86,7 @@ function BootstrapSurface({
           config={state.config}
           authenticationFetch={authenticationFetch}
           realm={realm}
+          root={Root}
         />
       </BrowserRouter>
     );
@@ -77,20 +94,20 @@ function BootstrapSurface({
 
   if (state.status === 'failed') {
     return (
-      <DesignSystemProvider>
+      <Root>
         <ConfigurationFailure
           applicationName="Tenant Console"
           errorCode={state.error.code}
           onRetry={() => void bootstrap.retry()}
         />
-      </DesignSystemProvider>
+      </Root>
     );
   }
 
   return (
-    <DesignSystemProvider>
+    <Root>
       <ApplicationLoading applicationName="Tenant Console" />
-    </DesignSystemProvider>
+    </Root>
   );
 }
 
@@ -98,10 +115,12 @@ function TenantAuthenticationPath({
   config,
   authenticationFetch,
   realm,
+  root: Root,
 }: {
   readonly config: RuntimeConfig;
   readonly authenticationFetch: AuthenticationFetch;
   readonly realm: object;
+  readonly root: ComponentType<TenantConsoleRootProps>;
 }) {
   const [runtimeResult] = useState(() =>
     createAuthenticationRuntimeAfterConfig(
@@ -111,7 +130,7 @@ function TenantAuthenticationPath({
   );
   if (!runtimeResult.ok) {
     return (
-      <DesignSystemProvider>
+      <Root>
         <ConfigurationFailure
           applicationName="Tenant Console"
           errorCode={runtimeResult.error.code}
@@ -119,13 +138,19 @@ function TenantAuthenticationPath({
             window.location.reload();
           }}
         />
-      </DesignSystemProvider>
+      </Root>
     );
   }
-  return <TenantRuntimeSurface runtime={runtimeResult.runtime} />;
+  return <TenantRuntimeSurface runtime={runtimeResult.runtime} root={Root} />;
 }
 
-function TenantRuntimeSurface({ runtime }: { readonly runtime: AuthenticationRuntime }) {
+function TenantRuntimeSurface({
+  runtime,
+  root: Root,
+}: {
+  readonly runtime: AuthenticationRuntime;
+  readonly root: ComponentType<TenantConsoleRootProps>;
+}) {
   const state = useSyncExternalStore(
     (listener) => runtime.subscribe(listener),
     () => runtime.getState(),
@@ -149,7 +174,7 @@ function TenantRuntimeSurface({ runtime }: { readonly runtime: AuthenticationRun
   }, [brandProfile?.faviconUrl]);
 
   return (
-    <DesignSystemProvider tenantBrand={brandProfile}>
+    <Root tenantBrand={brandProfile}>
       <AuthenticationShell
         applicationName={
           brandProfile?.displayName ?? tenantContext?.tenantDisplayName ?? 'Tenant Console'
@@ -158,6 +183,6 @@ function TenantRuntimeSurface({ runtime }: { readonly runtime: AuthenticationRun
         defaultPath="/"
         routes={tenantAuthenticationRoutes}
       />
-    </DesignSystemProvider>
+    </Root>
   );
 }

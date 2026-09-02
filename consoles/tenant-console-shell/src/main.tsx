@@ -1,7 +1,12 @@
+import { DesignSystemProvider } from '@saas-forge/design-system';
 import { AuthenticationRootErrorBoundary } from '@saas-forge/react-shell';
 import { createRoot } from 'react-dom/client';
 
-import { TenantConsoleShellApp } from './app';
+import { TenantConsoleShellApp, type TenantConsoleRootProps } from './app';
+
+function TenantConsoleRoot({ children, tenantBrand }: TenantConsoleRootProps) {
+  return <DesignSystemProvider tenantBrand={tenantBrand}>{children}</DesignSystemProvider>;
+}
 
 const rootElement = document.querySelector('#root');
 if (rootElement === null) {
@@ -10,6 +15,6 @@ if (rootElement === null) {
 
 createRoot(rootElement).render(
   <AuthenticationRootErrorBoundary applicationName="Tenant Console">
-    <TenantConsoleShellApp />
+    <TenantConsoleShellApp root={TenantConsoleRoot} />
   </AuthenticationRootErrorBoundary>,
 );
