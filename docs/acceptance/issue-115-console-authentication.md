@@ -268,6 +268,14 @@ CI 安装的是 libsoup `3.4.4-5ubuntu0.7`。[libsoup Cookie 接收逻辑](https
 
 产品之后的 `console-browser-compatibility` 返回非零。该阶段原先只保留 runner 临时原始日志，未输出安全摘要，任务结束后无法取得具体失败；不能用同提交独立兼容任务均通过推断汇总成功。现将相同四个兼容命令分别记账，并扩展摘要支持 Vitest / Node spec reporter 的固定错误码和已知测试位置；不输出测试标题、断言值、任意堆栈或响应。公开 CLI 回归先 RED 后 GREEN，全部 13 条边界/诊断测试、lint、格式、Shell 语法与 diff 检查通过。未调整产品行为或测试时序，待 CI 给出剩余失败证据。
 
+## 兼容命令的 Corepack 工作目录
+
+提交 `7b50b20` 的 [Verify](https://github.com/crane0927/saas-forge/actions/runs/33647127433) 全部通过；[完整产品](https://github.com/crane0927/saas-forge/actions/runs/33647127405) 再次五渠道各 16/16、0 失败/跳过，但首个 `console-browser-chrome` 在测试开始前失败，原摘要没有识别该启动错误码。
+
+已有 `scripts/verify-frontend-workspace.sh` 明确在 `consoles` 内启动 pnpm；聚合末尾此前从仓库根目录使用 `pnpm --dir`，Corepack 会先按 cwd 解析版本。[Corepack 官方说明](https://github.com/nodejs/corepack#known-good-releases)明确，无 packageManager 的目录使用 Known Good Release。在临时 Corepack home 中仅引用已缓存的 pnpm 10.33.2 / 11.22.0、禁用网络并将默认版本设为 10.33.2：根目录 `corepack pnpm --dir consoles --version` 输出 10.33.2，而进入 `consoles` 后为 11.22.0；同一 `test:boundaries` 命令前者报 `ERR_PNPM_VERIFY_DEPS_BEFORE_RUN`、退出 1，后者 13/13、退出 0。临时目录已清理，未安装依赖或修改全局 Corepack 配置。
+
+现将末尾全部兼容命令放入 `consoles` 工作目录的子 Shell，与 Maven 既有方式一致；仍执行相同四个渠道及原断言。摘要补充刚复现的固定错误码，公开 CLI 回归先 RED 后 GREEN，13 条测试、lint、格式、Shell 语法与 diff 检查通过。该本地复现与 CI 测试启动前失败一致，但远端原始错误内容不可取回，仍需新一轮完整 CI 确认修正。
+
 ## 最终验收待办
 
 以下按全部要求的浏览器渠道和最终聚合证据收口；本地成功不代替 Firefox/Edge CI，也未修改远端 Issue 勾选或关闭状态。

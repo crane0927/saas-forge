@@ -53,7 +53,7 @@ for (const line of stripVTControlCharacters(log).split('\n')) {
   // Vitest 和 Node spec reporter 不使用 TAP 字段；仅保留固定错误码及已知测试文件位置。
   if (/^\s*[✖×] /.test(line)) console.info('FAIL: compatibility test');
   const compatibilityCode =
-    /\b(AssertionError|TimeoutError|ERR_ASSERTION|ERR_MODULE_NOT_FOUND|ERR_PNPM_NO_SCRIPT|ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL|ERR_PNPM_UNSUPPORTED_ENGINE|ECONNREFUSED|EADDRINUSE|ENOSPC|EACCES|ETIMEDOUT)\b/.exec(
+    /\b(AssertionError|TimeoutError|ERR_ASSERTION|ERR_MODULE_NOT_FOUND|ERR_PNPM_VERIFY_DEPS_BEFORE_RUN|ERR_PNPM_NO_SCRIPT|ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL|ERR_PNPM_UNSUPPORTED_ENGINE|ECONNREFUSED|EADDRINUSE|ENOSPC|EACCES|ETIMEDOUT)\b/.exec(
       line,
     );
   if (compatibilityCode) console.info(`CODE: ${compatibilityCode[1]}`);

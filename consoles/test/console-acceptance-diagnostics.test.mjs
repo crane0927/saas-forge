@@ -80,6 +80,7 @@ test('reports compatibility failures without exposing test titles or assertion p
       ' ❯ browser-test/design-system-consumers.browser.test.tsx:52:9',
       ' ❯ browser-test/showcase.browser.test.tsx:28:3',
       '  ERR_MODULE_NOT_FOUND: PRIVATE_IMPORT_TARGET',
+      '  ERR_PNPM_VERIFY_DEPS_BEFORE_RUN PRIVATE_CONFIGURATION',
       'PRIVATE_STACK_VALUE',
     ].join('\n'),
   );
@@ -97,6 +98,7 @@ test('reports compatibility failures without exposing test titles or assertion p
       'AT: consoles/browser-test/design-system-consumers.browser.test.tsx:52:9',
       'AT: consoles/shared/design-system/browser-test/showcase.browser.test.tsx:28:3',
       'CODE: ERR_MODULE_NOT_FOUND',
+      'CODE: ERR_PNPM_VERIFY_DEPS_BEFORE_RUN',
       '',
     ].join('\n'),
   );

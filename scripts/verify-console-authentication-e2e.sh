@@ -263,15 +263,20 @@ done
 if [[ -n "${SF_PRODUCT_CHANNEL:-}" ]]; then
   echo 'PASS: 聚焦产品用例通过；本命令不包含其他渠道或 Maven/workspace 门禁。'
   exit 0
-elif [[ "$acceptance_target" == ci ]]; then
-  for channel in chrome edge firefox webkit; do
-    stage "console-browser-$channel" pnpm --dir "$repository_root/consoles" run "test:browser:$channel"
-  done
-else
-  stage console-browser-chrome pnpm --dir "$repository_root/consoles" run test:browser:chrome
-  stage console-browser-webkit pnpm --dir "$repository_root/consoles" run test:browser:webkit
-  echo 'PENDING: Firefox 与 Edge 的真实产品证据由 GitHub CI 提供。'
 fi
+# Corepack 根据 cwd 选择 packageManager；pnpm --dir 不会改变 Corepack 的版本解析目录。
+(
+  cd "$repository_root/consoles"
+  if [[ "$acceptance_target" == ci ]]; then
+    for channel in chrome edge firefox webkit; do
+      stage "console-browser-$channel" pnpm run "test:browser:$channel"
+    done
+  else
+    stage console-browser-chrome pnpm run test:browser:chrome
+    stage console-browser-webkit pnpm run test:browser:webkit
+    echo 'PENDING: Firefox 与 Edge 的真实产品证据由 GitHub CI 提供。'
+  fi
+)
 
 if [[ "${1:-}" == '--product' ]]; then
   echo "PASS: $acceptance_target 的产品与浏览器门禁通过；本命令没有执行 Maven/workspace 门禁。"
