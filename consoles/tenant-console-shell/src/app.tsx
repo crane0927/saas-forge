@@ -2,11 +2,16 @@ import {
   createAuthenticationRuntimeAfterConfig,
   createRuntimeConfigBootstrap,
   type AuthenticationFetch,
+  type AuthenticationRuntime,
   type BootstrapState,
   type RuntimeConfig,
   type RuntimeConfigBootstrap,
 } from '@saas-forge/app-runtime';
-import { ApplicationLoading, ConfigurationFailure } from '@saas-forge/design-system';
+import {
+  ApplicationLoading,
+  ConfigurationFailure,
+  DesignSystemProvider,
+} from '@saas-forge/design-system';
 import { AuthenticationShell } from '@saas-forge/react-shell';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { BrowserRouter } from 'react-router';
@@ -72,15 +77,21 @@ function BootstrapSurface({
 
   if (state.status === 'failed') {
     return (
-      <ConfigurationFailure
-        applicationName="Tenant Console"
-        errorCode={state.error.code}
-        onRetry={() => void bootstrap.retry()}
-      />
+      <DesignSystemProvider>
+        <ConfigurationFailure
+          applicationName="Tenant Console"
+          errorCode={state.error.code}
+          onRetry={() => void bootstrap.retry()}
+        />
+      </DesignSystemProvider>
     );
   }
 
-  return <ApplicationLoading applicationName="Tenant Console" />;
+  return (
+    <DesignSystemProvider>
+      <ApplicationLoading applicationName="Tenant Console" />
+    </DesignSystemProvider>
+  );
 }
 
 function TenantAuthenticationPath({
@@ -100,21 +111,53 @@ function TenantAuthenticationPath({
   );
   if (!runtimeResult.ok) {
     return (
-      <ConfigurationFailure
-        applicationName="Tenant Console"
-        errorCode={runtimeResult.error.code}
-        onRetry={() => {
-          window.location.reload();
-        }}
-      />
+      <DesignSystemProvider>
+        <ConfigurationFailure
+          applicationName="Tenant Console"
+          errorCode={runtimeResult.error.code}
+          onRetry={() => {
+            window.location.reload();
+          }}
+        />
+      </DesignSystemProvider>
     );
   }
+  return <TenantRuntimeSurface runtime={runtimeResult.runtime} />;
+}
+
+function TenantRuntimeSurface({ runtime }: { readonly runtime: AuthenticationRuntime }) {
+  const state = useSyncExternalStore(
+    (listener) => runtime.subscribe(listener),
+    () => runtime.getState(),
+  );
+  const tenantContext = state.status === 'authenticated' ? state.tenantContext : undefined;
+  const brandProfile = tenantContext?.brandProfile;
+
+  useEffect(() => {
+    const icon = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
+    if (icon === null) return;
+    const originalHref = icon.getAttribute('href');
+    if (brandProfile?.faviconUrl === undefined) {
+      if (originalHref === null) icon.removeAttribute('href');
+      return;
+    }
+    icon.setAttribute('href', brandProfile.faviconUrl);
+    return () => {
+      if (originalHref === null) icon.removeAttribute('href');
+      else icon.setAttribute('href', originalHref);
+    };
+  }, [brandProfile?.faviconUrl]);
+
   return (
-    <AuthenticationShell
-      applicationName="Tenant Console"
-      runtime={runtimeResult.runtime}
-      defaultPath="/"
-      routes={tenantAuthenticationRoutes}
-    />
+    <DesignSystemProvider tenantBrand={brandProfile}>
+      <AuthenticationShell
+        applicationName={
+          brandProfile?.displayName ?? tenantContext?.tenantDisplayName ?? 'Tenant Console'
+        }
+        runtime={runtime}
+        defaultPath="/"
+        routes={tenantAuthenticationRoutes}
+      />
+    </DesignSystemProvider>
   );
 }

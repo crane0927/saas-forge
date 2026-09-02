@@ -1,6 +1,5 @@
 import { createRuntimeConfigBootstrap, type RuntimeConfigResult } from '@saas-forge/app-runtime';
-import { DesignSystemProvider } from '@saas-forge/design-system';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { TenantConsoleShellApp } from '../src/app';
@@ -8,6 +7,169 @@ import { TenantConsoleShellApp } from '../src/app';
 afterEach(cleanup);
 
 describe('TenantConsoleShellApp', () => {
+  it('switches Tenant context, brand, and favicon only after the committed refresh succeeds', async () => {
+    const currentMembership = {
+      membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6070',
+      tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6072',
+      tenantDisplayName: 'Current Tenant',
+    };
+    const targetMembership = {
+      membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6071',
+      tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6074',
+      tenantDisplayName: 'Target Tenant',
+    };
+    const initialIcon = document.createElement('link');
+    initialIcon.rel = 'icon';
+    initialIcon.href = '/favicon.svg';
+    document.head.append(initialIcon);
+    const authenticationFetch = vi
+      .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValueOnce(
+        tenantAccessToken(
+          'current-token',
+          currentMembership,
+          [currentMembership, targetMembership],
+          {
+            displayName: 'Current Brand',
+            faviconUrl: '/brands/current-favicon.svg',
+            primaryColor: '#155EEF',
+            accentColor: '#7A5AF8',
+          },
+        ),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(problemResponse(503, 'REFRESH_LEASE_BUSY'))
+      .mockResolvedValueOnce(
+        tenantAccessToken('target-token', targetMembership, [currentMembership, targetMembership], {
+          displayName: 'Target Brand',
+          faviconUrl: '/brands/target-favicon.svg',
+          primaryColor: '#7C3AED',
+          accentColor: '#C026D3',
+        }),
+      );
+
+    render(
+      <TenantConsoleShellApp
+        bootstrap={createRuntimeConfigBootstrap(() => Promise.resolve(success()))}
+        authenticationFetch={authenticationFetch}
+        realm={{}}
+      />,
+    );
+
+    expect(await screen.findByText('Current Brand')).toBeTruthy();
+    expect(initialIcon.getAttribute('href')).toBe('/brands/current-favicon.svg');
+    fireEvent.click(screen.getByRole('button', { name: '切换 Tenant' }));
+    fireEvent.click(screen.getByRole('button', { name: '切换到 Target Tenant' }));
+
+    expect(await screen.findByRole('heading', { name: 'Tenant 切换已提交' })).toBeTruthy();
+    expect(screen.queryByRole('navigation')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Tenant 工作台' })).toBeNull();
+    expect(await screen.findByText('错误代码：REFRESH_LEASE_BUSY')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '重试完成切换' }));
+
+    expect(await screen.findByText('Target Brand')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Tenant 工作台' })).toBeTruthy();
+    await waitFor(() => {
+      expect(initialIcon.getAttribute('href')).toBe('/brands/target-favicon.svg');
+    });
+    const root = document.querySelector('.sf-design-system-root');
+    expect(root?.getAttribute('data-brand')).toBe('tenant');
+    expect(root?.getAttribute('style')).toContain('--sf-color-primary: #7C3AED');
+    initialIcon.remove();
+  });
+
+  it('keeps the current Tenant visible when the switch is rejected before commit', async () => {
+    const currentMembership = {
+      membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6070',
+      tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6072',
+      tenantDisplayName: 'Current Tenant',
+    };
+    const targetMembership = {
+      membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6071',
+      tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6074',
+      tenantDisplayName: 'Target Tenant',
+    };
+    const authenticationFetch = vi
+      .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValueOnce(
+        tenantAccessToken(
+          'current-token',
+          currentMembership,
+          [currentMembership, targetMembership],
+          {
+            displayName: 'Current Brand',
+            faviconUrl: '/brands/current-favicon.svg',
+            primaryColor: '#7C3AED',
+            accentColor: '#C026D3',
+          },
+        ),
+      )
+      .mockResolvedValueOnce(problemResponse(409, 'TENANT_CONTEXT_SWITCH_REJECTED'));
+
+    render(
+      <TenantConsoleShellApp
+        bootstrap={createRuntimeConfigBootstrap(() => Promise.resolve(success()))}
+        authenticationFetch={authenticationFetch}
+        realm={{}}
+      />,
+    );
+
+    expect(await screen.findByText('Current Brand')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '切换 Tenant' }));
+    fireEvent.click(screen.getByRole('button', { name: '切换到 Target Tenant' }));
+
+    expect(await screen.findByText('Tenant 切换被拒绝')).toBeTruthy();
+    expect(screen.getByText('错误代码：TENANT_CONTEXT_SWITCH_REJECTED')).toBeTruthy();
+    expect(screen.getByText('Current Brand')).toBeTruthy();
+    expect(screen.getByRole('navigation')).toBeTruthy();
+  });
+
+  it('ends the Tenant session when refresh is permanently rejected after commit', async () => {
+    const currentMembership = {
+      membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6070',
+      tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6072',
+      tenantDisplayName: 'Current Tenant',
+    };
+    const targetMembership = {
+      membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6071',
+      tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6074',
+      tenantDisplayName: 'Target Tenant',
+    };
+    const authenticationFetch = vi
+      .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValueOnce(
+        tenantAccessToken(
+          'current-token',
+          currentMembership,
+          [currentMembership, targetMembership],
+          {
+            displayName: 'Current Brand',
+            faviconUrl: '/brands/current-favicon.svg',
+            primaryColor: '#7C3AED',
+            accentColor: '#C026D3',
+          },
+        ),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(problemResponse(401, 'REFRESH_SESSION_INVALID'));
+
+    render(
+      <TenantConsoleShellApp
+        bootstrap={createRuntimeConfigBootstrap(() => Promise.resolve(success()))}
+        authenticationFetch={authenticationFetch}
+        realm={{}}
+      />,
+    );
+
+    expect(await screen.findByText('Current Brand')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '切换 Tenant' }));
+    fireEvent.click(screen.getByRole('button', { name: '切换到 Target Tenant' }));
+
+    expect(await screen.findByRole('heading', { name: '登录 Tenant Console' })).toBeTruthy();
+    expect(screen.getByText('Tenant 会话已结束')).toBeTruthy();
+    expect(screen.queryByRole('navigation')).toBeNull();
+  });
+
   it('creates the fixed Tenant authentication path and enters the only accessible Membership', async () => {
     const loader = vi.fn(() => Promise.resolve(success()));
     const authenticationFetch = vi
@@ -23,13 +185,11 @@ describe('TenantConsoleShellApp', () => {
       );
 
     render(
-      <DesignSystemProvider>
-        <TenantConsoleShellApp
-          bootstrap={createRuntimeConfigBootstrap(loader)}
-          authenticationFetch={authenticationFetch}
-          realm={{}}
-        />
-      </DesignSystemProvider>,
+      <TenantConsoleShellApp
+        bootstrap={createRuntimeConfigBootstrap(loader)}
+        authenticationFetch={authenticationFetch}
+        realm={{}}
+      />,
     );
 
     fireEvent.change(await screen.findByLabelText(/^邮箱/), {
@@ -54,13 +214,11 @@ describe('TenantConsoleShellApp', () => {
       .mockResolvedValueOnce(problemResponse(403, 'ACCESS_CONTEXT_UNAVAILABLE'));
 
     render(
-      <DesignSystemProvider>
-        <TenantConsoleShellApp
-          bootstrap={createRuntimeConfigBootstrap(() => Promise.resolve(success()))}
-          authenticationFetch={authenticationFetch}
-          realm={{}}
-        />
-      </DesignSystemProvider>,
+      <TenantConsoleShellApp
+        bootstrap={createRuntimeConfigBootstrap(() => Promise.resolve(success()))}
+        authenticationFetch={authenticationFetch}
+        realm={{}}
+      />,
     );
 
     fireEvent.change(await screen.findByLabelText(/^邮箱/), {
@@ -84,13 +242,11 @@ describe('TenantConsoleShellApp', () => {
       .mockResolvedValueOnce(problemResponse(409, 'ACCESSIBLE_MEMBERSHIP_LIMIT_EXCEEDED'));
 
     render(
-      <DesignSystemProvider>
-        <TenantConsoleShellApp
-          bootstrap={createRuntimeConfigBootstrap(() => Promise.resolve(success()))}
-          authenticationFetch={authenticationFetch}
-          realm={{}}
-        />
-      </DesignSystemProvider>,
+      <TenantConsoleShellApp
+        bootstrap={createRuntimeConfigBootstrap(() => Promise.resolve(success()))}
+        authenticationFetch={authenticationFetch}
+        realm={{}}
+      />,
     );
 
     fireEvent.change(await screen.findByLabelText(/^邮箱/), {
@@ -115,13 +271,11 @@ describe('TenantConsoleShellApp', () => {
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
 
     render(
-      <DesignSystemProvider>
-        <TenantConsoleShellApp
-          bootstrap={createRuntimeConfigBootstrap(() => Promise.resolve(success()))}
-          authenticationFetch={authenticationFetch}
-          realm={{}}
-        />
-      </DesignSystemProvider>,
+      <TenantConsoleShellApp
+        bootstrap={createRuntimeConfigBootstrap(() => Promise.resolve(success()))}
+        authenticationFetch={authenticationFetch}
+        realm={{}}
+      />,
     );
 
     fireEvent.change(await screen.findByLabelText(/^邮箱/), {
@@ -154,13 +308,11 @@ describe('TenantConsoleShellApp', () => {
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
 
     render(
-      <DesignSystemProvider>
-        <TenantConsoleShellApp
-          bootstrap={createRuntimeConfigBootstrap(() => Promise.resolve(success()))}
-          authenticationFetch={authenticationFetch}
-          realm={{}}
-        />
-      </DesignSystemProvider>,
+      <TenantConsoleShellApp
+        bootstrap={createRuntimeConfigBootstrap(() => Promise.resolve(success()))}
+        authenticationFetch={authenticationFetch}
+        realm={{}}
+      />,
     );
 
     expect(await screen.findByRole('heading', { name: 'Tenant 工作台' })).toBeTruthy();
@@ -176,13 +328,11 @@ describe('TenantConsoleShellApp', () => {
     const loader = vi.fn(() => Promise.resolve(success()));
 
     render(
-      <DesignSystemProvider>
-        <TenantConsoleShellApp
-          bootstrap={createRuntimeConfigBootstrap(loader)}
-          authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
-          realm={{}}
-        />
-      </DesignSystemProvider>,
+      <TenantConsoleShellApp
+        bootstrap={createRuntimeConfigBootstrap(loader)}
+        authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
+        realm={{}}
+      />,
     );
 
     expect(screen.getByRole('heading', { name: '正在启动 Tenant Console' })).toBeTruthy();
@@ -197,13 +347,11 @@ describe('TenantConsoleShellApp', () => {
       .mockResolvedValueOnce(success());
 
     render(
-      <DesignSystemProvider>
-        <TenantConsoleShellApp
-          bootstrap={createRuntimeConfigBootstrap(loader)}
-          authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
-          realm={{}}
-        />
-      </DesignSystemProvider>,
+      <TenantConsoleShellApp
+        bootstrap={createRuntimeConfigBootstrap(loader)}
+        authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
+        realm={{}}
+      />,
     );
 
     expect(await screen.findByText('CONFIG_UNAVAILABLE')).toBeTruthy();
@@ -245,4 +393,36 @@ function problemResponse(status: number, code: string): Response {
     }),
     { status, headers: { 'Content-Type': 'application/problem+json' } },
   );
+}
+
+function tenantAccessToken(
+  accessToken: string,
+  currentMembership: {
+    readonly membershipId: string;
+    readonly tenantId: string;
+    readonly tenantDisplayName: string;
+  },
+  accessibleMemberships: readonly {
+    readonly membershipId: string;
+    readonly tenantId: string;
+    readonly tenantDisplayName: string;
+  }[],
+  brandProfile: {
+    readonly displayName: string;
+    readonly faviconUrl: string;
+    readonly primaryColor: string;
+    readonly accentColor: string;
+  },
+): Response {
+  return Response.json({
+    contextState: 'ACCESS_TOKEN_ISSUED',
+    accessToken,
+    tokenType: 'Bearer',
+    expiresIn: 120,
+    tenantContext: {
+      ...currentMembership,
+      accessibleMemberships,
+      brandProfile,
+    },
+  });
 }

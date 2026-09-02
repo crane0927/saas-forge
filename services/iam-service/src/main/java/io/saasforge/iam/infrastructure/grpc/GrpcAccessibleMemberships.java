@@ -6,6 +6,7 @@ import io.saasforge.contracts.tenantaccess.membership.v1.ListAccessibleMembershi
 import io.saasforge.iam.application.authentication.AccessibleMembership;
 import io.saasforge.iam.application.authentication.AccessibleMemberships;
 import io.saasforge.iam.application.authentication.TenantAccessUnavailableException;
+import io.saasforge.iam.application.authentication.TenantBrandProfileSnapshot;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
@@ -28,7 +29,17 @@ public final class GrpcAccessibleMemberships implements AccessibleMemberships {
                     .map(value -> new AccessibleMembership(
                             canonicalUuidV7(value.getMembershipId()),
                             canonicalUuidV7(value.getTenantId()),
-                            value.getTenantDisplayName()))
+                            value.getTenantDisplayName(),
+                            value.hasBrandProfile()
+                                    ? new TenantBrandProfileSnapshot(
+                                            value.getBrandProfile().getDisplayName(),
+                                            value.getBrandProfile().hasLogoUrl()
+                                                    ? value.getBrandProfile().getLogoUrl() : null,
+                                            value.getBrandProfile().hasFaviconUrl()
+                                                    ? value.getBrandProfile().getFaviconUrl() : null,
+                                            value.getBrandProfile().getPrimaryColor(),
+                                            value.getBrandProfile().getAccentColor())
+                                    : null))
                     .sorted(Comparator.comparing(AccessibleMembership::tenantDisplayName)
                             .thenComparing(membership -> membership.membershipId().toString()))
                     .toList();

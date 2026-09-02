@@ -30,6 +30,20 @@ export interface AnonymousAuthenticationState {
 export interface AuthenticatedAuthenticationState {
   readonly status: 'authenticated';
   readonly transition: AuthenticationTransition | null;
+  readonly tenantContext?: TenantAuthenticationContext;
+}
+
+export interface TenantBrandProfileSnapshot {
+  readonly displayName: string;
+  readonly logoUrl?: string;
+  readonly faviconUrl?: string;
+  readonly primaryColor: string;
+  readonly accentColor: string;
+}
+
+export interface TenantAuthenticationContext extends MembershipCandidate {
+  readonly accessibleMemberships: readonly MembershipCandidate[];
+  readonly brandProfile?: TenantBrandProfileSnapshot;
 }
 
 export interface PasswordChangeRequiredAuthenticationState {
@@ -277,11 +291,12 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
     ) {
       return { code: 'INVALID_AUTHENTICATION_TRANSITION' };
     }
-    publish({ status: 'authenticated', transition: 'refresh' });
+    const currentTenantContext = state.tenantContext;
+    publish(authenticatedTransitionState('refresh', currentTenantContext));
     refreshPromise = (async () => {
       const idempotencyKey = createIdempotencyKey();
       if (!UUID_V7.test(idempotencyKey)) {
-        publish({ status: 'authenticated', transition: null });
+        publish(authenticatedTransitionState(null, currentTenantContext));
         return { code: 'INVALID_IDEMPOTENCY_KEY' };
       }
       let response: unknown;
@@ -305,17 +320,17 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
           publish({ status: 'anonymous', transition: null });
           return { code: 'SESSION_ENDED' };
         }
-        publish({ status: 'authenticated', transition: null });
+        publish(authenticatedTransitionState(null, currentTenantContext));
         return normalizeOperationError(error);
       }
       const parsed = parseAuthenticationResponse(response, options.intent);
       if (parsed?.status !== 'authenticated') {
-        publish({ status: 'authenticated', transition: null });
+        publish(authenticatedTransitionState(null, currentTenantContext));
         return { code: 'INVALID_SERVICE_RESPONSE' };
       }
       accessToken = parsed.accessToken;
       expiresAt = now() + parsed.expiresIn * 1_000;
-      publish({ status: 'authenticated', transition: null });
+      publish(toAuthenticatedState(parsed));
       return undefined;
     })();
     try {
@@ -350,7 +365,12 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
       }
       operationKeys.set(handle, idempotencyKey);
     }
-    if (state.status !== 'authenticated' || accessToken === undefined || expiresAt === undefined) {
+    if (
+      state.status !== 'authenticated' ||
+      (state.transition !== null && state.transition !== 'refresh') ||
+      accessToken === undefined ||
+      expiresAt === undefined
+    ) {
       return {
         ok: false,
         problem: { code: 'INVALID_AUTHENTICATION_TRANSITION' },
@@ -407,6 +427,7 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
     getOAuthClient: async ({ clientId, signal }) => {
       if (
         state.status !== 'authenticated' ||
+        (state.transition !== null && state.transition !== 'refresh') ||
         accessToken === undefined ||
         expiresAt === undefined
       ) {
@@ -510,7 +531,7 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
       if (authenticatedState.status === 'authenticated') {
         accessToken = authenticatedState.accessToken;
         expiresAt = now() + authenticatedState.expiresIn * 1_000;
-        publish({ status: 'authenticated', transition: null });
+        publish(toAuthenticatedState(authenticatedState));
       } else {
         publish(authenticatedState.state);
       }
@@ -555,7 +576,7 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
         slotLogoutAllowed = false;
         accessToken = authenticatedState.accessToken;
         expiresAt = now() + authenticatedState.expiresIn * 1_000;
-        publish({ status: 'authenticated', transition: null });
+        publish(toAuthenticatedState(authenticatedState));
       } else {
         publish(authenticatedState.state);
       }
@@ -622,7 +643,7 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
       }
       accessToken = authenticatedState.accessToken;
       expiresAt = now() + authenticatedState.expiresIn * 1_000;
-      publish({ status: 'authenticated', transition: null });
+      publish(toAuthenticatedState(authenticatedState));
       return { ok: true, state };
     },
     switchTenantContext: async ({ membershipId, operationHandle, signal }) => {
@@ -630,10 +651,14 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
         options.intent !== 'TENANT' ||
         state.status !== 'authenticated' ||
         state.transition !== null ||
+        state.tenantContext === undefined ||
         accessToken === undefined ||
         !UUID_V7.test(membershipId)
       ) {
         return { ok: false, problem: { code: 'INVALID_AUTHENTICATION_TRANSITION' } };
+      }
+      if (state.tenantContext.membershipId === membershipId) {
+        return { ok: true, state };
       }
       const handle = operationHandle ?? (Object.freeze({}) as IdempotentOperationHandle);
       let switchKey = operationKeys.get(handle);
@@ -655,7 +680,8 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
         }
         operationKeys.set(handle, switchKey);
       }
-      publish({ status: 'authenticated', transition: 'tenantSwitch' });
+      const previousTenantContext = state.tenantContext;
+      publish(authenticatedTransitionState('tenantSwitch', previousTenantContext));
       try {
         await authenticationApi.switchTenantContext(
           {
@@ -668,7 +694,7 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
           { signal },
         );
       } catch (error) {
-        publish({ status: 'authenticated', transition: null });
+        publish(authenticatedTransitionState(null, previousTenantContext));
         return {
           ok: false,
           problem: await normalizeOperationError(error),
@@ -709,7 +735,7 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
       }
       accessToken = parsed.accessToken;
       expiresAt = now() + parsed.expiresIn * 1_000;
-      publish({ status: 'authenticated', transition: null });
+      publish(toAuthenticatedState(parsed));
       return { ok: true, state };
     },
     retryTenantSwitchRefresh: async (signal) => {
@@ -751,7 +777,7 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
       }
       accessToken = parsed.accessToken;
       expiresAt = now() + parsed.expiresIn * 1_000;
-      publish({ status: 'authenticated', transition: null });
+      publish(toAuthenticatedState(parsed));
       return { ok: true, state };
     },
     logout: async (signal) => {
@@ -902,7 +928,12 @@ function parseRetryAfter(value: string | null): number | undefined {
 }
 
 type ParsedAuthenticationResponse =
-  | { readonly status: 'authenticated'; readonly accessToken: string; readonly expiresIn: number }
+  | {
+      readonly status: 'authenticated';
+      readonly accessToken: string;
+      readonly expiresIn: number;
+      readonly tenantContext?: TenantAuthenticationContext;
+    }
   | {
       readonly status: 'restricted';
       readonly state:
@@ -917,8 +948,10 @@ function parseAuthenticationResponse(
     return undefined;
   }
   const value = input as Record<string, unknown>;
+  const accessTokenKeys = ['contextState', 'accessToken', 'tokenType', 'expiresIn'];
   if (
-    hasExactKeys(value, ['contextState', 'accessToken', 'tokenType', 'expiresIn']) &&
+    accessTokenKeys.every((key) => key in value) &&
+    Object.keys(value).every((key) => [...accessTokenKeys, 'tenantContext'].includes(key)) &&
     value.contextState === 'ACCESS_TOKEN_ISSUED' &&
     typeof value.accessToken === 'string' &&
     value.accessToken.length > 0 &&
@@ -927,7 +960,16 @@ function parseAuthenticationResponse(
     Number.isSafeInteger(value.expiresIn) &&
     value.expiresIn > 0
   ) {
-    return { status: 'authenticated', accessToken: value.accessToken, expiresIn: value.expiresIn };
+    const tenantContext = parseTenantAuthenticationContext(value.tenantContext);
+    if (value.tenantContext !== undefined && tenantContext === undefined) {
+      return undefined;
+    }
+    return {
+      status: 'authenticated',
+      accessToken: value.accessToken,
+      expiresIn: value.expiresIn,
+      ...(tenantContext === undefined ? {} : { tenantContext }),
+    };
   }
   if (
     intent === 'PLATFORM' &&
@@ -957,6 +999,97 @@ function parseAuthenticationResponse(
     };
   }
   return undefined;
+}
+
+function toAuthenticatedState(
+  response: Extract<ParsedAuthenticationResponse, { readonly status: 'authenticated' }>,
+): AuthenticatedAuthenticationState {
+  return authenticatedTransitionState(null, response.tenantContext);
+}
+
+function authenticatedTransitionState(
+  transition: AuthenticationTransition | null,
+  tenantContext: TenantAuthenticationContext | undefined,
+): AuthenticatedAuthenticationState {
+  return {
+    status: 'authenticated',
+    transition,
+    ...(tenantContext === undefined ? {} : { tenantContext }),
+  };
+}
+
+function parseTenantAuthenticationContext(input: unknown): TenantAuthenticationContext | undefined {
+  if (input === undefined) {
+    return undefined;
+  }
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+    return undefined;
+  }
+  const value = input as Record<string, unknown>;
+  const allowedKeys = [
+    'membershipId',
+    'tenantId',
+    'tenantDisplayName',
+    'accessibleMemberships',
+    'brandProfile',
+  ];
+  const currentMembership = {
+    membershipId: value.membershipId,
+    tenantId: value.tenantId,
+    tenantDisplayName: value.tenantDisplayName,
+  };
+  if (
+    !allowedKeys.filter((key) => key !== 'brandProfile').every((key) => key in value) ||
+    !Object.keys(value).every((key) => allowedKeys.includes(key)) ||
+    !isMembershipCandidate(currentMembership) ||
+    !Array.isArray(value.accessibleMemberships) ||
+    value.accessibleMemberships.length === 0 ||
+    !value.accessibleMemberships.every(isMembershipCandidate) ||
+    !value.accessibleMemberships.some(
+      (membership) => membership.membershipId === value.membershipId,
+    )
+  ) {
+    return undefined;
+  }
+  const brandProfile = parseTenantBrandProfile(value.brandProfile);
+  if (value.brandProfile !== undefined && brandProfile === undefined) {
+    return undefined;
+  }
+  return {
+    ...currentMembership,
+    accessibleMemberships: value.accessibleMemberships,
+    ...(brandProfile === undefined ? {} : { brandProfile }),
+  };
+}
+
+function parseTenantBrandProfile(input: unknown): TenantBrandProfileSnapshot | undefined {
+  if (input === undefined) {
+    return undefined;
+  }
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+    return undefined;
+  }
+  const value = input as Record<string, unknown>;
+  const requiredKeys = ['displayName', 'primaryColor', 'accentColor'];
+  const allowedKeys = [...requiredKeys, 'logoUrl', 'faviconUrl'];
+  if (
+    !requiredKeys.every((key) => key in value) ||
+    !Object.keys(value).every((key) => allowedKeys.includes(key)) ||
+    typeof value.displayName !== 'string' ||
+    typeof value.primaryColor !== 'string' ||
+    typeof value.accentColor !== 'string' ||
+    (value.logoUrl !== undefined && typeof value.logoUrl !== 'string') ||
+    (value.faviconUrl !== undefined && typeof value.faviconUrl !== 'string')
+  ) {
+    return undefined;
+  }
+  return {
+    displayName: value.displayName,
+    primaryColor: value.primaryColor,
+    accentColor: value.accentColor,
+    ...(value.logoUrl === undefined ? {} : { logoUrl: value.logoUrl }),
+    ...(value.faviconUrl === undefined ? {} : { faviconUrl: value.faviconUrl }),
+  };
 }
 
 const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;

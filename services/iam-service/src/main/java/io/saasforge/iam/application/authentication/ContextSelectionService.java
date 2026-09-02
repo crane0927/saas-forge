@@ -4,6 +4,7 @@ import io.saasforge.iam.domain.session.RefreshTokenFamily;
 import io.saasforge.iam.domain.session.RefreshTokenFamilyRepository;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 public final class ContextSelectionService {
@@ -37,8 +38,11 @@ public final class ContextSelectionService {
                 .findUsableSelectionByTokenDigest(presentedToken.digest(), inspectedAt)
                 .orElseThrow(ContextSelectionSessionInvalidException::new);
 
-        AccessibleMembership selectedMembership = accessibleMemberships
-                .findByIdentityId(selectionFamily.identityId()).stream()
+        List<AccessibleMembership> memberships = accessibleMemberships.findByIdentityId(selectionFamily.identityId());
+        if (memberships.size() > 100) {
+            throw new AccessibleMembershipLimitExceededException();
+        }
+        AccessibleMembership selectedMembership = memberships.stream()
                 .filter(membership -> membership.membershipId().equals(membershipId))
                 .findFirst()
                 .orElse(null);
@@ -55,6 +59,10 @@ public final class ContextSelectionService {
                         presentedToken, nextToken, selectedMembership.membershipId(), selectedMembership.tenantId(),
                         accessToken, clock.instant())
                 .orElseThrow(ContextSelectionSessionInvalidException::new);
-        return new AccessTokenLoginResult(accessToken, nextToken.value(), cookieMaxAge);
+        return new AccessTokenLoginResult(
+                accessToken,
+                nextToken.value(),
+                cookieMaxAge,
+                new TenantAuthenticationContextSnapshot(selectedMembership, memberships));
     }
 }

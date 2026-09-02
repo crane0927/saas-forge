@@ -9,11 +9,18 @@
         <id property="membershipId" column="membership_id"/>
         <result property="tenantId" column="tenant_id"/>
         <result property="tenantDisplayName" column="tenant_display_name"/>
+        <result property="brandDisplayName" column="brand_display_name"/>
+        <result property="brandLogoUrl" column="brand_logo_url"/>
+        <result property="brandFaviconUrl" column="brand_favicon_url"/>
+        <result property="brandPrimaryColor" column="brand_primary_color"/>
+        <result property="brandAccentColor" column="brand_accent_color"/>
     </resultMap>
 
     <select id="findAccessibleByIdentityId" resultMap="accessibleMembershipRow">
-        SELECT membership_id, tenant_id, tenant_display_name
-        FROM list_accessible_memberships(#{identityId})
+        SELECT membership_id, tenant_id, tenant_display_name,
+               brand_display_name, brand_logo_url, brand_favicon_url,
+               brand_primary_color, brand_accent_color
+        FROM list_accessible_membership_contexts(#{identityId})
     </select>
 
     <select id="findUsableTenantId" resultType="java.util.UUID">

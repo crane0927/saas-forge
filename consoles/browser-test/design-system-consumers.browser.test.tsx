@@ -71,6 +71,7 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
         authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
       />,
       '登录 Platform Console',
+      true,
     ],
     [
       'Tenant Console',
@@ -80,16 +81,20 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
         realm={{}}
       />,
       '登录 Tenant Console',
+      false,
     ],
-  ])('%s 共享启动状态进入首个可操作页面并恢复标题焦点', async (_name, app, titleName) => {
-    render(<DesignSystemProvider>{app}</DesignSystemProvider>);
+  ])(
+    '%s 共享启动状态进入首个可操作页面并恢复标题焦点',
+    async (_name, app, titleName, needsProvider) => {
+      render(needsProvider ? <DesignSystemProvider>{app}</DesignSystemProvider> : app);
 
-    await expect.element(page.getByText('正在启动')).toBeInTheDocument();
-    const title = page.getByRole('heading', { name: titleName });
-    await expect.element(title).toBeInTheDocument();
-    await expect.element(title).toHaveFocus();
-    expect(document.querySelectorAll('.sf-design-system-root')).toHaveLength(1);
-  });
+      await expect.element(page.getByText('正在启动')).toBeInTheDocument();
+      const title = page.getByRole('heading', { name: titleName });
+      await expect.element(title).toBeInTheDocument();
+      await expect.element(title).toHaveFocus();
+      expect(document.querySelectorAll('.sf-design-system-root')).toHaveLength(1);
+    },
+  );
 
   it('Tenant Membership 选择只停留在发起标签页内存并支持窄屏键盘操作', async () => {
     const storageWrite = vi.spyOn(Storage.prototype, 'setItem');
@@ -150,13 +155,11 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
 
     try {
       render(
-        <DesignSystemProvider>
-          <TenantConsoleShellApp
-            bootstrap={readyBootstrap()}
-            authenticationFetch={authenticationFetch}
-            realm={{}}
-          />
-        </DesignSystemProvider>,
+        <TenantConsoleShellApp
+          bootstrap={readyBootstrap()}
+          authenticationFetch={authenticationFetch}
+          realm={{}}
+        />,
       );
 
       await page.getByRole('textbox', { name: '邮箱' }).fill('member@example.test');
@@ -206,6 +209,79 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
       consoleError.mockRestore();
       consoleWarning.mockRestore();
     }
+  });
+
+  it('Tenant 切换在真实浏览器中隔离旧页面并原子提交新品牌', async () => {
+    const currentMembership = {
+      membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6070',
+      tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6072',
+      tenantDisplayName: 'Current Tenant',
+    };
+    const targetMembership = {
+      membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6071',
+      tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6074',
+      tenantDisplayName: 'Target Tenant',
+    };
+    const existingIcon = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
+    const icon = existingIcon ?? document.createElement('link');
+    if (existingIcon === null) {
+      icon.rel = 'icon';
+      document.head.append(icon);
+    }
+    icon.href = '/favicon.svg';
+    const authenticationFetch = vi
+      .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValueOnce(
+        tenantAccessToken(
+          'current-token',
+          currentMembership,
+          [currentMembership, targetMembership],
+          {
+            displayName: 'Current Brand',
+            faviconUrl: '/brands/current-favicon.svg',
+            primaryColor: '#7C3AED',
+            accentColor: '#C026D3',
+          },
+        ),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(problemResponse(503, 'REFRESH_LEASE_BUSY'))
+      .mockResolvedValueOnce(
+        tenantAccessToken('target-token', targetMembership, [currentMembership, targetMembership], {
+          displayName: 'Target Brand',
+          faviconUrl: '/brands/target-favicon.svg',
+          primaryColor: '#155EEF',
+          accentColor: '#7A5AF8',
+        }),
+      );
+
+    render(
+      <TenantConsoleShellApp
+        bootstrap={readyBootstrap()}
+        authenticationFetch={authenticationFetch}
+        realm={{}}
+      />,
+    );
+
+    await expect.element(page.getByText('Current Brand')).toBeInTheDocument();
+    await page.getByRole('button', { name: '切换 Tenant' }).click();
+    await page.getByRole('button', { name: '切换到 Target Tenant' }).click();
+    await expect
+      .element(page.getByRole('heading', { name: 'Tenant 切换已提交' }))
+      .toBeInTheDocument();
+    expect(document.querySelector('nav')).toBeNull();
+    expect(document.querySelector('#tenant-workspace-title')).toBeNull();
+    await expect.element(page.getByText('错误代码：REFRESH_LEASE_BUSY')).toBeInTheDocument();
+
+    await page.getByRole('button', { name: '重试完成切换' }).click();
+    await expect.element(page.getByText('Target Brand')).toBeInTheDocument();
+    await expect.element(page.getByRole('heading', { name: 'Tenant 工作台' })).toBeInTheDocument();
+    await waitForLayout();
+    expect(icon.getAttribute('href')).toBe('/brands/target-favicon.svg');
+    expect(document.querySelector<HTMLElement>('.sf-design-system-root')?.dataset.brand).toBe(
+      'tenant',
+    );
+    if (existingIcon === null) icon.remove();
   });
 
   it('Remote 从 Shell 继承主题、完成共享表单反馈且恢复键盘焦点', async () => {
@@ -346,3 +422,45 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
     },
   );
 });
+
+function problemResponse(status: number, code: string): Response {
+  return new Response(
+    JSON.stringify({
+      type: `urn:saasforge:problem:${code.toLowerCase().replaceAll('_', '-')}`,
+      title: 'not exposed',
+      status,
+      code,
+      detail: 'raw service detail',
+      traceId: '0123456789abcdef0123456789abcdef',
+    }),
+    { status, headers: { 'Content-Type': 'application/problem+json' } },
+  );
+}
+
+function tenantAccessToken(
+  accessToken: string,
+  currentMembership: {
+    readonly membershipId: string;
+    readonly tenantId: string;
+    readonly tenantDisplayName: string;
+  },
+  accessibleMemberships: readonly {
+    readonly membershipId: string;
+    readonly tenantId: string;
+    readonly tenantDisplayName: string;
+  }[],
+  brandProfile: {
+    readonly displayName: string;
+    readonly faviconUrl: string;
+    readonly primaryColor: string;
+    readonly accentColor: string;
+  },
+): Response {
+  return Response.json({
+    contextState: 'ACCESS_TOKEN_ISSUED',
+    accessToken,
+    tokenType: 'Bearer',
+    expiresIn: 120,
+    tenantContext: { ...currentMembership, accessibleMemberships, brandProfile },
+  });
+}

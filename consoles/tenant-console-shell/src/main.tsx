@@ -1,4 +1,3 @@
-import { DesignSystemProvider } from '@saas-forge/design-system';
 import { AuthenticationRootErrorBoundary } from '@saas-forge/react-shell';
 import { createRoot } from 'react-dom/client';
 
@@ -10,9 +9,7 @@ if (rootElement === null) {
 }
 
 createRoot(rootElement).render(
-  <DesignSystemProvider>
-    <AuthenticationRootErrorBoundary applicationName="Tenant Console">
-      <TenantConsoleShellApp />
-    </AuthenticationRootErrorBoundary>
-  </DesignSystemProvider>,
+  <AuthenticationRootErrorBoundary applicationName="Tenant Console">
+    <TenantConsoleShellApp />
+  </AuthenticationRootErrorBoundary>,
 );

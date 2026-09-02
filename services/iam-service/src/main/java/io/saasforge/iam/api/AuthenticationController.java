@@ -28,6 +28,8 @@ import io.saasforge.iam.contract.model.PasswordChangeRequest;
 import io.saasforge.iam.contract.model.PasswordSetupRequest;
 import io.saasforge.iam.contract.model.SessionSlotRequest;
 import io.saasforge.iam.contract.model.TenantSwitchRequest;
+import io.saasforge.iam.contract.model.TenantAuthenticationContext;
+import io.saasforge.iam.contract.model.TenantBrandProfile;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Duration;
 import java.nio.charset.StandardCharsets;
@@ -241,11 +243,35 @@ public class AuthenticationController implements AuthenticationApi {
     }
 
     private AccessTokenResult accessTokenBody(AccessTokenLoginResult result) {
-        return new AccessTokenResult()
+        AccessTokenResult response = new AccessTokenResult()
                 .contextState("ACCESS_TOKEN_ISSUED")
                 .accessToken(result.accessToken().value())
                 .tokenType(AccessTokenResult.TokenTypeEnum.BEARER)
                 .expiresIn(result.accessToken().expiresInSeconds());
+        if (result.tenantContext() != null) {
+            var current = result.tenantContext().currentMembership();
+            var tenantContext = new TenantAuthenticationContext()
+                    .membershipId(current.membershipId())
+                    .tenantId(current.tenantId())
+                    .tenantDisplayName(current.tenantDisplayName())
+                    .accessibleMemberships(result.tenantContext().accessibleMemberships().stream()
+                            .map(membership -> new MembershipCandidate()
+                                    .membershipId(membership.membershipId())
+                                    .tenantId(membership.tenantId())
+                                    .tenantDisplayName(membership.tenantDisplayName()))
+                            .toList());
+            if (current.brandProfile() != null) {
+                var brand = current.brandProfile();
+                tenantContext.brandProfile(new TenantBrandProfile()
+                        .displayName(brand.displayName())
+                        .logoUrl(brand.logoUrl())
+                        .faviconUrl(brand.faviconUrl())
+                        .primaryColor(brand.primaryColor())
+                        .accentColor(brand.accentColor()));
+            }
+            response.tenantContext(tenantContext);
+        }
+        return response;
     }
 
     private ResponseCookie refreshCookie(BrowserSessionSlot slot, LoginResult result) {

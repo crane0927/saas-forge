@@ -1010,6 +1010,8 @@ components:
         accessToken: { type: string, minLength: 1 }
         tokenType: { type: string, const: Bearer }
         expiresIn: { type: integer, format: int64, minimum: 1 }
+        tenantContext:
+          $ref: '#/components/schemas/TenantAuthenticationContext'
       additionalProperties: false
     MembershipCandidate:
       type: object
@@ -1018,6 +1020,32 @@ components:
         membershipId: { $ref: './common.yaml#/components/schemas/UuidV7' }
         tenantId: { $ref: './common.yaml#/components/schemas/UuidV7' }
         tenantDisplayName: { type: string, minLength: 1, maxLength: 200 }
+      additionalProperties: false
+    TenantAuthenticationContext:
+      type: object
+      required:
+        [membershipId, tenantId, tenantDisplayName, accessibleMemberships]
+      properties:
+        membershipId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        tenantId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        tenantDisplayName: { type: string, minLength: 1, maxLength: 200 }
+        accessibleMemberships:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { $ref: '#/components/schemas/MembershipCandidate' }
+        brandProfile:
+          $ref: '#/components/schemas/TenantBrandProfile'
+      additionalProperties: false
+    TenantBrandProfile:
+      type: object
+      required: [displayName, primaryColor, accentColor]
+      properties:
+        displayName: { type: string, minLength: 1, maxLength: 200 }
+        logoUrl: { type: string, minLength: 1, maxLength: 2048 }
+        faviconUrl: { type: string, minLength: 1, maxLength: 2048 }
+        primaryColor: { type: string, pattern: '^#[0-9A-Fa-f]{6}$' }
+        accentColor: { type: string, pattern: '^#[0-9A-Fa-f]{6}$' }
       additionalProperties: false
     ContextSelectionRequiredResult:
       type: object
