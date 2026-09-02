@@ -37,7 +37,8 @@ export interface TenantConsoleRootProps {
 }
 
 const defaultBootstrap = createRuntimeConfigBootstrap();
-const defaultRealm = {};
+// Realm 同时提供原生会话协调能力；空对象会让生产入口始终退回 IAM Lease。
+const defaultRealm = globalThis;
 const defaultAuthenticationFetch: AuthenticationFetch = (input, init) => fetch(input, init);
 
 export function TenantConsoleShellApp({
@@ -159,16 +160,19 @@ function TenantRuntimeSurface({
   const brandProfile = tenantContext?.brandProfile;
 
   useEffect(() => {
-    const icon = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
-    if (icon === null) return;
+    if (brandProfile?.faviconUrl === undefined) return;
+    const existingIcon = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
+    const icon = existingIcon ?? document.createElement('link');
     const originalHref = icon.getAttribute('href');
-    if (brandProfile?.faviconUrl === undefined) {
-      if (originalHref === null) icon.removeAttribute('href');
-      return;
-    }
     icon.setAttribute('href', brandProfile.faviconUrl);
+    // 默认生产 HTML 没有图标；仅在会话携带品牌时创建，退出或切换时恢复宿主原状。
+    if (existingIcon === null) {
+      icon.rel = 'icon';
+      document.head.append(icon);
+    }
     return () => {
-      if (originalHref === null) icon.removeAttribute('href');
+      if (existingIcon === null) icon.remove();
+      else if (originalHref === null) icon.removeAttribute('href');
       else icon.setAttribute('href', originalHref);
     };
   }, [brandProfile?.faviconUrl]);

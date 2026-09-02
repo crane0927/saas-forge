@@ -474,9 +474,11 @@ class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, RouteErrorBo
     }
     return (
       <section aria-labelledby="route-error-title">
-        <PageTitle description="当前路由已被隔离，未显示原始错误信息。">
-          <span id="route-error-title">当前页面出现错误</span>
-        </PageTitle>
+        <ShellPageTitle
+          headingId="route-error-title"
+          title="当前页面出现错误"
+          description="当前路由已被隔离，未显示原始错误信息。"
+        />
         <Button variant="primary" onClick={this.props.onReturn}>
           返回首页
         </Button>

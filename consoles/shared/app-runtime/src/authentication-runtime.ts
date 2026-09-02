@@ -1165,6 +1165,10 @@ function sanitizeBrowserRequest(init: RequestInit | undefined): RequestInit {
   const headers = new Headers(init?.headers);
   headers.delete('Origin');
   headers.delete('Sec-Fetch-Site');
+  // 所有浏览器写请求都经过 Gateway 的 CSRF 形态校验，不能只覆盖认证 operation。
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(init?.method?.toUpperCase() ?? '')) {
+    headers.set('X-SF-CSRF', '1');
+  }
   return { ...(init ?? {}), headers: Object.fromEntries(headers.entries()) };
 }
 

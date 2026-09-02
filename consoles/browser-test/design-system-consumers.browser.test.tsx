@@ -195,7 +195,7 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
       expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
       const firstMembership = page.getByRole('button', { name: '进入 北辰科技' });
       firstMembership.element().focus();
-      await userEvent.tab();
+      await tabToNextControl();
       const secondMembership = page.getByRole('button', { name: '进入 云帆数据' });
       await expect.element(secondMembership).toHaveFocus();
       await userEvent.keyboard('{Enter}');
@@ -311,7 +311,7 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
 
     const name = page.getByRole('textbox', { name: '显示名称' });
     await name.fill('浏览器 Remote');
-    await userEvent.tab();
+    await tabToNextControl();
     const submit = page.getByRole('button', { name: '验证共享反馈' });
     await expect.element(submit).toHaveFocus();
     await userEvent.keyboard('{Enter}');
@@ -396,9 +396,9 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
         await waitForLayout();
         const name = page.getByRole('textbox', { name: '显示名称' });
         name.element().focus();
-        await userEvent.tab();
+        await tabToNextControl();
         await expect.element(page.getByRole('button', { name: '验证共享反馈' })).toHaveFocus();
-        await userEvent.tab();
+        await tabToNextControl();
         await expect.element(page.getByRole('button', { name: '查看布局说明' })).toHaveFocus();
       }
 
@@ -473,4 +473,13 @@ function tenantAccessToken(
     expiresIn: 120,
     tenantContext: { ...currentMembership, accessibleMemberships, brandProfile },
   });
+}
+
+async function tabToNextControl() {
+  // macOS WebKit 默认用 Option+Tab 遍历按钮；不修改宿主系统键盘设置。
+  if (import.meta.env.SF_MACOS_WEBKIT) {
+    await userEvent.keyboard('{Alt>}{Tab}{/Alt}');
+  } else {
+    await userEvent.tab();
+  }
 }

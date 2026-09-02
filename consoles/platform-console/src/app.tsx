@@ -20,7 +20,8 @@ interface PlatformConsoleAppProps {
 }
 
 const defaultBootstrap = createRuntimeConfigBootstrap();
-const defaultRealm = {};
+// Realm 同时提供原生会话协调能力；空对象会让生产入口始终退回 IAM Lease。
+const defaultRealm = globalThis;
 const defaultAuthenticationFetch: AuthenticationFetch = (input, init) => fetch(input, init);
 
 export function PlatformConsoleApp({

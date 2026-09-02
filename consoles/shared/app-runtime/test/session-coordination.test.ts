@@ -6,6 +6,30 @@ import {
 } from '../src';
 
 describe('same-Origin session coordination through AuthenticationRuntime', () => {
+  it('shares a contended refresh when storage visibility and the broadcast lag behind lock release', async () => {
+    const origin = browserOrigin(10);
+    const staleRealm = origin.realm();
+    const read = staleRealm.localStorage.getItem;
+    staleRealm.localStorage.getItem = (key) => (key.endsWith(':generation') ? null : read(key));
+    let refreshes = 0;
+    const fetch = () => {
+      refreshes += 1;
+      return Promise.resolve(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'coordinated-token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      );
+    };
+    const first = runtime(origin.realm(), fetch);
+    const second = runtime(staleRealm, fetch);
+    const results = await Promise.all([first.recover(), second.recover()]);
+    expect(results.every((result) => result.ok)).toBe(true);
+    expect(refreshes).toBe(1);
+    expect(first.getState()).toEqual(second.getState());
+  });
   it('does not restore synchronization UI from a late error body after session end', async () => {
     const origin = browserOrigin();
     let body!: ReadableStreamDefaultController<Uint8Array>;
@@ -940,12 +964,29 @@ function browserOrigin(messageDelay?: number) {
       return Object.assign(target, {
         navigator: {
           locks: {
-            request: (name: string, callback: () => Promise<unknown>) => {
-              const result = (queues.get(name) ?? Promise.resolve()).then(callback);
-              queues.set(
-                name,
-                result.catch(() => undefined),
+            request: (
+              name: string,
+              optionsOrCallback:
+                LockOptions | ((lock: Lock | null) => Promise<unknown> | undefined),
+              callback?: (lock: Lock | null) => Promise<unknown> | undefined,
+            ) => {
+              const work = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+              if (work === undefined) throw new Error('missing lock callback');
+              if (
+                typeof optionsOrCallback !== 'function' &&
+                optionsOrCallback.ifAvailable &&
+                queues.has(name)
+              ) {
+                return Promise.resolve().then(() => work(null));
+              }
+              const result = (queues.get(name) ?? Promise.resolve()).then(() =>
+                work({ name, mode: 'exclusive' }),
               );
+              const tail = result.catch(() => undefined);
+              queues.set(name, tail);
+              void tail.then(() => {
+                if (queues.get(name) === tail) queues.delete(name);
+              });
               return result;
             },
           },

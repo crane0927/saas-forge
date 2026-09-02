@@ -12,6 +12,41 @@ function TenantConsoleTestRoot({ children, tenantBrand }: TenantConsoleRootProps
 }
 
 describe('TenantConsoleShellApp', () => {
+  it('applies and removes the Tenant favicon when the production document has no initial icon', async () => {
+    expect(document.querySelector('link[rel~="icon"]')).toBeNull();
+    const membership = {
+      membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6070',
+      tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6072',
+      tenantDisplayName: 'Current Tenant',
+    };
+    const authenticationFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        tenantAccessToken('current-token', membership, [membership], {
+          displayName: 'Current Brand',
+          faviconUrl: '/brands/current-favicon.svg',
+          primaryColor: '#155EEF',
+          accentColor: '#7A5AF8',
+        }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    render(
+      <TenantConsoleShellApp
+        root={TenantConsoleTestRoot}
+        bootstrap={createRuntimeConfigBootstrap(() => Promise.resolve(success()))}
+        authenticationFetch={authenticationFetch}
+        realm={{}}
+      />,
+    );
+    expect(await screen.findByText('Current Brand')).toBeTruthy();
+    expect(document.querySelector('link[rel~="icon"]')?.getAttribute('href')).toBe(
+      '/brands/current-favicon.svg',
+    );
+    fireEvent.click(screen.getByRole('button', { name: '退出登录' }));
+    expect(await screen.findByRole('heading', { name: '登录 Tenant Console' })).toBeTruthy();
+    expect(document.querySelector('link[rel~="icon"]')).toBeNull();
+  });
+
   it('switches Tenant context, brand, and favicon only after the committed refresh succeeds', async () => {
     const currentMembership = {
       membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6070',

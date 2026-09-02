@@ -169,11 +169,13 @@ export function createBrowserSession(
       const expectedGeneration = generation;
       if (!available() || locks === undefined) return work(false);
       let execution: Promise<T> | undefined;
-      const execute = async () => {
+      const execute = async (contended: boolean) => {
         const latest = readGeneration();
-        if (latest > generation) {
-          // 锁释放与消息派发来自不同任务队列。仅为广播交接等待一秒，
+        if (latest > generation || (contended && generation === expectedGeneration)) {
+          // 锁释放可能早于其他页的存储可见性与消息派发；等过锁时不能只信任存储快照。
+          // 仅为广播交接等待一秒，
           // 发送页崩溃或消息遗失后仍能由当前 Cookie 与 IAM Lease 恢复，不伪造互斥。
+          const expectedArrival = Math.max(latest, expectedGeneration + 1);
           await new Promise<void>((resolve) => {
             const finish = () => {
               clearTimeout(timer);
@@ -181,7 +183,7 @@ export function createBrowserSession(
               resolve();
             };
             const arrived = () => {
-              if (generation >= latest) finish();
+              if (generation >= expectedArrival) finish();
             };
             const timer = setTimeout(finish, 1_000);
             arrivals.add(arrived);
@@ -192,8 +194,15 @@ export function createBrowserSession(
         return work(generation > expectedGeneration);
       };
       try {
+        // ifAvailable 由浏览器原子判断竞争；没有持锁者时不增加广播等待延迟。
+        await locks.request(name, { ifAvailable: true }, (lock) => {
+          if (lock === null) return undefined;
+          execution = execute(false);
+          return execution;
+        });
+        if (execution !== undefined) return await execution;
         return await locks.request(name, () => {
-          execution = execute();
+          execution = execute(true);
           return execution;
         });
       } catch {

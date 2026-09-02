@@ -60,6 +60,15 @@ async function waitForLayout() {
   });
 }
 
+async function tabToNextControl() {
+  // macOS WebKit 默认用 Option+Tab 遍历按钮；保留真实按键和目标焦点断言。
+  if (import.meta.env.SF_MACOS_WEBKIT) {
+    await userEvent.keyboard('{Alt>}{Tab}{/Alt}');
+  } else {
+    await userEvent.tab();
+  }
+}
+
 describe('Design System 真实浏览器展示矩阵', () => {
   it.skipIf(import.meta.env.SF_VISUAL_SNAPSHOTS === 'false')(
     '固定关键稳定状态的五个验收视口',
@@ -210,7 +219,7 @@ describe('Design System 真实浏览器展示矩阵', () => {
     const primaryAction = page.getByRole('button', { name: '保存成员资料' });
     primaryAction.element().focus();
     expect(getComputedStyle(primaryAction.element()).outlineStyle).not.toBe('none');
-    await userEvent.tab();
+    await tabToNextControl();
     await expect.element(page.getByRole('button', { name: '查看角色说明' })).toHaveFocus();
     expect(documentOrder(primaryWrapper, auxiliary)).toBe(true);
   });
@@ -265,7 +274,7 @@ describe('Design System 真实浏览器展示矩阵', () => {
     );
     primaryAction.element().focus();
     expect(getComputedStyle(primaryAction.element()).outlineStyle).not.toBe('none');
-    await userEvent.tab();
+    await tabToNextControl();
     await expect.element(page.getByRole('button', { name: '次要操作' }).first()).toHaveFocus();
 
     expect(page.getByRole('main').element().dataset.layoutWidth).toBe('standard');

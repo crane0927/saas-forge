@@ -740,6 +740,39 @@ describe('createAuthenticationRuntime', () => {
     ).toHaveLength(1);
   });
 
+  it('supplies the controlled browser marker for typed business mutations', async () => {
+    const clientId = '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6076';
+    const fetch = vi
+      .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'login-token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      )
+      .mockImplementation((_input, init) => {
+        if (new Headers(init?.headers).get('X-SF-CSRF') !== '1')
+          return Promise.resolve(problemResponse(403, 'BROWSER_REQUEST_REJECTED'));
+        return Promise.resolve(
+          Response.json({ ...oauthClientDetail(clientId), clientSecret: 'returned-once' }),
+        );
+      });
+    const runtime = createRuntime({ realm: {}, intent: 'PLATFORM', fetch });
+    await runtime.login({ email: 'admin@example.test', password: 'secret' });
+
+    const result = await runtime.client.createOAuthClient({
+      request: { displayName: 'Console Client', allowedScopes: new Set(['runtime:read']) },
+    });
+
+    expect(result.ok).toBe(true);
+    const headers = new Headers(fetch.mock.calls[1]?.[1]?.headers);
+    expect(headers.get('X-SF-CSRF')).toBe('1');
+    expect(headers.has('Origin')).toBe(false);
+    expect(headers.has('Sec-Fetch-Site')).toBe(false);
+  });
+
   it('keeps an opaque mutation handle after cancellation and reuses its UUIDv7 key', async () => {
     const clientId = '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6076';
     const fetch = vi

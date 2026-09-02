@@ -701,6 +701,11 @@ describe('AuthenticationShell', () => {
 
     expect(await screen.findByRole('heading', { name: '当前页面出现错误' })).toBeTruthy();
     expect(screen.queryByText('raw route render detail')).toBeNull();
+    const errorHeading = screen.getByRole('heading', { name: '当前页面出现错误' });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(errorHeading);
+    });
+    expect(screen.getByRole('status').textContent).toBe('当前页面出现错误');
     expect(screen.getByRole('navigation', { name: 'Platform Console 全局导航' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '返回首页' }));
 

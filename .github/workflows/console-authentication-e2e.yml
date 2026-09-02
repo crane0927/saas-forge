@@ -1,0 +1,93 @@
+name: Console authentication product acceptance
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  product-authentication:
+    name: Fresh Compose and trusted TLS (five browser channels)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      SF_ACCEPTANCE_TARGET: ci
+      # Chromium 的视觉基线目前是 macOS；Linux CI 的核心认证行为仍须全部执行。
+      SF_VISUAL_SNAPSHOTS: "false"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24.14.1"
+      - run: corepack enable
+      - name: Install locked workspace dependencies
+        working-directory: consoles
+        run: pnpm install --frozen-lockfile
+      - name: Install all required browser engines and release channels
+        working-directory: consoles
+        run: pnpm exec playwright install --with-deps chromium firefox webkit chrome msedge
+      - name: Configure ephemeral trusted TLS and controlled Origins
+        working-directory: consoles
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          tls_directory="$RUNNER_TEMP/console-authentication-tls"
+          mkdir -p "$tls_directory"
+          openssl req -x509 -newkey rsa:3072 -nodes -days 2 -sha256 \
+            -keyout "$tls_directory/root-ca.key" -out "$tls_directory/root-ca.pem" \
+            -subj '/CN=SaaS Forge CI Acceptance CA' \
+            -addext 'basicConstraints=critical,CA:TRUE,pathlen:0' \
+            -addext 'keyUsage=critical,keyCertSign,cRLSign' \
+            -addext 'nameConstraints=critical,permitted;DNS:.saasforge.test'
+          openssl req -new -newkey rsa:3072 -nodes -sha256 \
+            -keyout "$tls_directory/server.key" -out "$tls_directory/server.csr" \
+            -subj '/CN=platform.saasforge.test'
+          cat > "$tls_directory/server.ext" <<'EOF'
+          basicConstraints=critical,CA:FALSE
+          keyUsage=critical,digitalSignature,keyEncipherment
+          extendedKeyUsage=serverAuth
+          subjectAltName=DNS:platform.saasforge.test,DNS:console.saasforge.test,DNS:api.saasforge.test
+          EOF
+          openssl x509 -req -in "$tls_directory/server.csr" \
+            -CA "$tls_directory/root-ca.pem" -CAkey "$tls_directory/root-ca.key" \
+            -CAcreateserial -days 1 -sha256 -extfile "$tls_directory/server.ext" \
+            -out "$tls_directory/server.pem"
+          sudo install -m 644 "$tls_directory/root-ca.pem" /usr/local/share/ca-certificates/saas-forge-acceptance.crt
+          sudo update-ca-certificates
+          sudo apt-get update
+          sudo apt-get install -y libnss3-tools
+          # Chromium M146 起迁移 NSS 默认路径；两个实际发行渠道可能处于不同版本。
+          for nss_directory in "$HOME/.pki/nssdb" "$HOME/.local/share/pki/nssdb"; do
+            mkdir -p "$nss_directory"
+            if [[ ! -f "$nss_directory/cert9.db" ]]; then
+              certutil -N --empty-password -d "sql:$nss_directory"
+            fi
+            certutil -A -d "sql:$nss_directory" -n 'SaaS Forge CI Acceptance CA' \
+              -t 'C,,' -i "$tls_directory/root-ca.pem"
+          done
+          # Playwright Firefox 的临时 profile 通过正式企业证书策略导入本次 CA。
+          firefox_directory="$(node -p "require('node:path').dirname(require('playwright').firefox.executablePath())")"
+          mkdir -p "$firefox_directory/distribution"
+          test ! -e "$firefox_directory/distribution/policies.json"
+          node -e 'require("node:fs").writeFileSync(process.argv[1], JSON.stringify({policies:{Certificates:{Install:[process.argv[2]]}}}))' \
+            "$firefox_directory/distribution/policies.json" "$tls_directory/root-ca.pem"
+          printf '\n127.0.0.1 platform.saasforge.test console.saasforge.test api.saasforge.test\n' | sudo tee -a /etc/hosts >/dev/null
+          {
+            printf 'SF_ACCEPTANCE_TLS_CERT=%s\n' "$tls_directory/server.pem"
+            printf 'SF_ACCEPTANCE_TLS_KEY=%s\n' "$tls_directory/server.key"
+            printf 'NODE_EXTRA_CA_CERTS=%s\n' "$tls_directory/root-ca.pem"
+          } >> "$GITHUB_ENV"
+      - name: Verify actual Console product paths through fresh services
+        run: bash scripts/verify-console-authentication-e2e.sh
+      - name: Remove ephemeral certificate material
+        if: always()
+        run: rm -rf -- "$RUNNER_TEMP/console-authentication-tls"

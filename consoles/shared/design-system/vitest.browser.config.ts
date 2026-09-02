@@ -7,6 +7,9 @@ const browserChannel = process.env.SF_BROWSER_CHANNEL;
 
 export default defineConfig({
   define: {
+    'import.meta.env.SF_MACOS_WEBKIT': JSON.stringify(
+      browserName === 'webkit' && process.platform === 'darwin',
+    ),
     'import.meta.env.SF_VISUAL_SNAPSHOTS': JSON.stringify(
       process.env.SF_VISUAL_SNAPSHOTS ?? 'true',
     ),
