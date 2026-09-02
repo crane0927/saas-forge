@@ -224,7 +224,8 @@ console.info('All three host HTTPS entrypoints returned 200 with certificate ver
 JS
 }
 
-engines=(chromium webkit)
+# 各渠道使用独立数据卷；优先验证当前需要定位的 WebKit，避免晚到的失败反馈。
+engines=(webkit chromium)
 channels=(chrome)
 if [[ "$acceptance_target" == ci ]]; then
   engines+=(firefox)

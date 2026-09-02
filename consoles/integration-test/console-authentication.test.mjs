@@ -115,6 +115,9 @@ test('Platform and Tenant sessions survive independent recovery and logout after
   const initial = await login(platform, email, initialPassword);
   assert.equal(initial.contextState, 'PASSWORD_CHANGE_REQUIRED');
   assert.equal(Object.hasOwn(initial, 'accessToken'), false);
+  const initialCookieStored = (await context.cookies('https://api.saasforge.test')).some(
+    (cookie) => cookie.name === '__Host-sf_platform_refresh',
+  );
   await expectRouteAccessibility(platform, '设置新密码');
   await platform
     .getByLabel(/^新密码/)
@@ -124,7 +127,30 @@ test('Platform and Tenant sessions survive independent recovery and logout after
     });
   const changed = platform.waitForResponse(isAuthResponse('password-changes'));
   await platform.getByRole('button', { name: '更新密码', exact: true }).press('Enter');
-  assert.equal((await changed).status(), 204);
+  const changedResponse = await changed;
+  let changeDiagnostic;
+  if (changedResponse.status() !== 204) {
+    const problem = await changedResponse.json().catch(() => ({}));
+    const allowedCodes = new Set([
+      'PASSWORD_CHANGE_SESSION_INVALID',
+      'REFRESH_SESSION_INVALID',
+      'BROWSER_REQUEST_REJECTED',
+      'VALIDATION_FAILED',
+    ]);
+    const code = allowedCodes.has(problem?.code) ? problem.code : 'OTHER';
+    const cookieObserved =
+      (await changedResponse.request().headerValue('cookie'))?.includes(
+        '__Host-sf_platform_refresh=',
+      ) ?? false;
+    let requestMatches = false;
+    try {
+      requestMatches = changedResponse.request().postDataJSON()?.newPassword === password;
+    } catch {
+      // 非 JSON 请求只记布尔结果，不输出可能含密码的原文。
+    }
+    changeDiagnostic = `initial-password-change status=${changedResponse.status()} cookieStored=${initialCookieStored} cookieObserved=${cookieObserved} requestMatches=${requestMatches} problem=${code}`;
+  }
+  assert.equal(changedResponse.status(), 204, changeDiagnostic);
   await platform.getByRole('heading', { name: '登录 Platform Console', exact: true }).waitFor();
   const platformLogin = await login(platform, email, password);
   assert.equal(platformLogin.contextState, 'ACCESS_TOKEN_ISSUED');

@@ -224,10 +224,19 @@ CI 的 Linux 浏览器信任按官方入口配置：[Chromium NSS](https://chrom
 
 - Verify 的 Chrome、Edge、Firefox、WebKit 均在加载消费者测试时无法解析 `shared/api-client/.generated/index`；浏览器安装步骤最终成功，测试尚未进入行为断言。独立矩阵此前只有依赖和浏览器安装，缺少正式 Client 生成。工作流补上 JDK 17 与既有 `pnpm run generate:api`，不提交生成工件。
 - 本地临时移开生成目录后，Chrome 消费者测试以相同导入错误失败；恢复目录并执行工作流新增的生成命令后，原消费者测试 6 通过、1 个非 Chromium 视觉快照按约定跳过。生成命令、工作流 YAML/步骤顺序和 Shell 语法检查通过。
-- Tenant lifecycle E2E 在第 8/13 阶段第二次 Tenant 登录得到 `409 SESSION_SLOT_ALREADY_ACTIVE`。夹具要建立两个 Refresh Token Family，却复用了第一份已登录 Cookie。现保留第一份 Cookie 文件，用独立的新 Cookie 文件建立第二个会话；不修改服务端槽位校验，不登出或撤销第一个会话。全新 Compose 回归已通过原失败点，Tenant Access 撤销快照为 `SUSPENDED:COMPLETED:0:2:2:1`，IAM 为 `COMPLETED:0:2:2`，证明两个会话族及两个访问令牌均被撤销；后续恢复/审计步骤仍在运行。
+- Tenant lifecycle E2E 在第 8/13 阶段第二次 Tenant 登录得到 `409 SESSION_SLOT_ALREADY_ACTIVE`。夹具要建立两个 Refresh Token Family，却复用了第一份已登录 Cookie。现保留第一份 Cookie 文件，用独立的新 Cookie 文件建立第二个会话；不修改服务端槽位校验，不登出或撤销第一个会话。全新 Compose 回归已通过原失败点，Tenant Access 撤销快照为 `SUSPENDED:COMPLETED:0:2:2:1`，IAM 为 `COMPLETED:0:2:2`，证明两个会话族及两个访问令牌均被撤销；其后完整 13/13 阶段、审计故障恢复和敏感明文扫描均通过，命令退出 0；隔离项目 `saas-forge-tenant-lifecycle-78993-82298` 的容器和数据卷已清理并读回为空。
 - Verify 的 JDK 17、JDK 21、Nacos 最终通过。真实产品任务随后结束：Maven、容器引导、两个渠道的受信 TLS 就绪检查均通过，Chromium 16/16、0 跳过；Linux WebKit 产品测试失败，后续 Firefox/Chrome/Edge 产品渠道未执行。
 - 首轮产品失败仅输出 runner 临时诊断路径，原始日志未上传且任务结束后不可获取，无法据此断定 WebKit 根因。新增 CLI 只输出 TAP 失败编号、已知测试源码位置、固定断言错误码和统计，不输出标题、原始错误、actual/expected 或任意堆栈。公开 CLI 回归先 RED 后 GREEN，验证敏感诊断值不出现在输出中；lint/格式及脚本语法通过。原始日志继续只留受限临时目录。
 - 已定位的 Client 生成和会话夹具修复，以及 WebKit 定位所需的安全摘要，均需提交后复验；不能将新增诊断当作 WebKit 产品故障已修复。
+
+提交 `82ad2e3` 已推送并触发 [第二轮 Verify](https://github.com/crane0927/saas-forge/actions/runs/33622146190) 和 [第二轮产品验收](https://github.com/crane0927/saas-forge/actions/runs/33622146203)。Chrome、Edge、Firefox、Linux WebKit 四个独立兼容任务已全部通过，证实正式 Client 生成步骤修复了原导入失败；第二轮 Verify 最终全部通过，包括生命周期 E2E、JDK 17/21 和 Nacos；独立产品任务仍在 Linux WebKit 失败；摘要定位到 `82ad2e3` 的 `console-authentication.test.mjs:127`，首次改密响应并非 204。该轮只有 6 条顶层测试被执行（5 通过、1 失败），后续嵌套会话用例尚未进入，不能归因于多标签页竞争。
+
+## Linux WebKit 首次改密诊断
+
+- 第二轮真实产品的 Maven、Chromium 16/16、两次受信 TLS 就绪均通过，失败发生在首次改密响应状态断言。当前摘要尚不含该 HTTP 状态或 Cookie 观察信息，因此根因仍未知。
+- 补充失败专用的有限诊断：HTTP 状态、改密前浏览器是否存有 Platform Cookie、工具是否观察到请求 Cookie、请求密码是否匹配，以及四个已知 Problem 代码或 OTHER。所有密码、Cookie 值与原始响应均留在内存，不作为诊断输出；“工具未观察到 Cookie”不直接等同于服务端未收到 Cookie。
+- 摘要现在只读取 TAP 的结构化字段，多行 error/actual 内容不能冒充失败编号或代码位置。公开 CLI 回归覆盖仿造多行响应和有限状态摘要，分别先 RED 后 GREEN；lint/格式通过。
+- 各产品渠道仍使用独立数据卷，将 WebKit 提前以缩短失败定位等待，不跳过其他渠道或 Maven/workspace 门禁。上述诊断需推送后从下一轮 CI 获取证据，尚未宣称首次改密故障已修复。
 
 ## 最终验收待办
 

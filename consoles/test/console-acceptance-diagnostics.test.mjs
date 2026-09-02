@@ -18,9 +18,16 @@ not ok 2 - PRIVATE_TEST_TITLE
   ---
   location: '/runner/consoles/integration-test/console-authentication.test.mjs:65:1'
   failureType: 'testCodeFailure'
-  error: 'PRIVATE_ERROR_BODY'
+  error: |-
+    initial-password-change status=401 cookieStored=true cookieObserved=false requestMatches=true problem=PASSWORD_CHANGE_SESSION_INVALID
+    PRIVATE_ERROR_BODY
   code: 'ERR_ASSERTION'
-  actual: 'PRIVATE_ACCESS_TOKEN'
+  actual: |-
+    PRIVATE_ACCESS_TOKEN
+    not ok 9999 - PRIVATE_RESPONSE_TITLE
+    initial-password-change status=401 cookieStored=false cookieObserved=false requestMatches=false problem=OTHER
+    code: 'ERR_ASSERTION'
+    at /runner/consoles/integration-test/console-authentication.test.mjs:9999:8
   expected: 'PRIVATE_PASSWORD'
   stack: |-
     PRIVATE_STACK_VALUE
@@ -41,6 +48,7 @@ not ok 2 - PRIVATE_TEST_TITLE
     [
       'FAIL: test 2',
       'AT: consoles/integration-test/console-authentication.test.mjs:65:1',
+      'DIAG: initial-password-change status=401 cookieStored=true cookieObserved=false requestMatches=true problem=PASSWORD_CHANGE_SESSION_INVALID',
       'CODE: ERR_ASSERTION',
       'AT: consoles/integration-test/console-client-acceptance.mjs:81:8',
       '# tests 16',
