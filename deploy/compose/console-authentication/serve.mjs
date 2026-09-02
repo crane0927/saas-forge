@@ -4,11 +4,17 @@ import { createServer as httpServer, request } from "node:http";
 import { createServer as httpsServer } from "node:https";
 import { extname, resolve } from "node:path";
 
+const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? "saasforge.test";
+// 对照实验仅允许已批准的两个根域；不能把验收代理开放给任意 Host。
+if (!["saasforge.test", "saasforge.example.com"].includes(rootDomain)) {
+  throw new Error("unsupported acceptance root domain");
+}
+
 // 仅供 Fresh Compose 验收：生产构建只读挂载，外部入口只接受三个正式受控 Host。
 const targets = {
-  "platform.saasforge.test": "platform-console",
-  "console.saasforge.test": "tenant-console",
-  "api.saasforge.test": "gateway",
+  [`platform.${rootDomain}`]: "platform-console",
+  [`console.${rootDomain}`]: "tenant-console",
+  [`api.${rootDomain}`]: "gateway",
 };
 const types = {
   ".html": "text/html; charset=utf-8",
@@ -31,12 +37,12 @@ function unavailable(response) {
 }
 
 function proxy(incoming, outgoing) {
-  const url = new URL(incoming.url, "https://api.saasforge.test");
+  const url = new URL(incoming.url, `https://api.${rootDomain}`);
   const probe = url.searchParams.get("acceptanceProbe");
   // 浏览器工具不保证暴露 opaque 响应的原始安全头；只记录显式探针的枚举元数据。
   // 不记录任意 Origin 文本、其他请求头、Cookie 或请求体，也不补造/更改转发头。
   if (
-    incoming.headers.host === "api.saasforge.test" &&
+    incoming.headers.host === `api.${rootDomain}` &&
     incoming.method === "POST" &&
     url.pathname === "/api/v1/auth/logout" &&
     /^[0-9a-f-]{36}$/.test(probe ?? "")
@@ -129,7 +135,7 @@ async function serve(incoming, outgoing) {
         ? undefined
         : JSON.stringify({
             schemaVersion: 1,
-            apiBaseUrl: "https://api.saasforge.test",
+            apiBaseUrl: `https://api.${rootDomain}`,
           }),
     );
     return;

@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 
+const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saasforge.test';
+
 // 使用公开 Runtime/Client 连接真实服务；此接口证据与宿主 UI 路径分别记账。
 export async function verifyClientRecovery(context) {
   const page = await context.newPage();
@@ -9,18 +11,18 @@ export async function verifyClientRecovery(context) {
       statuses.push(response.status());
   });
   try {
-    await page.goto('https://platform.saasforge.test/acceptance-client.html');
-    const recovered = await page.evaluate(async () => {
+    await page.goto(`https://platform.${rootDomain}/acceptance-client.html`);
+    const recovered = await page.evaluate(async (rootDomain) => {
       const { createAuthenticationRuntimeAfterConfig } = await import('/acceptance-runtime.js');
       const created = createAuthenticationRuntimeAfterConfig(
-        { ok: true, config: { schemaVersion: 1, apiBaseUrl: 'https://api.saasforge.test' } },
+        { ok: true, config: { schemaVersion: 1, apiBaseUrl: `https://api.${rootDomain}` } },
         { realm: globalThis, intent: 'PLATFORM', fetch: (input, init) => fetch(input, init) },
       );
       if (!created.ok) return false;
       globalThis.acceptanceRuntime = created.runtime;
       const result = await created.runtime.recover();
       return { ok: result.ok, status: created.runtime.getState().status };
-    });
+    }, rootDomain);
     assert.deepEqual(recovered, { ok: true, status: 'authenticated' });
     const created = await page.evaluate(async () => {
       const result = await globalThis.acceptanceRuntime.client.createOAuthClient({

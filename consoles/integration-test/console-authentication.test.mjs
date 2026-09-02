@@ -8,6 +8,8 @@ import { chromium, firefox, webkit } from 'playwright';
 import { verifyClientRecovery } from './console-client-acceptance.mjs';
 import { verifyRequestProblemSurfaces } from './console-problem-acceptance.mjs';
 
+const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saasforge.test';
+
 // 此入口只访问生产构建与真实服务；不得用 route.fulfill 或忽略证书错误让正常路径通过。
 test('production Consoles expose independent login paths through trusted TLS', async (t) => {
   const engine = process.env.SF_BROWSER ?? 'chromium';
@@ -51,7 +53,7 @@ test('production Consoles expose independent login paths through trusted TLS', a
     [platform, 'platform', 'Platform Console'],
     [tenant, 'console', 'Tenant Console'],
   ]) {
-    const response = await page.goto(`https://${host}.saasforge.test/`);
+    const response = await page.goto(`https://${host}.${rootDomain}/`);
     assert.equal(response.status(), 200);
     assert.ok(await response.securityDetails(), 'the document must use TLS');
     await page.getByRole('heading', { name: `登录 ${name}`, exact: true }).waitFor();
@@ -76,7 +78,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
     page.on('console', (message) => diagnostics.push(message.text()));
     page.on('pageerror', (error) => diagnostics.push(error.message));
   });
-  await context.addInitScript(() => {
+  await context.addInitScript((rootDomain) => {
     globalThis.acceptanceMessageShapes = [];
     if (globalThis.BroadcastChannel === undefined) return;
     const post = globalThis.BroadcastChannel.prototype.postMessage;
@@ -94,7 +96,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
             Object.keys(message).sort().join() === expected.join() &&
             ['refresh-succeeded', 'session-ended'].includes(message.event) &&
             ['PLATFORM', 'TENANT'].includes(message.contextType) &&
-            this.name === `sf:session:https://api.saasforge.test:${message.contextType}` &&
+            this.name === `sf:session:https://api.${rootDomain}:${message.contextType}` &&
             Number.isSafeInteger(message.generation) &&
             message.generation >= 0,
           generation: message.generation,
@@ -102,7 +104,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       }
       return post.call(this, message);
     };
-  });
+  }, rootDomain);
   const platform = await context.newPage();
   const tenant = await context.newPage();
   const errors = [];
@@ -112,7 +114,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
     const url = new URL(response.url());
     const operation = url.pathname.replace('/api/v1/auth/', '');
     if (
-      url.origin !== 'https://api.saasforge.test' ||
+      url.origin !== `https://api.${rootDomain}` ||
       response.request().method() !== 'POST' ||
       !['login', 'refresh', 'password-changes'].includes(operation)
     )
@@ -147,11 +149,11 @@ test('Platform and Tenant sessions survive independent recovery and logout after
   const initialPassword = (await readFile(process.env.SF_INITIAL_PASSWORD_FILE, 'utf8')).trim();
   const password = `Acceptance-${randomBytes(24).toString('hex')}`;
 
-  await platform.goto('https://platform.saasforge.test/');
+  await platform.goto(`https://platform.${rootDomain}/`);
   const initial = await login(platform, email, initialPassword);
   assert.equal(initial.contextState, 'PASSWORD_CHANGE_REQUIRED');
   assert.equal(Object.hasOwn(initial, 'accessToken'), false);
-  const initialCookieStored = (await context.cookies('https://api.saasforge.test')).some(
+  const initialCookieStored = (await context.cookies(`https://api.${rootDomain}`)).some(
     (cookie) => cookie.name === '__Host-sf_platform_refresh',
   );
   await expectRouteAccessibility(platform, '设置新密码');
@@ -198,7 +200,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
   // Node 侧正式 API 只用于准备 Tenant；浏览器认证断言仍由生产页面发起请求。
   // 使用同一 Identity 验证两个槽位，避免把不同账号误当成槽位隔离。
   const firstTenant = await prepareTenant(context.request, platformLogin.accessToken, email);
-  await tenant.goto('https://console.saasforge.test/');
+  await tenant.goto(`https://console.${rootDomain}/`);
   const tenantLogin = await login(tenant, email, password);
   assert.equal(tenantLogin.contextState, 'ACCESS_TOKEN_ISSUED');
   assert.ok(
@@ -216,7 +218,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
   for (const cookie of cookieNames) {
     assert.equal(cookie.httpOnly, true);
     assert.equal(cookie.secure, true);
-    assert.equal(cookie.domain, 'api.saasforge.test');
+    assert.equal(cookie.domain, `api.${rootDomain}`);
     assert.equal(cookie.path, '/');
   }
 
@@ -335,7 +337,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       assert.equal(await tenant.getByRole('navigation').count(), 0);
       // 服务端公共 HTTP 边界补充证明：旧 Token 已失效，不能作为 UI 回滚的后备凭据。
       const oldContext = await context.request
-        .get('https://api.saasforge.test/api/v1/auth/context', {
+        .get(`https://api.${rootDomain}/api/v1/auth/context`, {
           headers: { Authorization: `Bearer ${beforeSwitch.accessToken}` },
         })
         .catch(() => {
@@ -366,7 +368,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       const peer = await context.newPage();
       const statuses = [];
       try {
-        await peer.goto('https://console.saasforge.test/');
+        await peer.goto(`https://console.${rootDomain}/`);
         await peer.getByRole('heading', { name: 'Tenant 工作台', exact: true }).waitFor();
         const observe = (response) => {
           if (isAuthResponse('refresh')(response)) statuses.push(response.status());
@@ -414,9 +416,9 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         .press('Enter');
       await tenant.getByRole('heading', { name: 'Tenant 工作台', exact: true }).waitFor();
       const peer = await context.newPage();
-      const channelName = 'sf:session:https://api.saasforge.test:TENANT';
+      const channelName = `sf:session:https://api.${rootDomain}:TENANT`;
       try {
-        await peer.goto('https://console.saasforge.test/');
+        await peer.goto(`https://console.${rootDomain}/`);
         await peer.getByRole('heading', { name: 'Tenant 工作台', exact: true }).waitFor();
         await peer.evaluate((name) => {
           const channel = new BroadcastChannel(name);
@@ -671,13 +673,13 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         });
         const first = await fallback.newPage();
         const second = await fallback.newPage();
-        await first.goto('https://console.saasforge.test/');
+        await first.goto(`https://console.${rootDomain}/`);
         await login(first, email, password);
         await first
           .getByRole('button', { name: '进入 Second Acceptance Tenant', exact: true })
           .press('Enter');
         await first.getByRole('heading', { name: 'Tenant 工作台', exact: true }).waitFor();
-        await second.goto('https://console.saasforge.test/');
+        await second.goto(`https://console.${rootDomain}/`);
         await second.getByRole('heading', { name: 'Tenant 工作台', exact: true }).waitFor();
         for (const page of [first, second]) {
           assert.equal(
@@ -772,7 +774,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
           },
         });
       }, marker);
-      await page.goto('https://platform.saasforge.test/oauth-clients');
+      await page.goto(`https://platform.${rootDomain}/oauth-clients`);
       await expectRouteAccessibility(page, '当前页面出现错误');
       await page
         .getByRole('navigation', { name: 'Platform Console 全局导航', exact: true })
@@ -795,7 +797,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
     'browser storage, native messages and production logs retain no sensitive payloads',
     async () => {
       const api = await context.newPage();
-      await api.goto('https://api.saasforge.test/.well-known/jwks.json');
+      await api.goto(`https://api.${rootDomain}/.well-known/jwks.json`);
       for (const page of [platform, tenant, api]) {
         await expectSafeStorage(page);
       }
@@ -865,7 +867,7 @@ test('browser-managed Origins reject mismatched Intent and invalid CSRF or media
   t.after(() => browser.close());
   const context = await browser.newContext({ ignoreHTTPSErrors: false });
   const page = await context.newPage();
-  await page.goto('https://platform.saasforge.test/');
+  await page.goto(`https://platform.${rootDomain}/`);
   await page.getByRole('heading', { name: '登录 Platform Console', exact: true }).waitFor();
   let corsRejections = 0;
   page.on('console', (message) => {
@@ -878,10 +880,10 @@ test('browser-managed Origins reject mismatched Intent and invalid CSRF or media
   });
   const attempt = (slot, csrf, contentType) =>
     page.evaluate(
-      async ({ slot, csrf, contentType }) => {
+      async ({ slot, csrf, contentType, rootDomain }) => {
         // 此处刻意构造不合法请求，只用于安全负向；Origin、Cookie 和 Fetch Metadata 仍由浏览器管理。
         try {
-          const response = await fetch('https://api.saasforge.test/api/v1/auth/logout', {
+          const response = await fetch(`https://api.${rootDomain}/api/v1/auth/logout`, {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': contentType, 'X-SF-CSRF': csrf },
@@ -892,7 +894,7 @@ test('browser-managed Origins reject mismatched Intent and invalid CSRF or media
           return null;
         }
       },
-      { slot, csrf, contentType },
+      { slot, csrf, contentType, rootDomain },
     );
   for (const [name, slot, csrf, contentType, expected] of [
     ['mismatched Intent', 'TENANT', '1', 'application/json', 403],
@@ -906,7 +908,7 @@ test('browser-managed Origins reject mismatched Intent and invalid CSRF or media
       'healthy controlled request',
     );
     const control = await controlRequest;
-    assert.equal(await control.headerValue('origin'), 'https://platform.saasforge.test');
+    assert.equal(await control.headerValue('origin'), `https://platform.${rootDomain}`);
     assert.equal(await control.headerValue('sec-fetch-site'), 'same-site');
     const before = corsRejections;
     const outgoing = page.waitForRequest(isAuthRequest('logout'));
@@ -917,7 +919,7 @@ test('browser-managed Origins reject mismatched Intent and invalid CSRF or media
     if (expected === null)
       assert.ok(corsRejections > before, `${name} must produce a CORS rejection`);
     const request = await outgoing;
-    assert.equal(new URL(request.frame().url()).origin, 'https://platform.saasforge.test');
+    assert.equal(new URL(request.frame().url()).origin, `https://platform.${rootDomain}`);
     assert.equal(
       await attempt('PLATFORM', '1', 'application/json'),
       204,
@@ -938,7 +940,7 @@ test('an opaque cross-site browser Origin is rejected before session logout', as
   t.after(() => browser.close());
   const context = await browser.newContext({ ignoreHTTPSErrors: false });
   const page = await context.newPage();
-  await page.goto('https://platform.saasforge.test/');
+  await page.goto(`https://platform.${rootDomain}/`);
   await page.getByRole('heading', { name: '登录 Platform Console', exact: true }).waitFor();
   await page.evaluate(() => {
     const frame = document.createElement('iframe');
@@ -951,18 +953,21 @@ test('an opaque cross-site browser Origin is rejected before session logout', as
   const probe = randomUUID();
   const denied = page.waitForResponse(isAuthResponse('logout'));
   // 沙盒产生真实的 opaque Origin 和 cross-site 元数据；不伪造浏览器禁止设置的请求头。
-  const result = await frame.evaluate(async (probe) => {
-    const response = await fetch(
-      `https://api.saasforge.test/api/v1/auth/logout?acceptanceProbe=${probe}`,
-      {
-        method: 'POST',
-        mode: 'no-cors',
-        credentials: 'include',
-        body: JSON.stringify({ sessionSlot: 'PLATFORM' }),
-      },
-    );
-    return { type: response.type, status: response.status, origin: globalThis.origin };
-  }, probe);
+  const result = await frame.evaluate(
+    async ({ probe, rootDomain }) => {
+      const response = await fetch(
+        `https://api.${rootDomain}/api/v1/auth/logout?acceptanceProbe=${probe}`,
+        {
+          method: 'POST',
+          mode: 'no-cors',
+          credentials: 'include',
+          body: JSON.stringify({ sessionSlot: 'PLATFORM' }),
+        },
+      );
+      return { type: response.type, status: response.status, origin: globalThis.origin };
+    },
+    { probe, rootDomain },
+  );
   assert.deepEqual(result, { type: 'opaque', status: 0, origin: 'null' });
   const response = await denied;
   assert.equal(response.status(), 403);
@@ -1079,7 +1084,7 @@ test('production root errors show a safe reload surface without leaking the orig
     page.on('pageerror', (error) => {
       leaked ||= error.message.includes(marker);
     });
-    await page.goto(`https://${host}.saasforge.test/`);
+    await page.goto(`https://${host}.${rootDomain}/`);
     await page.getByRole('heading', { name: `${name} 无法继续运行`, exact: true }).waitFor();
     assert.equal((await page.locator('body').innerText()).includes(marker), false);
     assert.equal(await page.locator('[aria-live="assertive"]').count(), 1);
@@ -1157,7 +1162,7 @@ async function prepareTenant(api, token, email, options = {}) {
     const hex = bytes.toString('hex');
     const key = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
     const response = await api
-      .post(`https://api.saasforge.test/api/v1/platform/${path}`, {
+      .post(`https://api.${rootDomain}/api/v1/platform/${path}`, {
         headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key': key },
         data,
       })

@@ -22,6 +22,7 @@ for required_command in node pnpm docker openssl ruby; do
   }
 done
 export PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE=false
+export SF_ACCEPTANCE_ROOT_DOMAIN="${SF_ACCEPTANCE_ROOT_DOMAIN:-saasforge.test}"
 (cd "$repository_root/consoles" && node scripts/check-console-authentication-environment.mjs)
 docker info --format '{{.ServerVersion}}' >/dev/null
 [[ "$(cd "$repository_root/consoles" && pnpm --version)" == '11.22.0' ]] || {
@@ -97,6 +98,7 @@ write_environment() {
   cp "$SF_ACCEPTANCE_TLS_CERT" "$secret_directory/tls-cert.pem"
   cp "$SF_ACCEPTANCE_TLS_KEY" "$secret_directory/tls-key.pem"
   {
+    printf 'SF_ACCEPTANCE_ROOT_DOMAIN=%s\n' "$SF_ACCEPTANCE_ROOT_DOMAIN"
     printf 'SF_ACCEPTANCE_PROJECT=%s\n' "$project_name"
     printf 'SF_ACCEPTANCE_TLS_CERT=%s\n' "$secret_directory/tls-cert.pem"
     printf 'SF_ACCEPTANCE_TLS_KEY=%s\n' "$secret_directory/tls-key.pem"
@@ -190,10 +192,11 @@ start_fresh_environment() {
   stage compose-start compose up --detach --wait --wait-timeout 240 console-tls
   # 容器内健康不能证明宿主 443 转发及 TLS 已就绪；实际入口必须通过正常证书验证。
   stage tls-ready node --input-type=module - <<'JS'
+const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN;
 const urls = [
-  'https://platform.saasforge.test/',
-  'https://console.saasforge.test/',
-  'https://api.saasforge.test/.well-known/jwks.json',
+  `https://platform.${rootDomain}/`,
+  `https://console.${rootDomain}/`,
+  `https://api.${rootDomain}/.well-known/jwks.json`,
 ];
 const deadline = Date.now() + 30_000;
 let ready = false;

@@ -15,6 +15,8 @@ jobs:
     timeout-minutes: 60
     env:
       SF_ACCEPTANCE_TARGET: ci
+      # Linux libsoup 对未知顶级域的基础域判断不同；仅在 CI 对照使用保留示例域。
+      SF_ACCEPTANCE_ROOT_DOMAIN: saasforge.example.com
       # Chromium 的视觉基线目前是 macOS；Linux CI 的核心认证行为仍须全部执行。
       SF_VISUAL_SNAPSHOTS: "false"
     steps:
@@ -34,6 +36,20 @@ jobs:
       - name: Install all required browser engines and release channels
         working-directory: consoles
         run: pnpm exec playwright install --with-deps chromium firefox webkit chrome msedge
+      - name: Observe Linux cookie base domains
+        run: |
+          python3 - <<'PY'
+          import ctypes
+          import os
+          soup = ctypes.CDLL('libsoup-3.0.so.0')
+          base_domain = soup.soup_tld_get_base_domain
+          base_domain.argtypes = [ctypes.c_char_p, ctypes.c_void_p]
+          base_domain.restype = ctypes.c_char_p
+          for root in ['saasforge.test', os.environ['SF_ACCEPTANCE_ROOT_DOMAIN']]:
+              domains = [base_domain(f'{host}.{root}'.encode(), None) for host in ['platform', 'console', 'api']]
+              shared = domains[0] is not None and len(set(domains)) == 1
+              print(f'DOMAIN: root={root} sharedBase={str(shared).lower()}')
+          PY
       - name: Configure ephemeral trusted TLS and controlled Origins
         working-directory: consoles
         shell: bash
@@ -47,15 +63,15 @@ jobs:
             -subj '/CN=SaaS Forge CI Acceptance CA' \
             -addext 'basicConstraints=critical,CA:TRUE,pathlen:0' \
             -addext 'keyUsage=critical,keyCertSign,cRLSign' \
-            -addext 'nameConstraints=critical,permitted;DNS:.saasforge.test'
+            -addext 'nameConstraints=critical,permitted;DNS:.saasforge.example.com'
           openssl req -new -newkey rsa:3072 -nodes -sha256 \
             -keyout "$tls_directory/server.key" -out "$tls_directory/server.csr" \
-            -subj '/CN=platform.saasforge.test'
+            -subj '/CN=platform.saasforge.example.com'
           cat > "$tls_directory/server.ext" <<'EOF'
           basicConstraints=critical,CA:FALSE
           keyUsage=critical,digitalSignature,keyEncipherment
           extendedKeyUsage=serverAuth
-          subjectAltName=DNS:platform.saasforge.test,DNS:console.saasforge.test,DNS:api.saasforge.test
+          subjectAltName=DNS:platform.saasforge.example.com,DNS:console.saasforge.example.com,DNS:api.saasforge.example.com
           EOF
           openssl x509 -req -in "$tls_directory/server.csr" \
             -CA "$tls_directory/root-ca.pem" -CAkey "$tls_directory/root-ca.key" \
@@ -80,7 +96,7 @@ jobs:
           test ! -e "$firefox_directory/distribution/policies.json"
           node -e 'require("node:fs").writeFileSync(process.argv[1], JSON.stringify({policies:{Certificates:{Install:[process.argv[2]]}}}))' \
             "$firefox_directory/distribution/policies.json" "$tls_directory/root-ca.pem"
-          printf '\n127.0.0.1 platform.saasforge.test console.saasforge.test api.saasforge.test\n' | sudo tee -a /etc/hosts >/dev/null
+          printf '\n127.0.0.1 platform.saasforge.example.com console.saasforge.example.com api.saasforge.example.com\n' | sudo tee -a /etc/hosts >/dev/null
           {
             printf 'SF_ACCEPTANCE_TLS_CERT=%s\n' "$tls_directory/server.pem"
             printf 'SF_ACCEPTANCE_TLS_KEY=%s\n' "$tls_directory/server.key"

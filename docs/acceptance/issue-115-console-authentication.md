@@ -1,6 +1,6 @@
 # Issue #115：Console 真实产品聚合验收
 
-状态：**未完成；同一产品构建在本地三个渠道各 16 条已通过，最后一项 WebKit 测试观察器已修正。随后聚合补跑在宿主 TLS 就绪阶段发生连接中断；首轮 CI 的 Linux WebKit 产品用例失败，Firefox/Edge 尚未进入产品测试**。本文不构成 PRD #108 完成证据。
+状态：**未完成；同一产品构建在本地三个渠道各 16 条已通过，最后一项 WebKit 测试观察器已修正。随后聚合补跑在宿主 TLS 就绪阶段发生连接中断；第四轮 CI Verify 已全部通过；Linux WebKit 产品用例首次改密返回 401，Firefox/Edge 尚未进入产品测试**。本文不构成 PRD #108 完成证据。
 
 | 最新门禁 | 当前直接结果 |
 | --- | --- |
@@ -13,8 +13,9 @@
 | WebKit 兼容门禁 | 最后修正后通过：6+6+3 条；4 个非 Chromium 视觉快照按约定跳过 |
 | 最后 `--product` 聚合补跑 | 失败于三个宿主 HTTPS 入口 `ECONNRESET`，未进入产品用例 |
 | 首轮 CI Chromium 真实产品 | 16 通过，0 失败，0 跳过 |
-| 首轮 CI Linux WebKit 真实产品 | 失败，具体断言待安全诊断摘要复验 |
-| Firefox / Edge 真实产品与兼容 | 首轮兼容任务缺少生成 Client，产品任务尚未执行；未在本机安装或执行 |
+| 第四轮 CI Linux WebKit 真实产品 | 首次改密 401；浏览器未观察到 Platform Cookie，根因继续定位 |
+| Firefox / Edge 真实产品与兼容 | 第二、三轮兼容任务均通过；产品任务尚未执行；未在本机安装或执行 |
+| 第四轮 CI Verify | 四个浏览器兼容、JDK 17/21、Nacos、生命周期 E2E 全部通过 |
 
 以下历史记录保留各轮失败、修复与证据范围；上述结果表只汇总最新确认状态。
 
@@ -243,6 +244,18 @@ CI 的 Linux 浏览器信任按官方入口配置：[Chromium NSS](https://chrom
 新增观察逻辑的本地 WebKit 聚焦验证通过：项目 `saas-forge-console-1788348327-88682-8a43ec`，受信 TLS、首次改密及全部 16 条产品用例均通过，失败/跳过为 0；聚焦命令退出 0，仅代表该渠道，不包含 Maven/workspace 或其他渠道复验。
 
 为区分上述原因，继续补充首次登录到改密间按响应顺序排列的 Cookie 元数据：固定 operation、HTTP 状态、set/clear/none/mixed 与安全属性是否符合约定；不输出 Cookie 值。公开摘要 CLI 回归先 RED 后 GREEN，覆盖允许字段与恶意多行内容隔离，12 条 Console 边界/诊断测试和相关 lint 通过；产品断言及 Cookie 安全设置保持不变。
+
+提交 `26f95a8` 已推送；[第四轮 Verify](https://github.com/crane0927/saas-forge/actions/runs/33626041136) 全部通过；[第四轮产品验收](https://github.com/crane0927/saas-forge/actions/runs/33626041247) 的 Maven、构建、引导与 TLS 就绪均通过，Linux WebKit 再次在首次改密返回 401。响应顺序为 `refresh 401 clear → login 200 set → password-changes 401 clear`，三次 Cookie 均符合已检查的 Secure、HttpOnly、SameSite=Strict、Path=/、无 Domain 属性；浏览器在登录后未观察到 Platform Cookie，密码请求匹配。没有观察到登录后、改密前的清除响应。
+
+CI 安装的是 libsoup `3.4.4-5ubuntu0.7`。[libsoup Cookie 接收逻辑](https://github.com/GNOME/libsoup/blob/3.4.4/libsoup/cookies/soup-cookie-jar.c) 通过基础域判断第三方 Cookie；[基础域实现](https://github.com/GNOME/libsoup/blob/master/libsoup/soup-tld.c) 对未识别顶级域返回空值，Cookie 接收逻辑随后比较完整主机名。这与 `.test` 下两个不同子域被当作第三方、macOS WebKit 成功而 Linux 失败的现象一致，但尚未完成更换根域的对照实验，不能宣称最终根因或修复已证实。
+
+建议的下一步是仅在隔离 CI 中以 `platform.saasforge.example.com`、`console.saasforge.example.com`、`api.saasforge.example.com` 做对照，临时 hosts 仍仅指向 127.0.0.1，TLS 与 Cookie 安全属性不变，本机现有配置不变。Issue #115 明确写死 `.saasforge.test`，因此该实验和后续验收域名调整需要用户确认；尚未实施，远端 Issue 未修改。
+
+## 经确认的 CI 根域对照
+
+用户已确认仅在 CI 对照使用 `platform.saasforge.example.com`、`console.saasforge.example.com` 与 `api.saasforge.example.com`。`SF_ACCEPTANCE_ROOT_DOMAIN` 默认仍为 `saasforge.test`；CI 明确设置为 `saasforge.example.com`，同步临时证书 SAN/CA 约束、hosts、Gateway/IAM 根域、三个入口和浏览器夹具。代理只接受配置根域下的三个 Host，根域只允许上述两个值；HttpOnly/Secure/SameSite、Origin/Fetch Metadata 和 TLS 校验保持原样。测试账号邮箱与 JWT issuer 作为固定身份数据保持原值。
+
+新增 Linux libsoup 公共函数对照观察，只输出两组公开域名是否具有相同基础域，不输出 Cookie 或凭据。本地 12 条边界/诊断测试、相关 ESLint、JS/Shell 语法、YAML 和 diff 检查通过；使用占位配置验证两个根域均准确传入 Gateway、IAM 和三个入口。尚待本次 CI 的真实产品结果；未修改本机 hosts、信任库或浏览器安装，未修改远端 Issue 验收条款。
 
 ## 最终验收待办
 

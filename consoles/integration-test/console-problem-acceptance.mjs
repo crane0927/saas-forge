@@ -2,6 +2,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 
+const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saasforge.test';
+
 export async function verifyRequestProblemSurfaces(browser) {
   for (const [host, application] of [
     ['platform', 'Platform Console'],
@@ -22,7 +24,7 @@ export async function verifyRequestProblemSurfaces(browser) {
         (request) =>
           new URL(request.url()).pathname === '/api/v1/auth/refresh' && request.method() === 'POST',
       );
-      await page.goto(`https://${host}.saasforge.test/`);
+      await page.goto(`https://${host}.${rootDomain}/`);
       assert.equal(
         (await coldRecovery).postDataJSON().sessionSlot,
         host === 'platform' ? 'PLATFORM' : 'TENANT',

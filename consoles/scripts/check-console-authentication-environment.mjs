@@ -5,6 +5,12 @@ import { createConnection } from 'node:net';
 import { isAbsolute } from 'node:path';
 import { chromium, firefox, webkit } from 'playwright';
 
+const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saasforge.test';
+// 对照实验仅允许已批准的两个根域；不能把验收代理开放给任意 Host。
+if (!['saasforge.test', 'saasforge.example.com'].includes(rootDomain)) {
+  throw new Error('unsupported acceptance root domain');
+}
+
 const problems = [];
 const target = process.env.SF_ACCEPTANCE_TARGET ?? 'local';
 if (!['local', 'ci'].includes(target)) throw new Error('SF_ACCEPTANCE_TARGET must be local or ci');
@@ -12,7 +18,7 @@ function blocked(message) {
   problems.push(message);
   console.error(`BLOCKED: ${message}`);
 }
-const hosts = ['platform', 'console', 'api'].map((name) => `${name}.saasforge.test`);
+const hosts = ['platform', 'console', 'api'].map((name) => `${name}.${rootDomain}`);
 if (process.version !== 'v24.14.1') blocked('需要 Node 24.14.1');
 
 const certFile = process.env.SF_ACCEPTANCE_TLS_CERT;
