@@ -1,6 +1,6 @@
 # Issue #115：Console 真实产品聚合验收
 
-状态：**未完成；同一产品构建在本地三个渠道各 16 条已通过，最后一项 WebKit 测试观察器已修正。随后聚合补跑在宿主 TLS 就绪阶段发生连接中断；Firefox/Edge 仍待 GitHub CI**。本文不构成 PRD #108 完成证据。
+状态：**未完成；同一产品构建在本地三个渠道各 16 条已通过，最后一项 WebKit 测试观察器已修正。随后聚合补跑在宿主 TLS 就绪阶段发生连接中断；首轮 CI 的 Linux WebKit 产品用例失败，Firefox/Edge 尚未进入产品测试**。本文不构成 PRD #108 完成证据。
 
 | 最新门禁 | 当前直接结果 |
 | --- | --- |
@@ -12,7 +12,9 @@
 | Chrome 兼容门禁 | 最后修正后通过：6+6+3 条；4 个非 Chromium 视觉快照按约定跳过 |
 | WebKit 兼容门禁 | 最后修正后通过：6+6+3 条；4 个非 Chromium 视觉快照按约定跳过 |
 | 最后 `--product` 聚合补跑 | 失败于三个宿主 HTTPS 入口 `ECONNRESET`，未进入产品用例 |
-| Firefox / Edge 真实产品与兼容 | 待 GitHub CI，未在本机安装或执行 |
+| 首轮 CI Chromium 真实产品 | 16 通过，0 失败，0 跳过 |
+| 首轮 CI Linux WebKit 真实产品 | 失败，具体断言待安全诊断摘要复验 |
+| Firefox / Edge 真实产品与兼容 | 首轮兼容任务缺少生成 Client，产品任务尚未执行；未在本机安装或执行 |
 
 以下历史记录保留各轮失败、修复与证据范围；上述结果表只汇总最新确认状态。
 
@@ -215,6 +217,17 @@ CI 的 Linux 浏览器信任按官方入口配置：[Chromium NSS](https://chrom
 - 本次宿主连接中断原因未确定，不把它归因于测试观察器或宣称已修复。保持正常 TLS 校验，不改系统代理或安装其他浏览器。此前项目 `saas-forge-console-1788342130-68909-4b922d` 的同一产品代码三渠道成功证据仍保留，但不得将最后补跑或完整脚本记为通过。
 - 最后修正后的独立命令 `pnpm --dir consoles run test:browser:chrome` 与 `pnpm --dir consoles run test:browser:webkit` 均返回 0（通过固定 Node/pnpm 和 `PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE=false` 执行）。两个渠道分别为展示矩阵 6 通过/3 个视觉快照跳过、消费者矩阵 6 通过/1 个视觉快照跳过、原生标签页 3 通过/0 跳过。视觉快照由先前通过的 Chromium 门禁负责，没有跳过核心认证或能力回退用例。
 - CI 工作流 YAML、Shell/JavaScript 语法及最终 diff 空白检查通过。截至本地提交前，改动未推送，GitHub Actions 尚未执行；#115 保持 OPEN。远端 `master` 为 `62ec07c`，本地已有 `d831a68`、`723823c`、`ee8d5b7` 三个认证前置提交；以当前 HEAD 创建测试分支并推送时会同时包含它们。
+
+## 首轮远端 CI 失败与修复
+
+提交 `3f912e4` 已推送到 `codex/issue-115-console-authentication-e2e`，触发 [Verify](https://github.com/crane0927/saas-forge/actions/runs/33620094798) 和 [五浏览器真实产品验收](https://github.com/crane0927/saas-forge/actions/runs/33620094928)。以下是已取得的失败证据，不把仍运行的任务推断为成功。
+
+- Verify 的 Chrome、Edge、Firefox、WebKit 均在加载消费者测试时无法解析 `shared/api-client/.generated/index`；浏览器安装步骤最终成功，测试尚未进入行为断言。独立矩阵此前只有依赖和浏览器安装，缺少正式 Client 生成。工作流补上 JDK 17 与既有 `pnpm run generate:api`，不提交生成工件。
+- 本地临时移开生成目录后，Chrome 消费者测试以相同导入错误失败；恢复目录并执行工作流新增的生成命令后，原消费者测试 6 通过、1 个非 Chromium 视觉快照按约定跳过。生成命令、工作流 YAML/步骤顺序和 Shell 语法检查通过。
+- Tenant lifecycle E2E 在第 8/13 阶段第二次 Tenant 登录得到 `409 SESSION_SLOT_ALREADY_ACTIVE`。夹具要建立两个 Refresh Token Family，却复用了第一份已登录 Cookie。现保留第一份 Cookie 文件，用独立的新 Cookie 文件建立第二个会话；不修改服务端槽位校验，不登出或撤销第一个会话。全新 Compose 回归已通过原失败点，Tenant Access 撤销快照为 `SUSPENDED:COMPLETED:0:2:2:1`，IAM 为 `COMPLETED:0:2:2`，证明两个会话族及两个访问令牌均被撤销；后续恢复/审计步骤仍在运行。
+- Verify 的 JDK 17、JDK 21、Nacos 最终通过。真实产品任务随后结束：Maven、容器引导、两个渠道的受信 TLS 就绪检查均通过，Chromium 16/16、0 跳过；Linux WebKit 产品测试失败，后续 Firefox/Chrome/Edge 产品渠道未执行。
+- 首轮产品失败仅输出 runner 临时诊断路径，原始日志未上传且任务结束后不可获取，无法据此断定 WebKit 根因。新增 CLI 只输出 TAP 失败编号、已知测试源码位置、固定断言错误码和统计，不输出标题、原始错误、actual/expected 或任意堆栈。公开 CLI 回归先 RED 后 GREEN，验证敏感诊断值不出现在输出中；lint/格式及脚本语法通过。原始日志继续只留受限临时目录。
+- 已定位的 Client 生成和会话夹具修复，以及 WebKit 定位所需的安全摘要，均需提交后复验；不能将新增诊断当作 WebKit 产品故障已修复。
 
 ## 最终验收待办
 

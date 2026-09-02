@@ -702,6 +702,9 @@ printf '%s' "$tenant_claims" | jq --exit-status --arg tenantId "$tenant_id" \
   '.tenantId == $tenantId and (.membershipId | length > 0)' >/dev/null
 
 echo "[8/13] 验证 Suspension、Fence、Worker 接管与 Gateway fail-closed 闭环"
+# 第二个 Refresh Token Family 来自独立浏览器；同槽位携带活动 Cookie 再登录应被拒绝。
+mv "$cookie_jar" "$work_directory/first-tenant-session.cookies"
+touch "$cookie_jar"
 login "$tenant_admin_email" "$tenant_password" TENANT
 assert_json '.contextState == "ACCESS_TOKEN_ISSUED" and (.accessToken | length > 100)'
 tenant_token_second_family="$(jq -r '.accessToken' "$response_body")"

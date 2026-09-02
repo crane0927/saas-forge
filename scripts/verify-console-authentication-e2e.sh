@@ -73,6 +73,7 @@ stage() {
     diagnostic_directory="$(mktemp -d "${TMPDIR:-/tmp}/sf-console-e2e-diagnostics.XXXXXX")"
     cp "$work_directory/$name.log" "$diagnostic_directory/$name.log"
     if [[ "$name" == product-* ]]; then
+      node "$repository_root/consoles/scripts/summarize-authentication-failure.mjs" "$work_directory/$name.log"
       compose ps --format json >"$diagnostic_directory/compose-status.json" 2>&1 || true
       compose logs --no-color console-tls >"$diagnostic_directory/tls.log" 2>&1 || true
       compose logs --no-color gateway iam-service entitlement-service >"$diagnostic_directory/services.log" 2>&1 || true

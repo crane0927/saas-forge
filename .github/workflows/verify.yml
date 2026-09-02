@@ -108,11 +108,20 @@ jobs:
             command: test:browser:webkit
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
       - uses: actions/setup-node@v6
         with:
           node-version: "24.14.1"
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
+        working-directory: consoles
+      # 独立矩阵没有 Maven verify 的生成阶段；认证消费者需要正式 OpenAPI Client。
+      - name: Generate the typed API client
+        run: pnpm run generate:api
         working-directory: consoles
       - name: Install ${{ matrix.name }} browser runtime
         run: pnpm exec playwright install --with-deps ${{ matrix.install }}
