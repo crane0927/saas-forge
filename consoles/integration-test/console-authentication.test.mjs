@@ -107,6 +107,42 @@ test('Platform and Tenant sessions survive independent recovery and logout after
   const tenant = await context.newPage();
   const errors = [];
   for (const page of [platform, tenant]) page.on('pageerror', () => errors.push('pageerror'));
+  const cookieEvents = [];
+  const observeCookie = (response) => {
+    const url = new URL(response.url());
+    const operation = url.pathname.replace('/api/v1/auth/', '');
+    if (
+      url.origin !== 'https://api.saasforge.test' ||
+      response.request().method() !== 'POST' ||
+      !['login', 'refresh', 'password-changes'].includes(operation)
+    )
+      return;
+    // 仅保留有序的 Cookie 属性观察；不复制 Cookie 值、请求体或任意头文本。
+    cookieEvents.push(
+      response.headersArray().then((headers) => {
+        const cookies = headers
+          .filter((header) => header.name.toLowerCase() === 'set-cookie')
+          .map((header) => header.value)
+          .filter((value) => value.startsWith('__Host-sf_platform_refresh='));
+        const actions = new Set(
+          cookies.map((value) => (/;\s*Max-Age=0(?:;|$)/i.test(value) ? 'clear' : 'set')),
+        );
+        const action = actions.size === 0 ? 'none' : actions.size === 1 ? [...actions][0] : 'mixed';
+        const attributes =
+          cookies.length > 0 &&
+          cookies.every(
+            (value) =>
+              /;\s*Secure(?:;|$)/i.test(value) &&
+              /;\s*HttpOnly(?:;|$)/i.test(value) &&
+              /;\s*SameSite=Strict(?:;|$)/i.test(value) &&
+              /;\s*Path=\/(?:;|$)/i.test(value) &&
+              !/;\s*Domain=/i.test(value),
+          );
+        return `auth-cookie operation=${operation} status=${response.status()} action=${action} attributes=${attributes}`;
+      }),
+    );
+  };
+  platform.on('response', observeCookie);
   const email = 'platform-admin@saasforge.test';
   const initialPassword = (await readFile(process.env.SF_INITIAL_PASSWORD_FILE, 'utf8')).trim();
   const password = `Acceptance-${randomBytes(24).toString('hex')}`;
@@ -128,6 +164,8 @@ test('Platform and Tenant sessions survive independent recovery and logout after
   const changed = platform.waitForResponse(isAuthResponse('password-changes'));
   await platform.getByRole('button', { name: '更新密码', exact: true }).press('Enter');
   const changedResponse = await changed;
+  platform.off('response', observeCookie);
+  const initialCookieEvents = await Promise.all(cookieEvents);
   let changeDiagnostic;
   if (changedResponse.status() !== 204) {
     const problem = await changedResponse.json().catch(() => ({}));
@@ -149,6 +187,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       // 非 JSON 请求只记布尔结果，不输出可能含密码的原文。
     }
     changeDiagnostic = `initial-password-change status=${changedResponse.status()} cookieStored=${initialCookieStored} cookieObserved=${cookieObserved} requestMatches=${requestMatches} problem=${code}`;
+    changeDiagnostic += `\n${initialCookieEvents.join('\n')}`;
   }
   assert.equal(changedResponse.status(), 204, changeDiagnostic);
   await platform.getByRole('heading', { name: '登录 Platform Console', exact: true }).waitFor();

@@ -23,6 +23,11 @@ for (const line of log.split('\n')) {
           line.trim(),
         );
       if (detail) console.info(`DIAG: ${detail[0]}`);
+      const cookie =
+        /^auth-cookie operation=(?:login|refresh|password-changes) status=[1-5]\d{2} action=(?:none|set|clear|mixed) attributes=(?:true|false)$/.exec(
+          line.trim(),
+        );
+      if (cookie) console.info(`DIAG: ${cookie[0]}`);
     }
     if (
       field === 'code' &&

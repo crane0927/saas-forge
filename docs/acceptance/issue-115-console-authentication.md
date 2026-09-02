@@ -238,6 +238,12 @@ CI 的 Linux 浏览器信任按官方入口配置：[Chromium NSS](https://chrom
 - 摘要现在只读取 TAP 的结构化字段，多行 error/actual 内容不能冒充失败编号或代码位置。公开 CLI 回归覆盖仿造多行响应和有限状态摘要，分别先 RED 后 GREEN；lint/格式通过。
 - 各产品渠道仍使用独立数据卷，将 WebKit 提前以缩短失败定位等待，不跳过其他渠道或 Maven/workspace 门禁。上述诊断需推送后从下一轮 CI 获取证据，尚未宣称首次改密故障已修复。
 
+提交 `449104e` 已触发 [第三轮 Verify](https://github.com/crane0927/saas-forge/actions/runs/33624326375) 与 [第三轮产品验收](https://github.com/crane0927/saas-forge/actions/runs/33624326355)。第三轮 Verify 全部通过；产品任务在 Linux WebKit 首次改密处失败，安全诊断为 `status=401 cookieStored=false cookieObserved=false requestMatches=true problem=PASSWORD_CHANGE_SESSION_INVALID`。已确认请求密码匹配，尚不能区分登录响应未设置 Cookie、旧响应清除 Cookie 或浏览器拒收。
+
+新增观察逻辑的本地 WebKit 聚焦验证通过：项目 `saas-forge-console-1788348327-88682-8a43ec`，受信 TLS、首次改密及全部 16 条产品用例均通过，失败/跳过为 0；聚焦命令退出 0，仅代表该渠道，不包含 Maven/workspace 或其他渠道复验。
+
+为区分上述原因，继续补充首次登录到改密间按响应顺序排列的 Cookie 元数据：固定 operation、HTTP 状态、set/clear/none/mixed 与安全属性是否符合约定；不输出 Cookie 值。公开摘要 CLI 回归先 RED 后 GREEN，覆盖允许字段与恶意多行内容隔离，12 条 Console 边界/诊断测试和相关 lint 通过；产品断言及 Cookie 安全设置保持不变。
+
 ## 最终验收待办
 
 以下按全部要求的浏览器渠道和最终聚合证据收口；本地成功不代替 Firefox/Edge CI，也未修改远端 Issue 勾选或关闭状态。
