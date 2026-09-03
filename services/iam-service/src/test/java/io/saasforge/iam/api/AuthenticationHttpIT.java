@@ -979,15 +979,145 @@ class AuthenticationHttpIT {
 
     @Test
     @Order(5)
+    void readsCurrentTenantContextWithBearerWithoutRotatingTheSession() throws Exception {
+        TestUser user = createUser("context-reader@example.test", "correct-password", false, Credential.REGULAR);
+        UUID membershipId = UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4d90");
+        UUID tenantId = UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4d91");
+        accessibleMemberships(user.identity().id(), membership(membershipId, tenantId, "当前租户"));
+        tenantBrandProfile(tenantId, "当前品牌", "/logo.svg", "/icon.svg", "#155EEF", "#7A5AF8");
+        MvcResult login = login("context-reader@example.test", "correct-password", "TENANT")
+                .andExpect(status().isOk()).andReturn();
+
+        mockMvc.perform(get("/api/v1/auth/context")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken(login))
+                        .param("tenantId", "0198c9d5-0f25-7b21-8d67-31c8652d4d99"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(header().doesNotExist("Set-Cookie"))
+                .andExpect(jsonPath("$.membershipId").value(membershipId.toString()))
+                .andExpect(jsonPath("$.tenantId").value(tenantId.toString()))
+                .andExpect(jsonPath("$.brandProfile.displayName").value("当前品牌"))
+                .andExpect(jsonPath("$.accessibleMemberships.length()").value(1))
+                .andExpect(jsonPath("$.accessToken").doesNotExist());
+        // 原 Cookie 仍可刷新，读取 Context 不消费 Refresh Token。
+        refresh(refreshToken(login), UUID.randomUUID()).andExpect(status().isOk());
+    }
+
+    @Test
+    @Order(5)
+    void currentTenantContextRejectsARevokedAccessToken() throws Exception {
+        TestUser user = createUser("context-revoked@example.test", "correct-password", false, Credential.REGULAR);
+        accessibleMemberships(user.identity().id(), membership(
+                UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4e90"),
+                UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4e91"), "已退出租户"));
+        MvcResult login = login("context-revoked@example.test", "correct-password", "TENANT")
+                .andExpect(status().isOk()).andReturn();
+        logout(refreshToken(login), accessToken(login)).andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/v1/auth/context")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken(login)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("ACCESS_TOKEN_INVALID"))
+                .andExpect(header().doesNotExist("Set-Cookie"));
+    }
+
+    @Test
+    @Order(5)
+    void currentTenantContextFailsClosedWithoutChangingCookiesWhenRevocationIsUnavailable() throws Exception {
+        TestUser user = createUser("context-unavailable@example.test", "correct-password", false, Credential.REGULAR);
+        accessibleMemberships(user.identity().id(), membership(
+                UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4f90"),
+                UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4f91"), "待确认租户"));
+        MvcResult login = login("context-unavailable@example.test", "correct-password", "TENANT")
+                .andExpect(status().isOk()).andReturn();
+        revocationIndex.markNotReady();
+        try {
+            mockMvc.perform(get("/api/v1/auth/context")
+                            .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken(login)))
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.code").value("TOKEN_REVOCATION_STATUS_UNAVAILABLE"))
+                    .andExpect(header().doesNotExist("Set-Cookie"));
+        } finally {
+            revocationIndexRecovery.recover();
+        }
+    }
+
+    @Test
+    @Order(5)
+    void currentTenantContextRejectsAFencedMembership() throws Exception {
+        TestUser user = createUser("context-fenced@example.test", "correct-password", false, Credential.REGULAR);
+        UUID membershipId = UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4090");
+        UUID tenantId = UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4091");
+        accessibleMemberships(user.identity().id(), membership(membershipId, tenantId, "受限租户"));
+        MvcResult login = login("context-fenced@example.test", "correct-password", "TENANT")
+                .andExpect(status().isOk()).andReturn();
+        RevocationFence fence = RevocationFence.establish(
+                UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4092"),
+                RevocationFenceTarget.membership(membershipId, tenantId), Instant.now());
+        revocationIndex.establishFence(fence);
+        try {
+            mockMvc.perform(get("/api/v1/auth/context")
+                            .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken(login)))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.code").value("ACCESS_CONTEXT_UNAVAILABLE"))
+                    .andExpect(header().doesNotExist("Set-Cookie"));
+        } finally {
+            revocationIndex.releaseFence(fence);
+        }
+    }
+
+    @Test
+    @Order(5)
+    void currentTenantContextRequiresTenantBearerRatherThanCookieOrPlatformCredentials() throws Exception {
+        createUser("context-platform@example.test", "correct-password", true, Credential.REGULAR);
+        MvcResult platform = login("context-platform@example.test", "correct-password", "PLATFORM")
+                .andExpect(status().isOk()).andReturn();
+        mockMvc.perform(get("/api/v1/auth/context")
+                        .cookie(new Cookie("__Host-sf_platform_refresh", refreshToken(platform))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().doesNotExist("Set-Cookie"));
+        mockMvc.perform(get("/api/v1/auth/context").header(HttpHeaders.AUTHORIZATION, "Bearer malformed"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/auth/context")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + SERVICE_TOKENS.get().membershipReadToken()))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/auth/context")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken(platform)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_CONTEXT_UNAVAILABLE"));
+    }
+
+    @Test
+    @Order(5)
     void defaultTenantLoginWithOneMembershipIssuesPairedClaimsAndTenantSession() throws Exception {
         TestUser user = createUser("single-tenant@example.test", "correct-password", false, Credential.REGULAR);
         UUID membershipId = UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4c90");
         UUID tenantId = UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4c91");
         accessibleMemberships(user.identity().id(), membership(membershipId, tenantId, "唯一租户"));
+        tenantBrandProfile(
+                tenantId,
+                "唯一品牌",
+                "/brands/single-logo.svg",
+                "/brands/single-favicon.svg",
+                "#155EEF",
+                "#7A5AF8");
 
         MvcResult response = loginWithoutContext("single-tenant@example.test", "correct-password")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.contextState").value("ACCESS_TOKEN_ISSUED"))
+                .andExpect(jsonPath("$.tenantContext.membershipId").value(membershipId.toString()))
+                .andExpect(jsonPath("$.tenantContext.tenantId").value(tenantId.toString()))
+                .andExpect(jsonPath("$.tenantContext.tenantDisplayName").value("唯一租户"))
+                .andExpect(jsonPath("$.tenantContext.accessibleMemberships.length()").value(1))
+                .andExpect(jsonPath("$.tenantContext.accessibleMemberships[0].membershipId")
+                        .value(membershipId.toString()))
+                .andExpect(jsonPath("$.tenantContext.brandProfile.displayName").value("唯一品牌"))
+                .andExpect(jsonPath("$.tenantContext.brandProfile.logoUrl")
+                        .value("/brands/single-logo.svg"))
+                .andExpect(jsonPath("$.tenantContext.brandProfile.faviconUrl")
+                        .value("/brands/single-favicon.svg"))
+                .andExpect(jsonPath("$.tenantContext.brandProfile.primaryColor").value("#155EEF"))
+                .andExpect(jsonPath("$.tenantContext.brandProfile.accentColor").value("#7A5AF8"))
                 .andExpect(header().exists("Set-Cookie"))
                 .andReturn();
 
@@ -1124,6 +1254,9 @@ class AuthenticationHttpIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.contextState").value("ACCESS_TOKEN_ISSUED"))
                 .andExpect(jsonPath("$.tokenType").value("Bearer"))
+                .andExpect(jsonPath("$.tenantContext.membershipId").value(selectedMembership.toString()))
+                .andExpect(jsonPath("$.tenantContext.tenantId").value(selectedTenant.toString()))
+                .andExpect(jsonPath("$.tenantContext.accessibleMemberships.length()").value(2))
                 .andExpect(header().exists("Set-Cookie"))
                 .andReturn();
 
@@ -1453,6 +1586,8 @@ class AuthenticationHttpIT {
         MvcResult tenantRefresh = refresh(tenantToken)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.contextState").value("ACCESS_TOKEN_ISSUED"))
+                .andExpect(jsonPath("$.tenantContext.membershipId").value(membershipId.toString()))
+                .andExpect(jsonPath("$.tenantContext.tenantId").value(tenantId.toString()))
                 .andReturn();
         assertEquals(membershipId.toString(), tokenClaims(tenantRefresh).get("membershipId").asString());
         assertEquals(tenantId.toString(), tokenClaims(tenantRefresh).get("tenantId").asString());
@@ -1497,6 +1632,8 @@ class AuthenticationHttpIT {
         MvcResult narrowedRefresh = refresh(narrowedToken)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.contextState").value("ACCESS_TOKEN_ISSUED"))
+                .andExpect(jsonPath("$.tenantContext.membershipId").value(narrowedMembership.toString()))
+                .andExpect(jsonPath("$.tenantContext.tenantId").value(narrowedTenant.toString()))
                 .andReturn();
         assertEquals(narrowedMembership.toString(), tokenClaims(narrowedRefresh).get("membershipId").asString());
         assertEquals("USER_TENANT", jdbc.queryForObject(
@@ -2004,6 +2141,9 @@ class AuthenticationHttpIT {
 
         MvcResult postSwitchRefresh = refresh(refreshToken(rotated), uuidV7(55_008))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantContext.membershipId").value(targetMembershipId.toString()))
+                .andExpect(jsonPath("$.tenantContext.tenantId").value(targetTenantId.toString()))
+                .andExpect(jsonPath("$.tenantContext.accessibleMemberships.length()").value(2))
                 .andReturn();
         assertEquals(targetMembershipId.toString(), tokenClaims(postSwitchRefresh).get("membershipId").asString());
         assertEquals(targetTenantId.toString(), tokenClaims(postSwitchRefresh).get("tenantId").asString());
@@ -3336,6 +3476,31 @@ class AuthenticationHttpIT {
                 .setTenantId(tenantId.toString())
                 .setTenantDisplayName(displayName)
                 .build();
+    }
+
+    private static void tenantBrandProfile(
+            UUID tenantId,
+            String displayName,
+            String logoUrl,
+            String faviconUrl,
+            String primaryColor,
+            String accentColor) {
+        try (Connection connection = tenantAccessMigratorConnection();
+                PreparedStatement statement = connection.prepareStatement("""
+                        INSERT INTO tenant_brand_profiles (
+                            tenant_id, display_name, logo_url, favicon_url, primary_color, accent_color
+                        ) VALUES (?, ?, ?, ?, ?, ?)
+                        """)) {
+            statement.setObject(1, tenantId);
+            statement.setString(2, displayName);
+            statement.setString(3, logoUrl);
+            statement.setString(4, faviconUrl);
+            statement.setString(5, primaryColor);
+            statement.setString(6, accentColor);
+            statement.executeUpdate();
+        } catch (Exception exception) {
+            throw new IllegalStateException("无法准备 Tenant Brand Profile 权威数据", exception);
+        }
     }
 
     private static UUID uuidV7(long suffix) {

@@ -8,7 +8,10 @@ import { DesignSystemConsumerRemote } from '../business-remotes/design-system-co
 import { PlatformConsoleApp } from '../platform-console/src/app';
 import { createRuntimeConfigBootstrap } from '../shared/app-runtime/src';
 import { DesignSystemProvider } from '../shared/design-system/src';
-import { TenantConsoleShellApp } from '../tenant-console-shell/src/app';
+import {
+  TenantConsoleShellApp,
+  type TenantConsoleRootProps,
+} from '../tenant-console-shell/src/app';
 
 let renderedRoot: Root | undefined;
 let renderedContainer: HTMLDivElement | undefined;
@@ -37,6 +40,10 @@ function readyBootstrap() {
       config: { schemaVersion: 1, apiBaseUrl: 'https://api.saasforge.test' },
     }),
   );
+}
+
+function TenantConsoleTestRoot({ children, tenantBrand }: TenantConsoleRootProps) {
+  return <DesignSystemProvider tenantBrand={tenantBrand}>{children}</DesignSystemProvider>;
 }
 
 function renderedColumns(itemTestId: string) {
@@ -71,25 +78,31 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
         authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
       />,
       '登录 Platform Console',
+      true,
     ],
     [
       'Tenant Console',
       <TenantConsoleShellApp
+        root={TenantConsoleTestRoot}
         bootstrap={readyBootstrap()}
         authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
         realm={{}}
       />,
       '登录 Tenant Console',
+      false,
     ],
-  ])('%s 共享启动状态进入首个可操作页面并恢复标题焦点', async (_name, app, titleName) => {
-    render(<DesignSystemProvider>{app}</DesignSystemProvider>);
+  ])(
+    '%s 共享启动状态进入首个可操作页面并恢复标题焦点',
+    async (_name, app, titleName, needsProvider) => {
+      render(needsProvider ? <DesignSystemProvider>{app}</DesignSystemProvider> : app);
 
-    await expect.element(page.getByText('正在启动')).toBeInTheDocument();
-    const title = page.getByRole('heading', { name: titleName });
-    await expect.element(title).toBeInTheDocument();
-    await expect.element(title).toHaveFocus();
-    expect(document.querySelectorAll('.sf-design-system-root')).toHaveLength(1);
-  });
+      await expect.element(page.getByText('正在启动')).toBeInTheDocument();
+      const title = page.getByRole('heading', { name: titleName });
+      await expect.element(title).toBeInTheDocument();
+      await expect.element(title).toHaveFocus();
+      expect(document.querySelectorAll('.sf-design-system-root')).toHaveLength(1);
+    },
+  );
 
   it('Tenant Membership 选择只停留在发起标签页内存并支持窄屏键盘操作', async () => {
     const storageWrite = vi.spyOn(Storage.prototype, 'setItem');
@@ -150,13 +163,12 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
 
     try {
       render(
-        <DesignSystemProvider>
-          <TenantConsoleShellApp
-            bootstrap={readyBootstrap()}
-            authenticationFetch={authenticationFetch}
-            realm={{}}
-          />
-        </DesignSystemProvider>,
+        <TenantConsoleShellApp
+          root={TenantConsoleTestRoot}
+          bootstrap={readyBootstrap()}
+          authenticationFetch={authenticationFetch}
+          realm={{}}
+        />,
       );
 
       await page.getByRole('textbox', { name: '邮箱' }).fill('member@example.test');
@@ -183,7 +195,7 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
       expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
       const firstMembership = page.getByRole('button', { name: '进入 北辰科技' });
       firstMembership.element().focus();
-      await userEvent.tab();
+      await tabToNextControl();
       const secondMembership = page.getByRole('button', { name: '进入 云帆数据' });
       await expect.element(secondMembership).toHaveFocus();
       await userEvent.keyboard('{Enter}');
@@ -208,6 +220,80 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
     }
   });
 
+  it('Tenant 切换在真实浏览器中隔离旧页面并原子提交新品牌', async () => {
+    const currentMembership = {
+      membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6070',
+      tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6072',
+      tenantDisplayName: 'Current Tenant',
+    };
+    const targetMembership = {
+      membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6071',
+      tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6074',
+      tenantDisplayName: 'Target Tenant',
+    };
+    const existingIcon = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
+    const icon = existingIcon ?? document.createElement('link');
+    if (existingIcon === null) {
+      icon.rel = 'icon';
+      document.head.append(icon);
+    }
+    icon.href = '/favicon.svg';
+    const authenticationFetch = vi
+      .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValueOnce(
+        tenantAccessToken(
+          'current-token',
+          currentMembership,
+          [currentMembership, targetMembership],
+          {
+            displayName: 'Current Brand',
+            faviconUrl: '/brands/current-favicon.svg',
+            primaryColor: '#7C3AED',
+            accentColor: '#C026D3',
+          },
+        ),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(problemResponse(503, 'REFRESH_LEASE_BUSY'))
+      .mockResolvedValueOnce(
+        tenantAccessToken('target-token', targetMembership, [currentMembership, targetMembership], {
+          displayName: 'Target Brand',
+          faviconUrl: '/brands/target-favicon.svg',
+          primaryColor: '#155EEF',
+          accentColor: '#7A5AF8',
+        }),
+      );
+
+    render(
+      <TenantConsoleShellApp
+        root={TenantConsoleTestRoot}
+        bootstrap={readyBootstrap()}
+        authenticationFetch={authenticationFetch}
+        realm={{}}
+      />,
+    );
+
+    await expect.element(page.getByText('Current Brand')).toBeInTheDocument();
+    await page.getByRole('button', { name: '切换 Tenant' }).click();
+    await page.getByRole('button', { name: '切换到 Target Tenant' }).click();
+    await expect
+      .element(page.getByRole('heading', { name: 'Tenant 切换已提交' }))
+      .toBeInTheDocument();
+    expect(document.querySelector('nav')).toBeNull();
+    expect(document.querySelector('#tenant-workspace-title')).toBeNull();
+    await expect.element(page.getByText('错误代码：REFRESH_LEASE_BUSY')).toBeInTheDocument();
+
+    await page.getByRole('button', { name: '重试完成切换' }).click();
+    await expect.element(page.getByText('Target Brand')).toBeInTheDocument();
+    await expect.element(page.getByRole('heading', { name: 'Tenant 工作台' })).toBeInTheDocument();
+    await waitForLayout();
+    expect(icon.getAttribute('href')).toBe('/brands/target-favicon.svg');
+    expect(document.querySelector<HTMLElement>('.sf-design-system-root')?.dataset.brand).toBe(
+      'tenant',
+    );
+    if (existingIcon === null) icon.remove();
+  });
+
   it('Remote 从 Shell 继承主题、完成共享表单反馈且恢复键盘焦点', async () => {
     render(
       <DesignSystemProvider forcedColorScheme="dark">
@@ -225,7 +311,7 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
 
     const name = page.getByRole('textbox', { name: '显示名称' });
     await name.fill('浏览器 Remote');
-    await userEvent.tab();
+    await tabToNextControl();
     const submit = page.getByRole('button', { name: '验证共享反馈' });
     await expect.element(submit).toHaveFocus();
     await userEvent.keyboard('{Enter}');
@@ -310,9 +396,9 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
         await waitForLayout();
         const name = page.getByRole('textbox', { name: '显示名称' });
         name.element().focus();
-        await userEvent.tab();
+        await tabToNextControl();
         await expect.element(page.getByRole('button', { name: '验证共享反馈' })).toHaveFocus();
-        await userEvent.tab();
+        await tabToNextControl();
         await expect.element(page.getByRole('button', { name: '查看布局说明' })).toHaveFocus();
       }
 
@@ -346,3 +432,54 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
     },
   );
 });
+
+function problemResponse(status: number, code: string): Response {
+  return new Response(
+    JSON.stringify({
+      type: `urn:saasforge:problem:${code.toLowerCase().replaceAll('_', '-')}`,
+      title: 'not exposed',
+      status,
+      code,
+      detail: 'raw service detail',
+      traceId: '0123456789abcdef0123456789abcdef',
+    }),
+    { status, headers: { 'Content-Type': 'application/problem+json' } },
+  );
+}
+
+function tenantAccessToken(
+  accessToken: string,
+  currentMembership: {
+    readonly membershipId: string;
+    readonly tenantId: string;
+    readonly tenantDisplayName: string;
+  },
+  accessibleMemberships: readonly {
+    readonly membershipId: string;
+    readonly tenantId: string;
+    readonly tenantDisplayName: string;
+  }[],
+  brandProfile: {
+    readonly displayName: string;
+    readonly faviconUrl: string;
+    readonly primaryColor: string;
+    readonly accentColor: string;
+  },
+): Response {
+  return Response.json({
+    contextState: 'ACCESS_TOKEN_ISSUED',
+    accessToken,
+    tokenType: 'Bearer',
+    expiresIn: 120,
+    tenantContext: { ...currentMembership, accessibleMemberships, brandProfile },
+  });
+}
+
+async function tabToNextControl() {
+  // macOS WebKit 默认用 Option+Tab 遍历按钮；不修改宿主系统键盘设置。
+  if (import.meta.env.SF_MACOS_WEBKIT) {
+    await userEvent.keyboard('{Alt>}{Tab}{/Alt}');
+  } else {
+    await userEvent.tab();
+  }
+}

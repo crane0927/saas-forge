@@ -1,4 +1,9 @@
-import type { AuthenticationProblem, AuthenticationRuntime } from '@saas-forge/app-runtime';
+import type {
+  AuthenticationProblem,
+  AuthenticationRuntime,
+  IdempotentOperationHandle,
+  MembershipCandidate,
+} from '@saas-forge/app-runtime';
 import {
   ApplicationLoading,
   ApplicationFatalError,
@@ -96,6 +101,12 @@ export function AuthenticationShell({
   const [recoveryComplete, setRecoveryComplete] = useState(false);
   const [recoveryProblem, setRecoveryProblem] = useState<AuthenticationProblem>();
   const [passwordChanged, setPasswordChanged] = useState(false);
+  const [tenantSwitchOpen, setTenantSwitchOpen] = useState(false);
+  const [tenantSwitchProblem, setTenantSwitchProblem] = useState<AuthenticationProblem>();
+  const [tenantSwitchHandle, setTenantSwitchHandle] = useState<IdempotentOperationHandle>();
+  const [tenantSwitchMembershipId, setTenantSwitchMembershipId] = useState<string>();
+  const [tenantSwitchRetryMembershipId, setTenantSwitchRetryMembershipId] = useState<string>();
+  const [tenantSessionEnded, setTenantSessionEnded] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -146,12 +157,44 @@ export function AuthenticationShell({
     return <ApplicationLoading applicationName={applicationName} />;
   }
 
+  if (state.status === 'authenticated' && state.transition === 'sessionSync') {
+    return state.synchronizationProblem === undefined ? (
+      <ApplicationLoading applicationName={applicationName} />
+    ) : (
+      <RecoveryPage
+        runtime={runtime}
+        problem={state.synchronizationProblem}
+        onProblemChange={() => undefined}
+      />
+    );
+  }
+
   if (recoveryProblem !== undefined) {
     return (
       <RecoveryPage
         runtime={runtime}
         problem={recoveryProblem}
         onProblemChange={setRecoveryProblem}
+      />
+    );
+  }
+
+  if (state.status === 'authenticated' && state.transition === 'tenantSwitchRefresh') {
+    return (
+      <TenantSwitchRefreshPage
+        runtime={runtime}
+        problem={tenantSwitchProblem}
+        onResult={(result) => {
+          if (result.ok) {
+            setTenantSwitchProblem(undefined);
+            setTenantSwitchHandle(undefined);
+            setTenantSwitchRetryMembershipId(undefined);
+            setTenantSwitchOpen(false);
+          } else {
+            setTenantSwitchProblem(result.problem);
+            if (runtime.getState().status === 'anonymous') setTenantSessionEnded(true);
+          }
+        }}
       />
     );
   }
@@ -173,31 +216,91 @@ export function AuthenticationShell({
           void navigate(href);
         }}
         actions={
-          <Button
-            loading={state.transition === 'logout'}
-            loadingLabel="正在退出登录"
-            onClick={() => {
-              logoutRequested.current = true;
-              void runtime.logout();
-            }}
-          >
-            退出登录
-          </Button>
+          <>
+            {runtime.intent === 'TENANT' &&
+            state.tenantContext !== undefined &&
+            state.tenantContext.accessibleMemberships.length > 1 ? (
+              <Button
+                onClick={() => {
+                  setTenantSwitchOpen(true);
+                  setTenantSwitchProblem(undefined);
+                  setTenantSwitchHandle(undefined);
+                  setTenantSwitchRetryMembershipId(undefined);
+                }}
+              >
+                切换 Tenant
+              </Button>
+            ) : null}
+            <Button
+              loading={state.transition === 'logout'}
+              loadingLabel="正在退出登录"
+              onClick={() => {
+                logoutRequested.current = true;
+                void runtime.logout();
+              }}
+            >
+              退出登录
+            </Button>
+          </>
         }
       >
-        <RouteErrorBoundary
-          key={location.key}
-          onReturn={() => {
-            void navigate(defaultPath, { replace: true });
-          }}
-        >
-          <Routes>
-            {routes.map((route) => (
-              <Route key={route.path} path={route.path} element={route.element} />
-            ))}
-            <Route path="*" element={<Navigate to={defaultPath} replace />} />
-          </Routes>
-        </RouteErrorBoundary>
+        {tenantSwitchOpen && state.tenantContext !== undefined ? (
+          <TenantSwitchPage
+            currentMembershipId={state.tenantContext.membershipId}
+            memberships={state.tenantContext.accessibleMemberships}
+            problem={tenantSwitchProblem}
+            selectedMembershipId={tenantSwitchMembershipId}
+            retryMembershipId={tenantSwitchRetryMembershipId}
+            onCancel={() => {
+              setTenantSwitchOpen(false);
+              setTenantSwitchProblem(undefined);
+              setTenantSwitchHandle(undefined);
+              setTenantSwitchRetryMembershipId(undefined);
+            }}
+            onSwitch={(membershipId) => {
+              setTenantSwitchMembershipId(membershipId);
+              setTenantSwitchProblem(undefined);
+              void runtime
+                .switchTenantContext({
+                  membershipId,
+                  ...(tenantSwitchHandle === undefined
+                    ? {}
+                    : { operationHandle: tenantSwitchHandle }),
+                })
+                .then((result) => {
+                  if (result.ok) {
+                    setTenantSwitchOpen(false);
+                    setTenantSwitchHandle(undefined);
+                    setTenantSwitchRetryMembershipId(undefined);
+                    return;
+                  }
+                  setTenantSwitchProblem(result.problem);
+                  setTenantSwitchHandle(result.operationHandle);
+                  setTenantSwitchRetryMembershipId(
+                    result.operationHandle === undefined ? undefined : membershipId,
+                  );
+                  if (runtime.getState().status === 'anonymous') setTenantSessionEnded(true);
+                })
+                .finally(() => {
+                  setTenantSwitchMembershipId(undefined);
+                });
+            }}
+          />
+        ) : (
+          <RouteErrorBoundary
+            key={location.key}
+            onReturn={() => {
+              void navigate(defaultPath, { replace: true });
+            }}
+          >
+            <Routes>
+              {routes.map((route) => (
+                <Route key={route.path} path={route.path} element={route.element} />
+              ))}
+              <Route path="*" element={<Navigate to={defaultPath} replace />} />
+            </Routes>
+          </RouteErrorBoundary>
+        )}
       </ApplicationShell>
     );
   }
@@ -226,7 +329,122 @@ export function AuthenticationShell({
       applicationName={applicationName}
       runtime={runtime}
       passwordChanged={passwordChanged}
+      tenantSessionEnded={tenantSessionEnded}
     />
+  );
+}
+
+function TenantSwitchPage({
+  currentMembershipId,
+  memberships,
+  problem,
+  selectedMembershipId,
+  retryMembershipId,
+  onCancel,
+  onSwitch,
+}: {
+  readonly currentMembershipId: string;
+  readonly memberships: readonly MembershipCandidate[];
+  readonly problem?: AuthenticationProblem;
+  readonly selectedMembershipId?: string;
+  readonly retryMembershipId?: string;
+  readonly onCancel: () => void;
+  readonly onSwitch: (membershipId: string) => void;
+}) {
+  const candidates = memberships.filter(
+    (membership) => membership.membershipId !== currentMembershipId,
+  );
+  const resultUnknown = problem?.code === 'NETWORK_UNAVAILABLE' || problem?.status === 503;
+  return (
+    <PageLayout
+      title={
+        <ShellPageTitle
+          headingId="tenant-switch-title"
+          title="切换 Tenant"
+          description="选择当前 Identity 可进入的另一个 Accessible Membership。"
+        />
+      }
+    >
+      {problem === undefined ? null : (
+        <PersistentError title={resultUnknown ? 'Tenant 切换结果未知' : 'Tenant 切换被拒绝'}>
+          <p>错误代码：{problem.code}</p>
+          {resultUnknown ? <p>请使用同一次操作重试，不要重复发起新的切换。</p> : null}
+        </PersistentError>
+      )}
+      <ul aria-label="Accessible Membership">
+        {candidates.map((membership) => (
+          <li key={membership.membershipId}>
+            <span>{membership.tenantDisplayName}</span>
+            <Button
+              variant="primary"
+              loading={selectedMembershipId === membership.membershipId}
+              loadingLabel={`正在切换到 ${membership.tenantDisplayName}`}
+              disabled={
+                selectedMembershipId !== undefined ||
+                (retryMembershipId !== undefined && retryMembershipId !== membership.membershipId)
+              }
+              onClick={() => {
+                onSwitch(membership.membershipId);
+              }}
+            >
+              {retryMembershipId === membership.membershipId ? '重试切换到' : '切换到'}{' '}
+              {membership.tenantDisplayName}
+            </Button>
+          </li>
+        ))}
+      </ul>
+      <Button disabled={selectedMembershipId !== undefined} onClick={onCancel}>
+        取消
+      </Button>
+    </PageLayout>
+  );
+}
+
+function TenantSwitchRefreshPage({
+  runtime,
+  problem,
+  onResult,
+}: {
+  readonly runtime: AuthenticationRuntime;
+  readonly problem?: AuthenticationProblem;
+  readonly onResult: (
+    result: Awaited<ReturnType<AuthenticationRuntime['retryTenantSwitchRefresh']>>,
+  ) => void;
+}) {
+  const [retrying, setRetrying] = useState(false);
+  return (
+    <PageLayout
+      title={
+        <ShellPageTitle
+          headingId="tenant-switch-refresh-title"
+          title="Tenant 切换已提交"
+          description="旧访问令牌已停止使用，正在等待目标 Tenant 会话恢复。"
+        />
+      }
+    >
+      <p role="status">切换已提交；在完成前不会显示任何 Tenant 业务页面。</p>
+      {problem === undefined ? null : (
+        <PersistentError title="目标 Tenant 会话暂时无法恢复">
+          错误代码：{problem.code}
+        </PersistentError>
+      )}
+      <Button
+        variant="primary"
+        loading={retrying}
+        loadingLabel="正在重试完成切换"
+        onClick={() => {
+          setRetrying(true);
+          void runtime
+            .retryTenantSwitchRefresh()
+            .then(onResult)
+            .finally(() => {
+              setRetrying(false);
+            });
+        }}
+      >
+        重试完成切换
+      </Button>
+    </PageLayout>
   );
 }
 
@@ -256,9 +474,11 @@ class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, RouteErrorBo
     }
     return (
       <section aria-labelledby="route-error-title">
-        <PageTitle description="当前路由已被隔离，未显示原始错误信息。">
-          <span id="route-error-title">当前页面出现错误</span>
-        </PageTitle>
+        <ShellPageTitle
+          headingId="route-error-title"
+          title="当前页面出现错误"
+          description="当前路由已被隔离，未显示原始错误信息。"
+        />
         <Button variant="primary" onClick={this.props.onReturn}>
           返回首页
         </Button>
@@ -371,10 +591,12 @@ function LoginPage({
   applicationName,
   runtime,
   passwordChanged,
+  tenantSessionEnded,
 }: {
   readonly applicationName: string;
   readonly runtime: AuthenticationRuntime;
   readonly passwordChanged: boolean;
+  readonly tenantSessionEnded: boolean;
 }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -393,6 +615,11 @@ function LoginPage({
       title={<ShellPageTitle headingId="login-title" title={`登录 ${applicationName}`} />}
     >
       {passwordChanged ? <SuccessFeedback message="密码已更新，请使用新密码重新登录。" /> : null}
+      {tenantSessionEnded ? (
+        <PersistentError title="Tenant 会话已结束">
+          切换后的目标 Tenant 会话无法恢复，请重新登录。
+        </PersistentError>
+      ) : null}
       {problem?.code === 'SESSION_SLOT_ALREADY_ACTIVE' ? (
         <PersistentError
           title={`当前 ${runtime.intent === 'PLATFORM' ? 'Platform' : 'Tenant'} 会话槽位已有活动会话。`}

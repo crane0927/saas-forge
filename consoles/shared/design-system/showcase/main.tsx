@@ -994,7 +994,9 @@ export function DesignSystemShowcase() {
               <p>存在修改时，关闭动作只打开最上层放弃确认。</p>
               <button
                 type="button"
-                onClick={() => {
+                onClick={(event) => {
+                  // WebKit 点击按钮不会默认聚焦；打开浮层前记录可恢复的触发点。
+                  event.currentTarget.focus();
                   setEditorOpen(true);
                 }}
               >
@@ -1007,7 +1009,8 @@ export function DesignSystemShowcase() {
               <p>明确显示对象、后果和安全默认操作。</p>
               <button
                 type="button"
-                onClick={() => {
+                onClick={(event) => {
+                  event.currentTarget.focus();
                   setRecoverableOpen(true);
                 }}
               >

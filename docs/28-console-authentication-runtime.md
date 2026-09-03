@@ -122,6 +122,15 @@ Tenant Context Switch 是单一不可回滚的客户端转换：
 - 每次会话变更在锁内递增持久化的非敏感槽位代次；标签页只接受代次更新的消息，登出或授权失效后到达的旧刷新结果必须丢弃。
 - 原子锁或跨标签页消息能力不可用时，客户端不得弱化服务端校验；IAM Refresh Rotation Lease、幂等键和 Family 事务是最终并发边界。
 
+### 6.1 接收页的 Tenant Context 与恢复
+
+- 接收页只从白名单消息取得内存 Access Token，不接收 Membership 候选或品牌。通过生成 Client 调用只读 `GET /api/v1/auth/context`，由 IAM 根据已验签、撤销校验和 Fence 校验后的 Tenant User Token 查询当前 Membership 与品牌快照；接口不轮换 Refresh Token、不设置 Cookie，响应禁止缓存。
+- Context 读取完成前隐藏受保护页面并阻止业务请求；失败时展示安全 Problem code 并允许按有界 `Retry-After` 手动重试读取，不重复轮换 Cookie。
+- Web Locks、BroadcastChannel 与 storage 事件均受浏览器 Origin 隔离。协调键只包含验证后的 API Origin 与槽位；持久化仅包含单调代次和 `logoutPending`，不保存 Token、Membership 或品牌。
+- 登出意图先持久化并清除本页内存凭据，再排队取得原子锁；其他页通过 storage 事件立即阻断请求。重载后只允许重试登出，不自动刷新恢复。
+- 槽位代次先于广播到达时立即隔离旧状态。锁内最多等待一秒广播交接；发送页退出或广播缺失时，可由用户通过当前 Cookie 与 IAM 并发边界恢复，不使用自制跨页互斥。
+- 切换提交、登出或更新的会话事件会使旧异步响应失效；旧 Token 的刷新结果、Context 查询结果和业务响应不得回填新页面。
+
 ## 7. HTTP、刷新与幂等
 
 ### 7.1 请求规则

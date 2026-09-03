@@ -34,12 +34,23 @@ public class AccessibleMembershipGrpcService
         }
 
         ListAccessibleMembershipsResponse.Builder response = ListAccessibleMembershipsResponse.newBuilder();
-        memberships.findByIdentityId(identityId).forEach(membership -> response.addMemberships(
-                io.saasforge.contracts.tenantaccess.membership.v1.AccessibleMembership.newBuilder()
+        memberships.findByIdentityId(identityId).forEach(membership -> {
+            var result = io.saasforge.contracts.tenantaccess.membership.v1.AccessibleMembership.newBuilder()
                         .setMembershipId(membership.membershipId().toString())
                         .setTenantId(membership.tenantId().toString())
-                        .setTenantDisplayName(membership.tenantDisplayName())
-                        .build()));
+                        .setTenantDisplayName(membership.tenantDisplayName());
+            if (membership.brandProfile() != null) {
+                var brand = membership.brandProfile();
+                var profile = io.saasforge.contracts.tenantaccess.membership.v1.TenantBrandProfile.newBuilder()
+                        .setDisplayName(brand.displayName())
+                        .setPrimaryColor(brand.primaryColor())
+                        .setAccentColor(brand.accentColor());
+                if (brand.logoUrl() != null) profile.setLogoUrl(brand.logoUrl());
+                if (brand.faviconUrl() != null) profile.setFaviconUrl(brand.faviconUrl());
+                result.setBrandProfile(profile);
+            }
+            response.addMemberships(result.build());
+        });
         responseObserver.onNext(response.build());
         responseObserver.onCompleted();
     }

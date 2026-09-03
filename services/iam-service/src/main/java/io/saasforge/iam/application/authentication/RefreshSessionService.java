@@ -106,7 +106,7 @@ public final class RefreshSessionService {
             rejectAuthorization(presentedToken);
         }
         return rotateWithAccessToken(
-                family, presentedToken, idempotencyKeyDigest, null, null, traceId);
+                family, presentedToken, idempotencyKeyDigest, null, null, null, traceId);
     }
 
     private LoginResult refreshTenant(
@@ -124,11 +124,28 @@ public final class RefreshSessionService {
                         family.id(), family.contextVersion(), clock.instant());
                 throw new RefreshAuthorizationRejectedException();
             }
+            List<AccessibleMembership> memberships = accessibleMembershipsFor(family.identityId());
+            AccessibleMembership membership = memberships.stream()
+                    .filter(candidate -> candidate.membershipId().equals(validated.membershipId()))
+                    .filter(candidate -> candidate.tenantId().equals(validated.tenantId()))
+                    .findFirst()
+                    .orElse(null);
+            if (membership == null) {
+                contextSwitchTransaction.rejectPostSwitchRefresh(
+                        family.id(), family.contextVersion(), clock.instant());
+                throw new RefreshAuthorizationRejectedException();
+            }
             return rotateWithAccessToken(
-                    family, presentedToken, idempotencyKeyDigest,
-                    validated.membershipId(), validated.tenantId(), traceId);
+                    family,
+                    presentedToken,
+                    idempotencyKeyDigest,
+                    membership.membershipId(),
+                    membership.tenantId(),
+                    new TenantAuthenticationContextSnapshot(membership, memberships),
+                    traceId);
         }
-        AccessibleMembership membership = accessibleMemberships.findByIdentityId(family.identityId()).stream()
+        List<AccessibleMembership> memberships = accessibleMembershipsFor(family.identityId());
+        AccessibleMembership membership = memberships.stream()
                 .filter(candidate -> candidate.membershipId().equals(family.membershipId()))
                 .filter(candidate -> candidate.tenantId().equals(family.tenantId()))
                 .findFirst()
@@ -137,8 +154,13 @@ public final class RefreshSessionService {
             rejectAuthorization(presentedToken);
         }
         return rotateWithAccessToken(
-                family, presentedToken, idempotencyKeyDigest,
-                membership.membershipId(), membership.tenantId(), traceId);
+                family,
+                presentedToken,
+                idempotencyKeyDigest,
+                membership.membershipId(),
+                membership.tenantId(),
+                new TenantAuthenticationContextSnapshot(membership, memberships),
+                traceId);
     }
 
     private LoginResult refreshSelection(
@@ -146,7 +168,7 @@ public final class RefreshSessionService {
             RefreshTokenMaterial presentedToken,
             Sha256Digest idempotencyKeyDigest,
             String traceId) {
-        List<AccessibleMembership> memberships = accessibleMemberships.findByIdentityId(family.identityId());
+        List<AccessibleMembership> memberships = accessibleMembershipsFor(family.identityId());
         if (memberships.isEmpty()) {
             rejectAuthorization(presentedToken);
         }
@@ -161,7 +183,11 @@ public final class RefreshSessionService {
             long cookieMaxAge = commitRotation(
                     presentedToken, nextToken, idempotencyKeyDigest,
                     family.contextVersion(), membership.membershipId(), membership.tenantId(), accessToken, traceId);
-            return new AccessTokenLoginResult(accessToken, nextToken.value(), cookieMaxAge);
+            return new AccessTokenLoginResult(
+                    accessToken,
+                    nextToken.value(),
+                    cookieMaxAge,
+                    new TenantAuthenticationContextSnapshot(membership, memberships));
         }
         RefreshTokenMaterial nextToken = refreshTokenIssuer.issue();
         long cookieMaxAge = commitRotation(
@@ -176,6 +202,7 @@ public final class RefreshSessionService {
             Sha256Digest idempotencyKeyDigest,
             java.util.UUID membershipId,
             java.util.UUID tenantId,
+            TenantAuthenticationContextSnapshot tenantContext,
             String traceId) {
         // 签名失败必须发生在旧 Refresh Token 被消费之前，确保同一 Cookie 可以安全重试。
         IssuedAccessToken accessToken = accessTokenIssuer.issueUserToken(
@@ -184,7 +211,7 @@ public final class RefreshSessionService {
         long cookieMaxAge = commitRotation(
                 presentedToken, nextToken, idempotencyKeyDigest,
                 family.contextVersion(), membershipId, tenantId, accessToken, traceId);
-        return new AccessTokenLoginResult(accessToken, nextToken.value(), cookieMaxAge);
+        return new AccessTokenLoginResult(accessToken, nextToken.value(), cookieMaxAge, tenantContext);
     }
 
     private long commitRotation(
@@ -212,6 +239,14 @@ public final class RefreshSessionService {
     private void rejectAuthorization(RefreshTokenMaterial presentedToken) {
         sessionService.revokeForAuthorizationLoss(presentedToken, clock.instant());
         throw new RefreshAuthorizationRejectedException();
+    }
+
+    private List<AccessibleMembership> accessibleMembershipsFor(UUID identityId) {
+        List<AccessibleMembership> memberships = accessibleMemberships.findByIdentityId(identityId);
+        if (memberships.size() > 100) {
+            throw new AccessibleMembershipLimitExceededException();
+        }
+        return memberships;
     }
 
     private static Sha256Digest digest(String value) {

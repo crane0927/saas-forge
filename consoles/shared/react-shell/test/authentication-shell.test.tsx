@@ -228,6 +228,7 @@ describe('AuthenticationShell', () => {
   });
 
   it('keeps a recoverable cold-start failure separate from the anonymous login', async () => {
+    let now = 0;
     const fetch = vi
       .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
       .mockResolvedValueOnce(problemResponse(503, 'REFRESH_LEASE_BUSY'))
@@ -244,7 +245,7 @@ describe('AuthenticationShell', () => {
         ok: true,
         config: { schemaVersion: 1, apiBaseUrl: 'https://api.example.test' },
       },
-      { realm: {}, intent: 'PLATFORM', fetch },
+      { realm: {}, intent: 'PLATFORM', fetch, now: () => now },
     );
     if (!runtimeResult.ok) {
       throw new Error('test runtime creation failed');
@@ -267,6 +268,7 @@ describe('AuthenticationShell', () => {
     expect(screen.queryByRole('heading', { name: '登录 Platform Console' })).toBeNull();
     expect(screen.queryByText('raw service detail')).toBeNull();
 
+    now = 1_000;
     fireEvent.click(screen.getByRole('button', { name: '重试恢复' }));
 
     expect(await screen.findByRole('heading', { name: '恢复后的首页' })).toBeTruthy();
@@ -699,6 +701,11 @@ describe('AuthenticationShell', () => {
 
     expect(await screen.findByRole('heading', { name: '当前页面出现错误' })).toBeTruthy();
     expect(screen.queryByText('raw route render detail')).toBeNull();
+    const errorHeading = screen.getByRole('heading', { name: '当前页面出现错误' });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(errorHeading);
+    });
+    expect(screen.getByRole('status').textContent).toBe('当前页面出现错误');
     expect(screen.getByRole('navigation', { name: 'Platform Console 全局导航' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '返回首页' }));
 

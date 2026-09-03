@@ -149,7 +149,11 @@ public final class PasswordLoginService {
             long cookieMaxAge = sessionService.startAccessTokenSession(
                     identity.id(), RefreshTokenFamilyPurpose.USER_TENANT,
                     membership.membershipId(), membership.tenantId(), accessToken, refreshToken, traceId);
-            return new AccessTokenLoginResult(accessToken, refreshToken.value(), cookieMaxAge);
+            return new AccessTokenLoginResult(
+                    accessToken,
+                    refreshToken.value(),
+                    cookieMaxAge,
+                    new TenantAuthenticationContextSnapshot(membership, memberships));
         }
         long cookieMaxAge = sessionService.startSelectionSession(identity.id(), refreshToken, clock.instant(), traceId);
         return new ContextSelectionLoginResult(memberships, refreshToken.value(), cookieMaxAge);

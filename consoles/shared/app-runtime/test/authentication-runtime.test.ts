@@ -359,6 +359,7 @@ describe('createAuthenticationRuntime', () => {
   });
 
   it('allows only explicit manual recovery after a recoverable cold-start refresh', async () => {
+    let now = 0;
     const fetch = vi
       .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
       .mockResolvedValueOnce(problemResponse(503, 'REFRESH_LEASE_BUSY', '999'))
@@ -374,6 +375,7 @@ describe('createAuthenticationRuntime', () => {
       realm: {},
       intent: 'TENANT',
       fetch,
+      now: () => now,
       createIdempotencyKey: () => '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6073',
     });
 
@@ -387,6 +389,7 @@ describe('createAuthenticationRuntime', () => {
       },
     });
     expect(fetch).toHaveBeenCalledOnce();
+    now = 300_000;
     await expect(runtime.retryRecovery()).resolves.toEqual({
       ok: true,
       state: { status: 'authenticated', transition: null },
@@ -737,6 +740,39 @@ describe('createAuthenticationRuntime', () => {
     ).toHaveLength(1);
   });
 
+  it('supplies the controlled browser marker for typed business mutations', async () => {
+    const clientId = '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6076';
+    const fetch = vi
+      .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'login-token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      )
+      .mockImplementation((_input, init) => {
+        if (new Headers(init?.headers).get('X-SF-CSRF') !== '1')
+          return Promise.resolve(problemResponse(403, 'BROWSER_REQUEST_REJECTED'));
+        return Promise.resolve(
+          Response.json({ ...oauthClientDetail(clientId), clientSecret: 'returned-once' }),
+        );
+      });
+    const runtime = createRuntime({ realm: {}, intent: 'PLATFORM', fetch });
+    await runtime.login({ email: 'admin@example.test', password: 'secret' });
+
+    const result = await runtime.client.createOAuthClient({
+      request: { displayName: 'Console Client', allowedScopes: new Set(['runtime:read']) },
+    });
+
+    expect(result.ok).toBe(true);
+    const headers = new Headers(fetch.mock.calls[1]?.[1]?.headers);
+    expect(headers.get('X-SF-CSRF')).toBe('1');
+    expect(headers.has('Origin')).toBe(false);
+    expect(headers.has('Sec-Fetch-Site')).toBe(false);
+  });
+
   it('keeps an opaque mutation handle after cancellation and reuses its UUIDv7 key', async () => {
     const clientId = '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6076';
     const fetch = vi
@@ -889,6 +925,16 @@ describe('createAuthenticationRuntime', () => {
 
   it('commits a Tenant switch as 204 then refresh without reusing the old token', async () => {
     const membershipId = '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6071';
+    const currentMembership = {
+      membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6070',
+      tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6072',
+      tenantDisplayName: 'Current Tenant',
+    };
+    const targetMembership = {
+      membershipId,
+      tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6074',
+      tenantDisplayName: 'Target Tenant',
+    };
     const fetch = vi
       .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
       .mockResolvedValueOnce(
@@ -897,6 +943,10 @@ describe('createAuthenticationRuntime', () => {
           accessToken: 'old-tenant-token',
           tokenType: 'Bearer',
           expiresIn: 120,
+          tenantContext: {
+            ...currentMembership,
+            accessibleMemberships: [currentMembership, targetMembership],
+          },
         }),
       )
       .mockResolvedValueOnce(new Response(null, { status: 204 }))
@@ -906,6 +956,15 @@ describe('createAuthenticationRuntime', () => {
           accessToken: 'new-tenant-token',
           tokenType: 'Bearer',
           expiresIn: 120,
+          tenantContext: {
+            ...targetMembership,
+            accessibleMemberships: [currentMembership, targetMembership],
+            brandProfile: {
+              displayName: 'Target Brand',
+              primaryColor: '#155EEF',
+              accentColor: '#7A5AF8',
+            },
+          },
         }),
       );
     const runtime = createRuntime({
@@ -915,11 +974,26 @@ describe('createAuthenticationRuntime', () => {
       createIdempotencyKey: () => '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6073',
     });
     await runtime.login({ email: 'user@example.test', password: 'secret' });
+    const states: unknown[] = [];
+    runtime.subscribe((state) => states.push(state));
 
     await expect(runtime.switchTenantContext({ membershipId })).resolves.toEqual({
       ok: true,
-      state: { status: 'authenticated', transition: null },
+      state: {
+        status: 'authenticated',
+        transition: null,
+        tenantContext: {
+          ...targetMembership,
+          accessibleMemberships: [currentMembership, targetMembership],
+          brandProfile: {
+            displayName: 'Target Brand',
+            primaryColor: '#155EEF',
+            accentColor: '#7A5AF8',
+          },
+        },
+      },
     });
+    expect(states).toContainEqual({ status: 'authenticated', transition: 'tenantSwitchRefresh' });
     expect(fetch.mock.calls.map(([url]) => requestUrl(url))).toEqual([
       'https://api.example.test/api/v1/auth/login',
       'https://api.example.test/api/v1/auth/tenant-switches',
@@ -929,8 +1003,114 @@ describe('createAuthenticationRuntime', () => {
     expect(new Headers(fetch.mock.calls[2]?.[1]?.headers).has('Authorization')).toBe(false);
   });
 
+  it('publishes the authenticated Tenant context from the authentication response', async () => {
+    const currentMembership = {
+      membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6071',
+      tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6072',
+      tenantDisplayName: 'Current Tenant',
+    };
+    const targetMembership = {
+      membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6074',
+      tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6075',
+      tenantDisplayName: 'Target Tenant',
+    };
+    const fetch = vi.fn(() =>
+      Promise.resolve(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'tenant-memory-only-token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+          tenantContext: {
+            ...currentMembership,
+            accessibleMemberships: [currentMembership, targetMembership],
+            brandProfile: {
+              displayName: 'Current Brand',
+              logoUrl: '/brands/current-logo.svg',
+              faviconUrl: '/brands/current-favicon.svg',
+              primaryColor: '#155EEF',
+              accentColor: '#7A5AF8',
+            },
+          },
+        }),
+      ),
+    );
+    const runtime = createRuntime({ realm: {}, intent: 'TENANT', fetch });
+
+    await expect(
+      runtime.login({ email: 'user@example.test', password: 'secret' }),
+    ).resolves.toEqual({
+      ok: true,
+      state: {
+        status: 'authenticated',
+        transition: null,
+        tenantContext: {
+          ...currentMembership,
+          accessibleMemberships: [currentMembership, targetMembership],
+          brandProfile: {
+            displayName: 'Current Brand',
+            logoUrl: '/brands/current-logo.svg',
+            faviconUrl: '/brands/current-favicon.svg',
+            primaryColor: '#155EEF',
+            accentColor: '#7A5AF8',
+          },
+        },
+      },
+    });
+  });
+
+  it('treats switching to the current Tenant membership as a local no-op', async () => {
+    const currentMembership = {
+      membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6071',
+      tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6072',
+      tenantDisplayName: 'Current Tenant',
+    };
+    const fetch = vi.fn(() =>
+      Promise.resolve(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'tenant-memory-only-token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+          tenantContext: {
+            ...currentMembership,
+            accessibleMemberships: [currentMembership],
+          },
+        }),
+      ),
+    );
+    const runtime = createRuntime({ realm: {}, intent: 'TENANT', fetch });
+    await runtime.login({ email: 'user@example.test', password: 'secret' });
+
+    await expect(
+      runtime.switchTenantContext({ membershipId: currentMembership.membershipId }),
+    ).resolves.toEqual({
+      ok: true,
+      state: {
+        status: 'authenticated',
+        transition: null,
+        tenantContext: {
+          ...currentMembership,
+          accessibleMemberships: [currentMembership],
+        },
+      },
+    });
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
   it('keeps a committed Tenant switch pending across a recoverable refresh failure', async () => {
+    let now = 0;
     const membershipId = '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6071';
+    const currentMembership = {
+      membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6070',
+      tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6072',
+      tenantDisplayName: 'Current Tenant',
+    };
+    const targetMembership = {
+      membershipId,
+      tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6074',
+      tenantDisplayName: 'Target Tenant',
+    };
     const fetch = vi
       .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
       .mockResolvedValueOnce(
@@ -939,6 +1119,10 @@ describe('createAuthenticationRuntime', () => {
           accessToken: 'old-tenant-token',
           tokenType: 'Bearer',
           expiresIn: 120,
+          tenantContext: {
+            ...currentMembership,
+            accessibleMemberships: [currentMembership, targetMembership],
+          },
         }),
       )
       .mockResolvedValueOnce(new Response(null, { status: 204 }))
@@ -949,6 +1133,10 @@ describe('createAuthenticationRuntime', () => {
           accessToken: 'new-tenant-token',
           tokenType: 'Bearer',
           expiresIn: 120,
+          tenantContext: {
+            ...targetMembership,
+            accessibleMemberships: [currentMembership, targetMembership],
+          },
         }),
       );
     const runtime = createRuntime({
@@ -956,6 +1144,7 @@ describe('createAuthenticationRuntime', () => {
       intent: 'TENANT',
       fetch,
       createIdempotencyKey: () => '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6073',
+      now: () => now,
     });
     await runtime.login({ email: 'user@example.test', password: 'secret' });
 
@@ -972,13 +1161,153 @@ describe('createAuthenticationRuntime', () => {
       status: 'authenticated',
       transition: 'tenantSwitchRefresh',
     });
+    now = 300_000;
     await expect(runtime.retryTenantSwitchRefresh()).resolves.toEqual({
       ok: true,
-      state: { status: 'authenticated', transition: null },
+      state: {
+        status: 'authenticated',
+        transition: null,
+        tenantContext: {
+          ...targetMembership,
+          accessibleMemberships: [currentMembership, targetMembership],
+        },
+      },
     });
     expect(
       fetch.mock.calls.filter(([url]) => requestUrl(url).endsWith('/api/v1/auth/tenant-switches')),
     ).toHaveLength(1);
+  });
+
+  it('retries an uncommitted Tenant switch with the same operation handle and key', async () => {
+    const currentMembership = {
+      membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6070',
+      tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6072',
+      tenantDisplayName: 'Current Tenant',
+    };
+    const targetMembership = {
+      membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6071',
+      tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6074',
+      tenantDisplayName: 'Target Tenant',
+    };
+    const authenticatedResponse = Response.json({
+      contextState: 'ACCESS_TOKEN_ISSUED',
+      accessToken: 'tenant-token',
+      tokenType: 'Bearer',
+      expiresIn: 120,
+      tenantContext: {
+        ...currentMembership,
+        accessibleMemberships: [currentMembership, targetMembership],
+      },
+    });
+    const targetResponse = Response.json({
+      contextState: 'ACCESS_TOKEN_ISSUED',
+      accessToken: 'target-token',
+      tokenType: 'Bearer',
+      expiresIn: 120,
+      tenantContext: {
+        ...targetMembership,
+        accessibleMemberships: [currentMembership, targetMembership],
+      },
+    });
+    const fetch = vi
+      .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValueOnce(authenticatedResponse)
+      .mockResolvedValueOnce(problemResponse(503, 'TENANT_CONTEXT_SWITCH_UNAVAILABLE', '3'))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(targetResponse);
+    const runtime = createRuntime({
+      realm: {},
+      intent: 'TENANT',
+      fetch,
+      createIdempotencyKey: () => '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6073',
+    });
+    await runtime.login({ email: 'user@example.test', password: 'secret' });
+
+    const first = await runtime.switchTenantContext({
+      membershipId: targetMembership.membershipId,
+    });
+    expect(first.ok).toBe(false);
+    if (first.ok || first.operationHandle === undefined) {
+      throw new Error('expected a reusable Tenant switch operation handle');
+    }
+    const second = await runtime.switchTenantContext({
+      membershipId: targetMembership.membershipId,
+      operationHandle: first.operationHandle,
+    });
+    expect(second.ok).toBe(true);
+    expect(runtime.getState()).toEqual({
+      status: 'authenticated',
+      transition: null,
+      tenantContext: {
+        ...targetMembership,
+        accessibleMemberships: [currentMembership, targetMembership],
+      },
+    });
+
+    const switchCalls = fetch.mock.calls.filter(([url]) =>
+      requestUrl(url).endsWith('/api/v1/auth/tenant-switches'),
+    );
+    expect(switchCalls).toHaveLength(2);
+    expect(new Headers(switchCalls[0]?.[1]?.headers).get('Idempotency-Key')).toBe(
+      new Headers(switchCalls[1]?.[1]?.headers).get('Idempotency-Key'),
+    );
+  });
+
+  it('blocks business requests while a Tenant switch is in flight', async () => {
+    const currentMembership = {
+      membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6070',
+      tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6072',
+      tenantDisplayName: 'Current Tenant',
+    };
+    const targetMembership = {
+      membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6071',
+      tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6074',
+      tenantDisplayName: 'Target Tenant',
+    };
+    let resolveSwitch: ((response: Response) => void) | undefined;
+    const fetch = vi
+      .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'tenant-token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+          tenantContext: {
+            ...currentMembership,
+            accessibleMemberships: [currentMembership, targetMembership],
+          },
+        }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveSwitch = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          clientId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6076',
+          displayName: 'Must not be requested',
+          allowedScopes: [],
+          status: 'ACTIVE',
+          createdAt: '2026-09-01T00:00:00Z',
+          updatedAt: '2026-09-01T00:00:00Z',
+        }),
+      );
+    const runtime = createRuntime({ realm: {}, intent: 'TENANT', fetch });
+    await runtime.login({ email: 'user@example.test', password: 'secret' });
+
+    const switching = runtime.switchTenantContext({ membershipId: targetMembership.membershipId });
+    await expect(
+      runtime.client.getOAuthClient({ clientId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6076' }),
+    ).resolves.toEqual({
+      ok: false,
+      problem: { code: 'INVALID_AUTHENTICATION_TRANSITION' },
+    });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    resolveSwitch?.(problemResponse(503, 'TENANT_CONTEXT_SWITCH_UNAVAILABLE', '3'));
+    await switching;
   });
 
   it('blocks cold-start refresh when the host restores logoutPending', async () => {

@@ -9,7 +9,10 @@ if (rootElement === null) {
   throw new Error('Platform Console root element is missing.');
 }
 
-createRoot(rootElement).render(
+createRoot(rootElement, {
+  // 已捕获故障由安全界面呈现；生产日志不得输出 React 默认记录的原始 Error。
+  onCaughtError: import.meta.env.PROD ? () => undefined : undefined,
+}).render(
   <DesignSystemProvider>
     <AuthenticationRootErrorBoundary applicationName="Platform Console">
       <PlatformConsoleApp />
