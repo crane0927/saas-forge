@@ -1,16 +1,16 @@
 # Issue #115：Console 真实产品聚合验收
 
-状态：**五渠道真实产品用例已全部通过，完整聚合仍未通过：末尾兼容门禁汇总失败，其失败明细尚未取得。** 本文不构成 PRD #108 完成证据，远端 Issue 中原有 `.saasforge.test` 条款尚未调整。
+状态：**2026-09-03，提交 `5023f24` 的 Verify 与完整五渠道产品聚合均已通过。** CI 使用已获批准的 `saasforge.example.com` 对照根域；本地仍使用 `saasforge.test`。远端 Issue 原有固定域名条款尚未调整，#115 / #108 及 MVP 完成状态未变更。
 
 | 最新门禁 | 当前直接结果 |
 | --- | --- |
-| 本地 Chromium / WebKit / Chrome 真实产品 | 各 16 通过，0 失败，0 跳过；本地聚合补跑曾遇到 TLS 连接中断 |
-| CI 五渠道真实产品 | `cef0569` 的 Firefox、WebKit、Chromium、Chrome、Edge 各 16/16，0 失败/跳过 |
-| 五渠道真实 TLS 预检 | `cef0569` 全部通过 |
-| CI Verify | `cef0569` 首次运行全部通过：四个兼容渠道、JDK 17/21、Nacos、生命周期 E2E |
-| 最新完整产品聚合 | Maven、构建、五次 Fresh Compose / TLS / 产品测试通过；末尾兼容门禁汇总失败 |
+| 本地 Chromium / WebKit / Chrome 真实产品 | 各 16 通过，0 失败，0 跳过；历史本地聚合补跑曾遇到 TLS 连接中断 |
+| CI 五渠道真实产品 | `5023f24` 的 Firefox、WebKit、Chromium、Chrome、Edge 各 16/16，0 失败/跳过 |
+| 五渠道真实 TLS 预检 | 全部通过；开启正常证书验证 |
+| CI Verify | 全部通过：四个兼容渠道、JDK 17/21、Nacos、生命周期 E2E |
+| 完整产品聚合 | Maven/workspace、独立生产构建、五次 Fresh Compose / TLS / 产品测试和四个兼容门禁全部通过 |
 
-以下历史记录保留各轮失败、修复与证据范围；上述结果表只汇总最新确认状态。
+直接结果：[Verify](https://github.com/crane0927/saas-forge/actions/runs/33650682545)、[完整产品聚合](https://github.com/crane0927/saas-forge/actions/runs/33650682486)。以下历史记录保留各轮失败、修复与证据范围。
 
 ## 已确认的测试边界
 
@@ -276,19 +276,26 @@ CI 安装的是 libsoup `3.4.4-5ubuntu0.7`。[libsoup Cookie 接收逻辑](https
 
 现将末尾全部兼容命令放入 `consoles` 工作目录的子 Shell，与 Maven 既有方式一致；仍执行相同四个渠道及原断言。摘要补充刚复现的固定错误码，公开 CLI 回归先 RED 后 GREEN，13 条测试、lint、格式、Shell 语法与 diff 检查通过。该本地复现与 CI 测试启动前失败一致，但远端原始错误内容不可取回，仍需新一轮完整 CI 确认修正。
 
-## 最终验收待办
+## 2026-09-03 最终 CI 读回
 
-以下按全部要求的浏览器渠道和最终聚合证据收口；本地成功不代替 Firefox/Edge CI，也未修改远端 Issue 勾选或关闭状态。
+代码提交 `5023f2498170e7a55de606d5f85561da7b24338d` 的完整产品任务用时 29m59s，结论为 success。日志确认每次渠道切换均清理数据卷并重新引导账户，Firefox 153.0、WebKit 26.5、Chromium 151.0.7922.34、Chrome 152.0.7977.75、Edge 152.0.4191.53 各 16/16、0 失败/跳过；之后 Chrome、Edge、Firefox、WebKit 四个兼容命令依次通过，最终输出完整 Maven/workspace、生产构建、Fresh Compose 与浏览器门禁全部通过。相同提交的 Verify 也为 success，包括生命周期 E2E、Nacos、JDK 17/21 与四个独立兼容任务。
 
-- [ ] 全新 Compose 数据卷、真实服务及三 Origin 的受信 TLS 产品入口。
-- [ ] Platform / Tenant 同时登录、独立 Refresh Cookie、内存 Access Token 与独立刷新/登出。
-- [ ] 首次改密后重新登录、单/多 Membership、冷启动恢复与受保护导航。
-- [ ] Tenant Switch 的 `204 → Refresh`、恢复失败、不回滚与品牌/导航一致性。
-- [ ] 同 Origin 竞争、迟到消息、单调代次、`logoutPending` 与 IAM Lease 回退。
-- [ ] 真实浏览器安全负向，以及 Gateway/IAM 每个拒绝分支的聚焦证据。
-- [ ] 存储、脚本可读 Cookie、跨标签页消息与生产日志敏感信息检查。
-- [ ] 单次 `401` 刷新/重放、不可重放变更、稳定幂等句柄、Retry-After、畸形响应及网络不可判定。
-- [ ] 根/路由/请求错误分层、生产脱敏、键盘、焦点、读屏与窄屏。
-- [ ] 三引擎核心认证、Chrome/Edge 发布渠道和 Chromium 视觉快照。
-- [ ] 两个生产构建、workspace、Maven/契约/服务及 Fresh Compose 聚合验证全部通过。
-- [ ] 全部验收证据成立后再处理 #115 / #108 和 MVP 完成状态。
+工作目录是最后一轮唯一改变执行行为的修正；修正后兼容命令通过，与临时 Corepack 环境中旧方式失败、新方式成功的对照一致。原 CI 启动错误的完整文本仍不可取回，不补造历史诊断。所有渠道持续使用正常 TLS、安全 Cookie 与真实受控 Origin；本机未安装或运行 Firefox/Edge。
+
+## 验收证据与剩余事项
+
+以下勾选表示已在批准的 CI 示例根域下取得完整产品证据；不表示已改写或关闭远端 Issue，也不将其自动等同于原文写死 `.saasforge.test` 的域名条款。
+
+- [x] 全新 Compose 数据卷、真实服务及三 Origin 的受信 TLS 产品入口。
+- [x] Platform / Tenant 同时登录、独立 Refresh Cookie、内存 Access Token 与独立刷新/登出。
+- [x] 首次改密后重新登录、单/多 Membership、冷启动恢复与受保护导航。
+- [x] Tenant Switch 的 `204 → Refresh`、恢复失败、不回滚与品牌/导航一致性。
+- [x] 同 Origin 竞争、迟到消息、单调代次、`logoutPending` 与 IAM Lease 回退。
+- [x] 真实浏览器安全负向，以及 Gateway/IAM 拒绝分支的聚焦测试。
+- [x] 存储、脚本可读 Cookie、跨标签页消息与生产日志敏感信息检查。
+- [x] 单次 `401` 刷新/重放、不可重放变更、稳定幂等句柄、Retry-After、畸形响应及网络不可判定。
+- [x] 根/路由/请求错误分层、生产脱敏、键盘、焦点、读屏与窄屏。
+- [x] 三引擎核心认证与 Chrome/Edge 发布渠道；Chromium 视觉快照的本地证据见前文，CI 未将非 Chromium 视觉跳过等同于核心行为通过。
+- [x] 两个生产构建、workspace、Maven/契约/服务及 Fresh Compose 聚合验证全部通过。
+- [ ] 确认是否将“本地 `.saasforge.test`、CI `.saasforge.example.com`，均使用受信 TLS 和同等受控 Origin/Cookie 边界”纳入 #115 正式验收条款。
+- [ ] 完成正式条款与前置 Issue 的最终核对后，再处理 #115 / #108 和 MVP 完成状态。
