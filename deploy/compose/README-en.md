@@ -2,7 +2,7 @@
 
 [简体中文](README.md)
 
-This directory provides the minimum saas-forge local runtime topology for development, demonstrations, and end-to-end testing.
+This directory provides the minimum saas-forge local runtime topology for development, demonstrations, and end-to-end testing. The default `compose.yaml` starts only the backend and infrastructure; it does not include either Console or a browser HTTPS entry point.
 
 ## Included components
 
@@ -33,7 +33,57 @@ On the first start, Nacos initializes with the explicit administrator password i
 docker compose ps --all
 ```
 
-An `Exited (0)` status for a `*-migrate` job means its migration succeeded. The services do not yet expose business routes, so a `404` from a service root path is expected.
+An `Exited (0)` status for a `*-migrate` job means its migration succeeded. The backend already exposes authentication and management APIs. Service roots have no page; a root `404` neither means the APIs are unavailable nor proves service readiness.
+
+## Operations available in the UI
+
+These operations require deployed frontends, HTTPS entry points, healthy backend services, and the appropriate account data. Running `docker compose up` alone does not make the product consoles available.
+
+| Operation | Current entry point | Prerequisite or boundary |
+| --- | --- | --- |
+| Platform Admin login, initial password change, subsequent login, and logout | Platform Console | Run the administrator bootstrap below first; use the initial password within 24 hours |
+| Session recovery after reload and coordination across tabs | Platform / Tenant Console | An established session; platform and tenant sessions are managed separately |
+| Tenant login, selection, switching, and logout | Tenant Console | Prepare accessible Tenants and Memberships through backend APIs first; selection or switching requires multiple accessible Memberships |
+| Set a Tenant administrator's first password | Password Setup link in a Mailpit email | Administrator initialization must have sent a still-valid link; return to Tenant Console to log in afterward |
+| Create the Platform Admin or reset its initial credential | Compose one-shot tasks below | No platform UI; the restricted reset cannot reset an established regular password |
+| Bootstrap reserved service OAuth Clients or replace revoked Clients | Compose one-shot tasks below | No platform UI |
+| Manage OAuth Clients, create Tenants, configure Quota/Plan or Subscription, initialize Tenant administrators | Formal backend APIs | No working management pages yet; platform `/oauth-clients` is only a placeholder |
+
+The platform home and Tenant workspace currently show authentication status only, without a statistics Dashboard or business management actions. See the [Tenant lifecycle acceptance script](../../scripts/verify-tenant-lifecycle-e2e.sh) for API examples; API coverage in that script does not mean corresponding UI features exist.
+
+### Browser access prerequisites
+
+1. Build and separately host `consoles/platform-console/dist` and `consoles/tenant-console-shell/dist`, following the [Console README](../../consoles/README.md). The default Compose stack does not do this.
+2. Resolve `platform.saasforge.test`, `console.saasforge.test`, and `api.saasforge.test` to `127.0.0.1`, with browser-trusted TLS on HTTPS port 443. Route the first two hosts to their frontends and proxy the API host to Gateway. Different HTTP localhost ports cannot replace these entry points.
+3. Replace `/runtime-config.json` in both deployed frontends with the following content. The original build artifact contains an intentionally invalid template; leaving it unchanged keeps the application on the configuration-error screen.
+
+   ```json
+   {
+     "schemaVersion": 1,
+     "apiBaseUrl": "https://api.saasforge.test"
+   }
+   ```
+
+4. For password setup, proxy `/password-setup`, `/password-setup/app.js`, `/password-setup/styles.css`, and the submission path `/api/v1/auth/password-setups` on the Tenant Origin to Gateway rather than the SPA fallback. This independent page submits to its own Origin; other Console API calls use the configured API Origin through the shared Client.
+5. Complete migrations, wait for backend readiness, and run the administrator and reserved service Client bootstrap tasks below. Tenant operations additionally require a Tenant, Membership, and valid password; a fresh environment does not create this business data automatically.
+
+The browser and shared Client handle cookies, Origin, and Fetch Metadata according to the protocol; UI users do not copy Tokens or cookies. HTTP port `8080` is a local backend port, not a product console. See the [deployment documentation](../../docs/14-deployment.md) for the complete boundary.
+
+### Isolated browser acceptance
+
+The repository provides a [Console authentication acceptance script](../../scripts/verify-console-authentication-e2e.sh) and a [dedicated Compose override](console-authentication.override.yaml) for automated checks against a fresh environment. They do not retain an environment for manual exploration and should not be used directly as the default development stack configuration.
+
+Prepare the local DNS entries, trusted certificate, an available `127.0.0.1:443`, Node `24.14.1`, pnpm `11.22.0`, Docker, OpenSSL, Ruby, and Console dependencies. Default local acceptance also requires Playwright Chromium, WebKit, and Chrome to be available and trust the certificate. From the repository root, run:
+
+```bash
+export SF_ACCEPTANCE_TLS_CERT=/absolute/path/to/local-cert.pem
+export SF_ACCEPTANCE_TLS_KEY=/absolute/path/to/local-key.pem
+bash scripts/verify-console-authentication-e2e.sh --preflight
+# After preflight succeeds, build and run full acceptance.
+bash scripts/verify-console-authentication-e2e.sh
+```
+
+The certificate must cover all three local hosts; replace the example absolute paths with actual files. Preflight checks the environment, not successful login. The full script creates an isolated project and fresh volumes, prepares test accounts, and drives browsers. It then removes its project, volumes, and temporary Secrets, retaining no accounts or environment for later manual login. Only the output of the current run establishes its result.
 
 ## Fresh-volume Tenant lifecycle acceptance
 
@@ -108,6 +158,37 @@ echo "Platform Admin Secret files are ready"
 
 The bootstrap state intentionally changes after the initial password is replaced. Do not rerun the bootstrap task after a successful password change.
 
+### 4. Log in through Platform Console with the initial password
+
+After meeting the browser prerequisites above, open the [local Platform Console](https://platform.saasforge.test/), enter the bootstrap administrator email and initial password, and select “登录” (Log in). This creates only a restricted session and should open “设置新密码” (Set a new password); platform management remains unavailable at this point.
+
+If the initial password has expired and no regular password exists, use the restricted initial-credential reset below rather than rerunning account creation. If the UI reports an active session in the slot, follow its prompt to log out of that Platform session first.
+
+### 5. Set the regular password in the UI
+
+Enter the regular password on “设置新密码” and select “更新密码” (Update password). The password must meet all of these rules:
+
+- At least 12 Unicode code points;
+- At most 128 Unicode code points and at most 512 UTF-8 bytes;
+- No spaces, line endings, tabs, or other Unicode whitespace;
+- Must not match the system's compromised-password blocklist.
+
+Success displays “密码已更新，请使用新密码重新登录。” (Password updated; log in with the new password). The initial password and restricted session are invalidated. After confirming success, remove the expired initial-password file from the Compose directory:
+
+```bash
+rm .secrets/platform-admin-password
+```
+
+For a custom Secret path, remove the corresponding old file. Do not remove active service Client Secrets or signing private keys.
+
+### 6. Log in again and check the session
+
+1. Enter the administrator email and regular password on the login page. Successful login opens “Platform 总览” (Platform overview), which currently shows only authentication status.
+2. Reload and confirm that session recovery returns to the home page. If a network failure leaves recovery uncertain, use “重试恢复” (Retry recovery).
+3. Select “退出登录” (Log out) and confirm the login page appears. Retry through the UI if logout fails. Reloading should not restore the ended Platform session.
+
+These UI actions call the formal APIs; manual login/password-change requests and Access Token inspection are unnecessary. Never write passwords, Tokens, or cookies to `.env`, Git, logs, or chat messages. The `OAuth Client` menu is still a placeholder and cannot create, rotate, or revoke Clients.
+
 ## Explicit reserved service OAuth Client bootstrap
 
 Generate three deployment-local fixed Client IDs and Secrets from the Compose directory:
@@ -138,102 +219,6 @@ docker compose --profile service-client-replacement run --rm iam-reserved-servic
 ```
 
 The service key is limited to `IAM`, `TENANT_ACCESS`, or `ENTITLEMENT`; name and scopes are derived from it and cannot be supplied. An exact replay returns `ALREADY_REPLACED`; rebinding the same request ID to different inputs fails for manual handling.
-
-### 4. Log in with the initial password
-
-The following commands require `jq` and call the public endpoint through the local Gateway on port `8080`. Complete the initial login and password change in the same terminal because `COOKIE_JAR` holds the restricted session cookie:
-
-```bash
-API_BASE=http://localhost:8080
-COOKIE_JAR="$(mktemp)"
-ADMIN_EMAIL="$(<.secrets/platform-admin-email)"
-INITIAL_PASSWORD="$(<.secrets/platform-admin-password)"
-
-jq -n \
-  --arg email "$ADMIN_EMAIL" \
-  --arg password "$INITIAL_PASSWORD" \
-  '{email:$email,password:$password,contextType:"PLATFORM"}' |
-curl --fail-with-body -sS \
-  -c "$COOKIE_JAR" \
-  -H 'Content-Type: application/json' \
-  -H 'X-SF-CSRF: 1' \
-  --data-binary @- \
-  "$API_BASE/api/v1/auth/login" |
-jq .
-```
-
-A successful initial-password login returns `PASSWORD_CHANGE_REQUIRED` and does not issue an Access Token:
-
-```json
-{
-  "contextState": "PASSWORD_CHANGE_REQUIRED"
-}
-```
-
-### 5. Replace the initial password
-
-Enter the permanent password in the same terminal. No characters are echoed while typing; press Enter when finished:
-
-```bash
-read -r -s "NEW_PASSWORD?Enter the new password: "
-echo
-
-jq -n \
-  --arg password "$NEW_PASSWORD" \
-  '{newPassword:$password}' |
-curl --fail-with-body -i \
-  -b "$COOKIE_JAR" \
-  -c "$COOKIE_JAR" \
-  -H 'Content-Type: application/json' \
-  -H 'X-SF-CSRF: 1' \
-  --data-binary @- \
-  "$API_BASE/api/v1/auth/password-changes"
-```
-
-`HTTP/1.1 204` means the permanent password is active and both the initial password and restricted session are permanently invalid. The permanent password must satisfy all of these rules:
-
-- At least 12 Unicode code points;
-- At most 128 Unicode code points and at most 512 UTF-8 bytes;
-- No spaces, line endings, tabs, or other Unicode whitespace;
-- Must not match the system's compromised-password blocklist.
-
-After success, clear the shell variables and remove the initial-password file:
-
-```bash
-unset INITIAL_PASSWORD NEW_PASSWORD
-rm .secrets/platform-admin-password
-```
-
-### 6. Log in again with the permanent password
-
-Enter the permanent password again and call the login endpoint:
-
-```bash
-read -r -s "ADMIN_PASSWORD?Enter the permanent password: "
-echo
-
-jq -n \
-  --arg email "$ADMIN_EMAIL" \
-  --arg password "$ADMIN_PASSWORD" \
-  '{email:$email,password:$password,contextType:"PLATFORM"}' |
-curl --fail-with-body -sS \
-  -b "$COOKIE_JAR" \
-  -c "$COOKIE_JAR" \
-  -H 'Content-Type: application/json' \
-  -H 'X-SF-CSRF: 1' \
-  --data-binary @- \
-  "$API_BASE/api/v1/auth/login" |
-jq .
-
-unset ADMIN_PASSWORD
-```
-
-Success returns `ACCESS_TOKEN_ISSUED`, a Bearer Access Token, and its lifetime. Access Tokens, Refresh Token cookies, and passwords are sensitive and must never be written to `.env`, Git, logs, or chat messages. Remove the temporary cookie file when finished:
-
-```bash
-rm -f "$COOKIE_JAR"
-unset COOKIE_JAR
-```
 
 ## Restricted Platform Admin initial-credential reset
 
@@ -306,19 +291,96 @@ bash scripts/verify-nacos-failure-recovery.sh
 
 The script uses a separate Compose project and `failure-recovery.override.yaml`; it neither claims the development stack's host ports nor stops its containers. It verifies that Gateway returns `503` with no healthy IAM instance and has no static-address fallback, that a running Gateway continues using known healthy instances during a brief Nacos outage, and that a new IAM instance cannot start without its required configuration. On exit it removes only containers and volumes created for the isolated acceptance project.
 
-## Stop and reset
+## Stop, clean up, and redeploy
 
-To stop the stack normally:
+Run these commands from `deploy/compose`; they apply to the default development stack described here. Confirm the target first:
 
 ```bash
+docker compose ls
+docker compose ps --all
+```
+
+If the previous deployment used `-p`, `--env-file`, or additional `-f` files, use the same arguments when inspecting, stopping, removing, and starting it. Otherwise, you may target the wrong project or leave old containers behind. The signing-key initialization script below supports the corresponding `COMPOSE_PROJECT_NAME`, `LOCAL_COMPOSE_ENV_FILE`, and `LOCAL_COMPOSE_OVERRIDE_FILE` environment variables; set them consistently for custom projects. Do not substitute global `docker system prune` or `docker volume prune` for project-specific cleanup.
+
+### 1. Pause without redeploying
+
+```bash
+docker compose stop
+# Resume the existing containers later.
+docker compose start
+```
+
+These commands retain containers and data. They neither rebuild images nor apply source or Compose configuration changes.
+
+### 2. Rebuild and redeploy while retaining business data
+
+Use this procedure to deploy updated source or deployment configuration. Migrations may change existing database structures; back up any data you need and confirm that it can be restored first.
+
+```bash
+docker compose config --quiet
 docker compose down
+docker compose up --build -d
+docker compose ps --all
 ```
 
-To reset local PostgreSQL, Redis, and Kafka data completely:
+Without `--volumes`, the PostgreSQL, Redis, and Kafka named volumes remain. Existing platform accounts, regular passwords, and Tenant data remain usable, and migrations run before services start. Do not recreate the Platform Admin or regenerate active service Client Secrets, signing private keys, or database passwords. Investigate Flyway checksum mismatches against migration history rather than deleting volumes, rewriting history, or disabling validation to make startup succeed.
 
-```bash
-docker compose down -v
-```
+The default Compose stack has no persistent volumes for Nacos or Mailpit. Recreating their containers reinitializes Nacos through `nacos-init` from repository configuration and loses old Mailpit messages. Save required Nacos changes through the [Nacos management process](../nacos/README.md) first. Resend missing password-setup emails through the formal API rather than bootstrapping the administrator again.
+
+### 3. Delete local business data and initialize from scratch
+
+Use this only for disposable local development data. For a code update alone, use the previous section.
 
 > [!CAUTION]
-> `down -v` deletes the three named data volumes of this Compose project. Use it only after confirming that no local data must be retained.
+> The following `down --volumes` deletes this Compose project's PostgreSQL, Redis, and Kafka named volumes, including all accounts, Tenants, subscriptions, audit records, sessions, and messages. Back up required data and confirm it is recoverable first; restarting cannot recover deleted data.
+
+```bash
+docker compose down --volumes
+```
+
+This does not remove host `.env`, `.secrets/`, external Secrets, TLS certificates, frontend `dist` directories, or built images. An empty database does not mean credential files have been removed. Before initializing again:
+
+- Retain and review `.env`; do not overwrite it with `.env.example`.
+- Complete sets of the three service Client ID/Secret pairs can be reused for this reset local environment. Rerun the service Client bootstrap below to register them in the new database. Run `./generate-service-client-secrets.sh` only when all six files are absent; it refuses to overwrite files. Restore complete material if some files are missing rather than mixing old and new files.
+- The local IAM signing private key can be retained. The initialization script registers matching Signing Key metadata in the new database. If retaining the database, never force regeneration by deleting its private key.
+- Check the administrator email file and generate a new random initial password for this deployment. The example below uses default Secret paths; use the actual configured files for custom `.env` paths. If the email file is absent, create it using the earlier Secret-file instructions first.
+
+```bash
+mkdir -p .secrets
+test -s .secrets/platform-admin-email
+openssl rand -base64 32 > .secrets/platform-admin-password
+chmod 600 .secrets/platform-admin-email .secrets/platform-admin-password
+```
+
+Once all files are ready, run these steps in order. Resolve any failure before continuing with bootstrap or login:
+
+```bash
+docker compose config --quiet
+docker compose build
+bash ../../scripts/initialize-local-iam-signing-key.sh
+docker compose --profile service-client-bootstrap run --rm iam-reserved-service-client-bootstrap
+docker compose --profile bootstrap run --rm iam-platform-admin-bootstrap
+docker compose up -d
+docker compose ps --all
+```
+
+Because the database was reset, bootstrap the administrator again and change its initial password within 24 hours. The previous regular password no longer works. Recreate Tenants, Memberships, Quota/Plan, Subscriptions, and Tenant administrators through backend APIs; the current frontend cannot create this data.
+
+### 4. Update the frontends and verify the deployment
+
+The default Compose stack does not redeploy frontends or the TLS reverse proxy, whether data is retained or reset. If frontend source changed, rebuild after preparing the Console toolchain and dependencies:
+
+```bash
+(cd ../../consoles && corepack pnpm run build)
+```
+
+Publish the two new `dist` directories to their original Platform and Tenant sites, and replace each `runtime-config.json` again: every new build includes the intentionally invalid deployment template. Check HTTPS, Gateway proxying, and Password Setup routes against the browser prerequisites above. Redeployment alone does not require deleting trusted TLS certificates.
+
+Then check:
+
+1. Migration jobs show `Exited (0)` in `docker compose ps --all`, and backend services are ready. A running container alone does not prove API availability.
+2. Close old Console tabs and reopen Platform Console. Use the existing regular password if data was retained; after a reset, use the new initial password, change it, and log in again.
+3. Reload the home page to check session recovery, then log out and reload to confirm that the ended session is not restored.
+4. Before testing Tenant login and switching, confirm that Tenant data was retained or recreated. Old Password Setup links cannot be used after the database is reset.
+
+The isolated Console acceptance script removes its own temporary environment. It does not redeploy the development stack, and its test accounts cannot be used to log in to that stack.
