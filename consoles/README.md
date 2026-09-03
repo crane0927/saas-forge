@@ -1,47 +1,124 @@
-# 控制台边界
+# SaaS Forge Consoles
 
-本目录承载 Platform Console、Tenant Console Shell、业务 Remote 与共享前端代码四个独立边界。当前已交付两个最终应用宿主、生成 API Client、共享应用 Runtime，以及只用于证明 Design System 消费边界的最小 Remote 夹具；产品业务 Remote 尚未实现。
+[English](README-en.md)
 
-本目录是唯一的 pnpm workspace 根，固定使用 Node 24.14.1 与 pnpm 11.22.0。共享依赖版本由 `pnpm-workspace.yaml` 的默认 Catalog 集中管理，lockfile 记录解析后的精确版本。Platform Console 和 Tenant Console Shell 是彼此独立的 Vite + React 应用；本阶段不初始化 Module Federation。
+SaaS Forge 的前端工作区：两个独立部署的 React 控制台，共用认证 Runtime、React 应用壳、Design System 和生成式 API Client。
 
-`shared/api-client` 是无状态 TypeScript REST Client。Maven/OpenAPI Generator 是唯一生成权威，生成物位于被 Git 忽略的 `.generated`；手写代码只允许从 `@saas-forge/api-client` 公开入口导入 API、模型和运行时类型，不得直接导入生成目录。它不实现认证、Cookie、CSRF 或 Token 存储。
+- **Platform Console**：面向 SaaS 产品提供方的平台管理入口，固定使用 `PLATFORM` 认证意图。
+- **Tenant Console Shell**：面向租户管理员的应用宿主，固定使用 `TENANT` 认证意图，支持 Membership 选择、Tenant Context 切换与受控品牌展示。
+- **共享基础能力**：严格运行配置、会话恢复、登录、首次改密、退出、多标签页会话协调，以及统一的组件与交互规则。
 
-`shared/app-runtime` 是不依赖 React 与路由的 Runtime Config、Bootstrap 和认证状态机内核。它从同 Origin 的 `/runtime-config.json` 加载严格的 `schemaVersion`、`apiBaseUrl` 两字段契约，只接受绝对 HTTPS API Origin，并通过生成 API Client 执行恢复、登录、首次改密与退出。它向上层暴露稳定状态和失败码，不持久化 Token，也不实现页面或导航。
+> [!NOTE]
+> 当前主要交付控制台宿主与认证能力。Platform 的 `/` 为总览页，`/oauth-clients` 仍是占位入口；Tenant 的 `/` 为工作台。产品业务 Remote、Manifest 与 Module Federation 尚未接入，不能将现有路由视为完整业务管理功能。
 
-`shared/react-shell` 是 Console 共用的 React 应用壳。它只消费 `app-runtime` 与 `design-system` 的公共入口，负责恢复等待、登录、首次改密、会话冲突、退出待重试、受保护路由、全局导航和分层错误边界。产品宿主固定自己的认证意图并传入唯一 Runtime；页面和 Remote 不得创建第二套认证状态、读取凭据或直接发起认证 HTTP。
+## 快速开始
 
-`shared/design-system` 是唯一公共 UI 包，内部封装 Ant Design 6.6.2，并通过根入口提供 Theme Provider、语义 Token 和共享启动状态。两个 Console 与 Remote 不得直接依赖 `antd`、导入 Design System 内部路径、注入全局 CSS、覆盖公共组件内部选择器或重复实现已有公共组件；聚合测试包含对应静态和制品边界门禁。
+### 环境要求
 
-## 环境准备与完整验证
+| 工具                | 要求                          | 用途                             |
+| ------------------- | ----------------------------- | -------------------------------- |
+| Node.js             | `24.14.1`                     | 前端开发与验证                   |
+| pnpm                | `11.22.0`，通过 Corepack 启用 | 唯一工作区包管理器               |
+| JDK                 | `17`；仓库 CI 同时验证 `21`   | Maven 生成 TypeScript API Client |
+| Playwright Chromium | 安装后运行浏览器门禁          | `verify` 的必需依赖              |
 
-从无生成 Client、无 `dist` 的干净状态执行：
+本目录是唯一的 pnpm workspace 根。依赖声明使用 [默认 Catalog](pnpm-workspace.yaml)，解析版本由 `pnpm-lock.yaml` 锁定；后端构建使用仓库自带的 Maven Wrapper，无需另装 Maven。
+
+从仓库根目录准备依赖并完成前端验证：
 
 ```bash
+cd consoles
 corepack enable
 pnpm install --frozen-lockfile
+pnpm exec playwright install chromium
 pnpm run verify
 ```
 
-`verify` 先通过根命令 `generate:api` 调用 Maven/OpenAPI Generator 正式生成 Client，再一次完成所有手写代码的严格 TypeScript、ESLint、Prettier 检查，执行依赖边界、`app-runtime`、Design System 与两个应用的测试，最后生产构建 Design System 和两个应用。生成代码参与严格类型检查，但不参与手写代码的 Lint 和格式检查。Maven `verify` 复用同一个 workspace 聚合门禁，不安装 Node/pnpm，也不会在缺失依赖时自动联网。
+Linux CI 使用 `pnpm exec playwright install --with-deps chromium` 准备浏览器系统依赖。首次安装及 API Client 生成需要能够访问相应的依赖仓库。
 
-## 根命令
+### 启动开发服务器
+
+以下命令均在 `consoles/` 执行；同时开发两个应用时，分别使用一个终端：
 
 ```bash
 pnpm run dev:platform
-pnpm run dev:tenant
-pnpm run typecheck
-pnpm run test
-pnpm run test:browser:chromium
-pnpm run test:browser:compatibility
-pnpm run build
-pnpm run verify
 ```
 
-`dev:platform`、`dev:tenant`、`build` 和 `verify` 都先生成正式 Client。`typecheck` 与 `test` 只聚合已准备好的 workspace 包；包内部命令只验证本包，不反向调用 Maven。两个应用也可在各自目录单独执行 `dev`、`typecheck`、`lint`、`format:check`、`test`、`build` 和 `verify`。
+```bash
+pnpm run dev:tenant
+```
 
-## 静态制品与部署配置
+两个命令都会先生成 API Client，再启动对应的 Vite 服务器，访问地址以终端输出为准。仅查看共享组件时，可启动 Design System 展示册：
 
-生产构建分别输出 `platform-console/dist` 和 `tenant-console-shell/dist`，两者是独立制品，必须发布到各自受控 Origin。每个制品内的 `/runtime-config.json` 都是故意非法的部署模板；部署流程必须将它原子替换为严格的两字段配置，例如：
+```bash
+pnpm --filter @saas-forge/design-system run dev:showcase
+```
+
+> [!IMPORTANT]
+> 开发服务器只提供前端，不启动 Gateway、IAM 或数据库。它通过 `/runtime-config.json` 提供固定的 `https://api.saasforge.test` API Origin。真实认证联调还需要受信 HTTPS、正确的域名解析、Gateway 安全配置与已准备的账户；默认 HTTP localhost 页面不能代替受控浏览器入口。环境准备见 [Compose 部署说明](../deploy/compose/README.md)。
+
+## 目录与职责
+
+| 目录                                                                                                            | 职责                                                                    |
+| --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| [`platform-console/`](platform-console/)                                                                        | 独立 Vite + React 平台应用，拥有本地路由和固定认证意图                  |
+| [`tenant-console-shell/`](tenant-console-shell/)                                                                | 独立租户应用宿主，连接 Tenant Context、导航和品牌展示                   |
+| [`shared/api-client/`](shared/api-client/)                                                                      | 无状态 TypeScript REST Client，只公开稳定包入口                         |
+| [`shared/app-runtime/`](shared/app-runtime/README.md)                                                           | 不依赖 React/路由的运行配置、Bootstrap、认证状态机和受控类型化 API 调用 |
+| [`shared/react-shell/`](shared/react-shell/)                                                                    | 共享认证页面、受保护路由、导航、恢复/重试界面及分层错误边界             |
+| [`shared/design-system/`](shared/design-system/README.md)                                                       | 唯一公共 UI 包：主题、语义 Token、布局、表单、表格与交互规则            |
+| [`business-remotes/design-system-consumer-fixture/`](business-remotes/design-system-consumer-fixture/README.md) | 仅用于验证共享 UI 消费边界的 Remote 夹具，不是产品 Remote               |
+| `test/`、`browser-test/`、`integration-test/`                                                                   | 工作区边界、浏览器消费与会话/产品集成测试                               |
+
+### 开发边界
+
+- **API 生成**：Maven/OpenAPI Generator 是唯一生成权威，输入来自 [`contracts/openapi/`](../contracts/openapi/)，输出到被 Git 忽略的 `shared/api-client/.generated/`。不要手改生成物或直接导入生成目录；使用 `@saas-forge/api-client` 公开入口。
+- **认证与 HTTP**：页面和 Remote 复用宿主 Runtime，通过其受控类型化 Client 调用正式 API operation；不得创建第二套认证状态、读取 Token 或自行注入 Cookie、Origin、Fetch Metadata、Bearer Token。Access Token 不持久化；生成式 Client 本身不负责会话、CSRF 或 Token 存储。
+- **共享 UI**：每个 Console 入口只安装一个 `DesignSystemProvider`。消费者只从 `@saas-forge/design-system` 根入口导入，不直接依赖 `antd`、导入内部路径、注入全局 CSS、覆盖公共组件内部选择器或复制已有公共组件。领域内容布局可使用 CSS Modules。
+- **配置失败关闭**：先校验 Runtime Config，再进入认证与应用路由。配置加载失败只暴露安全错误码并允许显式重试，不回退到猜测的 API 地址。
+
+## 常用命令与验证
+
+以下命令均在 `consoles/` 执行。
+
+| 命令                                      | 范围                                                                 |
+| ----------------------------------------- | -------------------------------------------------------------------- |
+| `pnpm run generate:api`                   | 通过 Maven 正式生成 API Client                                       |
+| `pnpm run typecheck`                      | 递归执行严格 TypeScript 检查，包含生成 Client                        |
+| `pnpm run lint` / `pnpm run format:check` | 手写代码与文档的 ESLint / Prettier 检查；生成物不参与                |
+| `pnpm run test`                           | 工作区静态边界检查与各包测试，不包含根浏览器套件                     |
+| `pnpm run test:browser:chromium`          | Design System、消费者及多标签页会话的 Chromium 测试                  |
+| `pnpm run test:browser:compatibility`     | 依次运行 Chrome、Edge、Firefox、WebKit 兼容测试                      |
+| `pnpm run build`                          | 生成 Client、递归生产构建并检查 Design System 制品边界               |
+| `pnpm run verify`                         | 生成 Client，再执行完整前端聚合门禁                                  |
+| `pnpm run verify:workspace`               | 不生成 Client，直接执行同一个前端聚合门禁，供 Maven 等已生成流程复用 |
+
+聚合门禁顺序为：类型检查 → ESLint → Prettier → 边界与包测试 → Chromium 浏览器测试 → 生产构建与制品检查。`typecheck`、`test` 和浏览器命令不会生成 Client，单独运行前需先执行 `pnpm run generate:api`。
+
+兼容测试需先准备相应浏览器；也可用 `test:browser:chrome`、`test:browser:edge`、`test:browser:firefox` 或 `test:browser:webkit` 单独运行：
+
+```bash
+pnpm exec playwright install chrome msedge firefox webkit
+pnpm run generate:api
+pnpm run test:browser:compatibility
+```
+
+两个应用的包级 `dev`、`typecheck`、`lint`、`format:check`、`test`、`build`、`verify` 只处理本包，不反向调用 Maven，也不替代工作区门禁。仓库根目录的 `./mvnw verify` 会先生成 Client，再调用 `verify:workspace`；Maven 不负责安装 Node、pnpm、前端依赖或浏览器。
+
+### 验证范围
+
+工作区门禁覆盖共享包边界、UI 交互、会话协调和静态制品一致性，不等同于真实后端登录或部署验收。WebKit 是可复现的 Safari 引擎兼容测试，不代表原生 Safari 实测。
+
+真实 Console 认证使用独立的 [`verify-console-authentication-e2e.sh`](../scripts/verify-console-authentication-e2e.sh)，涉及全新 Compose 环境、受信 TLS 与真实服务请求，不属于 `pnpm run verify`。执行前请阅读 [产品验收说明与环境前提](../docs/acceptance/issue-115-console-authentication.md)；该文档中的历史结果不代表当前环境已验证通过。
+
+## 构建与部署
+
+运行 `pnpm run build` 后，分别发布两个独立静态制品：
+
+- `platform-console/dist/` → Platform Console Origin。
+- `tenant-console-shell/dist/` → Tenant Console Origin。
+
+每个制品内的 `/runtime-config.json` 都是故意非法的模板。部署流程必须原子替换为严格的两字段配置，例如：
 
 ```json
 {
@@ -50,8 +127,27 @@ pnpm run verify
 }
 ```
 
-`apiBaseUrl` 必须是无凭据、路径、查询参数和 Fragment 的绝对 HTTPS Origin。不得通过 Runtime Config 改变应用身份、路由、菜单或授权行为。
+`apiBaseUrl` 必须是无凭据、业务路径、查询参数和 Fragment 的绝对 HTTPS Origin。配置不得携带密钥，也不能改变应用身份、路由、菜单或授权行为。Vite 的开发配置不会注入生产 Bundle。
 
-## 证据边界
+> [!WARNING]
+> 每次重新构建都会重新带入 `REPLACE_DURING_DEPLOYMENT` 模板，必须再次替换配置。漏配时应用会停在配置错误页，这是预期的失败关闭行为。
 
-当前门禁证明 Platform/Tenant 应用宿主与最小 Remote 夹具消费同一 Design System 版本、唯一 Provider/全局样式入口和共享浏览器交互；同时证明 React Shell 只依赖公共 Runtime/UI 边界，Platform 只创建一个固定 `PLATFORM` 意图的认证 Runtime。它不证明已部署环境中的真实账户登录、受控 TLS Origin、产品业务 Remote、原生 Safari 或部署后闭环；WebKit 只作为 CI 中可复现的 Safari 引擎兼容约定。
+静态站点还需为客户端路由提供 SPA 回退，并正确返回 `/runtime-config.json`，不能将其误回退为 HTML。两个前端 Origin 与 API Origin 的 TLS、CORS、Cookie 和 Gateway 配置必须匹配；具体拓扑见 [Compose 部署说明](../deploy/compose/README.md)。
+
+## 常见问题
+
+| 现象                                  | 排查方向                                                                                                                |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `ERR_PNPM_VERIFY_DEPS_BEFORE_RUN`     | 核对 Node/pnpm 版本及 lockfile，回到 `consoles/` 执行冻结安装；不要关闭 `verifyDepsBeforeRun: error` 或改用其他包管理器 |
+| 找不到生成 Client 或 API 类型         | 在工作区根目录运行 `pnpm run generate:api`，并检查 JDK/Maven 依赖访问                                                   |
+| Playwright 提示浏览器可执行文件不存在 | 安装所运行测试对应的引擎或 Chrome/Edge 渠道                                                                             |
+| 页面停在配置错误状态                  | 检查 `/runtime-config.json` 的 HTTP 响应、JSON 两字段契约和 HTTPS Origin；生产环境需替换模板                            |
+| 页面可打开，但认证请求失败            | 核对真实 API 可达性、受信证书、入口域名与 Gateway 安全边界；页面可见不证明认证链路可用                                  |
+
+## 进一步阅读
+
+- [仓库概览](../README.md)
+- [Console Authentication Runtime 设计](../docs/28-console-authentication-runtime.md)
+- [Design System 公共组件与消费规则](shared/design-system/README.md)
+- [Compose 环境与浏览器访问准备](../deploy/compose/README.md)
+- [Console 认证产品验收记录](../docs/acceptance/issue-115-console-authentication.md)
