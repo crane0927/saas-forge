@@ -401,6 +401,7 @@ services:
       PASSWORD_SETUP_PAGE_URI: https://console.saasforge.test/password-setup
     ports:
       - "127.0.0.1:8081:8080"
+      - "127.0.0.1:9091:9090"
     volumes:
       - ${IAM_JWT_PEM_PRIVATE_KEY_FILE:?IAM_JWT_PEM_PRIVATE_KEY_FILE is required}:/run/secrets/iam-jwt-private-key.pem:ro
       - type: bind
@@ -446,6 +447,7 @@ services:
       IAM_SERVICE_CLIENT_ID_FILE: /run/secrets/iam-service-client-id
     ports:
       - "127.0.0.1:8082:8080"
+      - "127.0.0.1:9092:9090"
     volumes:
       - type: bind
         source: ${TENANT_ACCESS_SERVICE_CLIENT_ID_FILE:-.secrets/tenant-access-client-id}
@@ -494,6 +496,7 @@ services:
       SAASFORGE_SERVICE_CLIENT_SECRET_FILE: /run/secrets/service-client-secret
     ports:
       - "127.0.0.1:8083:8080"
+      - "127.0.0.1:9093:9090"
     volumes:
       - type: bind
         source: ${ENTITLEMENT_SERVICE_CLIENT_ID_FILE:-.secrets/entitlement-client-id}

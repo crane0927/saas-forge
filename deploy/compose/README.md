@@ -88,7 +88,7 @@ bash scripts/local-https-development.sh start
 
 ### IAM 本机替换开发
 
-Issue #128 在已启动的 macOS Docker Desktop 开发栈中，提供仅针对 IAM 的本机替换生命周期：
+Issue #128/#129 在已启动的 macOS Docker Desktop 开发栈中，提供仅针对 IAM 的本机替换生命周期：
 
 ```bash
 cd ../..
@@ -98,11 +98,13 @@ bash scripts/local-service-replacement.sh replace iam-service
 bash scripts/local-service-replacement.sh restore iam-service
 ```
 
-服务目标必须显式为 `iam-service`。`replace` 在停止容器前验证 `iam-migrate` 已成功、Signing Key 与数据库 ACTIVE 元数据匹配、Nacos 配置可读、PostgreSQL、Redis、Kafka、Mailpit 健康，以及所需 Secret 文件存在；不输出其内容。它只停止 `iam-service` 容器，不删除或重建卷，也不停止 Gateway 或基础设施。随后工具从 Nacos 容器动态解析 Docker Desktop 的 `host.docker.internal` 地址，让本机 JVM 以稳定 HTTP `8081`、正式服务名和 `dev` namespace 注册。只有容器已摘除、JVM readiness 成功且 Nacos 恰有一个健康本机实例时才报告成功；发现重复实例时失败。
+服务目标必须显式为 `iam-service`。现有 HTTP 映射保持不变：IAM、Tenant Access、Entitlement 分别为回环 `8081`、`8082`、`8083`；三个服务另将容器内 gRPC `9090` 固定发布为唯一的回环 `9091`、`9092`、`9093`。`replace` 会先验证这组固定映射、`iam-migrate` 已成功、Signing Key 与数据库 ACTIVE 元数据匹配、Nacos 配置可读、PostgreSQL、Redis、Kafka、Mailpit 健康，以及所需 Secret 文件存在；不输出其内容。
+
+工具仅停止 `iam-service` 容器，不删除或重建卷，也不停止 Gateway 或基础设施。本机 IAM 监听 HTTP `8081` 和 gRPC `9091`，再以正式服务名和 `dev` namespace 注册。其对容器 Tenant Access 的 gRPC 调用使用回环 `9092`；Tenant Access 与 Entitlement 则在替换期间重建为通过 Docker Desktop 文档化入口 `host.docker.internal:8081/9091` 调用本机 IAM。临时 Compose override 只保存在 Git 忽略的 `.secrets/local-service-replacement/`，不含凭据或 Docker Desktop 虚拟网络 IP。容器摘除、本机 HTTP readiness、Nacos 唯一实例、端口占用或固定映射不成立时，工具会给出诊断并拒绝继续；重复实例同样失败关闭。
 
 本机 JVM 通过回环 Nacos HTTP `8848` 和 Nacos 3 gRPC `9848` 连接现有容器；两者均不对局域网发布。
 
-`status` 输出 `CONTAINER`、`LOCAL`、`UNAVAILABLE` 或 `DUPLICATE`。为保持 IAM 工作负载最小权限，工具只使用现有 Gateway 发现身份读取 IAM 健康实例，不增加 IAM 的 Nacos 查询权限。`restore` 终止受管本机 JVM 并重新启动已有 IAM 容器，直到 Nacos 恰有一个健康容器实例；重复执行没有额外副作用。工具不会运行 Docker build。
+`status` 输出 `CONTAINER`、`LOCAL`、`UNAVAILABLE` 或 `DUPLICATE`。为保持 IAM 工作负载最小权限，工具只使用现有 Gateway 发现身份读取 IAM 健康实例，不增加 IAM 的 Nacos 查询权限。`restore` 终止受管本机 JVM 并重新启动已有 IAM 容器，直到 Nacos 恰有一个健康容器实例；随后删除临时 override 并重建 Tenant Access、Entitlement，使其回到容器服务名。重复执行没有额外副作用。工具不会运行 Docker build。
 
 在已准备好受信本地 HTTPS 入口的开发栈中，可运行完整的真实浏览器验收：
 
@@ -111,6 +113,16 @@ bash scripts/verify-iam-local-replacement-e2e.sh
 ```
 
 该验收会暂时切换 IAM、从 `https://platform.saasforge.test` 发出 Refresh 请求，经 HTTPS Edge 和 Gateway 验证本机 IAM 的正式未认证响应，然后恢复容器 IAM；它不适用于 Fresh Compose 或生产环境。
+
+若已为有正式密码的 Platform Admin 准备只读凭据文件，可进一步验证浏览器发起的 Entitlement → IAM 正式服务身份与 Platform Role gRPC 链路：
+
+```bash
+export SF_LOCAL_REPLACEMENT_PLATFORM_EMAIL_FILE=/absolute/path/to/platform-email
+export SF_LOCAL_REPLACEMENT_PLATFORM_PASSWORD_FILE=/absolute/path/to/platform-password
+bash scripts/verify-iam-local-cross-service-e2e.sh
+```
+
+该脚本从受控浏览器登录后，经 HTTPS Edge、Gateway 和容器 Entitlement 创建一个带 `local-replacement-` 前缀的专用 DRAFT Quota Definition；该数据会保留，不能在未经确认的情况下删除。它验证实际 `/api/*` 响应、浏览器控制台和容器恢复后无镜像变更，不显示凭据、Cookie 或 Token。
 
 ### 独立浏览器验收
 

@@ -12,15 +12,20 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { createPrivateKey } from "node:crypto";
-import { isIP } from "node:net";
+import { createServer, isIP } from "node:net";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const supportedService = "iam-service";
 const localHttpPort = 8081;
+const localGrpcPort = 9091;
+const tenantAccessGrpcPort = 9092;
+const entitlementGrpcPort = 9093;
 const localHost = "127.0.0.1";
+const dockerHost = "host.docker.internal";
 const timeoutMilliseconds = 90_000;
+const localIamCallers = ["tenant-access-service", "entitlement-service"];
 
 class BlockedError extends Error {}
 
@@ -75,6 +80,37 @@ export function nacosHosts(payload) {
     .filter((host) => isIP(host.ip) === 4 && Number.isInteger(host.port));
 }
 
+export function assertGrpcHostPortPlan({ iam, tenantAccess, entitlement }) {
+  const assignments = [
+    ["iam-service", iam, localGrpcPort],
+    ["tenant-access-service", tenantAccess, tenantAccessGrpcPort],
+    ["entitlement-service", entitlement, entitlementGrpcPort],
+  ];
+  for (const [service, port, expectedPort] of assignments) {
+    if (!Number.isInteger(port) || port !== expectedPort) {
+      throw new BlockedError(
+        `${service} 必须将容器 gRPC 9090 固定发布为回环 ${expectedPort}。`,
+      );
+    }
+  }
+  if (new Set(assignments.map(([, port]) => port)).size !== assignments.length) {
+    throw new BlockedError("本机 gRPC 端口映射必须唯一。");
+  }
+}
+
+export function localIamCallerEnvironment() {
+  return {
+    "entitlement-service": {
+      IAM_GRPC_ADDRESS: `static://${dockerHost}:${localGrpcPort}`,
+      IAM_HTTP_BASE_URL: `http://${dockerHost}:${localHttpPort}`,
+    },
+    "tenant-access-service": {
+      IAM_GRPC_ADDRESS: `static://${dockerHost}:${localGrpcPort}`,
+      IAM_HTTP_BASE_URL: `http://${dockerHost}:${localHttpPort}`,
+    },
+  };
+}
+
 export function localIamEnvironment(inputs, dockerHostAddress) {
   return {
     BROWSER_ROOT_DOMAIN: inputs.environment.BROWSER_ROOT_DOMAIN,
@@ -94,6 +130,7 @@ export function localIamEnvironment(inputs, dockerHostAddress) {
     SAASFORGE_SERVICE_CLIENT_SECRET_FILE: inputs.serviceClientSecretFile,
     SERVER_ADDRESS: "0.0.0.0",
     SERVER_PORT: String(localHttpPort),
+    SPRING_GRPC_SERVER_PORT: String(inputs.grpcPorts.iam),
     SMTP_FROM: inputs.environment.SMTP_FROM,
     SMTP_HOST: localHost,
     SMTP_PORT: "1025",
@@ -105,6 +142,7 @@ export function localIamEnvironment(inputs, dockerHostAddress) {
     SPRING_DATASOURCE_PASSWORD: inputs.environment.SPRING_DATASOURCE_PASSWORD,
     SPRING_DATASOURCE_URL: `jdbc:postgresql://${localHost}:5432/iam_db`,
     SPRING_DATASOURCE_USERNAME: inputs.environment.SPRING_DATASOURCE_USERNAME,
+    TENANT_ACCESS_GRPC_ADDRESS: `static://${localHost}:${inputs.grpcPorts.tenantAccess}`,
   };
 }
 
@@ -122,6 +160,7 @@ function runtimePaths(root) {
   );
   return {
     directory,
+    iamLocalCallersOverride: path.join(directory, "iam-local-callers.override.yaml"),
     iamLog: path.join(directory, "iam-service.log"),
     iamPid: path.join(directory, "iam-service.pid"),
   };
@@ -160,6 +199,75 @@ function compose(context, ...arguments_) {
   return execute("docker", [...context.compose.arguments_, ...arguments_], {
     cwd: context.compose.directory,
   });
+}
+
+function composeWithIamLocalCallers(context, paths, ...arguments_) {
+  return execute(
+    "docker",
+    [...context.compose.arguments_, "--file", paths.iamLocalCallersOverride, ...arguments_],
+    { cwd: context.compose.directory },
+  );
+}
+
+function iamLocalCallersOverride() {
+  return [
+    "services:",
+    ...Object.entries(localIamCallerEnvironment()).flatMap(([service, environment]) => [
+      `  ${service}:`,
+      "    environment:",
+      ...Object.entries(environment).map(
+        ([name, value]) => `      ${name}: \"${value}\"`,
+      ),
+    ]),
+    "",
+  ].join("\n");
+}
+
+async function hasIamLocalCallersOverride(paths) {
+  try {
+    await access(paths.iamLocalCallersOverride, constants.R_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function waitForCallersRunning(context, description) {
+  await waitFor(description, async () => {
+    const entries = await composeEntries(context);
+    return localIamCallers.every((service) => isRunning(stateOf(entries, service)));
+  });
+}
+
+async function routeContainerCallersToLocalIam(context, paths) {
+  await writeFile(paths.iamLocalCallersOverride, iamLocalCallersOverride(), {
+    mode: 0o600,
+  });
+  composeWithIamLocalCallers(context, paths, "config", "--quiet");
+  composeWithIamLocalCallers(
+    context,
+    paths,
+    "up",
+    "--detach",
+    "--no-deps",
+    "--force-recreate",
+    ...localIamCallers,
+  );
+  await waitForCallersRunning(context, "容器调用方按本机 IAM 路由重建");
+}
+
+async function restoreContainerCallerRoutes(context, paths) {
+  if (!(await hasIamLocalCallersOverride(paths))) return;
+  await rm(paths.iamLocalCallersOverride, { force: true });
+  compose(
+    context,
+    "up",
+    "--detach",
+    "--no-deps",
+    "--force-recreate",
+    ...localIamCallers,
+  );
+  await waitForCallersRunning(context, "容器调用方按默认 IAM 路由重建");
 }
 
 function environmentValue(environment, name) {
@@ -220,8 +328,21 @@ function loadContext(root) {
   const iam = document.services?.[supportedService];
   const gateway = document.services?.gateway;
   const nacos = document.services?.nacos;
-  if (!iam || !gateway || !nacos) {
-    throw new BlockedError("Compose 配置缺少 iam-service、gateway 或 nacos。");
+  const tenantAccess = document.services?.["tenant-access-service"];
+  const entitlement = document.services?.["entitlement-service"];
+  if (!iam || !gateway || !nacos || !tenantAccess || !entitlement) {
+    throw new BlockedError(
+      "Compose 配置缺少 iam-service、tenant-access-service、entitlement-service、gateway 或 nacos。",
+    );
+  }
+  const grpcPorts = {
+    entitlement: publishedPort(entitlement, 9090),
+    iam: publishedPort(iam, 9090),
+    tenantAccess: publishedPort(tenantAccess, 9090),
+  };
+  assertGrpcHostPortPlan(grpcPorts);
+  if (publishedPort(iam, 8080) !== localHttpPort) {
+    throw new BlockedError(`iam-service 必须将 HTTP 8080 固定发布为回环 ${localHttpPort}。`);
   }
   const environment = iam.environment;
   return {
@@ -244,6 +365,7 @@ function loadContext(root) {
       password: environmentValue(gateway.environment, "NACOS_GATEWAY_PASSWORD"),
       username: environmentValue(gateway.environment, "NACOS_GATEWAY_USERNAME"),
     },
+    grpcPorts,
     nacosGrpcPort: publishedPort(nacos, 9848),
     nacosPort: publishedPort(nacos, 8848),
     root,
@@ -273,6 +395,15 @@ function stateOf(entries, service) {
 
 function isRunning(entry) {
   return entry?.State === "running";
+}
+
+function hasPublishedPort(entry, targetPort, publishedPort) {
+  return (entry?.Publishers ?? []).some(
+    (publisher) =>
+      Number(publisher.TargetPort) === targetPort &&
+      Number(publisher.PublishedPort) === publishedPort &&
+      publisher.URL === localHost,
+  );
 }
 
 async function composeEntries(context) {
@@ -491,6 +622,29 @@ async function localReadiness() {
   return response?.status === 200;
 }
 
+async function assertPortAvailable(port) {
+  await new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once("error", () => {
+      reject(new BlockedError(`本机端口 ${port} 已被占用；请释放后再替换 IAM。`));
+    });
+    server.listen({ exclusive: true, host: localHost, port }, () => {
+      server.close((error) => {
+        if (error) {
+          reject(new BlockedError(`无法检查本机端口 ${port}。`));
+          return;
+        }
+        resolve();
+      });
+    });
+  });
+}
+
+async function assertLocalIamPortsAvailable() {
+  await assertPortAvailable(localHttpPort);
+  await assertPortAvailable(localGrpcPort);
+}
+
 async function observe(context, paths, token) {
   const [entries, pid, instances, hostAddress] = await Promise.all([
     composeEntries(context),
@@ -608,15 +762,26 @@ async function stopLocalIam(paths) {
 
 async function ensureContainer(context, paths, token) {
   await stopLocalIam(paths);
-  await waitFor(
-    "本机 IAM 从 Nacos 摘除",
-    async () => (await healthyInstances(context, token)).length === 0,
+  const entries = await composeEntries(context);
+  if (!isRunning(stateOf(entries, supportedService))) {
+    await waitFor(
+      "本机 IAM 从 Nacos 摘除",
+      async () => (await healthyInstances(context, token)).length === 0,
+    );
+  }
+  compose(
+    context,
+    "up",
+    "--detach",
+    "--no-deps",
+    "--force-recreate",
+    supportedService,
   );
-  compose(context, "start", supportedService);
   await waitFor(
     "容器 IAM 就绪",
     async () => (await observe(context, paths, token)).state === "CONTAINER",
   );
+  await restoreContainerCallerRoutes(context, paths);
 }
 
 async function replace(context, paths) {
@@ -624,6 +789,11 @@ async function replace(context, paths) {
   const token = await gatewayDiscoveryToken(context);
   const current = await observe(context, paths, token);
   if (current.state === "LOCAL") {
+    if (!(await hasIamLocalCallersOverride(paths))) {
+      throw new BlockedError(
+        "检测到旧版本本机 IAM；请先运行 restore iam-service，再重新运行 replace iam-service。",
+      );
+    }
     console.log("REPLACE: iam-service 已处于本机运行，未重复启动。");
     return;
   }
@@ -645,11 +815,13 @@ async function replace(context, paths) {
         (await healthyInstances(context, token)).length === 0
       );
     });
+    await assertLocalIamPortsAvailable();
     await startLocalIam(context, paths, jar, await dockerHostAddress(context));
     await waitFor(
       "本机 IAM 就绪且完成 Nacos 注册",
       async () => (await observe(context, paths, token)).state === "LOCAL",
     );
+    await routeContainerCallersToLocalIam(context, paths);
   } catch (error) {
     // 本机替换失败时恢复标准 Compose 拓扑，避免把可用容器停在半完成状态。
     if (containerStopped) {
@@ -677,6 +849,14 @@ async function restore(context, paths) {
   }
   if (current.state === "CONTAINER") {
     await stopLocalIam(paths);
+    const entries = await composeEntries(context);
+    const iam = stateOf(entries, supportedService);
+    if (
+      (await hasIamLocalCallersOverride(paths)) ||
+      !hasPublishedPort(iam, 9090, context.grpcPorts.iam)
+    ) {
+      await ensureContainer(context, paths, token);
+    }
     console.log("RESTORE: iam-service 已处于容器运行，未重复启动。");
     return;
   }

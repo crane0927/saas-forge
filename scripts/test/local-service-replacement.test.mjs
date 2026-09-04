@@ -2,12 +2,37 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  assertGrpcHostPortPlan,
   assertSupportedService,
   classifyServiceState,
+  localIamCallerEnvironment,
   localIamEnvironment,
   nacosHosts,
   parseComposePs,
 } from "../local-service-replacement.mjs";
+
+test("requires the fixed, unique loopback gRPC host-port assignments", () => {
+  assert.doesNotThrow(() =>
+    assertGrpcHostPortPlan({ iam: 9091, tenantAccess: 9092, entitlement: 9093 }),
+  );
+  assert.throws(
+    () => assertGrpcHostPortPlan({ iam: 9091, tenantAccess: 9091, entitlement: 9093 }),
+    /tenant-access-service.*9092/u,
+  );
+});
+
+test("routes container callers to the documented Docker Desktop host entry", () => {
+  assert.deepEqual(localIamCallerEnvironment(), {
+    "entitlement-service": {
+      IAM_GRPC_ADDRESS: "static://host.docker.internal:9091",
+      IAM_HTTP_BASE_URL: "http://host.docker.internal:8081",
+    },
+    "tenant-access-service": {
+      IAM_GRPC_ADDRESS: "static://host.docker.internal:9091",
+      IAM_HTTP_BASE_URL: "http://host.docker.internal:8081",
+    },
+  });
+});
 
 test("requires the explicit IAM service target", () => {
   assert.doesNotThrow(() => assertSupportedService("iam-service"));
@@ -113,6 +138,7 @@ test("maps only IAM runtime settings to host-reachable infrastructure", () => {
         SPRING_DATASOURCE_PASSWORD: "iam-app-password",
         SPRING_DATASOURCE_USERNAME: "iam_app",
       },
+      grpcPorts: { iam: 9091, tenantAccess: 9092, entitlement: 9093 },
       nacosGrpcPort: 9848,
       nacosPort: 8848,
       serviceClientIdFile: "/secure/iam-client-id",
@@ -123,6 +149,7 @@ test("maps only IAM runtime settings to host-reachable infrastructure", () => {
   );
 
   assert.equal(environment.SERVER_PORT, "8081");
+  assert.equal(environment.SPRING_GRPC_SERVER_PORT, "9091");
   assert.equal(environment.SPRING_CLOUD_NACOS_DISCOVERY_IP, "192.168.65.254");
   assert.equal(environment.NACOS_SERVER_ADDR, "127.0.0.1:8848");
   assert.equal(
@@ -132,6 +159,7 @@ test("maps only IAM runtime settings to host-reachable infrastructure", () => {
   assert.equal(environment.SPRING_DATA_REDIS_HOST, "127.0.0.1");
   assert.equal(environment.KAFKA_BOOTSTRAP_SERVERS, "127.0.0.1:29092");
   assert.equal(environment.SMTP_HOST, "127.0.0.1");
+  assert.equal(environment.TENANT_ACCESS_GRPC_ADDRESS, "static://127.0.0.1:9092");
   assert.equal(
     environment.IAM_JWT_PEM_PRIVATE_KEY_LOCATION,
     "file:/secure/iam-key.pem",
