@@ -1,0 +1,7 @@
+{
+  "navigationHome": "首页",
+  "oauthClientsDescription": "该入口只注册 Platform 本地路由，不加载动态 Remote。",
+  "oauthClientsTitle": "OAuth Client 管理",
+  "platformOverviewDescription": "当前会话已通过 Platform 认证 Runtime 恢复或登录。",
+  "platformOverviewTitle": "Platform 总览"
+}

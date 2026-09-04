@@ -16,8 +16,11 @@ export function RouteFocusAnnouncement({
 
   useEffect(() => {
     document.getElementById(focusTargetId)?.focus();
+  }, [focusTargetId, routeKey]);
+
+  useEffect(() => {
     setAnnouncement(pageTitle);
-  }, [focusTargetId, pageTitle, routeKey]);
+  }, [pageTitle]);
 
   return (
     <p className="sf-visually-hidden" role="status" aria-live="polite" aria-atomic="true">

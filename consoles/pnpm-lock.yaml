@@ -180,6 +180,9 @@ importers:
       '@saas-forge/design-system':
         specifier: workspace:*
         version: link:../shared/design-system
+      '@saas-forge/i18n':
+        specifier: workspace:*
+        version: link:../shared/i18n
       '@saas-forge/react-shell':
         specifier: workspace:*
         version: link:../shared/react-shell

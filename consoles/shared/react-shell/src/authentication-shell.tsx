@@ -4,7 +4,12 @@ import type {
   IdempotentOperationHandle,
   MembershipCandidate,
 } from '@saas-forge/app-runtime';
-import type { SupportedLocale } from '@saas-forge/i18n';
+import {
+  createTranslator,
+  defineMessages,
+  type SupportedLocale,
+  type Translator,
+} from '@saas-forge/i18n';
 import {
   ApplicationLoading,
   ApplicationFatalError,
@@ -30,6 +35,10 @@ import {
 } from 'react';
 import { matchPath, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
 
+import enUS from './messages/en-US.json';
+import zhCN from './messages/zh-CN.json';
+import { useConsoleLocale } from './console-locale';
+
 export interface AuthenticationShellRoute {
   readonly path: string;
   readonly label: string;
@@ -53,6 +62,13 @@ export interface AuthenticationRootErrorBoundaryProps {
 interface AuthenticationRootErrorBoundaryState {
   readonly failed: boolean;
 }
+
+const shellMessages = defineMessages({
+  'en-US': enUS,
+  'zh-CN': zhCN,
+});
+
+type ShellTranslator = Translator<keyof (typeof shellMessages)['en-US']>;
 
 export class AuthenticationRootErrorBoundary extends Component<
   AuthenticationRootErrorBoundaryProps,
@@ -96,6 +112,8 @@ export function AuthenticationShell({
   defaultPath,
   routes,
 }: AuthenticationShellProps) {
+  const { locale } = useConsoleLocale();
+  const translate = createShellTranslator(locale);
   const location = useLocation();
   const navigate = useNavigate();
   const returnPath = useRef<string | undefined>(undefined);
@@ -171,6 +189,7 @@ export function AuthenticationShell({
         runtime={runtime}
         problem={state.synchronizationProblem}
         onProblemChange={() => undefined}
+        translate={translate}
       />
     );
   }
@@ -181,6 +200,7 @@ export function AuthenticationShell({
         runtime={runtime}
         problem={recoveryProblem}
         onProblemChange={setRecoveryProblem}
+        translate={translate}
       />
     );
   }
@@ -213,6 +233,7 @@ export function AuthenticationShell({
     return (
       <ApplicationShell
         applicationName={applicationName}
+        navigationLabel={translate.translate('globalNavigation', { applicationName })}
         navigationItems={routes.map((route) => ({
           href: route.path,
           label: route.label,
@@ -239,13 +260,13 @@ export function AuthenticationShell({
             ) : null}
             <Button
               loading={state.transition === 'logout'}
-              loadingLabel="正在退出登录"
+              loadingLabel={translate.translate('logoutLoading')}
               onClick={() => {
                 logoutRequested.current = true;
                 void runtime.logout();
               }}
             >
-              退出登录
+              {translate.translate('logout')}
             </Button>
           </>
         }
@@ -295,6 +316,7 @@ export function AuthenticationShell({
         ) : (
           <RouteErrorBoundary
             key={location.key}
+            translate={translate}
             onReturn={() => {
               void navigate(defaultPath, { replace: true });
             }}
@@ -315,6 +337,7 @@ export function AuthenticationShell({
     return (
       <InitialPasswordChangePage
         runtime={runtime}
+        translate={translate}
         onChanged={() => {
           setPasswordChanged(true);
         }}
@@ -327,7 +350,7 @@ export function AuthenticationShell({
   }
 
   if (state.status === 'logoutPending') {
-    return <LogoutPendingPage runtime={runtime} />;
+    return <LogoutPendingPage runtime={runtime} translate={translate} />;
   }
 
   return (
@@ -336,6 +359,7 @@ export function AuthenticationShell({
       runtime={runtime}
       passwordChanged={passwordChanged}
       tenantSessionEnded={tenantSessionEnded}
+      translate={translate}
     />
   );
 }
@@ -457,6 +481,7 @@ function TenantSwitchRefreshPage({
 interface RouteErrorBoundaryProps {
   readonly children: ReactNode;
   readonly onReturn: () => void;
+  readonly translate: ShellTranslator;
 }
 
 interface RouteErrorBoundaryState {
@@ -482,33 +507,39 @@ class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, RouteErrorBo
       <section aria-labelledby="route-error-title">
         <ShellPageTitle
           headingId="route-error-title"
-          title="当前页面出现错误"
-          description="当前路由已被隔离，未显示原始错误信息。"
+          title={this.props.translate.translate('routeErrorTitle')}
+          description={this.props.translate.translate('routeErrorDescription')}
         />
         <Button variant="primary" onClick={this.props.onReturn}>
-          返回首页
+          {this.props.translate.translate('returnHome')}
         </Button>
       </section>
     );
   }
 }
 
-function LogoutPendingPage({ runtime }: { readonly runtime: AuthenticationRuntime }) {
+function LogoutPendingPage({
+  runtime,
+  translate,
+}: {
+  readonly runtime: AuthenticationRuntime;
+  readonly translate: ShellTranslator;
+}) {
   const [retrying, setRetrying] = useState(false);
   return (
     <PageLayout
       title={
         <ShellPageTitle
           headingId="logout-pending-title"
-          title="退出结果尚未确认"
-          description="本页面已停止使用当前会话，但服务端是否完成退出仍未知。"
+          title={translate.translate('logoutPendingTitle')}
+          description={translate.translate('logoutPendingDescription')}
         />
       }
     >
       <Button
         variant="primary"
         loading={retrying}
-        loadingLabel="正在重试退出"
+        loadingLabel={translate.translate('retryLogoutLoading')}
         onClick={() => {
           setRetrying(true);
           void runtime.logout().finally(() => {
@@ -516,7 +547,7 @@ function LogoutPendingPage({ runtime }: { readonly runtime: AuthenticationRuntim
           });
         }}
       >
-        重试退出
+        {translate.translate('retryLogout')}
       </Button>
     </PageLayout>
   );
@@ -550,10 +581,12 @@ function RecoveryPage({
   runtime,
   problem,
   onProblemChange,
+  translate,
 }: {
   readonly runtime: AuthenticationRuntime;
   readonly problem: AuthenticationProblem;
   readonly onProblemChange: (problem: AuthenticationProblem | undefined) => void;
+  readonly translate: ShellTranslator;
 }) {
   const [retrying, setRetrying] = useState(false);
   return (
@@ -561,16 +594,16 @@ function RecoveryPage({
       title={
         <ShellPageTitle
           headingId="recovery-title"
-          title="暂时无法恢复会话"
-          description="当前会话状态无法确定，请重试恢复。"
+          title={translate.translate('recoveryTitle')}
+          description={translate.translate('recoveryDescription')}
         />
       }
     >
-      <p role="status">恢复代码：{problem.code}</p>
+      <p role="status">{translate.translate('recoveryCode', { code: problem.code })}</p>
       <Button
         variant="primary"
         loading={retrying}
-        loadingLabel="正在重试恢复"
+        loadingLabel={translate.translate('recoveryRetryLoading')}
         onClick={() => {
           setRetrying(true);
           void runtime.retryRecovery().then((result) => {
@@ -583,7 +616,7 @@ function RecoveryPage({
           });
         }}
       >
-        重试恢复
+        {translate.translate('recoveryRetry')}
       </Button>
     </PageLayout>
   );
@@ -598,11 +631,13 @@ function LoginPage({
   runtime,
   passwordChanged,
   tenantSessionEnded,
+  translate,
 }: {
   readonly applicationName: string;
   readonly runtime: AuthenticationRuntime;
   readonly passwordChanged: boolean;
   readonly tenantSessionEnded: boolean;
+  readonly translate: ShellTranslator;
 }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -618,9 +653,19 @@ function LoginPage({
 
   return (
     <PageLayout
-      title={<ShellPageTitle headingId="login-title" title={`登录 ${applicationName}`} />}
+      title={
+        <ShellPageTitle
+          headingId="login-title"
+          title={translate.translate('loginTitle', { applicationName })}
+        />
+      }
     >
-      {passwordChanged ? <SuccessFeedback message="密码已更新，请使用新密码重新登录。" /> : null}
+      {passwordChanged ? (
+        <SuccessFeedback
+          message={translate.translate('passwordChanged')}
+          stableKey="password-changed"
+        />
+      ) : null}
       {tenantSessionEnded ? (
         <PersistentError title="Tenant 会话已结束">
           切换后的目标 Tenant 会话无法恢复，请重新登录。
@@ -628,9 +673,13 @@ function LoginPage({
       ) : null}
       {problem?.code === 'SESSION_SLOT_ALREADY_ACTIVE' ? (
         <PersistentError
-          title={`当前 ${runtime.intent === 'PLATFORM' ? 'Platform' : 'Tenant'} 会话槽位已有活动会话。`}
+          title={translate.translate('sessionSlotAlreadyActive', {
+            contextName: runtime.intent === 'PLATFORM' ? 'Platform' : 'Tenant',
+          })}
           action={{
-            label: `先登出当前 ${runtime.intent === 'PLATFORM' ? 'Platform' : 'Tenant'} 会话`,
+            label: translate.translate('sessionSlotLogout', {
+              contextName: runtime.intent === 'PLATFORM' ? 'Platform' : 'Tenant',
+            }),
             onAction: () => {
               void runtime.logout().then((result) => {
                 if (result.ok) {
@@ -651,10 +700,12 @@ function LoginPage({
           <p>错误代码：{problem.code}</p>
         </PersistentError>
       ) : problem === undefined ? null : (
-        <PersistentError title="登录失败">错误代码：{problem.code}</PersistentError>
+        <PersistentError title={translate.translate('signInFailed')}>
+          {translate.translate('errorCode', { code: problem.code })}
+        </PersistentError>
       )}
       <FormLayout
-        ariaLabel={`登录 ${applicationName}`}
+        ariaLabel={translate.translate('loginFormLabel', { applicationName })}
         onSubmit={(event) => {
           event.preventDefault();
           const submittedPassword = password;
@@ -679,7 +730,7 @@ function LoginPage({
         <FormRow>
           <TextField
             id="authentication-email"
-            label="邮箱"
+            label={translate.translate('emailLabel')}
             value={email}
             onValueChange={setEmail}
             autoComplete="username"
@@ -689,15 +740,20 @@ function LoginPage({
         <FormRow>
           <PasswordField
             id="authentication-password"
-            label="密码"
+            label={translate.translate('passwordLabel')}
             value={password}
             onValueChange={setPassword}
             autoComplete="current-password"
             required
           />
         </FormRow>
-        <Button type="submit" variant="primary" loading={runtime.getState().transition === 'login'}>
-          登录
+        <Button
+          type="submit"
+          variant="primary"
+          loading={runtime.getState().transition === 'login'}
+          loadingLabel={translate.translate('signInLoading')}
+        >
+          {translate.translate('signIn')}
         </Button>
       </FormLayout>
     </PageLayout>
@@ -707,9 +763,11 @@ function LoginPage({
 function InitialPasswordChangePage({
   runtime,
   onChanged,
+  translate,
 }: {
   readonly runtime: AuthenticationRuntime;
   readonly onChanged: () => void;
+  readonly translate: ShellTranslator;
 }) {
   const [newPassword, setNewPassword] = useState('');
   const [problem, setProblem] = useState<AuthenticationProblem>();
@@ -727,13 +785,13 @@ function InitialPasswordChangePage({
       title={
         <ShellPageTitle
           headingId="password-change-title"
-          title="设置新密码"
-          description="首次进入 Platform Console 前必须更换初始密码。"
+          title={translate.translate('initialPasswordChangeTitle')}
+          description={translate.translate('initialPasswordChangeDescription')}
         />
       }
     >
       <FormLayout
-        ariaLabel="设置新密码"
+        ariaLabel={translate.translate('initialPasswordChangeFormLabel')}
         onSubmit={(event) => {
           event.preventDefault();
           const submittedPassword = newPassword;
@@ -759,12 +817,14 @@ function InitialPasswordChangePage({
         }}
       >
         {problem !== undefined ? (
-          <PersistentError title="密码更新失败">错误代码：{problem.code}</PersistentError>
+          <PersistentError title={translate.translate('passwordChangeFailed')}>
+            {translate.translate('errorCode', { code: problem.code })}
+          </PersistentError>
         ) : null}
         <FormRow>
           <PasswordField
             id="authentication-new-password"
-            label="新密码"
+            label={translate.translate('newPasswordLabel')}
             value={newPassword}
             onValueChange={setNewPassword}
             autoComplete="new-password"
@@ -775,9 +835,9 @@ function InitialPasswordChangePage({
           type="submit"
           variant="primary"
           loading={runtime.getState().transition === 'passwordChange'}
-          loadingLabel="正在更新密码"
+          loadingLabel={translate.translate('passwordUpdateLoading')}
         >
-          更新密码
+          {translate.translate('passwordUpdate')}
         </Button>
       </FormLayout>
     </PageLayout>
@@ -861,4 +921,12 @@ function ShellPageTitle({
       </PageTitle>
     </>
   );
+}
+
+function createShellTranslator(locale: SupportedLocale): ShellTranslator {
+  return createTranslator({
+    namespace: '@saas-forge/react-shell',
+    locale,
+    messages: shellMessages,
+  });
 }

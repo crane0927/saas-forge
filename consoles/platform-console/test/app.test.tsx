@@ -1,5 +1,6 @@
 import { createRuntimeConfigBootstrap, type RuntimeConfigResult } from '@saas-forge/app-runtime';
 import { DesignSystemProvider } from '@saas-forge/design-system';
+import { ConsoleLocaleProvider } from '@saas-forge/react-shell';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -25,13 +26,15 @@ describe('PlatformConsoleApp', () => {
     const bootstrap = createRuntimeConfigBootstrap(loader);
     const realm = {};
     const view = render(
-      <DesignSystemProvider>
-        <PlatformConsoleApp
-          bootstrap={bootstrap}
-          authenticationFetch={authenticationFetch}
-          realm={realm}
-        />
-      </DesignSystemProvider>,
+      <ConsoleLocaleProvider initialLocale="zh-CN">
+        <DesignSystemProvider>
+          <PlatformConsoleApp
+            bootstrap={bootstrap}
+            authenticationFetch={authenticationFetch}
+            realm={realm}
+          />
+        </DesignSystemProvider>
+      </ConsoleLocaleProvider>,
     );
 
     expect(screen.getByRole('heading', { name: '正在启动 Platform Console' })).toBeTruthy();
@@ -50,13 +53,15 @@ describe('PlatformConsoleApp', () => {
     });
 
     view.rerender(
-      <DesignSystemProvider>
-        <PlatformConsoleApp
-          bootstrap={bootstrap}
-          authenticationFetch={authenticationFetch}
-          realm={realm}
-        />
-      </DesignSystemProvider>,
+      <ConsoleLocaleProvider initialLocale="zh-CN">
+        <DesignSystemProvider>
+          <PlatformConsoleApp
+            bootstrap={bootstrap}
+            authenticationFetch={authenticationFetch}
+            realm={realm}
+          />
+        </DesignSystemProvider>
+      </ConsoleLocaleProvider>,
     );
 
     expect(screen.getByRole('heading', { name: 'Platform 总览' })).toBeTruthy();
@@ -70,13 +75,15 @@ describe('PlatformConsoleApp', () => {
       .mockResolvedValueOnce(success());
 
     render(
-      <DesignSystemProvider locale="en-US">
-        <PlatformConsoleApp
-          bootstrap={createRuntimeConfigBootstrap(loader)}
-          authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
-          realm={{}}
-        />
-      </DesignSystemProvider>,
+      <ConsoleLocaleProvider initialLocale="en-US">
+        <DesignSystemProvider locale="en-US">
+          <PlatformConsoleApp
+            bootstrap={createRuntimeConfigBootstrap(loader)}
+            authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
+            realm={{}}
+          />
+        </DesignSystemProvider>
+      </ConsoleLocaleProvider>,
     );
 
     expect(
@@ -87,7 +94,9 @@ describe('PlatformConsoleApp', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
 
-    expect(await screen.findByRole('heading', { name: '登录 Platform Console' })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { name: 'Sign in to Platform Console' }),
+    ).toBeTruthy();
     expect(loader).toHaveBeenCalledTimes(2);
   });
 });

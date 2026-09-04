@@ -49,6 +49,7 @@ export interface ApplicationShellNavigationItem {
 
 export interface ApplicationShellProps {
   readonly applicationName: string;
+  readonly navigationLabel?: string;
   readonly navigationItems: readonly ApplicationShellNavigationItem[];
   readonly onNavigate: (href: string) => void;
   readonly actions?: ReactNode;
@@ -212,6 +213,7 @@ export function PageLayout({ title, children, width = 'standard' }: PageLayoutPr
 
 export function ApplicationShell({
   applicationName,
+  navigationLabel = `${applicationName} 全局导航`,
   navigationItems,
   onNavigate,
   actions,
@@ -221,7 +223,7 @@ export function ApplicationShell({
     <div className="sf-application-shell">
       <header className="sf-application-header">
         <strong className="sf-application-name">{applicationName}</strong>
-        <nav aria-label={`${applicationName} 全局导航`}>
+        <nav aria-label={navigationLabel}>
           <ul className="sf-application-navigation">
             {navigationItems.map((item) => (
               <li key={item.href}>

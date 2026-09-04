@@ -75,6 +75,41 @@ describe('Design System 页面结构与状态', () => {
     expect(screen.getByText('配额即将用尽')).toBeTruthy();
   });
 
+  it('使用稳定语义标识时，翻译后的文案不会重新开始自动关闭计时', () => {
+    vi.useFakeTimers();
+    const dismissed = vi.fn();
+    const { rerender } = render(
+      <DesignSystemProvider>
+        <SuccessFeedback
+          message="Password updated."
+          stableKey="password-changed"
+          durationMs={1000}
+          onDismiss={dismissed}
+        />
+      </DesignSystemProvider>,
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    rerender(
+      <DesignSystemProvider>
+        <SuccessFeedback
+          message="密码已更新。"
+          stableKey="password-changed"
+          durationMs={1000}
+          onDismiss={dismissed}
+        />
+      </DesignSystemProvider>,
+    );
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(dismissed).toHaveBeenCalledOnce();
+  });
+
   it('需要处理的错误保持显示，直到执行恢复动作或主动关闭', () => {
     render(<PersistentErrorHarness />);
 

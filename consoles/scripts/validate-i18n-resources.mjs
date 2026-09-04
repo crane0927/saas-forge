@@ -5,7 +5,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parse, TYPE } from '@formatjs/icu-messageformat-parser';
 
 const consoleRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const resourceDirectories = ['shared/design-system/src/messages'];
+const resourceDirectories = [
+  'platform-console/src/messages',
+  'shared/design-system/src/messages',
+  'shared/react-shell/src/messages',
+];
 const enabledLocales = ['en-US', 'zh-CN'];
 
 export async function validateI18nResources(root = consoleRoot) {

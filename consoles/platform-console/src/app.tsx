@@ -7,11 +7,11 @@ import {
   type RuntimeConfigBootstrap,
 } from '@saas-forge/app-runtime';
 import { ApplicationLoading, ConfigurationFailure } from '@saas-forge/design-system';
-import { AuthenticationShell } from '@saas-forge/react-shell';
+import { AuthenticationShell, useConsoleLocale } from '@saas-forge/react-shell';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { BrowserRouter } from 'react-router';
 
-import { platformAuthenticationRoutes } from './routes';
+import { createPlatformAuthenticationRoutes } from './routes';
 
 interface PlatformConsoleAppProps {
   readonly bootstrap?: RuntimeConfigBootstrap;
@@ -93,6 +93,7 @@ function PlatformAuthenticationPath({
   readonly authenticationFetch: AuthenticationFetch;
   readonly realm: object;
 }) {
+  const { locale } = useConsoleLocale();
   const [runtimeResult] = useState(() =>
     createAuthenticationRuntimeAfterConfig(
       { ok: true, config },
@@ -115,7 +116,7 @@ function PlatformAuthenticationPath({
       applicationName="Platform Console"
       runtime={runtimeResult.runtime}
       defaultPath="/"
-      routes={platformAuthenticationRoutes}
+      routes={createPlatformAuthenticationRoutes(locale)}
     />
   );
 }

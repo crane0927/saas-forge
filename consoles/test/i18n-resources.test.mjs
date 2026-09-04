@@ -9,7 +9,7 @@ import {
   validateResourceDirectory,
 } from '../scripts/validate-i18n-resources.mjs';
 
-test('validates the Issue #118 Design System resources', async () => {
+test('validates the enabled Console resources', async () => {
   assert.deepEqual(await validateI18nResources(), []);
 });
 
@@ -52,9 +52,21 @@ test('accepts matching plural parameters in both enabled Locale resources', asyn
 test('rejects an incomplete enabled-Locale resource fixture', async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'saas-forge-i18n-workspace-'));
   context.after(() => rm(root, { recursive: true, force: true }));
-  const directory = path.join(root, 'shared/design-system/src/messages');
-  await mkdir(directory, { recursive: true });
-  await writeFile(path.join(directory, 'en-US.json'), JSON.stringify({ greeting: 'Hello.' }));
+  const designSystemDirectory = path.join(root, 'shared/design-system/src/messages');
+  await mkdir(designSystemDirectory, { recursive: true });
+  await writeFile(
+    path.join(designSystemDirectory, 'en-US.json'),
+    JSON.stringify({ greeting: 'Hello.' }),
+  );
+  for (const relativeDirectory of [
+    'platform-console/src/messages',
+    'shared/react-shell/src/messages',
+  ]) {
+    const directory = path.join(root, relativeDirectory);
+    await mkdir(directory, { recursive: true });
+    await writeFile(path.join(directory, 'en-US.json'), JSON.stringify({ greeting: 'Hello.' }));
+    await writeFile(path.join(directory, 'zh-CN.json'), JSON.stringify({ greeting: '你好。' }));
+  }
 
   const errors = await validateI18nResources(root);
 

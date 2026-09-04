@@ -9,6 +9,8 @@ export interface FeedbackAction {
 
 export interface SuccessFeedbackProps {
   readonly message: string;
+  /** 文案翻译变化不代表新的反馈事件；传入稳定标识可保留原有自动关闭时机。 */
+  readonly stableKey?: string;
   readonly durationMs?: number;
   readonly onDismiss?: () => void;
 }
@@ -25,7 +27,12 @@ export interface PersistentErrorProps {
   readonly onClose?: () => void;
 }
 
-export function SuccessFeedback({ message, durationMs = 3000, onDismiss }: SuccessFeedbackProps) {
+export function SuccessFeedback({
+  message,
+  stableKey,
+  durationMs = 3000,
+  onDismiss,
+}: SuccessFeedbackProps) {
   const [visible, setVisible] = useState(true);
   const dismissRef = useRef(onDismiss);
   dismissRef.current = onDismiss;
@@ -39,7 +46,7 @@ export function SuccessFeedback({ message, durationMs = 3000, onDismiss }: Succe
     return () => {
       window.clearTimeout(timer);
     };
-  }, [durationMs, message]);
+  }, [durationMs, stableKey ?? message]);
 
   return visible ? (
     <div className="sf-feedback sf-feedback-success" role="status">
