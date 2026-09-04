@@ -122,7 +122,7 @@ export SF_LOCAL_REPLACEMENT_PLATFORM_PASSWORD_FILE=/absolute/path/to/platform-pa
 bash scripts/verify-iam-local-cross-service-e2e.sh
 ```
 
-该脚本从受控浏览器登录后，经 HTTPS Edge、Gateway 和容器 Entitlement 创建一个带 `local-replacement-` 前缀的专用 DRAFT Quota Definition；该数据会保留，不能在未经确认的情况下删除。它验证实际 `/api/*` 响应、浏览器控制台和容器恢复后无镜像变更，不显示凭据、Cookie 或 Token。
+该脚本从受控浏览器登录后，经 HTTPS Edge、Gateway 和容器 Entitlement 创建唯一受支持的 `max_users` DRAFT Quota Definition；若该定义已存在，则验证其正式重复定义响应。首次创建的数据会保留，不能在未经确认的情况下删除。它验证实际 `/api/*` 响应、浏览器控制台和容器恢复后无镜像变更，不显示凭据、Cookie 或 Token。
 
 ### 独立浏览器验收
 

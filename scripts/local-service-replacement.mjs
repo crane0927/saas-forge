@@ -111,6 +111,12 @@ export function localIamCallerEnvironment() {
   };
 }
 
+export function callersAreReady(instancesByService) {
+  return localIamCallers.every(
+    (service) => instancesByService[service]?.length === 1,
+  );
+}
+
 export function localIamEnvironment(inputs, dockerHostAddress) {
   return {
     BROWSER_ROOT_DOMAIN: inputs.environment.BROWSER_ROOT_DOMAIN,
@@ -232,14 +238,26 @@ async function hasIamLocalCallersOverride(paths) {
   }
 }
 
-async function waitForCallersRunning(context, description) {
+async function waitForCallersReady(context, token, description) {
   await waitFor(description, async () => {
-    const entries = await composeEntries(context);
-    return localIamCallers.every((service) => isRunning(stateOf(entries, service)));
+    const [entries, registrations] = await Promise.all([
+      composeEntries(context),
+      Promise.all(
+        localIamCallers.map(async (service) => [
+          service,
+          await healthyInstances(context, token, service),
+        ]),
+      ),
+    ]);
+    // Compose 的 running 状态不代表 Gateway 已能从 Nacos 选择调用方实例。
+    return (
+      localIamCallers.every((service) => isRunning(stateOf(entries, service))) &&
+      callersAreReady(Object.fromEntries(registrations))
+    );
   });
 }
 
-async function routeContainerCallersToLocalIam(context, paths) {
+async function routeContainerCallersToLocalIam(context, paths, token) {
   await writeFile(paths.iamLocalCallersOverride, iamLocalCallersOverride(), {
     mode: 0o600,
   });
@@ -253,10 +271,10 @@ async function routeContainerCallersToLocalIam(context, paths) {
     "--force-recreate",
     ...localIamCallers,
   );
-  await waitForCallersRunning(context, "容器调用方按本机 IAM 路由重建");
+  await waitForCallersReady(context, token, "容器调用方按本机 IAM 路由重建");
 }
 
-async function restoreContainerCallerRoutes(context, paths) {
+async function restoreContainerCallerRoutes(context, paths, token) {
   if (!(await hasIamLocalCallersOverride(paths))) return;
   await rm(paths.iamLocalCallersOverride, { force: true });
   compose(
@@ -267,7 +285,7 @@ async function restoreContainerCallerRoutes(context, paths) {
     "--force-recreate",
     ...localIamCallers,
   );
-  await waitForCallersRunning(context, "容器调用方按默认 IAM 路由重建");
+  await waitForCallersReady(context, token, "容器调用方按默认 IAM 路由重建");
 }
 
 function environmentValue(environment, name) {
@@ -389,8 +407,9 @@ async function assertReadableNonEmpty(...files) {
   }
 }
 
-function stateOf(entries, service) {
-  return entries.find((entry) => entry.Service === service);
+export function stateOf(entries, service) {
+  const matching = entries.filter((entry) => entry.Service === service);
+  return matching.find(isRunning) ?? matching.at(0);
 }
 
 function isRunning(entry) {
@@ -510,7 +529,7 @@ async function gatewayDiscoveryToken(context) {
   );
 }
 
-async function healthyInstances(context, token) {
+async function healthyInstances(context, token, service = supportedService) {
   const payload = await nacosRequest(
     context,
     token,
@@ -519,7 +538,7 @@ async function healthyInstances(context, token) {
       groupName: "DEFAULT_GROUP",
       healthyOnly: "true",
       namespaceId: "dev",
-      serviceName: supportedService,
+      serviceName: service,
     },
     { emptyInstanceListOnNotFound: true },
   );
@@ -781,7 +800,7 @@ async function ensureContainer(context, paths, token) {
     "容器 IAM 就绪",
     async () => (await observe(context, paths, token)).state === "CONTAINER",
   );
-  await restoreContainerCallerRoutes(context, paths);
+  await restoreContainerCallerRoutes(context, paths, token);
 }
 
 async function replace(context, paths) {
@@ -821,7 +840,7 @@ async function replace(context, paths) {
       "本机 IAM 就绪且完成 Nacos 注册",
       async () => (await observe(context, paths, token)).state === "LOCAL",
     );
-    await routeContainerCallersToLocalIam(context, paths);
+    await routeContainerCallersToLocalIam(context, paths, token);
   } catch (error) {
     // 本机替换失败时恢复标准 Compose 拓扑，避免把可用容器停在半完成状态。
     if (containerStopped) {

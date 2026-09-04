@@ -4,11 +4,13 @@ import test from "node:test";
 import {
   assertGrpcHostPortPlan,
   assertSupportedService,
+  callersAreReady,
   classifyServiceState,
   localIamCallerEnvironment,
   localIamEnvironment,
   nacosHosts,
   parseComposePs,
+  stateOf,
 } from "../local-service-replacement.mjs";
 
 test("requires the fixed, unique loopback gRPC host-port assignments", () => {
@@ -32,6 +34,23 @@ test("routes container callers to the documented Docker Desktop host entry", () 
       IAM_HTTP_BASE_URL: "http://host.docker.internal:8081",
     },
   });
+});
+
+test("requires every recreated caller to register exactly one healthy Nacos instance", () => {
+  assert.equal(
+    callersAreReady({
+      "entitlement-service": [{ ip: "172.19.0.8", port: 8080 }],
+      "tenant-access-service": [{ ip: "172.19.0.7", port: 8080 }],
+    }),
+    true,
+  );
+  assert.equal(
+    callersAreReady({
+      "entitlement-service": [],
+      "tenant-access-service": [{ ip: "172.19.0.7", port: 8080 }],
+    }),
+    false,
+  );
 });
 
 test("requires the explicit IAM service target", () => {
@@ -95,6 +114,19 @@ test("parses Compose JSON-lines status without reading application logs", () => 
       { Service: "iam-service", State: "running", ExitCode: 0 },
       { Service: "iam-migrate", State: "exited", ExitCode: 0 },
     ],
+  );
+});
+
+test("prefers a running Compose entry when an old recreated container remains", () => {
+  assert.equal(
+    stateOf(
+      [
+        { Service: "iam-service", State: "created" },
+        { Service: "iam-service", State: "running" },
+      ],
+      "iam-service",
+    )?.State,
+    "running",
   );
 });
 

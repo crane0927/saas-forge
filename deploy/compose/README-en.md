@@ -122,7 +122,7 @@ export SF_LOCAL_REPLACEMENT_PLATFORM_PASSWORD_FILE=/absolute/path/to/platform-pa
 bash scripts/verify-iam-local-cross-service-e2e.sh
 ```
 
-The script logs in from a controlled browser and creates a dedicated DRAFT Quota Definition with a `local-replacement-` prefix through HTTPS Edge, Gateway, and containerized Entitlement, which performs formal service-identity and Platform Role gRPC calls to IAM. That data is retained and must not be deleted without confirmation. The check verifies actual `/api/*` responses, browser console state, and restoration without image changes; it never prints credentials, cookies, or tokens.
+The script logs in from a controlled browser and creates the only supported `max_users` DRAFT Quota Definition through HTTPS Edge, Gateway, and containerized Entitlement, which performs formal service-identity and Platform Role gRPC calls to IAM. If that definition already exists, it verifies the formal duplicate-definition response instead. Data created on the first run is retained and must not be deleted without confirmation. The check verifies actual `/api/*` responses, browser console state, and restoration without image changes; it never prints credentials, cookies, or tokens.
 
 ### Isolated browser acceptance
 
