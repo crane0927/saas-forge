@@ -69,6 +69,23 @@ docker compose ps --all
 
 浏览器 Cookie、Origin 和 Fetch Metadata 由浏览器及共享 Client 按协议处理，页面操作不需要手动复制 Token 或 Cookie。HTTP `8080` 是后端本地端口，不是产品控制台入口。完整部署边界见 [部署文档](../../docs/14-deployment.md)。
 
+### Platform 日常 HTTPS 开发
+
+Issue #127 为 macOS Docker Desktop 的 Platform Console 提供独立日常入口，而不是复用 Fresh Compose 验收环境：
+
+```bash
+cd ../..
+bash scripts/local-https-development.sh setup
+bash scripts/local-https-development.sh hosts
+bash scripts/local-https-development.sh trust-ca
+bash scripts/local-https-development.sh doctor
+bash scripts/local-https-development.sh start
+```
+
+本地 CA、服务器证书与 Vite 诊断文件都位于 Git 忽略目录。`hosts` 和 `trust-ca` 分别在改写 `/etc/hosts`、System Keychain 前要求交互式明确授权；日常 `start` 不会生成证书、重复安装信任、安装前端依赖或改写 lockfile。TLS Edge 只发布回环 `443`，只接收 `platform.saasforge.test` 和 `api.saasforge.test`，并将 Platform（含 HMR WebSocket）转发到宿主 Vite `5173`、将 API 转发到 Compose Gateway。它不补造或改写浏览器的 Origin、Cookie、Fetch Metadata 或 Authorization。
+
+此入口不托管 Tenant Console，也不取代本节的完整三 Origin 部署条件或下文的 Fresh Compose 浏览器验收。
+
 ### 独立浏览器验收
 
 仓库已有 [Console 认证验收脚本](../../scripts/verify-console-authentication-e2e.sh) 和 [专用 Compose override](console-authentication.override.yaml)，用于全新环境的自动验证。它们不提供长期保留的手动体验环境，也不应直接作为默认开发栈的启动配置。

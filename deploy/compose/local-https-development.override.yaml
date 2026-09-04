@@ -1,0 +1,35 @@
+# 仅用于 macOS Docker Desktop 上的 Platform Console 日常开发；不替代生产或 Fresh Compose 验收入口。
+services:
+  local-https-edge:
+    image: node:24.14.1-alpine
+    user: node
+    group_add:
+      - "${SF_LOCAL_HTTPS_HOST_GID:?SF_LOCAL_HTTPS_HOST_GID is required}"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    command: ["node", "/app/edge.mjs"]
+    environment:
+      SF_LOCAL_HTTPS_VITE_HOST: host.docker.internal
+      SF_LOCAL_HTTPS_VITE_PORT: "5173"
+    ports:
+      - "127.0.0.1:443:8443"
+    depends_on:
+      gateway:
+        condition: service_started
+    volumes:
+      - ./local-https-development/edge.mjs:/app/edge.mjs:ro
+      - type: bind
+        source: ${SF_LOCAL_HTTPS_CERT:?SF_LOCAL_HTTPS_CERT is required}
+        target: /run/secrets/server.pem
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SF_LOCAL_HTTPS_KEY:?SF_LOCAL_HTTPS_KEY is required}
+        target: /run/secrets/server.key
+        read_only: true
+        bind:
+          create_host_path: false

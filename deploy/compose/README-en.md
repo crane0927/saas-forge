@@ -69,6 +69,23 @@ The platform home and Tenant workspace currently show authentication status only
 
 The browser and shared Client handle cookies, Origin, and Fetch Metadata according to the protocol; UI users do not copy Tokens or cookies. HTTP port `8080` is a local backend port, not a product console. See the [deployment documentation](../../docs/14-deployment.md) for the complete boundary.
 
+### Daily Platform HTTPS development
+
+Issue #127 adds a dedicated daily Platform Console entrypoint for macOS Docker Desktop; it does not reuse the Fresh Compose acceptance environment:
+
+```bash
+cd ../..
+bash scripts/local-https-development.sh setup
+bash scripts/local-https-development.sh hosts
+bash scripts/local-https-development.sh trust-ca
+bash scripts/local-https-development.sh doctor
+bash scripts/local-https-development.sh start
+```
+
+The local CA, server certificate, and Vite diagnostics remain in a Git-ignored directory. `hosts` and `trust-ca` require explicit interactive consent before editing `/etc/hosts` or the System Keychain; daily `start` does not recreate certificates, reinstall trust, install frontend dependencies, or rewrite the lockfile. TLS Edge publishes only loopback port `443`, accepts only `platform.saasforge.test` and `api.saasforge.test`, forwards Platform traffic (including HMR WebSocket) to host Vite on `5173`, and forwards API traffic to the Compose Gateway. It does not synthesize or rewrite Origin, Cookie, Fetch Metadata, or Authorization.
+
+The entrypoint does not host Tenant Console and does not replace this section's three-Origin deployment requirements or the Fresh Compose browser acceptance below.
+
 ### Isolated browser acceptance
 
 The repository provides a [Console authentication acceptance script](../../scripts/verify-console-authentication-e2e.sh) and a [dedicated Compose override](console-authentication.override.yaml) for automated checks against a fresh environment. They do not retain an environment for manual exploration and should not be used directly as the default development stack configuration.

@@ -57,6 +57,22 @@ pnpm --filter @saas-forge/design-system run dev:showcase
 > [!IMPORTANT]
 > Development servers serve only the frontend; they do not start Gateway, IAM, or databases. Their `/runtime-config.json` supplies the fixed API Origin `https://api.saasforge.test`. Real authentication also requires trusted HTTPS, correct DNS resolution, Gateway security configuration, and provisioned accounts. Default HTTP localhost pages are not a substitute for controlled browser Origins. See the [Compose deployment guide](../deploy/compose/README-en.md) for environment setup.
 
+### Controlled HTTPS Platform development entrypoint
+
+For daily Platform Console work on macOS Docker Desktop, run the following from the repository root:
+
+```bash
+bash scripts/local-https-development.sh setup
+bash scripts/local-https-development.sh hosts
+bash scripts/local-https-development.sh trust-ca
+bash scripts/local-https-development.sh doctor
+bash scripts/local-https-development.sh start
+```
+
+`setup` only creates or reuses Git-ignored local CA and server material for `platform.saasforge.test` and `api.saasforge.test`. `hosts` and `trust-ca` describe their `/etc/hosts` or macOS System Keychain change and require explicit interactive authorization; `start` never runs either action implicitly. It launches Platform Vite on the fixed Node `24.14.1`, pnpm `11.22.0`, and port `5173`, then Docker TLS Edge serves `https://platform.saasforge.test` on `127.0.0.1:443`. It does not install dependencies or rewrite the lockfile.
+
+This entrypoint covers only Platform and API: the Edge forwards Platform HTTP and HMR WebSocket traffic to host Vite and API traffic to the Compose Gateway, while preserving Origin, Cookie, Fetch Metadata, and Authorization. Tenant Console remains outside this Issue's daily development scope; prepare accounts, Gateway, and Compose services separately.
+
 ## Workspace structure
 
 | Directory                                                                                                       | Responsibility                                                                                                       |

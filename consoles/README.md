@@ -57,6 +57,22 @@ pnpm --filter @saas-forge/design-system run dev:showcase
 > [!IMPORTANT]
 > 开发服务器只提供前端，不启动 Gateway、IAM 或数据库。它通过 `/runtime-config.json` 提供固定的 `https://api.saasforge.test` API Origin。真实认证联调还需要受信 HTTPS、正确的域名解析、Gateway 安全配置与已准备的账户；默认 HTTP localhost 页面不能代替受控浏览器入口。环境准备见 [Compose 部署说明](../deploy/compose/README.md)。
 
+### 受控 HTTPS Platform 开发入口
+
+在 macOS Docker Desktop 上日常开发 Platform Console 时，从仓库根目录依次执行：
+
+```bash
+bash scripts/local-https-development.sh setup
+bash scripts/local-https-development.sh hosts
+bash scripts/local-https-development.sh trust-ca
+bash scripts/local-https-development.sh doctor
+bash scripts/local-https-development.sh start
+```
+
+`setup` 只创建或复用 Git 忽略的本地 CA 和同时覆盖 `platform.saasforge.test`、`api.saasforge.test` 的服务器证书。`hosts` 与 `trust-ca` 会说明对 `/etc/hosts` 或 macOS System Keychain 的影响，并要求在交互终端输入明确授权；不会由 `start` 隐式执行。`start` 使用固定 Node `24.14.1`、pnpm `11.22.0` 与端口 `5173` 启动 Platform Vite，再由 Docker TLS Edge 在 `127.0.0.1:443` 提供 `https://platform.saasforge.test`。它不安装依赖或改写 lockfile。
+
+该入口目前只覆盖 Platform 和 API Host：Edge 将 Platform 的 HTTP 与 HMR WebSocket 转发至宿主 Vite，将 API 转发至 Compose Gateway，并原样保留 Origin、Cookie、Fetch Metadata 与 Authorization。Tenant Console 不属于本 Issue 的日常入口范围；实际账户、Gateway 与 Compose 环境仍须先准备就绪。
+
 ## 目录与职责
 
 | 目录                                                                                                            | 职责                                                                    |
