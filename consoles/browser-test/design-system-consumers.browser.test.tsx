@@ -6,8 +6,13 @@ import { page, userEvent } from 'vitest/browser';
 
 import { DesignSystemConsumerRemote } from '../business-remotes/design-system-consumer-fixture/src/remote';
 import { PlatformConsoleApp } from '../platform-console/src/app';
-import { createRuntimeConfigBootstrap } from '../shared/app-runtime/src';
+import { createRuntimeConfigBootstrap, type RuntimeConfigResult } from '../shared/app-runtime/src';
 import { DesignSystemProvider } from '../shared/design-system/src';
+import {
+  ConsoleLocaleProvider,
+  ConsoleLocaleSelector,
+  useConsoleLocale,
+} from '../shared/react-shell/src';
 import {
   TenantConsoleShellApp,
   type TenantConsoleRootProps,
@@ -21,6 +26,8 @@ afterEach(() => {
   renderedContainer?.remove();
   renderedRoot = undefined;
   renderedContainer = undefined;
+  window.localStorage.clear();
+  document.documentElement.lang = '';
   window.history.replaceState({}, '', '/');
 });
 
@@ -44,6 +51,24 @@ function readyBootstrap() {
 
 function TenantConsoleTestRoot({ children, tenantBrand }: TenantConsoleRootProps) {
   return <DesignSystemProvider tenantBrand={tenantBrand}>{children}</DesignSystemProvider>;
+}
+
+function PlatformConsoleLocaleHost({
+  bootstrap,
+}: {
+  readonly bootstrap: ReturnType<typeof createRuntimeConfigBootstrap>;
+}) {
+  const { locale } = useConsoleLocale();
+  return (
+    <DesignSystemProvider locale={locale}>
+      <ConsoleLocaleSelector />
+      <PlatformConsoleApp
+        bootstrap={bootstrap}
+        authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
+        realm={{}}
+      />
+    </DesignSystemProvider>
+  );
 }
 
 function renderedColumns(itemTestId: string) {
@@ -70,6 +95,36 @@ async function waitForLayout() {
 }
 
 describe('三个 Design System 消费者的真实浏览器契约', () => {
+  it('语言选择器在配置失败页面即时切换、保留焦点且不发业务请求', async () => {
+    const loader = vi
+      .fn<() => Promise<RuntimeConfigResult>>()
+      .mockResolvedValue({ ok: false, error: { code: 'CONFIG_UNAVAILABLE' } });
+    render(
+      <ConsoleLocaleProvider initialLocale="en-US">
+        <PlatformConsoleLocaleHost bootstrap={createRuntimeConfigBootstrap(loader)} />
+      </ConsoleLocaleProvider>,
+    );
+
+    await expect
+      .element(page.getByRole('heading', { name: 'Platform Console configuration is unavailable' }))
+      .toBeInTheDocument();
+    await page.viewport(320, 800);
+    await waitForLayout();
+    const selector = page.getByRole('combobox', { name: 'Language / 语言' });
+    selector.element().focus();
+    await userEvent.click(selector);
+    await userEvent.click(page.getByText('简体中文'));
+
+    await expect
+      .element(page.getByRole('heading', { name: 'Platform Console 配置不可用' }))
+      .toBeInTheDocument();
+    await expect.element(selector).toHaveFocus();
+    expect(document.documentElement.lang).toBe('zh-CN');
+    expect(window.localStorage.getItem('sf:ui:locale')).toBe('zh-CN');
+    expect(loader).toHaveBeenCalledOnce();
+    expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(320);
+  });
+
   it.each([
     [
       'Platform Console',

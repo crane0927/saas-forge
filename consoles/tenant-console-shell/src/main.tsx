@@ -2,6 +2,7 @@ import { DesignSystemProvider } from '@saas-forge/design-system';
 import {
   AuthenticationRootErrorBoundary,
   ConsoleLocaleProvider,
+  ConsoleLocaleSelector,
   resolveInitialConsoleLocale,
   useConsoleLocale,
 } from '@saas-forge/react-shell';
@@ -13,6 +14,7 @@ function TenantConsoleRoot({ children, tenantBrand }: TenantConsoleRootProps) {
   const { locale } = useConsoleLocale();
   return (
     <DesignSystemProvider locale={locale} tenantBrand={tenantBrand}>
+      <ConsoleLocaleSelector />
       {children}
     </DesignSystemProvider>
   );
@@ -29,7 +31,7 @@ createRoot(rootElement, {
   // 已捕获故障由安全界面呈现；生产日志不得输出 React 默认记录的原始 Error。
   onCaughtError: import.meta.env.PROD ? () => undefined : undefined,
 }).render(
-  <ConsoleLocaleProvider initialLocale={initialLocale}>
+  <ConsoleLocaleProvider>
     <TenantConsoleEntry />
   </ConsoleLocaleProvider>,
 );

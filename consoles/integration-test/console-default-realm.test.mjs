@@ -1,4 +1,4 @@
-/* global window */
+/* global document, window */
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -22,6 +22,9 @@ for (const [application, directory, heading] of [
     });
     t.after(() => browser.close());
     const context = await browser.newContext();
+    await context.addInitScript(() => {
+      Object.defineProperty(navigator, 'languages', { configurable: true, value: ['zh-CN'] });
+    });
     await context.addInitScript(() => {
       // 观察实际 Refresh；无协调能力的旧入口也能到达屏障并暴露重复请求。
       window.sessionOperationStarted = false;
@@ -91,5 +94,77 @@ for (const [application, directory, heading] of [
       await page.getByRole('heading', { name: heading, exact: true }).waitFor();
     }
     assert.equal(refreshes, 1, 'one coordinated browser session must perform one refresh');
+
+    const [source, peer] = pages;
+    await selectConsoleLocale(source, 'English');
+    await peer.waitForFunction(() => document.documentElement.lang === 'en-US');
+    assert.equal(await source.evaluate(() => localStorage.getItem('sf:ui:locale')), 'en-US');
+    assert.equal(await peer.evaluate(() => localStorage.getItem('sf:ui:locale')), 'en-US');
+    assert.equal(refreshes, 1, 'switching the display language must not trigger session recovery');
   });
+}
+
+test('Platform 与 Tenant Console 的 Locale 偏好按 Origin 隔离', async (t) => {
+  const [platformServer, tenantServer] = await Promise.all(
+    ['platform-console', 'tenant-console-shell'].map(async (directory) => {
+      const root = fileURLToPath(new URL(`../${directory}`, import.meta.url));
+      const server = await createServer({ root, server: { host: '127.0.0.1', port: 0 } });
+      await server.listen();
+      return server;
+    }),
+  );
+  t.after(() => platformServer.close());
+  t.after(() => tenantServer.close());
+  const browser = await { chromium, firefox, webkit }[process.env.SF_BROWSER ?? 'chromium'].launch({
+    channel: process.env.SF_BROWSER_CHANNEL || undefined,
+  });
+  t.after(() => browser.close());
+  const context = await browser.newContext();
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, 'languages', { configurable: true, value: ['zh-CN'] });
+  });
+  const businessRequests = [];
+  context.on('request', (request) => {
+    if (new URL(request.url()).pathname.startsWith('/api/')) businessRequests.push(request.url());
+  });
+  await context.route('**/runtime-config.json', (route) =>
+    route.fulfill({
+      json: { schemaVersion: 1, apiBaseUrl: 'REPLACE_DURING_DEPLOYMENT' },
+    }),
+  );
+
+  const platform = await context.newPage();
+  const tenant = await context.newPage();
+  const platformAddress = platformServer.httpServer.address();
+  const tenantAddress = tenantServer.httpServer.address();
+  await Promise.all([
+    platform.goto(`http://127.0.0.1:${platformAddress.port}/`),
+    tenant.goto(`http://127.0.0.1:${tenantAddress.port}/`),
+  ]);
+  await Promise.all(
+    [platform, tenant].map((page) =>
+      page.getByRole('combobox', { name: 'Language / 语言' }).waitFor(),
+    ),
+  );
+
+  const tenantInitialLocale = await tenant.evaluate(() => document.documentElement.lang);
+  await selectConsoleLocale(platform, 'English');
+  await platform.waitForFunction(() => document.documentElement.lang === 'en-US');
+  assert.equal(await platform.evaluate(() => localStorage.getItem('sf:ui:locale')), 'en-US');
+  assert.equal(await tenant.evaluate(() => localStorage.getItem('sf:ui:locale')), null);
+  assert.equal(await tenant.evaluate(() => document.documentElement.lang), tenantInitialLocale);
+
+  await selectConsoleLocale(tenant, 'English');
+  await tenant.waitForFunction(() => document.documentElement.lang === 'en-US');
+  await selectConsoleLocale(tenant, '简体中文');
+  await tenant.waitForFunction(() => document.documentElement.lang === 'zh-CN');
+  assert.equal(await platform.evaluate(() => localStorage.getItem('sf:ui:locale')), 'en-US');
+  assert.equal(await tenant.evaluate(() => localStorage.getItem('sf:ui:locale')), 'zh-CN');
+  assert.deepEqual(businessRequests, []);
+});
+
+async function selectConsoleLocale(page, name) {
+  const selector = page.getByRole('combobox', { name: 'Language / 语言' });
+  await selector.click();
+  await page.locator('.ant-select-item-option-content', { hasText: name }).click();
 }

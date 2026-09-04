@@ -91,12 +91,15 @@ export async function verifyRequestProblemSurfaces(browser) {
             (rootDomain) =>
               sessionStorage.length === 0 &&
               document.cookie === '' &&
-              Object.keys(localStorage).every((key) =>
-                ['PLATFORM', 'TENANT'].some((slot) =>
-                  ['generation', 'logoutPending'].some(
-                    (field) => key === `sf:session:https://api.${rootDomain}:${slot}:${field}`,
+              Object.keys(localStorage).every(
+                (key) =>
+                  (key === 'sf:ui:locale' &&
+                    ['zh-CN', 'en-US'].includes(localStorage.getItem(key))) ||
+                  ['PLATFORM', 'TENANT'].some((slot) =>
+                    ['generation', 'logoutPending'].some(
+                      (field) => key === `sf:session:https://api.${rootDomain}:${slot}:${field}`,
+                    ),
                   ),
-                ),
               ),
             rootDomain,
           ),

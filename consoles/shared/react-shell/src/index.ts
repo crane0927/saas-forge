@@ -7,8 +7,10 @@ export {
 } from './authentication-shell';
 export {
   ConsoleLocaleProvider,
+  ConsoleLocaleSelector,
   consoleLocalePreferenceKey,
   resolveInitialConsoleLocale,
   useConsoleLocale,
+  type ConsoleLocaleContextValue,
   type ConsoleLocaleProviderProps,
 } from './console-locale';

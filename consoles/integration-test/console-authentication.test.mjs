@@ -1050,6 +1050,7 @@ async function expectSafeStorage(page) {
           )
         )
           return /^\d+$/.test(value) && Number.isSafeInteger(Number(value));
+        if (key === 'sf:ui:locale') return value === 'zh-CN' || value === 'en-US';
         return (
           ['PLATFORM', 'TENANT'].some(
             (slot) => key === `sf:session:https://api.${rootDomain}:${slot}:logoutPending`,
