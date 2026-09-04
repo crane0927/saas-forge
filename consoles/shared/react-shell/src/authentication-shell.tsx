@@ -4,6 +4,7 @@ import type {
   IdempotentOperationHandle,
   MembershipCandidate,
 } from '@saas-forge/app-runtime';
+import type { SupportedLocale } from '@saas-forge/i18n';
 import {
   ApplicationLoading,
   ApplicationFatalError,
@@ -45,6 +46,7 @@ export interface AuthenticationShellProps {
 export interface AuthenticationRootErrorBoundaryProps {
   readonly applicationName: string;
   readonly children: ReactNode;
+  readonly locale?: SupportedLocale;
   readonly reload?: () => void;
 }
 
@@ -71,7 +73,11 @@ export class AuthenticationRootErrorBoundary extends Component<
       return this.props.children;
     }
     return (
-      <ApplicationFatalError applicationName={this.props.applicationName} onReload={this.reload} />
+      <ApplicationFatalError
+        applicationName={this.props.applicationName}
+        locale={this.props.locale}
+        onReload={this.reload}
+      />
     );
   }
 

@@ -115,5 +115,6 @@ export {
   type DesignSystemColorScheme,
   type DesignSystemLocale,
   type DesignSystemProviderProps,
+  useDesignSystemLocale,
 } from './theme-provider';
 export { semanticTokens } from './tokens';

@@ -1,5 +1,10 @@
 import { Button, Spin } from 'antd';
+import { createTranslator, defineMessages, type SupportedLocale } from '@saas-forge/i18n';
 import { useId } from 'react';
+
+import enUS from './messages/en-US.json';
+import zhCN from './messages/zh-CN.json';
+import { useDesignSystemLocale } from './theme-provider';
 
 interface ApplicationLoadingProps {
   readonly applicationName: string;
@@ -14,17 +19,29 @@ interface ConfigurationFailureProps {
 export interface ApplicationFatalErrorProps {
   readonly applicationName: string;
   readonly onReload: () => void;
+  /** 根错误边界可能位于唯一 Provider 外，因此由 Shell 传入最后已知 Locale。 */
+  readonly locale?: SupportedLocale;
 }
+
+const bootstrapMessages = defineMessages({
+  'en-US': enUS,
+  'zh-CN': zhCN,
+});
 
 export function ApplicationLoading({ applicationName }: ApplicationLoadingProps) {
   const titleId = useId();
+  const translate = createTranslator({
+    namespace: '@saas-forge/design-system',
+    locale: useDesignSystemLocale(),
+    messages: bootstrapMessages,
+  });
 
   return (
     <main className="sf-bootstrap-surface" aria-busy="true" aria-live="polite">
       <section className="sf-bootstrap-panel" aria-labelledby={titleId}>
-        <Spin size="large" aria-label="正在加载部署配置" />
-        <h1 id={titleId}>正在启动 {applicationName}</h1>
-        <p>正在加载部署配置。</p>
+        <Spin size="large" aria-label={translate.translate('applicationLoadingAriaLabel')} />
+        <h1 id={titleId}>{translate.translate('applicationLoadingTitle', { applicationName })}</h1>
+        <p>{translate.translate('applicationLoadingDescription')}</p>
       </section>
     </main>
   );
@@ -36,15 +53,22 @@ export function ConfigurationFailure({
   onRetry,
 }: ConfigurationFailureProps) {
   const titleId = useId();
+  const translate = createTranslator({
+    namespace: '@saas-forge/design-system',
+    locale: useDesignSystemLocale(),
+    messages: bootstrapMessages,
+  });
 
   return (
     <main className="sf-bootstrap-surface">
       <section className="sf-bootstrap-panel" aria-labelledby={titleId} aria-live="assertive">
-        <h1 id={titleId}>{applicationName} 配置不可用</h1>
-        <p>部署配置未能通过校验。请确认配置已就绪后重试。</p>
+        <h1 id={titleId}>
+          {translate.translate('configurationFailureTitle', { applicationName })}
+        </h1>
+        <p>{translate.translate('configurationFailureDescription')}</p>
         <code className="sf-bootstrap-code">{errorCode}</code>
         <Button type="primary" size="large" onClick={onRetry}>
-          重试
+          {translate.translate('retry')}
         </Button>
       </section>
     </main>
@@ -54,17 +78,28 @@ export function ConfigurationFailure({
 /**
  * 仅展示已被 Error Boundary 隔离后的安全错误信息，不能接收或渲染原始异常详情。
  */
-export function ApplicationFatalError({ applicationName, onReload }: ApplicationFatalErrorProps) {
+export function ApplicationFatalError({
+  applicationName,
+  onReload,
+  locale: fallbackLocale,
+}: ApplicationFatalErrorProps) {
   const titleId = useId();
+  const contextLocale = useDesignSystemLocale();
+  const locale = fallbackLocale ?? contextLocale;
+  const translate = createTranslator({
+    namespace: '@saas-forge/design-system',
+    locale,
+    messages: bootstrapMessages,
+  });
 
   return (
     <main className="sf-bootstrap-surface">
       <section className="sf-bootstrap-panel" aria-labelledby={titleId} aria-live="assertive">
-        <h1 id={titleId}>{applicationName} 无法继续运行</h1>
-        <p>请重新加载应用。如果问题持续存在，请联系平台运维人员。</p>
+        <h1 id={titleId}>{translate.translate('fatalErrorTitle', { applicationName })}</h1>
+        <p>{translate.translate('fatalErrorDescription')}</p>
         <code className="sf-bootstrap-code">APPLICATION_FATAL</code>
         <Button type="primary" size="large" onClick={onReload}>
-          重新加载
+          {translate.translate('reload')}
         </Button>
       </section>
     </main>

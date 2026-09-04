@@ -733,6 +733,20 @@ describe('AuthenticationRootErrorBoundary', () => {
     expect(reload).toHaveBeenCalledOnce();
     consoleError.mockRestore();
   });
+
+  it('uses the last known Locale when a root failure escapes the Provider', () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    render(
+      <AuthenticationRootErrorBoundary applicationName="Tenant Console" locale="en-US">
+        <BrokenRoot />
+      </AuthenticationRootErrorBoundary>,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Tenant Console cannot continue' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Reload' })).toBeTruthy();
+    consoleError.mockRestore();
+  });
 });
 
 function LocationProbe() {

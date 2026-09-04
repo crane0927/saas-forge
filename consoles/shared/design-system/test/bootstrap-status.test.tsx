@@ -46,6 +46,30 @@ describe('Design System 启动状态', () => {
     expect(retry).toHaveBeenCalledOnce();
   });
 
+  it('根据 Provider Locale 显示英文启动、配置失败和安全恢复文案', () => {
+    const retry = vi.fn();
+    const reload = vi.fn();
+    render(
+      <DesignSystemProvider locale="en-US">
+        <ApplicationLoading applicationName="Platform Console" />
+        <ConfigurationFailure
+          applicationName="Platform Console"
+          errorCode="CONFIG_UNAVAILABLE"
+          onRetry={retry}
+        />
+        <ApplicationFatalError applicationName="Platform Console" onReload={reload} />
+      </DesignSystemProvider>,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Starting Platform Console' })).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { name: 'Platform Console configuration is unavailable' }),
+    ).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Platform Console cannot continue' })).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Retry' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Reload' })).toHaveLength(1);
+  });
+
   it('显示不暴露异常详情的致命错误恢复界面', () => {
     const reload = vi.fn();
 

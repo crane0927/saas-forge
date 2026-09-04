@@ -9,6 +9,9 @@ catalogs:
     '@eslint/js':
       specifier: 10.0.1
       version: 10.0.1
+    '@formatjs/icu-messageformat-parser':
+      specifier: 3.5.17
+      version: 3.5.17
     '@testing-library/react':
       specifier: 16.3.3
       version: 16.3.3
@@ -39,6 +42,9 @@ catalogs:
     globals:
       specifier: 17.11.0
       version: 17.11.0
+    intl-messageformat:
+      specifier: 11.2.14
+      version: 11.2.14
     jsdom:
       specifier: 30.0.1
       version: 30.0.1
@@ -77,6 +83,9 @@ importers:
       '@eslint/js':
         specifier: 'catalog:'
         version: 10.0.1(eslint@10.9.1(supports-color@7.1.0))
+      '@formatjs/icu-messageformat-parser':
+        specifier: 'catalog:'
+        version: 3.5.17
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3
@@ -230,6 +239,9 @@ importers:
 
   shared/design-system:
     dependencies:
+      '@saas-forge/i18n':
+        specifier: workspace:*
+        version: link:../i18n
       antd:
         specifier: 'catalog:'
         version: 6.6.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -271,6 +283,19 @@ importers:
         specifier: 'catalog:'
         version: 4.1.11(@types/node@24.13.3)(@vitest/browser-playwright@4.1.11)(jsdom@30.0.1)(vite@8.1.5(@types/node@24.13.3))
 
+  shared/i18n:
+    dependencies:
+      intl-messageformat:
+        specifier: 'catalog:'
+        version: 11.2.14
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@types/node@24.13.3)(@vitest/browser-playwright@4.1.11)(jsdom@30.0.1)(vite@8.1.5(@types/node@24.13.3))
+
   shared/react-shell:
     dependencies:
       '@saas-forge/app-runtime':
@@ -279,6 +304,9 @@ importers:
       '@saas-forge/design-system':
         specifier: workspace:*
         version: link:../design-system
+      '@saas-forge/i18n':
+        specifier: workspace:*
+        version: link:../i18n
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -516,6 +544,15 @@ packages:
     peerDependenciesMeta:
       '@noble/hashes':
         optional: true
+
+  '@formatjs/fast-memoize@3.1.7':
+    resolution: {integrity: sha512-zXfhLpvA6T7+efdt9JLbBwZ00tT7NsBMDVnDu8rpHeNNv8KfRZAMo2gkG0k9lK/Nzc//3kJ9pImsfuJxk3KhUA==}
+
+  '@formatjs/icu-messageformat-parser@3.5.17':
+    resolution: {integrity: sha512-cN9jhVqT7u0K9tix43fhjoUwL0nazyW6zsNIXs2QdPADr+nurPfYyssUiMqcSCGlPcCiqnYVxgSn7zBSuI+5Bg==}
+
+  '@formatjs/icu-skeleton-parser@2.1.11':
+    resolution: {integrity: sha512-j8cUmOJzVgkHuS0QiQ6ga76UIoLOFSAMWhs7aZJztH3aAdCOAE6vpC8KVvFB4cU10ON0y2/5oOVmPJ43s2lTwA==}
 
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
@@ -1422,6 +1459,9 @@ packages:
     resolution: {integrity: sha512-JmXMZ6wuvDmLiHEml9ykzqO6lwFbof0GG4IkcGaENdCRDDmMVnny7s5HsIgHCbaq0w2MyPhDqkhTUgS2LU2PHA==}
     engines: {node: '>=0.8.19'}
 
+  intl-messageformat@11.2.14:
+    resolution: {integrity: sha512-9f2VD1HFuxUvMw0RxsaP8WmMns6JRTnsNB/zghTFrp11ZktiXWwVDeZBPQchBKEmo+Gx/ZhxI7Qht7YglFD4PA==}
+
   is-extglob@2.1.1:
     resolution: {integrity: sha512-SbKbANkN603Vi4jEZv49LeVJMn4yGwsbzZworEoyEiutsN3nJYdbO36zfhGJ6QEDpOZIFkDtnq5JRxmvl3jsoQ==}
     engines: {node: '>=0.10.0'}
@@ -2174,6 +2214,14 @@ snapshots:
       levn: 0.4.1
 
   '@exodus/bytes@1.15.1': {}
+
+  '@formatjs/fast-memoize@3.1.7': {}
+
+  '@formatjs/icu-messageformat-parser@3.5.17':
+    dependencies:
+      '@formatjs/icu-skeleton-parser': 2.1.11
+
+  '@formatjs/icu-skeleton-parser@2.1.11': {}
 
   '@humanfs/core@0.19.2':
     dependencies:
@@ -3178,6 +3226,11 @@ snapshots:
   ignore@7.0.6: {}
 
   imurmurhash@0.1.4: {}
+
+  intl-messageformat@11.2.14:
+    dependencies:
+      '@formatjs/fast-memoize': 3.1.7
+      '@formatjs/icu-messageformat-parser': 3.5.17
 
   is-extglob@2.1.1: {}
 

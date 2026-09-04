@@ -63,14 +63,14 @@ describe('PlatformConsoleApp', () => {
     expect(authenticationFetch).toHaveBeenCalledTimes(2);
   });
 
-  it('shows a stable configuration failure and retries only after user action', async () => {
+  it('shows a stable bilingual configuration failure and retries only after user action', async () => {
     const loader = vi
       .fn<() => Promise<RuntimeConfigResult>>()
       .mockResolvedValueOnce({ ok: false, error: { code: 'CONFIG_UNAVAILABLE' } })
       .mockResolvedValueOnce(success());
 
     render(
-      <DesignSystemProvider>
+      <DesignSystemProvider locale="en-US">
         <PlatformConsoleApp
           bootstrap={createRuntimeConfigBootstrap(loader)}
           authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
@@ -79,10 +79,13 @@ describe('PlatformConsoleApp', () => {
       </DesignSystemProvider>,
     );
 
-    expect(await screen.findByText('CONFIG_UNAVAILABLE')).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { name: 'Platform Console configuration is unavailable' }),
+    ).toBeTruthy();
+    expect(screen.getByText('CONFIG_UNAVAILABLE')).toBeTruthy();
     expect(loader).toHaveBeenCalledOnce();
 
-    fireEvent.click(screen.getByRole('button', { name: '重试' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
 
     expect(await screen.findByRole('heading', { name: '登录 Platform Console' })).toBeTruthy();
     expect(loader).toHaveBeenCalledTimes(2);

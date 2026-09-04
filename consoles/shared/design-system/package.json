@@ -26,6 +26,7 @@
     "verify": "pnpm run typecheck && pnpm run test && pnpm run test:browser && pnpm run lint && pnpm run format:check && pnpm run build"
   },
   "dependencies": {
+    "@saas-forge/i18n": "workspace:*",
     "antd": "catalog:"
   },
   "peerDependencies": {
