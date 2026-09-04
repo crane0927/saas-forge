@@ -86,6 +86,32 @@ bash scripts/local-https-development.sh start
 
 此入口不托管 Tenant Console，也不取代本节的完整三 Origin 部署条件或下文的 Fresh Compose 浏览器验收。
 
+### IAM 本机替换开发
+
+Issue #128 在已启动的 macOS Docker Desktop 开发栈中，提供仅针对 IAM 的本机替换生命周期：
+
+```bash
+cd ../..
+bash scripts/local-service-replacement.sh status iam-service
+bash scripts/local-service-replacement.sh replace iam-service
+# 修改或调试本机 IAM 后
+bash scripts/local-service-replacement.sh restore iam-service
+```
+
+服务目标必须显式为 `iam-service`。`replace` 在停止容器前验证 `iam-migrate` 已成功、Signing Key 与数据库 ACTIVE 元数据匹配、Nacos 配置可读、PostgreSQL、Redis、Kafka、Mailpit 健康，以及所需 Secret 文件存在；不输出其内容。它只停止 `iam-service` 容器，不删除或重建卷，也不停止 Gateway 或基础设施。随后工具从 Nacos 容器动态解析 Docker Desktop 的 `host.docker.internal` 地址，让本机 JVM 以稳定 HTTP `8081`、正式服务名和 `dev` namespace 注册。只有容器已摘除、JVM readiness 成功且 Nacos 恰有一个健康本机实例时才报告成功；发现重复实例时失败。
+
+本机 JVM 通过回环 Nacos HTTP `8848` 和 Nacos 3 gRPC `9848` 连接现有容器；两者均不对局域网发布。
+
+`status` 输出 `CONTAINER`、`LOCAL`、`UNAVAILABLE` 或 `DUPLICATE`。为保持 IAM 工作负载最小权限，工具只使用现有 Gateway 发现身份读取 IAM 健康实例，不增加 IAM 的 Nacos 查询权限。`restore` 终止受管本机 JVM 并重新启动已有 IAM 容器，直到 Nacos 恰有一个健康容器实例；重复执行没有额外副作用。工具不会运行 Docker build。
+
+在已准备好受信本地 HTTPS 入口的开发栈中，可运行完整的真实浏览器验收：
+
+```bash
+bash scripts/verify-iam-local-replacement-e2e.sh
+```
+
+该验收会暂时切换 IAM、从 `https://platform.saasforge.test` 发出 Refresh 请求，经 HTTPS Edge 和 Gateway 验证本机 IAM 的正式未认证响应，然后恢复容器 IAM；它不适用于 Fresh Compose 或生产环境。
+
 ### 独立浏览器验收
 
 仓库已有 [Console 认证验收脚本](../../scripts/verify-console-authentication-e2e.sh) 和 [专用 Compose override](console-authentication.override.yaml)，用于全新环境的自动验证。它们不提供长期保留的手动体验环境，也不应直接作为默认开发栈的启动配置。

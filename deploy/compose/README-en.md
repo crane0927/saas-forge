@@ -86,6 +86,32 @@ The local CA, server certificate, and Vite diagnostics remain in a Git-ignored d
 
 The entrypoint does not host Tenant Console and does not replace this section's three-Origin deployment requirements or the Fresh Compose browser acceptance below.
 
+### Local IAM replacement development
+
+Issue #128 provides an IAM-only local replacement lifecycle for a running macOS Docker Desktop development stack:
+
+```bash
+cd ../..
+bash scripts/local-service-replacement.sh status iam-service
+bash scripts/local-service-replacement.sh replace iam-service
+# After changing or debugging local IAM
+bash scripts/local-service-replacement.sh restore iam-service
+```
+
+The target must be explicitly `iam-service`. Before stopping the container, `replace` verifies the successful `iam-migrate` job, the match between the Signing Key and ACTIVE database metadata, readable Nacos configuration, healthy PostgreSQL, Redis, Kafka and Mailpit, and required Secret files, without outputting their contents. It stops only the `iam-service` container; it neither removes nor recreates volumes and does not stop the Gateway or infrastructure. The tool dynamically resolves Docker Desktop's `host.docker.internal` from the Nacos container, then registers the local JVM under the stable HTTP port `8081`, formal service name and `dev` namespace. It succeeds only after the container is deregistered, JVM readiness succeeds and Nacos has exactly one healthy local instance; duplicate instances fail closed.
+
+The local JVM reaches the existing container through loopback Nacos HTTP `8848` and Nacos 3 gRPC `9848`; neither port is published to the LAN.
+
+`status` reports `CONTAINER`, `LOCAL`, `UNAVAILABLE` or `DUPLICATE`. To retain the IAM workload's least privilege, the tool reads healthy IAM instances only through the existing Gateway discovery identity; it does not grant IAM a new Nacos query permission. `restore` terminates the managed local JVM and starts the existing IAM container until Nacos has exactly one healthy container instance; repeated calls have no additional effect. The tool never runs Docker build.
+
+With the trusted local HTTPS entry point prepared, run the full browser acceptance against the development stack:
+
+```bash
+bash scripts/verify-iam-local-replacement-e2e.sh
+```
+
+It temporarily switches IAM, issues a Refresh request from `https://platform.saasforge.test` through the HTTPS Edge and Gateway to validate the formal unauthenticated local-IAM response, then restores the container IAM. It is not a Fresh Compose or production workflow.
+
 ### Isolated browser acceptance
 
 The repository provides a [Console authentication acceptance script](../../scripts/verify-console-authentication-e2e.sh) and a [dedicated Compose override](console-authentication.override.yaml) for automated checks against a fresh environment. They do not retain an environment for manual exploration and should not be used directly as the default development stack configuration.
