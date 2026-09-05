@@ -28,9 +28,9 @@ import io.saasforge.contracts.iam.authorization.v1.PlatformAuthorizationServiceG
 import io.saasforge.iam.application.authorization.PlatformRoleAuthorizationService;
 import io.saasforge.iam.domain.authorization.PlatformRoleAssignment;
 import io.saasforge.iam.domain.authorization.PlatformRoleAssignmentRepository;
-import io.saasforge.sdk.auth.GrpcPlatformRoleChecker;
 import io.saasforge.sdk.auth.PlatformAuthorizationDeniedException;
 import io.saasforge.sdk.auth.PlatformRequestAuthorizer;
+import io.saasforge.sdk.auth.PlatformRoleChecker;
 import io.saasforge.sdk.auth.ServiceAccessTokenAuthorizer;
 import io.saasforge.sdk.auth.ServiceAccessTokenSignatureVerifier;
 import io.saasforge.sdk.auth.ServiceJwtVerificationKey;
@@ -46,6 +46,7 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -198,7 +199,7 @@ class PlatformAuthorizationGrpcServiceIT {
     @Test
     void immediatelyRejectsPreviouslyIssuedTokenAfterClientRevocation() throws Exception {
         String token = serviceToken("iam:platform-role:read");
-        GrpcPlatformRoleChecker checker = new GrpcPlatformRoleChecker(
+        TestPlatformRoleClient checker = new TestPlatformRoleClient(
                 PlatformAuthorizationServiceGrpc.newBlockingStub(channel), () -> token);
         assertTrue(checker.isAllowed(IDENTITY_ID, PLATFORM_ADMIN));
 
@@ -211,17 +212,17 @@ class PlatformAuthorizationGrpcServiceIT {
     @Test
     void rejectsInvalidCallerConfigurationAndRequestFields() throws Exception {
         var stub = PlatformAuthorizationServiceGrpc.newBlockingStub(channel);
-        assertThrows(IllegalArgumentException.class, () -> new GrpcPlatformRoleChecker(null, () -> "token"));
-        assertThrows(IllegalArgumentException.class, () -> new GrpcPlatformRoleChecker(stub, null));
+        assertThrows(IllegalArgumentException.class, () -> new TestPlatformRoleClient(null, () -> "token"));
+        assertThrows(IllegalArgumentException.class, () -> new TestPlatformRoleClient(stub, null));
 
-        GrpcPlatformRoleChecker checker = new GrpcPlatformRoleChecker(stub, () -> "token");
+        TestPlatformRoleClient checker = new TestPlatformRoleClient(stub, () -> "token");
         assertThrows(IllegalArgumentException.class, () -> checker.isAllowed(null, PLATFORM_ADMIN));
         assertThrows(IllegalArgumentException.class, () -> checker.isAllowed(IDENTITY_ID, null));
         assertThrows(IllegalArgumentException.class, () -> checker.isAllowed(IDENTITY_ID, " "));
         assertThrows(IllegalStateException.class,
-                () -> new GrpcPlatformRoleChecker(stub, () -> null).isAllowed(IDENTITY_ID, PLATFORM_ADMIN));
+                () -> new TestPlatformRoleClient(stub, () -> null).isAllowed(IDENTITY_ID, PLATFORM_ADMIN));
         assertThrows(IllegalStateException.class,
-                () -> new GrpcPlatformRoleChecker(stub, () -> " ").isAllowed(IDENTITY_ID, PLATFORM_ADMIN));
+                () -> new TestPlatformRoleClient(stub, () -> " ").isAllowed(IDENTITY_ID, PLATFORM_ADMIN));
 
         UserAccessTokenVerifier userTokens = new UserAccessTokenVerifier(
                 this::verificationKey,
@@ -270,10 +271,51 @@ class PlatformAuthorizationGrpcServiceIT {
                 "https://iam.test",
                 "saasforge-api",
                 Duration.ofSeconds(30));
-        GrpcPlatformRoleChecker roles = new GrpcPlatformRoleChecker(
+        TestPlatformRoleClient roles = new TestPlatformRoleClient(
                 PlatformAuthorizationServiceGrpc.newBlockingStub(channel),
                 () -> serviceToken);
         return new PlatformRequestAuthorizer(userTokens, roles);
+    }
+
+    private static final class TestPlatformRoleClient implements PlatformRoleChecker {
+        private static final Metadata.Key<String> AUTHORIZATION =
+                Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER);
+
+        private final PlatformAuthorizationServiceGrpc.PlatformAuthorizationServiceBlockingStub client;
+        private final Supplier<String> serviceAccessToken;
+
+        private TestPlatformRoleClient(
+                PlatformAuthorizationServiceGrpc.PlatformAuthorizationServiceBlockingStub client,
+                Supplier<String> serviceAccessToken) {
+            if (client == null || serviceAccessToken == null) {
+                throw new IllegalArgumentException("IAM Platform Role 测试调用配置不能为空");
+            }
+            this.client = client;
+            this.serviceAccessToken = serviceAccessToken;
+        }
+
+        @Override
+        public boolean isAllowed(UUID identityId, String roleKey) {
+            if (identityId == null || roleKey == null || roleKey.isBlank()) {
+                throw new IllegalArgumentException("IAM Platform Role 测试请求字段不能为空");
+            }
+            String token = serviceAccessToken.get();
+            if (token == null || token.isBlank()) {
+                throw new IllegalStateException("Service Access Token 不可用");
+            }
+            Metadata metadata = new Metadata();
+            metadata.put(AUTHORIZATION, "Bearer " + token);
+            try {
+                return client.withInterceptors(MetadataUtils.newAttachHeadersInterceptor(metadata))
+                        .checkPlatformRole(CheckPlatformRoleRequest.newBuilder()
+                                .setIdentityId(identityId.toString())
+                                .setRoleKey(roleKey)
+                                .build())
+                        .getAllowed();
+            } catch (StatusRuntimeException exception) {
+                throw new IllegalStateException("IAM Platform Role 校验不可用", exception);
+            }
+        }
     }
 
     private static void assertInvalidArgument(
