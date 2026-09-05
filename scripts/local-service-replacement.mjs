@@ -939,11 +939,15 @@ async function stopLocalIam(paths) {
     return;
   }
   process.kill(pid, "SIGTERM");
-  await waitFor(
-    "本机 IAM 退出",
-    async () => (await localProcess(paths)) === undefined,
-  );
+  await waitFor("本机 IAM 退出", async () => processHasExited(pid));
   await rm(paths.iamPid, { force: true });
+}
+
+function processHasExited(pid) {
+  const result = execute("ps", ["-p", String(pid), "-o", "state="], {
+    allowFailure: true,
+  });
+  return result.status !== 0 || result.stdout.trim().startsWith("Z");
 }
 
 async function ensureContainer(context, paths, token) {
@@ -1462,9 +1466,8 @@ async function stopAdditionalService(paths, definition) {
     return;
   }
   process.kill(pid, "SIGTERM");
-  await waitFor(
-    `本机 ${definition.service} 退出`,
-    async () => (await localAdditionalProcess(paths, definition)) === undefined,
+  await waitFor(`本机 ${definition.service} 退出`, async () =>
+    processHasExited(pid),
   );
   await rm(paths.pid, { force: true });
 }

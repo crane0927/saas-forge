@@ -18,12 +18,17 @@ try {
   const page = await browser.newPage();
   const origin = `http://localhost:${address.port}`;
   const relevantResponses = [];
-  page.on('response', (response) => {
-    if (new URL(response.url()).hostname === 'api.saasforge.test') {
+  const network = await page.context().newCDPSession(page);
+  await network.send('Network.enable');
+  network.on('Network.responseReceived', ({ response }) => {
+    if (new URL(response.url).hostname === 'api.saasforge.test') {
+      const headers = Object.fromEntries(
+        Object.entries(response.headers).map(([name, value]) => [name.toLowerCase(), value]),
+      );
       relevantResponses.push({
-        allowCredentials: response.headers()['access-control-allow-credentials'],
-        allowOrigin: response.headers()['access-control-allow-origin'],
-        status: response.status(),
+        allowCredentials: headers['access-control-allow-credentials'],
+        allowOrigin: headers['access-control-allow-origin'],
+        status: response.status,
       });
     }
   });

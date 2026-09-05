@@ -642,7 +642,33 @@ async function start(repositoryRoot, paths) {
   await startVite(repositoryRoot, paths);
   await waitForVite();
   startEdge(repositoryRoot, paths);
+  await waitForEdge(paths);
   console.log("READY: https://platform.saasforge.test");
+}
+
+async function waitForEdge(paths) {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    const edge = run(
+      "curl",
+      [
+        "--fail",
+        "--silent",
+        "--show-error",
+        "--connect-timeout",
+        "2",
+        "--max-time",
+        "5",
+        "--cacert",
+        paths.certificateAuthorityCertificate,
+        "https://platform.saasforge.test/",
+      ],
+      { allowFailure: true },
+    );
+    if (edge.status === 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error("本地 HTTPS Edge 未在 30 秒内通过受信 TLS 就绪。");
 }
 
 async function ensureApiTarget(targetFile) {
