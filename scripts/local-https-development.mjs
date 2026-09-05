@@ -43,6 +43,14 @@ export function developmentHttpsPaths(repositoryRoot) {
     serverCertificate: path.join(directory, "server.pem"),
     serverRequest: path.join(directory, "server.csr"),
     serverExtensions: path.join(directory, "server.ext"),
+    apiTarget: path.join(
+      repositoryRoot,
+      "deploy",
+      "compose",
+      ".secrets",
+      "local-service-replacement",
+      "api-target.json",
+    ),
     viteLog: path.join(directory, "vite.log"),
     vitePid: path.join(directory, "vite.pid"),
   };
@@ -541,6 +549,7 @@ async function start(repositoryRoot, paths) {
   if (!hasExpectedHosts(await readFile("/etc/hosts", "utf8"))) {
     throw new Error("本地域名尚未就绪；请先运行 hosts。");
   }
+  await ensureApiTarget(paths.apiTarget);
   const toolchain = doctorToolchain(repositoryRoot);
   if (!toolchain.ok)
     throw new Error(`${toolchain.message} ${toolchain.recovery}`);
@@ -549,6 +558,18 @@ async function start(repositoryRoot, paths) {
   await waitForVite();
   startEdge(repositoryRoot, paths);
   console.log("READY: https://platform.saasforge.test");
+}
+
+async function ensureApiTarget(targetFile) {
+  try {
+    await access(targetFile, constants.R_OK);
+  } catch {
+    await mkdir(path.dirname(targetFile), { recursive: true, mode: 0o700 });
+    await chmod(path.dirname(targetFile), 0o700);
+    await writeFile(targetFile, '{"hostname":"gateway","port":8080}\n', {
+      mode: 0o600,
+    });
+  }
 }
 
 async function startVite(repositoryRoot, paths) {
@@ -602,27 +623,36 @@ async function waitForVite() {
   );
 }
 
+export function edgeStartArguments(repositoryRoot) {
+  const composeDirectory = path.join(repositoryRoot, "deploy", "compose");
+  return [
+    "compose",
+    "--project-directory",
+    composeDirectory,
+    "--file",
+    path.join(composeDirectory, "compose.yaml"),
+    "--file",
+    path.join(composeDirectory, "local-https-development.override.yaml"),
+    "up",
+    "--detach",
+    // Edge 是独立入口；启动依赖会重建应用拓扑，超出该恢复命令的边界。
+    "--no-deps",
+    "--force-recreate",
+    "local-https-edge",
+  ];
+}
+
 function startEdge(repositoryRoot, paths) {
   const composeDirectory = path.join(repositoryRoot, "deploy", "compose");
   run(
     "docker",
-    [
-      "compose",
-      "--project-directory",
-      composeDirectory,
-      "--file",
-      path.join(composeDirectory, "compose.yaml"),
-      "--file",
-      path.join(composeDirectory, "local-https-development.override.yaml"),
-      "up",
-      "--detach",
-      "local-https-edge",
-    ],
+    edgeStartArguments(repositoryRoot),
     {
       cwd: composeDirectory,
       env: {
         ...process.env,
         SF_LOCAL_HTTPS_CERT: paths.serverCertificate,
+        SF_LOCAL_HTTPS_API_TARGET_FILE: paths.apiTarget,
         SF_LOCAL_HTTPS_KEY: paths.serverKey,
         SF_LOCAL_HTTPS_HOST_GID: String(
           process.getgid?.() ?? os.userInfo().gid,

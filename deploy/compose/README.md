@@ -82,47 +82,54 @@ bash scripts/local-https-development.sh doctor
 bash scripts/local-https-development.sh start
 ```
 
-本地 CA、服务器证书与 Vite 诊断文件都位于 Git 忽略目录。`hosts` 和 `trust-ca` 分别在改写 `/etc/hosts`、System Keychain 前要求交互式明确授权；日常 `start` 不会生成证书、重复安装信任、安装前端依赖或改写 lockfile。TLS Edge 只发布回环 `443`，只接收 `platform.saasforge.test` 和 `api.saasforge.test`，并将 Platform（含 HMR WebSocket）转发到宿主 Vite `5173`、将 API 转发到 Compose Gateway。它不补造或改写浏览器的 Origin、Cookie、Fetch Metadata 或 Authorization。
+本地 CA、服务器证书与 Vite 诊断文件都位于 Git 忽略目录。`hosts` 和 `trust-ca` 分别在改写 `/etc/hosts`、System Keychain 前要求交互式明确授权；日常 `start` 不会生成证书、重复安装信任、安装前端依赖或改写 lockfile。为恢复 Docker Desktop 失效的回环端口转发，`start` 会强制重建唯一无状态的 TLS Edge 容器；它不重建证书、应用服务、卷或业务数据，但会短暂中断本地 HTTPS 页面。TLS Edge 只发布回环 `443`，只接收 `platform.saasforge.test` 和 `api.saasforge.test`，并将 Platform（含 HMR WebSocket）转发到宿主 Vite `5173`、将 API 转发到 Compose Gateway。它不补造或改写浏览器的 Origin、Cookie、Fetch Metadata 或 Authorization。
 
 此入口不托管 Tenant Console，也不取代本节的完整三 Origin 部署条件或下文的 Fresh Compose 浏览器验收。
 
-### IAM 本机替换开发
+### 本机后端服务替换开发
 
-Issue #128/#129 在已启动的 macOS Docker Desktop 开发栈中，提供仅针对 IAM 的本机替换生命周期：
+Issue #128/#129 提供 IAM 生命周期；Issue #130 将同一接口扩展到 Gateway、Tenant Access、Entitlement 和 Audit。必须显式给出目标：
 
 ```bash
 cd ../..
-bash scripts/local-service-replacement.sh status iam-service
-bash scripts/local-service-replacement.sh replace iam-service
-# 修改或调试本机 IAM 后
-bash scripts/local-service-replacement.sh restore iam-service
+bash scripts/local-service-replacement.sh status gateway
+bash scripts/local-service-replacement.sh replace gateway
+# 修改或调试本机服务后
+bash scripts/local-service-replacement.sh restore gateway
 ```
 
-服务目标必须显式为 `iam-service`。现有 HTTP 映射保持不变：IAM、Tenant Access、Entitlement 分别为回环 `8081`、`8082`、`8083`；三个服务另将容器内 gRPC `9090` 固定发布为唯一的回环 `9091`、`9092`、`9093`。`replace` 会先验证这组固定映射、`iam-migrate` 已成功、Signing Key 与数据库 ACTIVE 元数据匹配、Nacos 配置可读、PostgreSQL、Redis、Kafka、Mailpit 健康，以及所需 Secret 文件存在；不输出其内容。
+| 目标 | 固定回环 HTTP | 固定回环 gRPC |
+| --- | ---: | ---: |
+| `gateway` | `8080` | — |
+| `iam-service` | `8081` | `9091` |
+| `tenant-access-service` | `8082` | `9092` |
+| `entitlement-service` | `8083` | `9093` |
+| `audit-service` | `8084` | — |
 
-工具仅停止 `iam-service` 容器，不删除或重建卷，也不停止 Gateway 或基础设施。本机 IAM 监听 HTTP `8081` 和 gRPC `9091`，再以正式服务名和 `dev` namespace 注册。其对容器 Tenant Access 的 gRPC 调用使用回环 `9092`；Tenant Access 与 Entitlement 则在替换期间重建为通过 Docker Desktop 文档化入口 `host.docker.internal:8081/9091` 调用本机 IAM。临时 Compose override 只保存在 Git 忽略的 `.secrets/local-service-replacement/`，不含凭据或 Docker Desktop 虚拟网络 IP。容器摘除、本机 HTTP readiness、Nacos 唯一实例、端口占用或固定映射不成立时，工具会给出诊断并拒绝继续；重复实例同样失败关闭。
+`replace` 在停容器前校验目标的固定端口、已成功的迁移（适用时）、Nacos `dev` 配置、受限 Secret、基础设施和依赖服务，以及正式服务名恰有一个健康实例。它不打印凭据、Cookie 或 Token；端口占用、配置不一致、Nacos 重复实例或任何 readiness 失败都会拒绝切换。所有本机 JVM 经回环 Nacos HTTP `8848`、Nacos 3 gRPC `9848`、PostgreSQL `5432`、Redis `6379` 和 Kafka `29092` 复用现有容器化基础设施。
 
-本机 JVM 通过回环 Nacos HTTP `8848` 和 Nacos 3 gRPC `9848` 连接现有容器；两者均不对局域网发布。
+Issue #130 的四个目标只停止选定的应用容器：不会删除卷、停止基础设施或重建其他应用容器。Tenant Access 和 Entitlement 的本机进程通过既有回环 gRPC 端口调用容器化下游；Gateway 的本机进程使用只在 `saasforge.local-replacement.enabled=true` 时生效的负载均衡映射访问这些端口，避免依赖 Docker 内部 IP。Gateway 替换还将 HTTPS Edge 的 `api.saasforge.test` 目标在 Git 忽略的受限文件中从 `gateway:8080` 切到 `host.docker.internal:8080`，无需重启 Edge；该文件只接受这两个固定目标和端口 `8080`。恢复时自动还原容器 Gateway 目标。IAM 保留原有的专用调用方重建行为，以将容器调用方指向本机 IAM。
 
-`status` 输出 `CONTAINER`、`LOCAL`、`UNAVAILABLE` 或 `DUPLICATE`。为保持 IAM 工作负载最小权限，工具只使用现有 Gateway 发现身份读取 IAM 健康实例，不增加 IAM 的 Nacos 查询权限。`restore` 终止受管本机 JVM 并重新启动已有 IAM 容器，直到 Nacos 恰有一个健康容器实例；随后删除临时 override 并重建 Tenant Access、Entitlement，使其回到容器服务名。重复执行没有额外副作用。工具不会运行 Docker build。
-
-在已准备好受信本地 HTTPS 入口的开发栈中，可运行完整的真实浏览器验收：
+若当前开发栈启动于 Issue #130 的 Nacos ACL 变更之前，必须先通过受控初始化流程补充四个替换目标各自的只读实例发现权限；Gateway 仍只发现自身和正式公开路由目标。不要用管理员身份手工修改 ACL：
 
 ```bash
-bash scripts/verify-iam-local-replacement-e2e.sh
+cd deploy/compose
+docker compose up --detach --no-deps --force-recreate nacos-init
 ```
 
-该验收会暂时切换 IAM、从 `https://platform.saasforge.test` 发出 Refresh 请求，经 HTTPS Edge 和 Gateway 验证本机 IAM 的正式未认证响应，然后恢复容器 IAM；它不适用于 Fresh Compose 或生产环境。
+`status` 输出 `CONTAINER`、`LOCAL`、`UNAVAILABLE` 或 `DUPLICATE`。`restore` 终止受管本机 JVM、恢复已有容器，并等待该正式服务名在 `dev` namespace 中重新成为唯一健康实例；重复执行没有额外副作用。整个流程不会运行 Docker build。
 
-若已为有正式密码的 Platform Admin 准备只读凭据文件，可进一步验证浏览器发起的 Entitlement → IAM 正式服务身份与 Platform Role gRPC 链路：
+准备好受信本地 HTTPS 入口，以及具有正式密码的 Platform Admin 的只读凭据文件后，可对每个 Issue #130 目标执行完整的容器→本机→容器浏览器验收：
 
 ```bash
 export SF_LOCAL_REPLACEMENT_PLATFORM_EMAIL_FILE=/absolute/path/to/platform-email
 export SF_LOCAL_REPLACEMENT_PLATFORM_PASSWORD_FILE=/absolute/path/to/platform-password
-bash scripts/verify-iam-local-cross-service-e2e.sh
+bash scripts/verify-local-service-replacement-e2e.sh tenant-access-service
 ```
 
-该脚本从受控浏览器登录后，经 HTTPS Edge、Gateway 和容器 Entitlement 创建唯一受支持的 `max_users` DRAFT Quota Definition；若该定义已存在，则验证其正式重复定义响应。首次创建的数据会保留，不能在未经确认的情况下删除。它验证实际 `/api/*` 响应、浏览器控制台和容器恢复后无镜像变更，不显示凭据、Cookie 或 Token。
+`SF_LOCAL_REPLACEMENT_PLATFORM_PASSWORD_FILE` 必须指向当前正式密码的受限文件，不能指向首次 bootstrap 的初始密码文件；初始密码在首次改密后即失效。若需要为验收保留当前正式密码，使用另一个 Git 忽略、权限受限的文件，并且不要在终端、日志或聊天中输出其内容。
+
+验收在本机替换期间和恢复后均从 `https://platform.saasforge.test` 发起真实 `/api/*` 操作，并检查浏览器控制台、Nacos 单实例和应用镜像标识。Gateway 与 Entitlement 使用正式 Quota Definition 操作；Tenant Access 使用正式 Tenant 创建操作；Audit 使用登录产生的 `SESSION_STARTED` Committed Fact，并确认由本机 Audit 消费并持久化。Tenant 创建、首次 `max_users` DRAFT Quota Definition 和审计事实均会保留，不能未经确认删除。它不适用于 Fresh Compose 或生产环境。
 
 ### 独立浏览器验收
 
@@ -332,7 +339,7 @@ docker compose --profile credential-reset run --rm iam-platform-admin-credential
 | Redis | `REDIS_PASSWORD` | — |
 | Nacos | `NACOS_BOOTSTRAP_PASSWORD` | `NACOS_PUBLISH_PASSWORD`、`NACOS_IAM_PASSWORD`、`NACOS_TENANT_ACCESS_PASSWORD`、`NACOS_ENTITLEMENT_PASSWORD`、`NACOS_AUDIT_PASSWORD`、`NACOS_GATEWAY_PASSWORD` |
 
-`NACOS_IAM_USERNAME`、`NACOS_TENANT_ACCESS_USERNAME`、`NACOS_ENTITLEMENT_USERNAME`、`NACOS_AUDIT_USERNAME` 与 `NACOS_GATEWAY_USERNAME` 必须是非默认开发身份。`NACOS_AUTH_IDENTITY_KEY`、`NACOS_AUTH_IDENTITY_VALUE` 与 `NACOS_AUTH_TOKEN` 均须填写仅用于本地的随机值；`NACOS_AUTH_TOKEN` 必须是由至少 32 个原始字符生成的 Base64 字符串。`nacos-init` 仅用初始化管理员身份创建 namespace、用户和权限，随后改用仅可写入五个受控配置资源的 `NACOS_PUBLISH_USERNAME` 发布清单；每个领域服务身份仅被授予读取自己的配置和注册自己的稳定服务名，Gateway 身份仅被授予读取自己的配置、注册 `gateway` 与读取 `iam-service`、`tenant-access-service`、`entitlement-service` 健康实例的权限。完整清单、CI 发布和应急回写流程见 [`../nacos/README.md`](../nacos/README.md)。
+`NACOS_IAM_USERNAME`、`NACOS_TENANT_ACCESS_USERNAME`、`NACOS_ENTITLEMENT_USERNAME`、`NACOS_AUDIT_USERNAME` 与 `NACOS_GATEWAY_USERNAME` 必须是非默认开发身份。`NACOS_AUTH_IDENTITY_KEY`、`NACOS_AUTH_IDENTITY_VALUE` 与 `NACOS_AUTH_TOKEN` 均须填写仅用于本地的随机值；`NACOS_AUTH_TOKEN` 必须是由至少 32 个原始字符生成的 Base64 字符串。`nacos-init` 仅用初始化管理员身份创建 namespace、用户和权限，随后改用仅可写入五个受控配置资源的 `NACOS_PUBLISH_USERNAME` 发布清单；Issue #130 的目标服务身份可额外读取自身健康实例以完成本机替换验证，Gateway 只可读取自身及 `iam-service`、`tenant-access-service`、`entitlement-service` 健康实例。完整清单、CI 发布和应急回写流程见 [`../nacos/README.md`](../nacos/README.md)。
 
 `bootstrap.sh` 在首次创建 PostgreSQL 数据卷时建立 `iam_db`、`tenant_access_db`、`entitlement_db`、`audit_db`，以及各服务独立的 `*_migrator` 和 `*_app` 账号。迁移任务使用 migrator 账号，运行时服务使用 app 账号。
 

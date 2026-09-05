@@ -7,6 +7,7 @@ const vitePort = Number.parseInt(
   process.env.SF_LOCAL_HTTPS_VITE_PORT ?? "5173",
   10,
 );
+const apiTargetFile = process.env.SF_LOCAL_HTTPS_API_TARGET_FILE;
 
 export function targetForHost(host) {
   if (host === "platform.saasforge.test")
@@ -19,10 +20,28 @@ export function copyOriginalHeaders(headers) {
   return [...headers];
 }
 
+export function parseApiTarget(value) {
+  let target;
+  try {
+    target = JSON.parse(value);
+  } catch {
+    return undefined;
+  }
+  if (
+    (target?.hostname !== "gateway" &&
+      target?.hostname !== "host.docker.internal") ||
+    target?.port !== 8080
+  ) {
+    return undefined;
+  }
+  return target;
+}
+
 export function createEdgeServer({
   certificate,
   key,
   targets = defaultTargets(),
+  apiTargetFile: configuredApiTargetFile = apiTargetFile,
 }) {
   const server = createServer(
     {
@@ -30,10 +49,10 @@ export function createEdgeServer({
       key,
       minVersion: "TLSv1.2",
     },
-    (incoming, outgoing) => proxy(incoming, outgoing, targets),
+    (incoming, outgoing) => proxy(incoming, outgoing, targets, configuredApiTargetFile),
   );
   server.on("upgrade", (incoming, socket, head) =>
-    proxyUpgrade(incoming, socket, head, targets),
+    proxyUpgrade(incoming, socket, head, targets, configuredApiTargetFile),
   );
   return server;
 }
@@ -57,8 +76,24 @@ function unavailable(response) {
   response.end(JSON.stringify({ status: 502, code: "UPSTREAM_UNAVAILABLE" }));
 }
 
-function proxy(incoming, outgoing, targets) {
-  const target = targets[incoming.headers.host];
+async function resolveTarget(host, targets, configuredApiTargetFile) {
+  const target = targets[host];
+  if (host !== "api.saasforge.test" || !configuredApiTargetFile) return target;
+  let value;
+  try {
+    value = await readFile(configuredApiTargetFile, "utf8");
+  } catch {
+    return target;
+  }
+  return parseApiTarget(value);
+}
+
+async function proxy(incoming, outgoing, targets, configuredApiTargetFile) {
+  const target = await resolveTarget(
+    incoming.headers.host,
+    targets,
+    configuredApiTargetFile,
+  );
   if (target === undefined) {
     outgoing.writeHead(421).end();
     return;
@@ -86,8 +121,12 @@ function proxy(incoming, outgoing, targets) {
   incoming.pipe(upstream);
 }
 
-function proxyUpgrade(incoming, socket, head, targets) {
-  const target = targets[incoming.headers.host];
+async function proxyUpgrade(incoming, socket, head, targets, configuredApiTargetFile) {
+  const target = await resolveTarget(
+    incoming.headers.host,
+    targets,
+    configuredApiTargetFile,
+  );
   if (target === undefined) {
     socket.end("HTTP/1.1 421 Misdirected Request\r\nConnection: close\r\n\r\n");
     return;

@@ -1,17 +1,25 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import test from "node:test";
 
 import {
+  additionalExecutableJar,
+  reusableContainerStartArguments,
+  additionalReadiness,
   assertGrpcHostPortPlan,
   assertSupportedService,
+  additionalServiceDefinition,
   callersAreReady,
   classifyServiceState,
   localIamCallerEnvironment,
   localIamEnvironment,
+  localAdditionalEnvironment,
   nacosHosts,
   parseComposePs,
   stateOf,
 } from "../local-service-replacement.mjs";
+import { edgeStartArguments } from "../local-https-development.mjs";
 
 test("requires the fixed, unique loopback gRPC host-port assignments", () => {
   assert.doesNotThrow(() =>
@@ -53,10 +61,188 @@ test("requires every recreated caller to register exactly one healthy Nacos inst
   );
 });
 
-test("requires the explicit IAM service target", () => {
+test("requires one explicit supported service target", () => {
   assert.doesNotThrow(() => assertSupportedService("iam-service"));
-  assert.throws(() => assertSupportedService("gateway"), /只支持 iam-service/u);
-  assert.throws(() => assertSupportedService(undefined), /只支持 iam-service/u);
+  assert.doesNotThrow(() => assertSupportedService("gateway"));
+  assert.doesNotThrow(() => assertSupportedService("tenant-access-service"));
+  assert.doesNotThrow(() => assertSupportedService("entitlement-service"));
+  assert.doesNotThrow(() => assertSupportedService("audit-service"));
+  assert.throws(() => assertSupportedService("runtime"), /必须显式/u);
+  assert.throws(() => assertSupportedService(undefined), /必须显式/u);
+});
+
+test("declares a fixed module and host port for each additional service", () => {
+  assert.deepEqual(
+    Object.fromEntries(
+      ["gateway", "tenant-access-service", "entitlement-service", "audit-service"].map(
+        (service) => {
+          const definition = additionalServiceDefinition(service);
+          return [service, [definition.module, definition.httpPort, definition.grpcPort]];
+        },
+      ),
+    ),
+    {
+      "audit-service": ["services/audit-service", 8084, undefined],
+      "entitlement-service": ["services/entitlement-service", 8083, 9093],
+      gateway: ["gateway", 8080, undefined],
+      "tenant-access-service": ["services/tenant-access-service", 8082, 9092],
+    },
+  );
+});
+
+test("selects the Tenant Access executable JAR without its Maven test fixture", () => {
+  assert.equal(
+    additionalExecutableJar(
+      [
+        "tenant-access-service-0.1.0-SNAPSHOT-test-fixture.jar",
+        "tenant-access-service-0.1.0-SNAPSHOT.jar",
+        "tenant-access-service-0.1.0-SNAPSHOT.jar.original",
+      ],
+      "tenant-access-service",
+    ),
+    "tenant-access-service-0.1.0-SNAPSHOT.jar",
+  );
+});
+
+test("reuses the stopped target container before asking Compose to recreate it", () => {
+  assert.deepEqual(
+    reusableContainerStartArguments({ ID: "fbc8cc0b49bd" }),
+    ["start", "fbc8cc0b49bd"],
+  );
+  assert.equal(reusableContainerStartArguments({ ID: "not-a-container" }), undefined);
+  assert.equal(reusableContainerStartArguments(undefined), undefined);
+});
+
+test("maps a local Gateway only to existing loopback application ports", () => {
+  const definition = additionalServiceDefinition("gateway");
+  const environment = localAdditionalEnvironment(
+    definition,
+    {
+      IAM_JWT_ISSUER: "https://api.saasforge.test",
+      NACOS_GATEWAY_PASSWORD: "gateway-password",
+      NACOS_GATEWAY_USERNAME: "gateway-user",
+      SPRING_DATA_REDIS_PASSWORD: "redis-password",
+    },
+    { dockerHostAddress: "192.168.65.254", nacosPort: 8848, secretFiles: {} },
+  );
+  assert.equal(environment.SERVER_PORT, "8080");
+  assert.equal(environment.SPRING_CLOUD_NACOS_DISCOVERY_IP, "192.168.65.254");
+  assert.equal(environment.SPRING_DATA_REDIS_HOST, "127.0.0.1");
+  assert.equal(environment.SAASFORGE_LOCAL_REPLACEMENT_ENABLED, "true");
+  assert.equal(environment.SAASFORGE_LOCAL_REPLACEMENT_IAM_SERVICE_PORT, "8081");
+  assert.equal(
+    environment.SAASFORGE_LOCAL_REPLACEMENT_TENANT_ACCESS_SERVICE_PORT,
+    "8082",
+  );
+  assert.equal(
+    environment.SAASFORGE_LOCAL_REPLACEMENT_ENTITLEMENT_SERVICE_PORT,
+    "8083",
+  );
+});
+
+test("maps every local downstream contract to its fixed loopback port", () => {
+  const environment = {
+    AUDIT_DATABASE_PASSWORD: "audit-password",
+    AUDIT_DATABASE_USERNAME: "audit-user",
+    IAM_JWT_ISSUER: "https://api.saasforge.test",
+    NACOS_AUDIT_PASSWORD: "audit-nacos-password",
+    NACOS_AUDIT_USERNAME: "audit-nacos-user",
+    NACOS_ENTITLEMENT_PASSWORD: "entitlement-nacos-password",
+    NACOS_ENTITLEMENT_USERNAME: "entitlement-nacos-user",
+    NACOS_TENANT_ACCESS_PASSWORD: "tenant-nacos-password",
+    NACOS_TENANT_ACCESS_USERNAME: "tenant-nacos-user",
+    SPRING_DATA_REDIS_PASSWORD: "redis-password",
+    SPRING_DATASOURCE_PASSWORD: "database-password",
+    SPRING_DATASOURCE_USERNAME: "database-user",
+  };
+  const inputs = {
+    dockerHostAddress: "192.168.65.254",
+    nacosPort: 8848,
+    secretFiles: {
+      "/run/secrets/iam-service-client-id": "/secure/iam-client-id",
+      "/run/secrets/service-client-id": "/secure/service-client-id",
+      "/run/secrets/service-client-secret": "/secure/service-client-secret",
+    },
+  };
+
+  const tenant = localAdditionalEnvironment(
+    additionalServiceDefinition("tenant-access-service"),
+    environment,
+    inputs,
+  );
+  const entitlement = localAdditionalEnvironment(
+    additionalServiceDefinition("entitlement-service"),
+    environment,
+    inputs,
+  );
+  const audit = localAdditionalEnvironment(
+    additionalServiceDefinition("audit-service"),
+    environment,
+    inputs,
+  );
+
+  assert.equal(tenant.IAM_GRPC_ADDRESS, "static://127.0.0.1:9091");
+  assert.equal(tenant.ENTITLEMENT_GRPC_ADDRESS, "static://127.0.0.1:9093");
+  assert.equal(entitlement.IAM_GRPC_ADDRESS, "static://127.0.0.1:9091");
+  assert.equal(entitlement.TENANT_ACCESS_GRPC_ADDRESS, "static://127.0.0.1:9092");
+  assert.equal(audit.KAFKA_BOOTSTRAP_SERVERS, "127.0.0.1:29092");
+  assert.equal(audit.AUDIT_DATABASE_URL, "jdbc:postgresql://127.0.0.1:5432/audit_db");
+});
+
+test("keeps Gateway discovery to public route targets and grants each target self-observation", async () => {
+  const nacosInit = await readFile(
+    new URL("../../deploy/compose/nacos-init.sh", import.meta.url),
+    "utf8",
+  );
+  const start = nacosInit.indexOf("# gateway-discovery-permissions: begin");
+  const end = nacosInit.indexOf("# gateway-discovery-permissions: end");
+  assert.ok(start >= 0 && end > start);
+  const gatewayPermissions = nacosInit.slice(start, end);
+
+  assert.match(gatewayPermissions, /naming\/gateway:r/u);
+  assert.match(gatewayPermissions, /naming\/iam-service:r/u);
+  assert.match(gatewayPermissions, /naming\/tenant-access-service:r/u);
+  assert.match(gatewayPermissions, /naming\/entitlement-service:r/u);
+  assert.doesNotMatch(gatewayPermissions, /naming\/audit-service:r/u);
+  for (const service of ["gateway", "tenant-access-service", "entitlement-service", "audit-service"]) {
+    assert.match(nacosInit, new RegExp(`naming/${service}:r`, "u"));
+  }
+});
+
+test("uses a listening local port as Gateway readiness without exposing an Actuator route", async (t) => {
+  const server = createServer((socket) => socket.destroy());
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  t.after(() => server.close());
+  const address = server.address();
+  assert.equal(typeof address, "object");
+
+  assert.equal(
+    await additionalReadiness({ httpPort: address.port, service: "gateway" }),
+    true,
+  );
+});
+
+test("recreates only the stateless Edge before checking trusted HTTPS", async () => {
+  assert.deepEqual(edgeStartArguments("/workspace").slice(-5), [
+    "up",
+    "--detach",
+    "--no-deps",
+    "--force-recreate",
+    "local-https-edge",
+  ]);
+
+  const browserE2e = await readFile(
+    new URL("../verify-local-service-replacement-e2e.sh", import.meta.url),
+    "utf8",
+  );
+  const preflight = browserE2e.indexOf("\nassert_platform_https_edge\n");
+  const replacement = browserE2e.indexOf('"$lifecycle_tool" replace "$target"');
+  assert.match(browserE2e, /--cacert/u);
+  assert.ok(preflight >= 0);
+  assert.ok(replacement > preflight);
 });
 
 test("classifies container, local, unavailable, and duplicate IAM states", () => {

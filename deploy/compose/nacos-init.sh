@@ -134,10 +134,12 @@ for permission in \
     "$api/v3/auth/permission" >/dev/null || true
 done
 
-# Tenant Access 和 Entitlement 分别只读取自己的配置并注册自己的稳定服务名。
+# Tenant Access 和 Entitlement 分别只读取自己的配置、注册自己的稳定服务名，
+# 并且只为本机替换生命周期读取自己的健康实例。
 for permission in \
   "dev:SAAS_FORGE:config/tenant-access-service.yaml:r" \
-  "dev:DEFAULT_GROUP:naming/tenant-access-service:w"; do
+  "dev:DEFAULT_GROUP:naming/tenant-access-service:w" \
+  "dev:DEFAULT_GROUP:naming/tenant-access-service:r"; do
   resource="${permission%:*}"
   action="${permission##*:}"
   curl --silent --show-error --request POST \
@@ -150,7 +152,8 @@ done
 
 for permission in \
   "dev:SAAS_FORGE:config/entitlement-service.yaml:r" \
-  "dev:DEFAULT_GROUP:naming/entitlement-service:w"; do
+  "dev:DEFAULT_GROUP:naming/entitlement-service:w" \
+  "dev:DEFAULT_GROUP:naming/entitlement-service:r"; do
   resource="${permission%:*}"
   action="${permission##*:}"
   curl --silent --show-error --request POST \
@@ -161,10 +164,12 @@ for permission in \
     "$api/v3/auth/permission" >/dev/null || true
 done
 
-# Audit 只读取自己的配置并注册自身；它没有 Gateway 公开入口，因此 Gateway 不读取其注册信息。
+# Audit 只读取自己的配置、注册和本机替换生命周期所需的自身实例；
+# 它没有 Gateway 公开入口，因此 Gateway 不读取其注册信息。
 for permission in \
   "dev:SAAS_FORGE:config/audit-service.yaml:r" \
-  "dev:DEFAULT_GROUP:naming/audit-service:w"; do
+  "dev:DEFAULT_GROUP:naming/audit-service:w" \
+  "dev:DEFAULT_GROUP:naming/audit-service:r"; do
   resource="${permission%:*}"
   action="${permission##*:}"
   curl --silent --show-error --request POST \
@@ -175,10 +180,13 @@ for permission in \
     "$api/v3/auth/permission" >/dev/null || true
 done
 
-# Gateway 只读取自己的配置、注册自身并读取当前公开路由所属服务的健康实例；它不能修改这些服务的注册信息。
+# Gateway 只读取自己的配置、注册和本机替换生命周期所需的自身实例，
+# 并读取公开路由所属服务的健康实例；它不能修改这些服务的注册信息。
+# gateway-discovery-permissions: begin
 for permission in \
   "dev:SAAS_FORGE:config/gateway.yaml:r" \
   "dev:DEFAULT_GROUP:naming/gateway:w" \
+  "dev:DEFAULT_GROUP:naming/gateway:r" \
   "dev:DEFAULT_GROUP:naming/iam-service:r" \
   "dev:DEFAULT_GROUP:naming/tenant-access-service:r" \
   "dev:DEFAULT_GROUP:naming/entitlement-service:r"; do
@@ -191,6 +199,7 @@ for permission in \
     --data-urlencode "action=$action" \
     "$api/v3/auth/permission" >/dev/null || true
 done
+# gateway-discovery-permissions: end
 
 # 配置发布身份仅能写入当前环境的五份受控资源；它没有服务注册或发现权限。
 for application in gateway iam-service tenant-access-service entitlement-service audit-service; do

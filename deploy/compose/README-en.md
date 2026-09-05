@@ -82,47 +82,54 @@ bash scripts/local-https-development.sh doctor
 bash scripts/local-https-development.sh start
 ```
 
-The local CA, server certificate, and Vite diagnostics remain in a Git-ignored directory. `hosts` and `trust-ca` require explicit interactive consent before editing `/etc/hosts` or the System Keychain; daily `start` does not recreate certificates, reinstall trust, install frontend dependencies, or rewrite the lockfile. TLS Edge publishes only loopback port `443`, accepts only `platform.saasforge.test` and `api.saasforge.test`, forwards Platform traffic (including HMR WebSocket) to host Vite on `5173`, and forwards API traffic to the Compose Gateway. It does not synthesize or rewrite Origin, Cookie, Fetch Metadata, or Authorization.
+The local CA, server certificate, and Vite diagnostics remain in a Git-ignored directory. `hosts` and `trust-ca` require explicit interactive consent before editing `/etc/hosts` or the System Keychain; daily `start` does not recreate certificates, reinstall trust, install frontend dependencies, or rewrite the lockfile. To recover a stale Docker Desktop loopback-port forwarding state, `start` force-recreates only the stateless TLS Edge container; it does not recreate certificates, application services, volumes, or business data, but briefly disconnects local HTTPS pages. TLS Edge publishes only loopback port `443`, accepts only `platform.saasforge.test` and `api.saasforge.test`, forwards Platform traffic (including HMR WebSocket) to host Vite on `5173`, and forwards API traffic to the Compose Gateway. It does not synthesize or rewrite Origin, Cookie, Fetch Metadata, or Authorization.
 
 The entrypoint does not host Tenant Console and does not replace this section's three-Origin deployment requirements or the Fresh Compose browser acceptance below.
 
-### Local IAM replacement development
+### Local backend-service replacement development
 
-Issues #128/#129 provide an IAM-only local replacement lifecycle for a running macOS Docker Desktop development stack:
+Issues #128/#129 provide the IAM lifecycle; Issue #130 extends the same interface to Gateway, Tenant Access, Entitlement, and Audit. A target must always be explicit:
 
 ```bash
 cd ../..
-bash scripts/local-service-replacement.sh status iam-service
-bash scripts/local-service-replacement.sh replace iam-service
-# After changing or debugging local IAM
-bash scripts/local-service-replacement.sh restore iam-service
+bash scripts/local-service-replacement.sh status gateway
+bash scripts/local-service-replacement.sh replace gateway
+# After changing or debugging the local service
+bash scripts/local-service-replacement.sh restore gateway
 ```
 
-The target must be explicitly `iam-service`. The existing HTTP mappings remain unchanged: IAM, Tenant Access, and Entitlement use loopback `8081`, `8082`, and `8083`; their container-side gRPC `9090` listeners are additionally and uniquely published as loopback `9091`, `9092`, and `9093`. Before stopping the container, `replace` verifies that fixed mapping, the successful `iam-migrate` job, the match between the Signing Key and ACTIVE database metadata, readable Nacos configuration, healthy PostgreSQL, Redis, Kafka and Mailpit, and required Secret files, without outputting their contents.
+| Target | Fixed loopback HTTP | Fixed loopback gRPC |
+| --- | ---: | ---: |
+| `gateway` | `8080` | — |
+| `iam-service` | `8081` | `9091` |
+| `tenant-access-service` | `8082` | `9092` |
+| `entitlement-service` | `8083` | `9093` |
+| `audit-service` | `8084` | — |
 
-The tool stops only the `iam-service` container; it neither removes nor recreates volumes and does not stop the Gateway or infrastructure. Local IAM listens on HTTP `8081` and gRPC `9091`, then registers under its formal service name and `dev` namespace. Its container Tenant Access gRPC client uses loopback `9092`; during replacement, Tenant Access and Entitlement are recreated to call local IAM through Docker Desktop's documented `host.docker.internal:8081/9091` entry. The temporary Compose override is stored only under Git-ignored `.secrets/local-service-replacement/` and contains neither credentials nor a Docker Desktop virtual-network IP. A missing fixed mapping, occupied port, deregistration/readiness failure, or duplicate instance produces a diagnostic and refuses the cutover; duplicates fail closed.
+Before stopping a container, `replace` verifies the target's fixed ports, completed migration where applicable, Nacos `dev` configuration, constrained Secrets, infrastructure and dependencies, and exactly one healthy instance under the formal service name. It never prints credentials, cookies, or tokens. An occupied port, inconsistent configuration, duplicate Nacos instance, or readiness failure refuses the cutover. Every local JVM reuses the existing containerized infrastructure through loopback Nacos HTTP `8848`, Nacos 3 gRPC `9848`, PostgreSQL `5432`, Redis `6379`, and Kafka `29092`.
 
-The local JVM reaches the existing container through loopback Nacos HTTP `8848` and Nacos 3 gRPC `9848`; neither port is published to the LAN.
+For the four Issue #130 targets, only the selected application container is stopped: no volumes are removed, infrastructure is stopped, or other application containers are recreated. Local Tenant Access and Entitlement call their containerized downstream services through the existing loopback gRPC ports. The local Gateway uses a load-balancer mapping enabled only by `saasforge.local-replacement.enabled=true` to reach those ports without depending on Docker-internal IPs. Gateway replacement also changes the HTTPS Edge `api.saasforge.test` target in a Git-ignored restricted file from `gateway:8080` to `host.docker.internal:8080`, without restarting Edge; the file accepts only those fixed targets and port `8080`. Restore returns the Edge target to the container Gateway. IAM retains its existing dedicated caller-recreation behavior to route container callers to local IAM.
 
-`status` reports `CONTAINER`, `LOCAL`, `UNAVAILABLE` or `DUPLICATE`. To retain the IAM workload's least privilege, the tool reads healthy IAM instances only through the existing Gateway discovery identity; it does not grant IAM a new Nacos query permission. `restore` terminates the managed local JVM and starts the existing IAM container until Nacos has exactly one healthy container instance; it then removes the temporary override and recreates Tenant Access and Entitlement with their container-service routes. Repeated calls have no additional effect. The tool never runs Docker build.
-
-With the trusted local HTTPS entry point prepared, run the full browser acceptance against the development stack:
+If the current development stack was started before the Issue #130 Nacos ACL change, first apply each replacement target's self-only, read-only instance-discovery permission through the controlled initializer; Gateway still discovers only itself and formal public-route targets. Do not alter ACLs manually with an administrator identity:
 
 ```bash
-bash scripts/verify-iam-local-replacement-e2e.sh
+cd deploy/compose
+docker compose up --detach --no-deps --force-recreate nacos-init
 ```
 
-It temporarily switches IAM, issues a Refresh request from `https://platform.saasforge.test` through the HTTPS Edge and Gateway to validate the formal unauthenticated local-IAM response, then restores the container IAM. It is not a Fresh Compose or production workflow.
+`status` reports `CONTAINER`, `LOCAL`, `UNAVAILABLE`, or `DUPLICATE`. `restore` terminates the managed local JVM, starts the existing container, and waits until the formal service name is again the sole healthy instance in the `dev` namespace. Repeated calls have no additional effect. The workflow never runs Docker build.
 
-With read-only credential files for a Platform Admin with a regular password, the cross-service browser path can also be verified:
+With the trusted local HTTPS entry point and read-only credential files for a Platform Admin with a regular password prepared, run the complete container → local → container browser acceptance for an Issue #130 target:
 
 ```bash
 export SF_LOCAL_REPLACEMENT_PLATFORM_EMAIL_FILE=/absolute/path/to/platform-email
 export SF_LOCAL_REPLACEMENT_PLATFORM_PASSWORD_FILE=/absolute/path/to/platform-password
-bash scripts/verify-iam-local-cross-service-e2e.sh
+bash scripts/verify-local-service-replacement-e2e.sh tenant-access-service
 ```
 
-The script logs in from a controlled browser and creates the only supported `max_users` DRAFT Quota Definition through HTTPS Edge, Gateway, and containerized Entitlement, which performs formal service-identity and Platform Role gRPC calls to IAM. If that definition already exists, it verifies the formal duplicate-definition response instead. Data created on the first run is retained and must not be deleted without confirmation. The check verifies actual `/api/*` responses, browser console state, and restoration without image changes; it never prints credentials, cookies, or tokens.
+`SF_LOCAL_REPLACEMENT_PLATFORM_PASSWORD_FILE` must point to a restricted file containing the current regular password, not the initial-password file created by bootstrap; the initial password is invalidated after the first password change. If acceptance needs to retain the current regular password, use a separate Git-ignored file with restricted permissions, and never print its contents in a terminal, log, or chat.
+
+The check issues real `/api/*` operations from `https://platform.saasforge.test` while local replacement is active and again after restore, and checks browser console state, one Nacos instance, and unchanged application image identifiers. Gateway and Entitlement use the formal Quota Definition operation; Tenant Access uses formal Tenant creation; Audit uses the login-generated `SESSION_STARTED` Committed Fact and verifies that local Audit consumes and persists it. Created Tenants, the first `max_users` DRAFT Quota Definition, and audit facts are retained and must not be deleted without confirmation. This is not a Fresh Compose or production workflow.
 
 ### Isolated browser acceptance
 
@@ -332,7 +339,7 @@ Every host port binds only to `127.0.0.1`; none is exposed to the local network.
 | Redis | `REDIS_PASSWORD` | — |
 | Nacos | `NACOS_BOOTSTRAP_PASSWORD` | `NACOS_IAM_PASSWORD`, `NACOS_TENANT_ACCESS_PASSWORD`, `NACOS_ENTITLEMENT_PASSWORD`, `NACOS_AUDIT_PASSWORD`, `NACOS_GATEWAY_PASSWORD` |
 
-`NACOS_IAM_USERNAME`, `NACOS_TENANT_ACCESS_USERNAME`, `NACOS_ENTITLEMENT_USERNAME`, `NACOS_AUDIT_USERNAME`, and `NACOS_GATEWAY_USERNAME` must be non-default development identities. Fill `NACOS_AUTH_IDENTITY_KEY`, `NACOS_AUTH_IDENTITY_VALUE`, and `NACOS_AUTH_TOKEN` with local-only random values; `NACOS_AUTH_TOKEN` must be a Base64 string generated from at least 32 raw characters. `nacos-init` uses the bootstrap administrator identity only to create the namespace, users, and permissions, then uses `NACOS_PUBLISH_USERNAME` to publish the manifest. Every domain-service identity may only read its own configuration and register its own stable service name, while the Gateway identity may only read its own configuration, register `gateway`, and read healthy `iam-service`, `tenant-access-service`, and `entitlement-service` instances. See [`../nacos/README.md`](../nacos/README.md) for the full manifest, CI publishing, and emergency reconciliation process.
+`NACOS_IAM_USERNAME`, `NACOS_TENANT_ACCESS_USERNAME`, `NACOS_ENTITLEMENT_USERNAME`, `NACOS_AUDIT_USERNAME`, and `NACOS_GATEWAY_USERNAME` must be non-default development identities. Fill `NACOS_AUTH_IDENTITY_KEY`, `NACOS_AUTH_IDENTITY_VALUE`, and `NACOS_AUTH_TOKEN` with local-only random values; `NACOS_AUTH_TOKEN` must be a Base64 string generated from at least 32 raw characters. `nacos-init` uses the bootstrap administrator identity only to create the namespace, users, and permissions, then uses `NACOS_PUBLISH_USERNAME` to publish the manifest. Issue #130 target identities may additionally read only their own healthy instances for local-replacement verification; Gateway may read only itself and healthy `iam-service`, `tenant-access-service`, and `entitlement-service` instances. See [`../nacos/README.md`](../nacos/README.md) for the full manifest, CI publishing, and emergency reconciliation process.
 
 On initial PostgreSQL volume creation, `bootstrap.sh` creates `iam_db`, `tenant_access_db`, `entitlement_db`, and `audit_db`, with separate `*_migrator` and `*_app` accounts for each service. Migration jobs use migrator accounts; runtime services use app accounts.
 
