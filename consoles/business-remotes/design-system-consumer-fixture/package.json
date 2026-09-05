@@ -14,6 +14,8 @@
   },
   "dependencies": {
     "@saas-forge/design-system": "workspace:*",
+    "@saas-forge/i18n": "workspace:*",
+    "@saas-forge/react-shell": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:"
   },

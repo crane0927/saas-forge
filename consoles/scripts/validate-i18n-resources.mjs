@@ -6,6 +6,7 @@ import { parse, TYPE } from '@formatjs/icu-messageformat-parser';
 
 const consoleRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const resourceDirectories = [
+  'business-remotes/design-system-consumer-fixture/src/locales',
   'platform-console/src/messages',
   'shared/design-system/src/messages',
   'shared/design-system/src/messages/feedback',

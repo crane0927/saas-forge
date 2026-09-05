@@ -9,10 +9,24 @@ afterEach(() => {
 });
 
 describe('Design System Remote 消费夹具', () => {
-  it('由宿主安装唯一 Provider 并使用共享表单和反馈', () => {
-    const { container } = render(
-      <DesignSystemProvider forcedColorScheme="dark">
-        <DesignSystemConsumerRemote />
+  it('首次挂载使用宿主传入的 Locale', () => {
+    render(
+      <DesignSystemProvider locale="en-US">
+        <DesignSystemConsumerRemote locale="en-US" />
+      </DesignSystemProvider>,
+    );
+
+    expect(
+      screen.getByRole('heading', { name: 'Design System Remote consumer fixture' }),
+    ).not.toBeNull();
+    expect(screen.getByRole('form', { name: 'Remote consumption verification' })).not.toBeNull();
+    expect(screen.getByRole('complementary', { name: 'Remote layout notes' })).not.toBeNull();
+  });
+
+  it('由宿主传入 Locale、安装唯一 Provider 并在语言更新时保留操作状态', () => {
+    const { container, rerender } = render(
+      <DesignSystemProvider forcedColorScheme="dark" locale="zh-CN">
+        <DesignSystemConsumerRemote locale="zh-CN" />
       </DesignSystemProvider>,
     );
 
@@ -32,5 +46,22 @@ describe('Design System Remote 消费夹具', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: '验证共享反馈' }));
     expect(screen.getByText('合同 Remote 已继承宿主主题。')).not.toBeNull();
+
+    const input = screen.getByRole('textbox', { name: '显示名称' });
+    input.focus();
+    const main = screen.getByRole('main');
+    rerender(
+      <DesignSystemProvider forcedColorScheme="dark" locale="en-US">
+        <DesignSystemConsumerRemote locale="en-US" />
+      </DesignSystemProvider>,
+    );
+
+    expect(screen.getByRole('main')).toBe(main);
+    const translatedInput = screen.getByRole<HTMLInputElement>('textbox', {
+      name: 'Display name',
+    });
+    expect(translatedInput.value).toBe('合同 Remote');
+    expect(screen.getByText('合同 Remote inherited the host theme.')).not.toBeNull();
+    expect(document.activeElement).toBe(translatedInput);
   });
 });

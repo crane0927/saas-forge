@@ -174,6 +174,16 @@ export async function findBoundaryViolations(root = consoleRoot) {
             `${path.relative(root, file)}: Remote 必须继承 Shell 主题，不得安装 DesignSystemProvider。`,
           );
         }
+        if (source.includes('@saas-forge/react-shell')) {
+          violations.push(
+            `${path.relative(root, file)}: Remote 必须通过只读 locale 属性消费语言，不得导入宿主语言状态。`,
+          );
+        }
+        if (/\b(?:localStorage|sessionStorage)\b/.test(source)) {
+          violations.push(
+            `${path.relative(root, file)}: Remote 不得读取或写入浏览器语言偏好存储。`,
+          );
+        }
       }
     }
   }

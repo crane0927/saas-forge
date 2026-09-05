@@ -59,6 +59,7 @@ test('rejects an incomplete enabled-Locale resource fixture', async (context) =>
     JSON.stringify({ greeting: 'Hello.' }),
   );
   for (const relativeDirectory of [
+    'business-remotes/design-system-consumer-fixture/src/locales',
     'platform-console/src/messages',
     'shared/react-shell/src/messages',
     'tenant-console-shell/src/messages',

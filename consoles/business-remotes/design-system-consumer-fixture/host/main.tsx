@@ -1,4 +1,9 @@
 import { DesignSystemProvider } from '@saas-forge/design-system';
+import {
+  ConsoleLocaleProvider,
+  ConsoleLocaleSelector,
+  useConsoleLocale,
+} from '@saas-forge/react-shell';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
@@ -11,8 +16,18 @@ if (rootElement === null) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <DesignSystemProvider>
-      <DesignSystemConsumerRemote />
-    </DesignSystemProvider>
+    <ConsoleLocaleProvider>
+      <FixtureHost />
+    </ConsoleLocaleProvider>
   </StrictMode>,
 );
+
+function FixtureHost() {
+  const { locale } = useConsoleLocale();
+  return (
+    <DesignSystemProvider locale={locale}>
+      <ConsoleLocaleSelector />
+      <DesignSystemConsumerRemote locale={locale} />
+    </DesignSystemProvider>
+  );
+}

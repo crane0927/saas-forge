@@ -77,6 +77,16 @@ function PlatformConsoleLocaleHost({
   );
 }
 
+function RemoteLocaleHost() {
+  const { locale } = useConsoleLocale();
+  return (
+    <DesignSystemProvider locale={locale}>
+      <ConsoleLocaleSelector />
+      <DesignSystemConsumerRemote locale={locale} />
+    </DesignSystemProvider>
+  );
+}
+
 function renderedColumns(itemTestId: string) {
   const item = document.querySelector(`[data-testid="${itemTestId}"]`);
   const grid = item?.parentElement;
@@ -392,28 +402,72 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
     if (existingIcon === null) icon.remove();
   });
 
-  it('Remote 从 Shell 继承主题、完成共享表单反馈且恢复键盘焦点', async () => {
+  it('Remote 随 Shell 切换语言并保留输入、反馈、焦点和组件身份', async () => {
+    const fetchSpy = vi.spyOn(window, 'fetch');
+    const storageWrite = vi.spyOn(Storage.prototype, 'setItem');
+    const consoleError = vi.spyOn(console, 'error');
+    const consoleWarning = vi.spyOn(console, 'warn');
     render(
-      <DesignSystemProvider forcedColorScheme="dark">
-        <DesignSystemConsumerRemote />
-      </DesignSystemProvider>,
+      <ConsoleLocaleProvider initialLocale="zh-CN">
+        <RemoteLocaleHost />
+      </ConsoleLocaleProvider>,
     );
 
-    const root = document.querySelector<HTMLElement>('.sf-design-system-root');
-    expect(root?.dataset.colorScheme).toBe('dark');
-    expect(document.querySelectorAll('.sf-design-system-root')).toHaveLength(1);
-    await expect
-      .element(page.getByRole('heading', { name: 'Design System Remote 消费夹具' }))
-      .toBeInTheDocument();
-    expect(page.getByRole('main').element().textContent.trim()).not.toBe('');
+    try {
+      expect(document.querySelectorAll('.sf-design-system-root')).toHaveLength(1);
+      await expect
+        .element(page.getByRole('heading', { name: 'Design System Remote 消费夹具' }))
+        .toBeInTheDocument();
+      const main = page.getByRole('main').element();
+      expect(main.textContent.trim()).not.toBe('');
 
-    const name = page.getByRole('textbox', { name: '显示名称' });
-    await name.fill('浏览器 Remote');
-    await tabToNextControl();
-    const submit = page.getByRole('button', { name: '验证共享反馈' });
-    await expect.element(submit).toHaveFocus();
-    await userEvent.keyboard('{Enter}');
-    await expect.element(page.getByText('浏览器 Remote 已继承宿主主题。')).toBeInTheDocument();
+      const name = page.getByRole('textbox', { name: '显示名称' });
+      await name.fill('浏览器 Remote');
+      await tabToNextControl();
+      const submit = page.getByRole('button', { name: '验证共享反馈' });
+      await expect.element(submit).toHaveFocus();
+      await userEvent.keyboard('{Enter}');
+      await expect.element(page.getByText('浏览器 Remote 已继承宿主主题。')).toBeInTheDocument();
+
+      const selector = page.getByRole('combobox', { name: 'Language / 语言' });
+      selector.element().focus();
+      await userEvent.keyboard('{Enter}{ArrowDown}{Enter}');
+
+      await expect
+        .element(page.getByRole('heading', { name: 'Design System Remote consumer fixture' }))
+        .toBeInTheDocument();
+      await expect
+        .element(
+          page.getByText(
+            'The host provides the current theme; the Remote only consumes public components.',
+          ),
+        )
+        .toBeInTheDocument();
+      await expect
+        .element(page.getByRole('form', { name: 'Remote consumption verification' }))
+        .toBeInTheDocument();
+      await expect
+        .element(page.getByRole('complementary', { name: 'Remote layout notes' }))
+        .toBeInTheDocument();
+      await expect
+        .element(page.getByRole('textbox', { name: 'Display name' }))
+        .toHaveValue('浏览器 Remote');
+      await expect
+        .element(page.getByText('浏览器 Remote inherited the host theme.'))
+        .toBeInTheDocument();
+      await expect.element(selector).toHaveFocus();
+      expect(page.getByRole('main').element()).toBe(main);
+      expect(window.localStorage.getItem('sf:ui:locale')).toBe('en-US');
+      expect(storageWrite).toHaveBeenCalledTimes(1);
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(consoleError).not.toHaveBeenCalled();
+      expect(consoleWarning).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+      storageWrite.mockRestore();
+      consoleError.mockRestore();
+      consoleWarning.mockRestore();
+    }
   });
 
   it('Remote 按自身可用空间换列和堆叠，并在固定宽度保持语义、顺序与焦点', async () => {
@@ -431,8 +485,8 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
 
     try {
       render(
-        <DesignSystemProvider>
-          <DesignSystemConsumerRemote />
+        <DesignSystemProvider locale="zh-CN">
+          <DesignSystemConsumerRemote locale="zh-CN" />
         </DesignSystemProvider>,
       );
 
@@ -516,8 +570,8 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
     '固定 Remote 的桌面与窄屏消费证据',
     async () => {
       render(
-        <DesignSystemProvider>
-          <DesignSystemConsumerRemote />
+        <DesignSystemProvider locale="zh-CN">
+          <DesignSystemConsumerRemote locale="zh-CN" />
         </DesignSystemProvider>,
       );
       const remote = page.getByRole('main');

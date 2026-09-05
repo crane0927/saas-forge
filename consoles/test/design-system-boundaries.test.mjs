@@ -91,6 +91,30 @@ test('automatically checks a newly added official Remote', async (context) => {
   );
 });
 
+test('rejects host locale state and browser preference storage from a Remote', async (context) => {
+  const workspaceRoot = await createBoundaryWorkspace();
+  context.after(() => rm(workspaceRoot, { recursive: true, force: true }));
+  await writePackage(
+    workspaceRoot,
+    'business-remotes/locale-owning-remote',
+    {
+      name: '@saas-forge/locale-owning-remote',
+      dependencies: { '@saas-forge/design-system': 'workspace:*' },
+    },
+    {
+      'src/remote.tsx': `
+        import { useConsoleLocale } from '@saas-forge/react-shell';
+        localStorage.setItem('sf:ui:locale', useConsoleLocale().locale);
+      `,
+    },
+  );
+
+  const violations = await findBoundaryViolations(workspaceRoot);
+
+  assert.ok(violations.some((violation) => violation.includes('不得导入宿主语言状态')));
+  assert.ok(violations.some((violation) => violation.includes('不得读取或写入浏览器语言偏好')));
+});
+
 test('automatically checks a newly added Console', async (context) => {
   const workspaceRoot = await createBoundaryWorkspace();
   context.after(() => rm(workspaceRoot, { recursive: true, force: true }));
