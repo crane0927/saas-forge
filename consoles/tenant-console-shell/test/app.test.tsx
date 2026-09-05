@@ -1,5 +1,6 @@
 import { createRuntimeConfigBootstrap, type RuntimeConfigResult } from '@saas-forge/app-runtime';
 import { DesignSystemProvider } from '@saas-forge/design-system';
+import { ConsoleLocaleProvider } from '@saas-forge/react-shell';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -8,7 +9,23 @@ import { TenantConsoleShellApp, type TenantConsoleRootProps } from '../src/app';
 afterEach(cleanup);
 
 function TenantConsoleTestRoot({ children, tenantBrand }: TenantConsoleRootProps) {
-  return <DesignSystemProvider tenantBrand={tenantBrand}>{children}</DesignSystemProvider>;
+  return (
+    <ConsoleLocaleProvider initialLocale="zh-CN">
+      <DesignSystemProvider locale="zh-CN" tenantBrand={tenantBrand}>
+        {children}
+      </DesignSystemProvider>
+    </ConsoleLocaleProvider>
+  );
+}
+
+function EnglishTenantConsoleTestRoot({ children, tenantBrand }: TenantConsoleRootProps) {
+  return (
+    <ConsoleLocaleProvider initialLocale="en-US">
+      <DesignSystemProvider locale="en-US" tenantBrand={tenantBrand}>
+        {children}
+      </DesignSystemProvider>
+    </ConsoleLocaleProvider>
+  );
 }
 
 describe('TenantConsoleShellApp', () => {
@@ -389,7 +406,7 @@ describe('TenantConsoleShellApp', () => {
     expect(loader).toHaveBeenCalledOnce();
   });
 
-  it('shows a stable configuration failure and retries only after user action', async () => {
+  it('shows a stable bilingual configuration failure and retries only after user action', async () => {
     const loader = vi
       .fn<() => Promise<RuntimeConfigResult>>()
       .mockResolvedValueOnce({ ok: false, error: { code: 'CONFIG_UNAVAILABLE' } })
@@ -397,19 +414,22 @@ describe('TenantConsoleShellApp', () => {
 
     render(
       <TenantConsoleShellApp
-        root={TenantConsoleTestRoot}
+        root={EnglishTenantConsoleTestRoot}
         bootstrap={createRuntimeConfigBootstrap(loader)}
         authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
         realm={{}}
       />,
     );
 
-    expect(await screen.findByText('CONFIG_UNAVAILABLE')).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { name: 'Tenant Console configuration is unavailable' }),
+    ).toBeTruthy();
+    expect(screen.getByText('CONFIG_UNAVAILABLE')).toBeTruthy();
     expect(loader).toHaveBeenCalledOnce();
 
-    fireEvent.click(screen.getByRole('button', { name: '重试' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
 
-    expect(await screen.findByRole('heading', { name: '登录 Tenant Console' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Sign in to Tenant Console' })).toBeTruthy();
     expect(loader).toHaveBeenCalledTimes(2);
   });
 });

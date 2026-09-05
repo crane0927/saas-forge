@@ -1,12 +1,22 @@
 import { createAuthenticationRuntimeAfterConfig } from '@saas-forge/app-runtime';
 import { DesignSystemProvider } from '@saas-forge/design-system';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render as renderReact, screen, waitFor } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, useLocation } from 'react-router';
 
-import { AuthenticationRootErrorBoundary, AuthenticationShell } from '../src';
+import {
+  AuthenticationRootErrorBoundary,
+  AuthenticationShell,
+  ConsoleLocaleProvider,
+  useConsoleLocale,
+} from '../src';
 
 afterEach(cleanup);
+
+function render(ui: ReactNode) {
+  return renderReact(<ConsoleLocaleProvider initialLocale="zh-CN">{ui}</ConsoleLocaleProvider>);
+}
 
 describe('AuthenticationShell', () => {
   it('shows server-ordered Tenant Memberships and opens protected routes only after selection', async () => {
@@ -123,6 +133,60 @@ describe('AuthenticationShell', () => {
     });
     expect(screen.getByLabelText(/^邮箱/)).toBeTruthy();
     expect(screen.getByLabelText(/^密码/)).toBeTruthy();
+  });
+
+  it('switches shared authentication text without resetting inputs, focus, or an in-flight login', async () => {
+    const fetch = vi
+      .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+      .mockImplementationOnce(() => new Promise<Response>(() => undefined));
+    const runtimeResult = createAuthenticationRuntimeAfterConfig(
+      {
+        ok: true,
+        config: { schemaVersion: 1, apiBaseUrl: 'https://api.example.test' },
+      },
+      { realm: {}, intent: 'PLATFORM', fetch },
+    );
+    if (!runtimeResult.ok) {
+      throw new Error('test runtime creation failed');
+    }
+
+    render(
+      <DesignSystemProvider>
+        <MemoryRouter>
+          <AuthenticationShell
+            applicationName="Platform Console"
+            runtime={runtimeResult.runtime}
+            defaultPath="/"
+            routes={[]}
+          />
+          <LocaleSwitcher />
+        </MemoryRouter>
+      </DesignSystemProvider>,
+    );
+
+    const email = await screen.findByLabelText(/^邮箱/);
+    const password = screen.getByLabelText(/^密码/);
+    fireEvent.change(email, { target: { value: 'admin@example.test' } });
+    fireEvent.change(password, { target: { value: 'pending-secret' } });
+    email.focus();
+    fireEvent.click(screen.getByRole('button', { name: '切换为英文' }));
+
+    expect(screen.getByRole('heading', { name: 'Sign in to Platform Console' })).toBeTruthy();
+    expect(screen.getByLabelText<HTMLInputElement>(/^Email/).value).toBe('admin@example.test');
+    expect(screen.getByLabelText<HTMLInputElement>(/^Password/).value).toBe('pending-secret');
+    expect(document.activeElement).toBe(screen.getByLabelText(/^Email/));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+    const signal = fetch.mock.calls[1]?.[1]?.signal;
+    fireEvent.click(screen.getByRole('button', { name: '切换为中文' }));
+
+    expect(screen.getByRole('heading', { name: '登录 Platform Console' })).toBeTruthy();
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(signal?.aborted).toBe(false);
   });
 
   it('logs in with the fixed Platform intent and clears the password form', async () => {
@@ -585,6 +649,7 @@ describe('AuthenticationShell', () => {
               },
             ]}
           />
+          <LocaleSwitcher />
         </MemoryRouter>
       </DesignSystemProvider>,
     );
@@ -593,12 +658,20 @@ describe('AuthenticationShell', () => {
       await screen.findByRole('navigation', { name: 'Platform Console 全局导航' }),
     ).toBeTruthy();
     expect(screen.getByRole('link', { name: '首页' }).getAttribute('aria-current')).toBe('page');
+    fireEvent.click(screen.getByRole('button', { name: '切换为英文' }));
+    expect(
+      screen.getByRole('navigation', { name: 'Platform Console global navigation' }),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole('link', { name: 'OAuth Client' }));
     expect(await screen.findByRole('heading', { name: 'OAuth Client 管理' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '退出登录' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
 
-    expect(await screen.findByRole('heading', { name: '登录 Platform Console' })).toBeTruthy();
-    expect(screen.queryByRole('navigation', { name: 'Platform Console 全局导航' })).toBeNull();
+    expect(
+      await screen.findByRole('heading', { name: 'Sign in to Platform Console' }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('navigation', { name: 'Platform Console global navigation' }),
+    ).toBeNull();
     expect(jsonRequestBody(fetch.mock.calls[1])).toEqual({
       sessionSlot: 'PLATFORM',
     });
@@ -733,11 +806,49 @@ describe('AuthenticationRootErrorBoundary', () => {
     expect(reload).toHaveBeenCalledOnce();
     consoleError.mockRestore();
   });
+
+  it('uses the last known Locale when a root failure escapes the Provider', () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    render(
+      <AuthenticationRootErrorBoundary applicationName="Tenant Console" locale="en-US">
+        <BrokenRoot />
+      </AuthenticationRootErrorBoundary>,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Tenant Console cannot continue' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Reload' })).toBeTruthy();
+    consoleError.mockRestore();
+  });
 });
 
 function LocationProbe() {
   const location = useLocation();
   return <p data-testid="current-path">{location.pathname + location.search + location.hash}</p>;
+}
+
+function LocaleSwitcher() {
+  const { setLocale } = useConsoleLocale();
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          setLocale('en-US');
+        }}
+      >
+        切换为英文
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          setLocale('zh-CN');
+        }}
+      >
+        切换为中文
+      </button>
+    </>
+  );
 }
 
 function BrokenRoute(): never {

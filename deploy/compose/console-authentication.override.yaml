@@ -113,15 +113,29 @@ services:
           Promise.all([listening, ...[
             'http://platform-console:8080/',
             'http://tenant-console:8080/',
+            'http://iam-service:8080/actuator/health/readiness',
+            'http://tenant-access-service:8080/actuator/health/readiness',
+            'http://entitlement-service:8080/actuator/health/readiness',
+            'http://audit-service:8080/actuator/health/readiness',
+            // Gateway 未暴露 Actuator HTTP 端点；JWKS 200 同时证明 Gateway、IAM 服务发现和实际代理路径就绪。
             'http://gateway:8080/.well-known/jwks.json'
           ].map(async url => {
-            const response = await fetch(url, {headers:{accept: url.includes('/.well-known/') ? 'application/json' : 'text/html'}});
-            if (response.status !== 200) throw new Error('not ready');
+            const response = await fetch(url, {headers:{accept: url.includes('/.well-known/') || url.includes('/actuator/') ? 'application/json' : 'text/html'}});
+            if (response.status !== 200) {
+              const endpoint = new URL(url);
+              throw new Error('health ' + endpoint.hostname + endpoint.pathname + ': HTTP ' + response.status);
+            }
             await response.arrayBuffer();
-          })]).then(() => process.exit(0), () => process.exit(1));
+          })]).then(
+            () => process.exit(0),
+            error => {
+              console.error(error.message);
+              process.exit(1);
+            },
+          );
       interval: 3s
       timeout: 5s
-      retries: 40
+      retries: 80
     ports:
       - "127.0.0.1:443:8443"
     depends_on:

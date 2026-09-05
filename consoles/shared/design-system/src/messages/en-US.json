@@ -1,0 +1,11 @@
+{
+  "applicationLoadingAriaLabel": "Loading deployment configuration",
+  "applicationLoadingDescription": "Loading deployment configuration.",
+  "applicationLoadingTitle": "Starting {applicationName}",
+  "configurationFailureDescription": "The deployment configuration could not be validated. Confirm that it is ready, then try again.",
+  "configurationFailureTitle": "{applicationName} configuration is unavailable",
+  "fatalErrorDescription": "Reload the application. If the problem persists, contact platform operations.",
+  "fatalErrorTitle": "{applicationName} cannot continue",
+  "reload": "Reload",
+  "retry": "Retry"
+}

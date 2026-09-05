@@ -1,6 +1,7 @@
 import { ConfigProvider, theme as antTheme, type ThemeConfig } from 'antd';
 import enUS from 'antd/locale/en_US';
 import zhCN from 'antd/locale/zh_CN';
+import { createContext, useContext } from 'react';
 import {
   useEffect,
   useMemo,
@@ -36,6 +37,11 @@ const sharedRootStyle = {
 } as CSSProperties;
 
 const colorSchemeQuery = '(prefers-color-scheme: dark)';
+const DesignSystemLocaleContext = createContext<DesignSystemLocale>('zh-CN');
+
+export function useDesignSystemLocale(): DesignSystemLocale {
+  return useContext(DesignSystemLocaleContext);
+}
 
 function subscribeToSystemColorScheme(listener: () => void) {
   if (typeof window.matchMedia !== 'function') {
@@ -133,20 +139,22 @@ export function DesignSystemProvider({
   } as CSSProperties;
 
   return (
-    <ConfigProvider
-      button={{ autoInsertSpace: false }}
-      locale={locale === 'zh-CN' ? zhCN : enUS}
-      theme={theme}
-    >
-      <div
-        className="sf-design-system-root"
-        style={rootStyle}
-        lang={locale}
-        data-color-scheme={colorScheme}
-        data-brand={acceptedBrand === undefined ? 'platform' : 'tenant'}
+    <DesignSystemLocaleContext.Provider value={locale}>
+      <ConfigProvider
+        button={{ autoInsertSpace: false }}
+        locale={locale === 'zh-CN' ? zhCN : enUS}
+        theme={theme}
       >
-        {children}
-      </div>
-    </ConfigProvider>
+        <div
+          className="sf-design-system-root"
+          style={rootStyle}
+          lang={locale}
+          data-color-scheme={colorScheme}
+          data-brand={acceptedBrand === undefined ? 'platform' : 'tenant'}
+        >
+          {children}
+        </div>
+      </ConfigProvider>
+    </DesignSystemLocaleContext.Provider>
   );
 }

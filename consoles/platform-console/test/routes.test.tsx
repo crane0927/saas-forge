@@ -2,7 +2,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MemoryRouter } from 'react-router';
 
-import { platformAuthenticationRoutes } from '../src/routes';
+import { createPlatformAuthenticationRoutes, platformAuthenticationRoutes } from '../src/routes';
 
 afterEach(cleanup);
 
@@ -26,5 +26,26 @@ describe('Platform route tree', () => {
       expect(document.activeElement).toBe(heading);
     });
     expect(screen.getByRole('status').textContent).toBe('Platform 总览');
+  });
+
+  it('uses the active Locale for Platform navigation, routes, and accessibility announcements', async () => {
+    const routes = createPlatformAuthenticationRoutes('en-US');
+    expect(routes.map(({ path, label }) => ({ path, label }))).toEqual([
+      { path: '/', label: 'Home' },
+      { path: '/oauth-clients', label: 'OAuth Client' },
+    ]);
+
+    render(<MemoryRouter initialEntries={['/']}>{routes[0]?.element}</MemoryRouter>);
+
+    const heading = screen.getByRole('heading', { name: 'Platform overview' });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(heading);
+    });
+    expect(screen.getByRole('status').textContent).toBe('Platform overview');
+    expect(
+      screen.getByText(
+        'The current session was restored or signed in through the Platform authentication Runtime.',
+      ),
+    ).toBeTruthy();
   });
 });

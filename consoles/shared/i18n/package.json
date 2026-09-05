@@ -1,5 +1,5 @@
 {
-  "name": "@saas-forge/react-shell",
+  "name": "@saas-forge/i18n",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -18,19 +18,9 @@
     "verify": "pnpm run typecheck && pnpm run test && pnpm run lint && pnpm run format:check"
   },
   "dependencies": {
-    "@saas-forge/app-runtime": "workspace:*",
-    "@saas-forge/design-system": "workspace:*",
-    "@saas-forge/i18n": "workspace:*"
-  },
-  "peerDependencies": {
-    "react": "catalog:",
-    "react-router": "catalog:"
+    "intl-messageformat": "catalog:"
   },
   "devDependencies": {
-    "@testing-library/react": "catalog:",
-    "@types/react": "catalog:",
-    "@vitejs/plugin-react": "catalog:",
-    "jsdom": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

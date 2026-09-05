@@ -1,0 +1,7 @@
+{
+  "navigationHome": "Home",
+  "oauthClientsDescription": "This entry registers only Platform local routes; it does not load a dynamic Remote.",
+  "oauthClientsTitle": "OAuth Client management",
+  "platformOverviewDescription": "The current session was restored or signed in through the Platform authentication Runtime.",
+  "platformOverviewTitle": "Platform overview"
+}

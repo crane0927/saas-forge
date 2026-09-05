@@ -7,6 +7,7 @@
     "pnpm": "11.22.0"
   },
   "scripts": {
+    "validate:i18n": "node scripts/validate-i18n-resources.mjs",
     "generate:api": "../mvnw -f ../pom.xml --batch-mode --no-transfer-progress -pl contracts/openapi -am generate-sources",
     "dev:platform": "pnpm run generate:api && pnpm --filter @saas-forge/platform-console run dev",
     "dev:tenant": "pnpm run generate:api && pnpm --filter @saas-forge/tenant-console-shell run dev",
@@ -24,13 +25,14 @@
     "test": "pnpm run test:boundaries && pnpm --recursive --if-present run test",
     "lint": "eslint .",
     "format:check": "prettier --check .",
-    "build:workspace": "pnpm --recursive --if-present run build && node scripts/verify-design-system-artifacts.mjs",
+    "build:workspace": "pnpm run validate:i18n && pnpm --recursive --if-present run build && node scripts/verify-design-system-artifacts.mjs",
     "build": "pnpm run generate:api && pnpm run build:workspace",
     "verify:workspace": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run test && pnpm run test:browser:chromium && pnpm run build:workspace",
     "verify": "pnpm run generate:api && pnpm run verify:workspace"
   },
   "devDependencies": {
     "@eslint/js": "catalog:",
+    "@formatjs/icu-messageformat-parser": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",

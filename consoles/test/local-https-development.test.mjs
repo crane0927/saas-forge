@@ -102,10 +102,10 @@ test('accepts only the fixed local Gateway override target', () => {
     parseApiTarget(JSON.stringify({ hostname: 'host.docker.internal', port: 8080 })),
     { hostname: 'host.docker.internal', port: 8080 },
   );
-  assert.deepEqual(
-    parseApiTarget(JSON.stringify({ hostname: 'gateway', port: 8080 })),
-    { hostname: 'gateway', port: 8080 },
-  );
+  assert.deepEqual(parseApiTarget(JSON.stringify({ hostname: 'gateway', port: 8080 })), {
+    hostname: 'gateway',
+    port: 8080,
+  });
   assert.equal(
     parseApiTarget(JSON.stringify({ hostname: 'untrusted.example', port: 8080 })),
     undefined,

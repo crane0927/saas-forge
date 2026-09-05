@@ -195,8 +195,9 @@ test('native browser tabs share refresh, hide stale Tenant UI, and retry snapsho
     assert.ok(
       persisted.local.every(
         ([key, value]) =>
-          key.startsWith('sf:session:https://api.example.test:') &&
-          (/^\d+$/.test(value) || value === 'true' || value === 'false'),
+          (key === 'sf:ui:locale' && (value === 'zh-CN' || value === 'en-US')) ||
+          (key.startsWith('sf:session:https://api.example.test:') &&
+            (/^\d+$/.test(value) || value === 'true' || value === 'false')),
       ),
     );
     const messages = await page.evaluate(() => window.sessionMessages);

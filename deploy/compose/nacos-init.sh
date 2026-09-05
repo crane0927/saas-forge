@@ -258,3 +258,41 @@ curl --fail --silent --show-error --request POST \
   --data-urlencode 'type=yaml' \
   --data-urlencode 'content@/config/gateway.yaml' \
   "$api/v3/admin/cs/config" | grep -q '"code":0'
+
+# 发布成功不代表各工作负载的 ACL 已可见；空配置会使服务在缺失安全属性时启动失败。
+workload_config_is_readable() {
+  username="$1"
+  password="$2"
+  application="$3"
+  workload_token="$(login "$username" "$password")" || return 1
+  workload_config="$(curl --silent --show-error --get \
+    --header "Authorization: Bearer $workload_token" \
+    --data-urlencode "dataId=$application.yaml" \
+    --data-urlencode 'groupName=SAAS_FORGE' \
+    --data-urlencode "namespaceId=$NACOS_NAMESPACE" \
+    "$api/v3/client/cs/config")" || return 1
+  printf '%s' "$workload_config" | grep -Eq '"code"[[:space:]]*:[[:space:]]*0' \
+    && printf '%s' "$workload_config" | grep -Eq '"content"[[:space:]]*:[[:space:]]*"[^\"]'
+}
+
+wait_for_workload_config() {
+  application="$1"
+  username="$2"
+  password="$3"
+  attempt=1
+  while [ "$attempt" -le 30 ]; do
+    if workload_config_is_readable "$username" "$password" "$application"; then
+      return 0
+    fi
+    sleep 1
+    attempt=$((attempt + 1))
+  done
+  echo "$application 工作负载未能在 30 秒内读取非空 Nacos 配置" >&2
+  exit 1
+}
+
+wait_for_workload_config iam-service "$NACOS_IAM_USERNAME" "$NACOS_IAM_PASSWORD"
+wait_for_workload_config tenant-access-service "$NACOS_TENANT_ACCESS_USERNAME" "$NACOS_TENANT_ACCESS_PASSWORD"
+wait_for_workload_config entitlement-service "$NACOS_ENTITLEMENT_USERNAME" "$NACOS_ENTITLEMENT_PASSWORD"
+wait_for_workload_config audit-service "$NACOS_AUDIT_USERNAME" "$NACOS_AUDIT_PASSWORD"
+wait_for_workload_config gateway "$NACOS_GATEWAY_USERNAME" "$NACOS_GATEWAY_PASSWORD"

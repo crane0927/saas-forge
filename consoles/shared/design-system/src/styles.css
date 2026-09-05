@@ -45,6 +45,14 @@ body {
   color: var(--sf-color-text);
 }
 
+.sf-console-locale-control {
+  position: fixed;
+  z-index: 10;
+  inset-block-start: var(--sf-space-md);
+  inset-inline-end: var(--sf-space-md);
+  inline-size: min(12rem, calc(100vw - (var(--sf-space-md) * 2)));
+}
+
 .sf-bootstrap-panel {
   display: grid;
   inline-size: min(100%, 34rem);

@@ -1,0 +1,11 @@
+{
+  "applicationLoadingAriaLabel": "正在加载部署配置",
+  "applicationLoadingDescription": "正在加载部署配置。",
+  "applicationLoadingTitle": "正在启动 {applicationName}",
+  "configurationFailureDescription": "部署配置未能通过校验。请确认配置已就绪后重试。",
+  "configurationFailureTitle": "{applicationName} 配置不可用",
+  "fatalErrorDescription": "请重新加载应用。如果问题持续存在，请联系平台运维人员。",
+  "fatalErrorTitle": "{applicationName} 无法继续运行",
+  "reload": "重新加载",
+  "retry": "重试"
+}

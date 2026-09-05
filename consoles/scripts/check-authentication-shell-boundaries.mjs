@@ -11,9 +11,9 @@ export async function findAuthenticationShellBoundaryViolations(root = workspace
   const dependencies = Object.keys(shellManifest.dependencies ?? {}).toSorted();
   if (
     JSON.stringify(dependencies) !==
-    JSON.stringify(['@saas-forge/app-runtime', '@saas-forge/design-system'])
+    JSON.stringify(['@saas-forge/app-runtime', '@saas-forge/design-system', '@saas-forge/i18n'])
   ) {
-    violations.push('shared/react-shell 只能依赖 app-runtime 与 design-system');
+    violations.push('shared/react-shell 只能依赖 app-runtime、design-system 与 i18n');
   }
   if (JSON.stringify(Object.keys(shellManifest.exports ?? {})) !== JSON.stringify(['.'])) {
     violations.push('shared/react-shell 只能暴露公共根入口');
@@ -22,6 +22,7 @@ export async function findAuthenticationShellBoundaryViolations(root = workspace
   const allowedShellImports = new Set([
     '@saas-forge/app-runtime',
     '@saas-forge/design-system',
+    '@saas-forge/i18n',
     'react',
     'react-router',
   ]);

@@ -76,10 +76,18 @@ stage() {
     if [[ "$name" == product-* || "$name" == console-browser-* ]]; then
       node "$repository_root/consoles/scripts/summarize-authentication-failure.mjs" "$work_directory/$name.log"
     fi
-    if [[ "$name" == product-* ]]; then
+    if [[ "$name" == product-* || "$name" == compose-start || "$name" == tls-ready ]]; then
       compose ps --format json >"$diagnostic_directory/compose-status.json" 2>&1 || true
+      compose logs --no-color nacos-init >"$diagnostic_directory/nacos-init.log" 2>&1 || true
       compose logs --no-color console-tls >"$diagnostic_directory/tls.log" 2>&1 || true
       compose logs --no-color gateway iam-service entitlement-service >"$diagnostic_directory/services.log" 2>&1 || true
+      local console_tls_container
+      console_tls_container="$(compose ps --quiet console-tls 2>/dev/null || true)"
+      if [[ -n "$console_tls_container" ]]; then
+        # 此健康探针仅记录内部端点与 HTTP 状态，仍只保存在受限目录。
+        docker inspect --format '{{range .State.Health.Log}}{{printf "%s" .Output}}{{end}}' \
+          "$console_tls_container" >"$diagnostic_directory/console-tls-health.log" 2>&1 || true
+      fi
     fi
     printf 'FAIL: %s；受限诊断日志：%s/%s.log（不得直接上传原始日志）\n' \
       "$name" "$diagnostic_directory" "$name" >&2
@@ -200,7 +208,8 @@ const urls = [
   `https://console.${rootDomain}/`,
   `https://api.${rootDomain}/.well-known/jwks.json`,
 ];
-const deadline = Date.now() + 30_000;
+// Compose health 与宿主端口转发异步收敛；仍要求三入口在正常证书校验下均返回 200。
+const deadline = Date.now() + 180_000;
 let ready = false;
 const observations = new Map();
 while (!ready && Date.now() < deadline) {

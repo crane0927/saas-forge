@@ -1,5 +1,6 @@
 import { createRuntimeConfigBootstrap, type RuntimeConfigResult } from '@saas-forge/app-runtime';
 import { DesignSystemProvider } from '@saas-forge/design-system';
+import { ConsoleLocaleProvider } from '@saas-forge/react-shell';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -25,13 +26,15 @@ describe('PlatformConsoleApp', () => {
     const bootstrap = createRuntimeConfigBootstrap(loader);
     const realm = {};
     const view = render(
-      <DesignSystemProvider>
-        <PlatformConsoleApp
-          bootstrap={bootstrap}
-          authenticationFetch={authenticationFetch}
-          realm={realm}
-        />
-      </DesignSystemProvider>,
+      <ConsoleLocaleProvider initialLocale="zh-CN">
+        <DesignSystemProvider>
+          <PlatformConsoleApp
+            bootstrap={bootstrap}
+            authenticationFetch={authenticationFetch}
+            realm={realm}
+          />
+        </DesignSystemProvider>
+      </ConsoleLocaleProvider>,
     );
 
     expect(screen.getByRole('heading', { name: '正在启动 Platform Console' })).toBeTruthy();
@@ -50,41 +53,50 @@ describe('PlatformConsoleApp', () => {
     });
 
     view.rerender(
-      <DesignSystemProvider>
-        <PlatformConsoleApp
-          bootstrap={bootstrap}
-          authenticationFetch={authenticationFetch}
-          realm={realm}
-        />
-      </DesignSystemProvider>,
+      <ConsoleLocaleProvider initialLocale="zh-CN">
+        <DesignSystemProvider>
+          <PlatformConsoleApp
+            bootstrap={bootstrap}
+            authenticationFetch={authenticationFetch}
+            realm={realm}
+          />
+        </DesignSystemProvider>
+      </ConsoleLocaleProvider>,
     );
 
     expect(screen.getByRole('heading', { name: 'Platform 总览' })).toBeTruthy();
     expect(authenticationFetch).toHaveBeenCalledTimes(2);
   });
 
-  it('shows a stable configuration failure and retries only after user action', async () => {
+  it('shows a stable bilingual configuration failure and retries only after user action', async () => {
     const loader = vi
       .fn<() => Promise<RuntimeConfigResult>>()
       .mockResolvedValueOnce({ ok: false, error: { code: 'CONFIG_UNAVAILABLE' } })
       .mockResolvedValueOnce(success());
 
     render(
-      <DesignSystemProvider>
-        <PlatformConsoleApp
-          bootstrap={createRuntimeConfigBootstrap(loader)}
-          authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
-          realm={{}}
-        />
-      </DesignSystemProvider>,
+      <ConsoleLocaleProvider initialLocale="en-US">
+        <DesignSystemProvider locale="en-US">
+          <PlatformConsoleApp
+            bootstrap={createRuntimeConfigBootstrap(loader)}
+            authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
+            realm={{}}
+          />
+        </DesignSystemProvider>
+      </ConsoleLocaleProvider>,
     );
 
-    expect(await screen.findByText('CONFIG_UNAVAILABLE')).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { name: 'Platform Console configuration is unavailable' }),
+    ).toBeTruthy();
+    expect(screen.getByText('CONFIG_UNAVAILABLE')).toBeTruthy();
     expect(loader).toHaveBeenCalledOnce();
 
-    fireEvent.click(screen.getByRole('button', { name: '重试' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
 
-    expect(await screen.findByRole('heading', { name: '登录 Platform Console' })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { name: 'Sign in to Platform Console' }),
+    ).toBeTruthy();
     expect(loader).toHaveBeenCalledTimes(2);
   });
 });

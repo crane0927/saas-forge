@@ -1,6 +1,6 @@
 import { createAuthenticationRuntimeAfterConfig } from '@saas-forge/app-runtime';
 import { DesignSystemProvider } from '@saas-forge/design-system';
-import { AuthenticationShell } from '@saas-forge/react-shell';
+import { AuthenticationShell, ConsoleLocaleProvider } from '@saas-forge/react-shell';
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
 
@@ -32,14 +32,16 @@ Object.assign(window, {
 const root = document.getElementById('root');
 if (root === null) throw new Error('Missing acceptance root');
 createRoot(root).render(
-  <DesignSystemProvider>
-    <MemoryRouter>
-      <AuthenticationShell
-        applicationName="Tenant Console"
-        runtime={runtime}
-        defaultPath="/"
-        routes={[{ path: '/', label: '工作台', element: <h1>受保护的工作台</h1> }]}
-      />
-    </MemoryRouter>
-  </DesignSystemProvider>,
+  <ConsoleLocaleProvider initialLocale="zh-CN">
+    <DesignSystemProvider locale="zh-CN">
+      <MemoryRouter>
+        <AuthenticationShell
+          applicationName="Tenant Console"
+          runtime={runtime}
+          defaultPath="/"
+          routes={[{ path: '/', label: '工作台', element: <h1>受保护的工作台</h1> }]}
+        />
+      </MemoryRouter>
+    </DesignSystemProvider>
+  </ConsoleLocaleProvider>,
 );
