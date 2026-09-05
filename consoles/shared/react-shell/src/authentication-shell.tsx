@@ -210,6 +210,7 @@ export function AuthenticationShell({
       <TenantSwitchRefreshPage
         runtime={runtime}
         problem={tenantSwitchProblem}
+        translate={translate}
         onResult={(result) => {
           if (result.ok) {
             setTenantSwitchProblem(undefined);
@@ -255,7 +256,7 @@ export function AuthenticationShell({
                   setTenantSwitchRetryMembershipId(undefined);
                 }}
               >
-                切换 Tenant
+                {translate.translate('tenantSwitch')}
               </Button>
             ) : null}
             <Button
@@ -278,6 +279,7 @@ export function AuthenticationShell({
             problem={tenantSwitchProblem}
             selectedMembershipId={tenantSwitchMembershipId}
             retryMembershipId={tenantSwitchRetryMembershipId}
+            translate={translate}
             onCancel={() => {
               setTenantSwitchOpen(false);
               setTenantSwitchProblem(undefined);
@@ -346,7 +348,13 @@ export function AuthenticationShell({
   }
 
   if (state.status === 'contextSelectionRequired') {
-    return <ContextSelectionPage runtime={runtime} memberships={state.memberships} />;
+    return (
+      <ContextSelectionPage
+        runtime={runtime}
+        memberships={state.memberships}
+        translate={translate}
+      />
+    );
   }
 
   if (state.status === 'logoutPending') {
@@ -370,6 +378,7 @@ function TenantSwitchPage({
   problem,
   selectedMembershipId,
   retryMembershipId,
+  translate,
   onCancel,
   onSwitch,
 }: {
@@ -378,6 +387,7 @@ function TenantSwitchPage({
   readonly problem?: AuthenticationProblem;
   readonly selectedMembershipId?: string;
   readonly retryMembershipId?: string;
+  readonly translate: ShellTranslator;
   readonly onCancel: () => void;
   readonly onSwitch: (membershipId: string) => void;
 }) {
@@ -390,25 +400,33 @@ function TenantSwitchPage({
       title={
         <ShellPageTitle
           headingId="tenant-switch-title"
-          title="切换 Tenant"
-          description="选择当前 Identity 可进入的另一个 Accessible Membership。"
+          title={translate.translate('tenantSwitchTitle')}
+          description={translate.translate('tenantSwitchDescription')}
         />
       }
     >
       {problem === undefined ? null : (
-        <PersistentError title={resultUnknown ? 'Tenant 切换结果未知' : 'Tenant 切换被拒绝'}>
-          <p>错误代码：{problem.code}</p>
-          {resultUnknown ? <p>请使用同一次操作重试，不要重复发起新的切换。</p> : null}
+        <PersistentError
+          title={
+            resultUnknown
+              ? translate.translate('tenantSwitchUnknownTitle')
+              : translate.translate('tenantSwitchRejectedTitle')
+          }
+        >
+          <p>{translate.translate('errorCode', { code: problem.code })}</p>
+          {resultUnknown ? <p>{translate.translate('tenantSwitchUnknownDescription')}</p> : null}
         </PersistentError>
       )}
-      <ul aria-label="Accessible Membership">
+      <ul aria-label={translate.translate('accessibleMembershipsLabel')}>
         {candidates.map((membership) => (
           <li key={membership.membershipId}>
             <span>{membership.tenantDisplayName}</span>
             <Button
               variant="primary"
               loading={selectedMembershipId === membership.membershipId}
-              loadingLabel={`正在切换到 ${membership.tenantDisplayName}`}
+              loadingLabel={translate.translate('tenantSwitchLoading', {
+                tenantName: membership.tenantDisplayName,
+              })}
               disabled={
                 selectedMembershipId !== undefined ||
                 (retryMembershipId !== undefined && retryMembershipId !== membership.membershipId)
@@ -417,14 +435,18 @@ function TenantSwitchPage({
                 onSwitch(membership.membershipId);
               }}
             >
-              {retryMembershipId === membership.membershipId ? '重试切换到' : '切换到'}{' '}
-              {membership.tenantDisplayName}
+              {translate.translate(
+                retryMembershipId === membership.membershipId
+                  ? 'tenantSwitchRetryTarget'
+                  : 'tenantSwitchTarget',
+                { tenantName: membership.tenantDisplayName },
+              )}
             </Button>
           </li>
         ))}
       </ul>
       <Button disabled={selectedMembershipId !== undefined} onClick={onCancel}>
-        取消
+        {translate.translate('cancel')}
       </Button>
     </PageLayout>
   );
@@ -433,10 +455,12 @@ function TenantSwitchPage({
 function TenantSwitchRefreshPage({
   runtime,
   problem,
+  translate,
   onResult,
 }: {
   readonly runtime: AuthenticationRuntime;
   readonly problem?: AuthenticationProblem;
+  readonly translate: ShellTranslator;
   readonly onResult: (
     result: Awaited<ReturnType<AuthenticationRuntime['retryTenantSwitchRefresh']>>,
   ) => void;
@@ -447,21 +471,21 @@ function TenantSwitchRefreshPage({
       title={
         <ShellPageTitle
           headingId="tenant-switch-refresh-title"
-          title="Tenant 切换已提交"
-          description="旧访问令牌已停止使用，正在等待目标 Tenant 会话恢复。"
+          title={translate.translate('tenantSwitchCommittedTitle')}
+          description={translate.translate('tenantSwitchCommittedDescription')}
         />
       }
     >
-      <p role="status">切换已提交；在完成前不会显示任何 Tenant 业务页面。</p>
+      <p role="status">{translate.translate('tenantSwitchCommittedStatus')}</p>
       {problem === undefined ? null : (
-        <PersistentError title="目标 Tenant 会话暂时无法恢复">
-          错误代码：{problem.code}
+        <PersistentError title={translate.translate('tenantSwitchRefreshFailedTitle')}>
+          {translate.translate('errorCode', { code: problem.code })}
         </PersistentError>
       )}
       <Button
         variant="primary"
         loading={retrying}
-        loadingLabel="正在重试完成切换"
+        loadingLabel={translate.translate('tenantSwitchRefreshRetryLoading')}
         onClick={() => {
           setRetrying(true);
           void runtime
@@ -472,7 +496,7 @@ function TenantSwitchRefreshPage({
             });
         }}
       >
-        重试完成切换
+        {translate.translate('tenantSwitchRefreshRetry')}
       </Button>
     </PageLayout>
   );
@@ -667,8 +691,8 @@ function LoginPage({
         />
       ) : null}
       {tenantSessionEnded ? (
-        <PersistentError title="Tenant 会话已结束">
-          切换后的目标 Tenant 会话无法恢复，请重新登录。
+        <PersistentError title={translate.translate('tenantSessionEndedTitle')}>
+          {translate.translate('tenantSessionEndedDescription')}
         </PersistentError>
       ) : null}
       {problem?.code === 'SESSION_SLOT_ALREADY_ACTIVE' ? (
@@ -690,14 +714,14 @@ function LoginPage({
           }}
         />
       ) : problem?.code === 'ACCESS_CONTEXT_UNAVAILABLE' && runtime.intent === 'TENANT' ? (
-        <PersistentError title="无法进入 Tenant">
-          <p>当前 Identity 没有可进入的 Tenant，请联系 Tenant 管理员。</p>
-          <p>错误代码：{problem.code}</p>
+        <PersistentError title={translate.translate('tenantUnavailableTitle')}>
+          <p>{translate.translate('tenantUnavailableDescription')}</p>
+          <p>{translate.translate('errorCode', { code: problem.code })}</p>
         </PersistentError>
       ) : problem?.code === 'ACCESSIBLE_MEMBERSHIP_LIMIT_EXCEEDED' ? (
-        <PersistentError title="无法显示 Membership 候选">
-          <p>Accessible Membership 数量超过当前选择上限，请联系平台管理员。</p>
-          <p>错误代码：{problem.code}</p>
+        <PersistentError title={translate.translate('membershipLimitTitle')}>
+          <p>{translate.translate('membershipLimitDescription')}</p>
+          <p>{translate.translate('errorCode', { code: problem.code })}</p>
         </PersistentError>
       ) : problem === undefined ? null : (
         <PersistentError title={translate.translate('signInFailed')}>
@@ -847,12 +871,14 @@ function InitialPasswordChangePage({
 function ContextSelectionPage({
   runtime,
   memberships,
+  translate,
 }: {
   readonly runtime: AuthenticationRuntime;
   readonly memberships: readonly {
     readonly membershipId: string;
     readonly tenantDisplayName: string;
   }[];
+  readonly translate: ShellTranslator;
 }) {
   const [selectedMembershipId, setSelectedMembershipId] = useState<string>();
   const [problem, setProblem] = useState<AuthenticationProblem>();
@@ -862,22 +888,26 @@ function ContextSelectionPage({
       title={
         <ShellPageTitle
           headingId="context-selection-title"
-          title="选择 Tenant"
-          description="选择本次会话要进入的 Accessible Membership。"
+          title={translate.translate('contextSelectionTitle')}
+          description={translate.translate('contextSelectionDescription')}
         />
       }
     >
       {problem === undefined ? null : (
-        <PersistentError title="无法进入所选 Tenant">错误代码：{problem.code}</PersistentError>
+        <PersistentError title={translate.translate('contextSelectionFailedTitle')}>
+          {translate.translate('errorCode', { code: problem.code })}
+        </PersistentError>
       )}
-      <ul aria-label="Accessible Membership">
+      <ul aria-label={translate.translate('accessibleMembershipsLabel')}>
         {memberships.map((membership) => (
           <li key={membership.membershipId}>
             <span>{membership.tenantDisplayName}</span>
             <Button
               variant="primary"
               loading={selectedMembershipId === membership.membershipId}
-              loadingLabel={`正在进入 ${membership.tenantDisplayName}`}
+              loadingLabel={translate.translate('contextSelectionLoading', {
+                tenantName: membership.tenantDisplayName,
+              })}
               disabled={selectedMembershipId !== undefined}
               onClick={() => {
                 setSelectedMembershipId(membership.membershipId);
@@ -894,7 +924,9 @@ function ContextSelectionPage({
                   });
               }}
             >
-              进入 {membership.tenantDisplayName}
+              {translate.translate('contextSelectionEnter', {
+                tenantName: membership.tenantDisplayName,
+              })}
             </Button>
           </li>
         ))}

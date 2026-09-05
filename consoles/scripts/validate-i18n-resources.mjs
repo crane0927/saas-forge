@@ -9,6 +9,7 @@ const resourceDirectories = [
   'platform-console/src/messages',
   'shared/design-system/src/messages',
   'shared/react-shell/src/messages',
+  'tenant-console-shell/src/messages',
 ];
 const enabledLocales = ['en-US', 'zh-CN'];
 

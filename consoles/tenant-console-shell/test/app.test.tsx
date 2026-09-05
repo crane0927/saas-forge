@@ -1,7 +1,8 @@
 import { createRuntimeConfigBootstrap, type RuntimeConfigResult } from '@saas-forge/app-runtime';
 import { DesignSystemProvider } from '@saas-forge/design-system';
-import { ConsoleLocaleProvider } from '@saas-forge/react-shell';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { ConsoleLocaleProvider, useConsoleLocale } from '@saas-forge/react-shell';
+import { cleanup, fireEvent, render as renderReact, screen, waitFor } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { TenantConsoleShellApp, type TenantConsoleRootProps } from '../src/app';
@@ -9,22 +10,25 @@ import { TenantConsoleShellApp, type TenantConsoleRootProps } from '../src/app';
 afterEach(cleanup);
 
 function TenantConsoleTestRoot({ children, tenantBrand }: TenantConsoleRootProps) {
+  const { locale, setLocale } = useConsoleLocale();
   return (
-    <ConsoleLocaleProvider initialLocale="zh-CN">
-      <DesignSystemProvider locale="zh-CN" tenantBrand={tenantBrand}>
-        {children}
-      </DesignSystemProvider>
-    </ConsoleLocaleProvider>
+    <DesignSystemProvider locale={locale} tenantBrand={tenantBrand}>
+      <button
+        type="button"
+        onClick={() => {
+          setLocale('en-US');
+        }}
+      >
+        切换为英文
+      </button>
+      {children}
+    </DesignSystemProvider>
   );
 }
 
-function EnglishTenantConsoleTestRoot({ children, tenantBrand }: TenantConsoleRootProps) {
-  return (
-    <ConsoleLocaleProvider initialLocale="en-US">
-      <DesignSystemProvider locale="en-US" tenantBrand={tenantBrand}>
-        {children}
-      </DesignSystemProvider>
-    </ConsoleLocaleProvider>
+function render(ui: ReactNode, initialLocale: 'zh-CN' | 'en-US' = 'zh-CN') {
+  return renderReact(
+    <ConsoleLocaleProvider initialLocale={initialLocale}>{ui}</ConsoleLocaleProvider>,
   );
 }
 
@@ -171,16 +175,69 @@ describe('TenantConsoleShellApp', () => {
         authenticationFetch={authenticationFetch}
         realm={{}}
       />,
+      'en-US',
     );
 
     expect(await screen.findByText('Current Brand')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '切换 Tenant' }));
-    fireEvent.click(screen.getByRole('button', { name: '切换到 Target Tenant' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Switch Tenant' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to Target Tenant' }));
 
-    expect(await screen.findByText('Tenant 切换被拒绝')).toBeTruthy();
-    expect(screen.getByText('错误代码：TENANT_CONTEXT_SWITCH_REJECTED')).toBeTruthy();
+    expect(await screen.findByText('Tenant switch rejected')).toBeTruthy();
+    expect(screen.getByText('Error code: TENANT_CONTEXT_SWITCH_REJECTED')).toBeTruthy();
     expect(screen.getByText('Current Brand')).toBeTruthy();
     expect(screen.getByRole('navigation')).toBeTruthy();
+  });
+
+  it('keeps the unknown switch retry target and sends no request when Locale changes', async () => {
+    const currentMembership = {
+      membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6070',
+      tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6072',
+      tenantDisplayName: 'Current Tenant',
+    };
+    const targetMembership = {
+      membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6071',
+      tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6074',
+      tenantDisplayName: 'Target Tenant',
+    };
+    const authenticationFetch = vi
+      .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValueOnce(
+        tenantAccessToken(
+          'current-token',
+          currentMembership,
+          [currentMembership, targetMembership],
+          {
+            displayName: 'Current Tenant',
+            faviconUrl: '/brands/current-favicon.svg',
+            primaryColor: '#155EEF',
+            accentColor: '#7A5AF8',
+          },
+        ),
+      )
+      .mockResolvedValueOnce(problemResponse(503, 'NETWORK_UNAVAILABLE'));
+
+    render(
+      <TenantConsoleShellApp
+        root={TenantConsoleTestRoot}
+        bootstrap={createRuntimeConfigBootstrap(() => Promise.resolve(success()))}
+        authenticationFetch={authenticationFetch}
+        realm={{}}
+      />,
+    );
+
+    expect(await screen.findByText('Current Tenant')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '切换 Tenant' }));
+    fireEvent.click(screen.getByRole('button', { name: '切换到 Target Tenant' }));
+    expect(await screen.findByText('Tenant 切换结果未知')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /重试切换到 Target Tenant/ })).toBeTruthy();
+    const requestCountBeforeLocaleChange = authenticationFetch.mock.calls.length;
+
+    fireEvent.click(screen.getByRole('button', { name: '切换为英文' }));
+
+    expect(screen.getByText('Tenant switch result unknown')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Retry switching to Target Tenant/ })).toBeTruthy();
+    expect(screen.getByText('Current Tenant')).toBeTruthy();
+    expect(authenticationFetch).toHaveBeenCalledTimes(requestCountBeforeLocaleChange);
   });
 
   it('ends the Tenant session when refresh is permanently rejected after commit', async () => {
@@ -219,14 +276,15 @@ describe('TenantConsoleShellApp', () => {
         authenticationFetch={authenticationFetch}
         realm={{}}
       />,
+      'en-US',
     );
 
     expect(await screen.findByText('Current Brand')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '切换 Tenant' }));
-    fireEvent.click(screen.getByRole('button', { name: '切换到 Target Tenant' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Switch Tenant' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to Target Tenant' }));
 
-    expect(await screen.findByRole('heading', { name: '登录 Tenant Console' })).toBeTruthy();
-    expect(screen.getByText('Tenant 会话已结束')).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Sign in to Tenant Console' })).toBeTruthy();
+    expect(screen.getByText('Tenant session ended')).toBeTruthy();
     expect(screen.queryByRole('navigation')).toBeNull();
   });
 
@@ -251,15 +309,16 @@ describe('TenantConsoleShellApp', () => {
         authenticationFetch={authenticationFetch}
         realm={{}}
       />,
+      'en-US',
     );
 
-    fireEvent.change(await screen.findByLabelText(/^邮箱/), {
+    fireEvent.change(await screen.findByLabelText(/^Email/), {
       target: { value: 'member@example.test' },
     });
-    fireEvent.change(screen.getByLabelText(/^密码/), { target: { value: 'secret' } });
-    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+    fireEvent.change(screen.getByLabelText(/^Password/), { target: { value: 'secret' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 
-    expect(await screen.findByRole('heading', { name: 'Tenant 工作台' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Tenant workspace' })).toBeTruthy();
     expect(loader).toHaveBeenCalledOnce();
     expect(jsonRequestBody(authenticationFetch.mock.calls[1])).toEqual({
       email: 'member@example.test',
@@ -281,19 +340,22 @@ describe('TenantConsoleShellApp', () => {
         authenticationFetch={authenticationFetch}
         realm={{}}
       />,
+      'en-US',
     );
 
-    fireEvent.change(await screen.findByLabelText(/^邮箱/), {
+    fireEvent.change(await screen.findByLabelText(/^Email/), {
       target: { value: 'member@example.test' },
     });
-    fireEvent.change(screen.getByLabelText(/^密码/), { target: { value: 'secret' } });
-    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+    fireEvent.change(screen.getByLabelText(/^Password/), { target: { value: 'secret' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 
     expect(
-      await screen.findByText('当前 Identity 没有可进入的 Tenant，请联系 Tenant 管理员。'),
+      await screen.findByText(
+        'The current Identity has no Tenant it can enter. Contact a Tenant administrator.',
+      ),
     ).toBeTruthy();
-    expect(screen.getByText('错误代码：ACCESS_CONTEXT_UNAVAILABLE')).toBeTruthy();
-    expect(screen.getByRole('form', { name: '登录 Tenant Console' })).toBeTruthy();
+    expect(screen.getByText('Error code: ACCESS_CONTEXT_UNAVAILABLE')).toBeTruthy();
+    expect(screen.getByRole('form', { name: 'Sign in to Tenant Console' })).toBeTruthy();
     expect(screen.queryByRole('navigation')).toBeNull();
   });
 
@@ -414,11 +476,12 @@ describe('TenantConsoleShellApp', () => {
 
     render(
       <TenantConsoleShellApp
-        root={EnglishTenantConsoleTestRoot}
+        root={TenantConsoleTestRoot}
         bootstrap={createRuntimeConfigBootstrap(loader)}
         authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
         realm={{}}
       />,
+      'en-US',
     );
 
     expect(

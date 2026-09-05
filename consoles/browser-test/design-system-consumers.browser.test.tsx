@@ -50,7 +50,13 @@ function readyBootstrap() {
 }
 
 function TenantConsoleTestRoot({ children, tenantBrand }: TenantConsoleRootProps) {
-  return <DesignSystemProvider tenantBrand={tenantBrand}>{children}</DesignSystemProvider>;
+  const { locale } = useConsoleLocale();
+  return (
+    <DesignSystemProvider locale={locale} tenantBrand={tenantBrand}>
+      <ConsoleLocaleSelector />
+      {children}
+    </DesignSystemProvider>
+  );
 }
 
 function PlatformConsoleLocaleHost({
@@ -190,6 +196,10 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
     window.BroadcastChannel = ObservedBroadcastChannel;
 
     const secondMembershipId = '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6074';
+    let resolveSelection!: (response: Response) => void;
+    const selectionResponse = new Promise<Response>((resolve) => {
+      resolveSelection = resolve;
+    });
     const authenticationFetch = vi
       .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
       .mockResolvedValueOnce(new Response(null, { status: 401 }))
@@ -210,14 +220,7 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
           ],
         }),
       )
-      .mockResolvedValueOnce(
-        Response.json({
-          contextState: 'ACCESS_TOKEN_ISSUED',
-          accessToken: 'selected-tenant-token',
-          tokenType: 'Bearer',
-          expiresIn: 120,
-        }),
-      );
+      .mockImplementationOnce(() => selectionResponse);
 
     try {
       render(
@@ -260,8 +263,29 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
       await expect.element(secondMembership).toHaveFocus();
       await userEvent.keyboard('{Enter}');
 
+      const requestCountBeforeLocaleChange = authenticationFetch.mock.calls.length;
+      const selector = page.getByRole('combobox', { name: 'Language / 语言' });
+      selector.element().focus();
+      await userEvent.keyboard('{Enter}{ArrowDown}{Enter}');
       await expect
-        .element(page.getByRole('heading', { name: 'Tenant 工作台' }))
+        .element(page.getByRole('heading', { name: 'Choose a Tenant' }))
+        .toBeInTheDocument();
+      await expect
+        .element(page.getByRole('button', { name: 'Entering 云帆数据' }))
+        .toBeInTheDocument();
+      expect(authenticationFetch).toHaveBeenCalledTimes(requestCountBeforeLocaleChange);
+
+      resolveSelection(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'selected-tenant-token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      );
+
+      await expect
+        .element(page.getByRole('heading', { name: 'Tenant workspace' }))
         .toBeInTheDocument();
       const selectionBody = authenticationFetch.mock.calls[2]?.[1]?.body;
       if (typeof selectionBody !== 'string') {
@@ -345,9 +369,21 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
     expect(document.querySelector('#tenant-workspace-title')).toBeNull();
     await expect.element(page.getByText('错误代码：REFRESH_LEASE_BUSY')).toBeInTheDocument();
 
-    await page.getByRole('button', { name: '重试完成切换' }).click();
+    const requestCountBeforeLocaleChange = authenticationFetch.mock.calls.length;
+    const selector = page.getByRole('combobox', { name: 'Language / 语言' });
+    selector.element().focus();
+    await userEvent.keyboard('{Enter}{ArrowDown}{Enter}');
+    await expect
+      .element(page.getByRole('heading', { name: 'Tenant switch committed' }))
+      .toBeInTheDocument();
+    await expect.element(page.getByText('Error code: REFRESH_LEASE_BUSY')).toBeInTheDocument();
+    expect(authenticationFetch).toHaveBeenCalledTimes(requestCountBeforeLocaleChange);
+
+    await page.getByRole('button', { name: 'Retry completing the switch' }).click();
     await expect.element(page.getByText('Target Brand')).toBeInTheDocument();
-    await expect.element(page.getByRole('heading', { name: 'Tenant 工作台' })).toBeInTheDocument();
+    await expect
+      .element(page.getByRole('heading', { name: 'Tenant workspace' }))
+      .toBeInTheDocument();
     await waitForLayout();
     expect(icon.getAttribute('href')).toBe('/brands/target-favicon.svg');
     expect(document.querySelector<HTMLElement>('.sf-design-system-root')?.dataset.brand).toBe(

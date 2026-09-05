@@ -61,6 +61,7 @@ test('rejects an incomplete enabled-Locale resource fixture', async (context) =>
   for (const relativeDirectory of [
     'platform-console/src/messages',
     'shared/react-shell/src/messages',
+    'tenant-console-shell/src/messages',
   ]) {
     const directory = path.join(root, relativeDirectory);
     await mkdir(directory, { recursive: true });

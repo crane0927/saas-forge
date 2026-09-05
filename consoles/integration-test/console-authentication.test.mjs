@@ -323,11 +323,13 @@ test('Platform and Tenant sessions survive independent recovery and logout after
     async () => {
       const beforeSwitch = await recover(tenant, 'Tenant 工作台');
       const switchRequests = [];
+      const browserApiRequests = [];
       const observe = (request) => {
-        if (
-          new URL(request.url()).pathname === '/api/v1/auth/tenant-switches' &&
-          request.method() === 'POST'
-        ) {
+        const url = new URL(request.url());
+        if (url.origin === `https://api.${rootDomain}` && url.pathname.startsWith('/api/')) {
+          browserApiRequests.push(url.pathname);
+        }
+        if (url.pathname === '/api/v1/auth/tenant-switches' && request.method() === 'POST') {
           switchRequests.push('switch');
         }
       };
@@ -347,6 +349,17 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         0,
       );
       assert.equal(await tenant.getByRole('navigation').count(), 0);
+      const requestCountBeforeLocaleChange = browserApiRequests.length;
+      await selectConsoleLocale(tenant, 'English');
+      await tenant.getByRole('heading', { name: 'Tenant switch committed', exact: true }).waitFor();
+      await tenant
+        .getByText('Unable to restore the target Tenant session right now', { exact: true })
+        .waitFor();
+      assert.equal(
+        browserApiRequests.length,
+        requestCountBeforeLocaleChange,
+        'Locale change must not send a Tenant business request',
+      );
       // 服务端公共 HTTP 边界补充证明：旧 Token 已失效，不能作为 UI 回滚的后备凭据。
       const oldContext = await context.request
         .get(`https://api.${rootDomain}/api/v1/auth/context`, {
@@ -357,16 +370,28 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         });
       assert.equal(oldContext.status(), 401);
       const refreshed = tenant.waitForResponse(isAuthResponse('refresh'));
-      await tenant.getByRole('button', { name: '重试完成切换', exact: true }).press('Enter');
+      await tenant
+        .getByRole('button', { name: 'Retry completing the switch', exact: true })
+        .press('Enter');
       const response = await refreshed;
       assert.equal(response.status(), 200);
       const body = await response.json();
       assert.equal(body.tenantContext.tenantDisplayName, 'Second Acceptance Tenant');
       assert.ok(body.accessToken !== beforeSwitch.accessToken, 'recovery must issue a new token');
-      await tenant.getByRole('heading', { name: 'Tenant 工作台', exact: true }).waitFor();
+      await tenant.getByRole('heading', { name: 'Tenant workspace', exact: true }).waitFor();
       await tenant
-        .getByRole('navigation', { name: 'Second Acceptance Tenant 全局导航', exact: true })
+        .getByRole('navigation', {
+          name: 'Second Acceptance Tenant global navigation',
+          exact: true,
+        })
         .waitFor();
+      assert.equal(await tenant.evaluate(() => localStorage.getItem('sf:ui:locale')), 'en-US');
+      const reloadRefresh = tenant.waitForResponse(isAuthResponse('refresh'));
+      await tenant.reload();
+      assert.equal((await reloadRefresh).status(), 200, 'Tenant reload keeps the switched Locale');
+      await tenant.getByRole('heading', { name: 'Tenant workspace', exact: true }).waitFor();
+      await selectConsoleLocale(tenant, '简体中文');
+      await tenant.getByRole('heading', { name: 'Tenant 工作台', exact: true }).waitFor();
       tenant.off('request', observe);
       assert.deepEqual(switchRequests, ['switch']);
       await recover(platform, 'Platform 总览');

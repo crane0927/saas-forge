@@ -12,9 +12,10 @@ import {
   ConfigurationFailure,
   type TenantBrandProfile,
 } from '@saas-forge/design-system';
-import { AuthenticationShell } from '@saas-forge/react-shell';
+import { AuthenticationShell, useConsoleLocale } from '@saas-forge/react-shell';
 import {
   useEffect,
+  useMemo,
   useState,
   useSyncExternalStore,
   type ComponentType,
@@ -22,7 +23,7 @@ import {
 } from 'react';
 import { BrowserRouter } from 'react-router';
 
-import { tenantAuthenticationRoutes } from './routes';
+import { createTenantAuthenticationRoutes } from './routes';
 
 interface TenantConsoleShellAppProps {
   readonly bootstrap?: RuntimeConfigBootstrap;
@@ -152,6 +153,8 @@ function TenantRuntimeSurface({
   readonly runtime: AuthenticationRuntime;
   readonly root: ComponentType<TenantConsoleRootProps>;
 }) {
+  const { locale } = useConsoleLocale();
+  const routes = useMemo(() => createTenantAuthenticationRoutes(locale), [locale]);
   const state = useSyncExternalStore(
     (listener) => runtime.subscribe(listener),
     () => runtime.getState(),
@@ -185,7 +188,7 @@ function TenantRuntimeSurface({
         }
         runtime={runtime}
         defaultPath="/"
-        routes={tenantAuthenticationRoutes}
+        routes={routes}
       />
     </Root>
   );
