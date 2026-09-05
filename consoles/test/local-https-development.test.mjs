@@ -16,6 +16,7 @@ import {
 import {
   copyOriginalHeaders,
   createEdgeServer,
+  parseApiTarget,
   targetForHost,
 } from '../../deploy/compose/local-https-development/edge.mjs';
 
@@ -96,6 +97,22 @@ test('forwards browser security headers without Edge synthesis or rewriting', as
   assert.equal(seen.get('authorization'), 'Bearer opaque');
 });
 
+test('accepts only the fixed local Gateway override target', () => {
+  assert.deepEqual(
+    parseApiTarget(JSON.stringify({ hostname: 'host.docker.internal', port: 8080 })),
+    { hostname: 'host.docker.internal', port: 8080 },
+  );
+  assert.deepEqual(parseApiTarget(JSON.stringify({ hostname: 'gateway', port: 8080 })), {
+    hostname: 'gateway',
+    port: 8080,
+  });
+  assert.equal(
+    parseApiTarget(JSON.stringify({ hostname: 'untrusted.example', port: 8080 })),
+    undefined,
+  );
+  assert.equal(parseApiTarget('{'), undefined);
+});
+
 test('relays the Platform WebSocket upgrade used by Vite HMR', async (t) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'sf-local-https-hmr-'));
   const paths = developmentHttpsPaths(directory);
@@ -168,7 +185,7 @@ function edgeRequest(port, certificateAuthority, headers) {
         path: '/api/v1/auth/refresh',
         ca: certificateAuthority,
         servername: 'api.saasforge.test',
-        headers,
+        headers: { ...headers, 'content-type': 'application/json' },
       },
       (response) => {
         response.resume();
@@ -176,7 +193,7 @@ function edgeRequest(port, certificateAuthority, headers) {
       },
     );
     request_.on('error', reject);
-    request_.end();
+    request_.end(JSON.stringify({ sessionSlot: 'PLATFORM' }));
   });
 }
 

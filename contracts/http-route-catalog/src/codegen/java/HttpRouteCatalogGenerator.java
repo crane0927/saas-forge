@@ -158,7 +158,8 @@ public final class HttpRouteCatalogGenerator {
         String compose = Files.readString(repository.resolve("deploy/compose/compose.yaml"), StandardCharsets.UTF_8);
         String helm = Files.readString(
                 repository.resolve("deploy/helm/nacos-production-contract.yaml"), StandardCharsets.UTF_8);
-        String nacosAcl = Files.readString(repository.resolve("deploy/compose/nacos-init.sh"), StandardCharsets.UTF_8);
+        String nacosAcl = gatewayDiscoveryPermissions(Files.readString(
+                repository.resolve("deploy/compose/nacos-init.sh"), StandardCharsets.UTF_8));
 
         for (ServiceEntry entry : registry.entries()) {
             require(entry != null
@@ -204,6 +205,15 @@ public final class HttpRouteCatalogGenerator {
             }
         }
         return Map.copyOf(services);
+    }
+
+    private static String gatewayDiscoveryPermissions(String nacosInit) {
+        String startMarker = "# gateway-discovery-permissions: begin";
+        String endMarker = "# gateway-discovery-permissions: end";
+        int start = nacosInit.indexOf(startMarker);
+        int end = nacosInit.indexOf(endMarker);
+        require(start >= 0 && end > start, "Nacos ACL 缺少 Gateway discovery 权限块");
+        return nacosInit.substring(start + startMarker.length(), end);
     }
 
     private static Map<String, ScopeEntry> validateScopes(

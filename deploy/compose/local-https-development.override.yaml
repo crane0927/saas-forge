@@ -12,6 +12,7 @@ services:
       - ALL
     command: ["node", "/app/edge.mjs"]
     environment:
+      SF_LOCAL_HTTPS_API_TARGET_FILE: /run/config/api-target.json
       SF_LOCAL_HTTPS_VITE_HOST: host.docker.internal
       SF_LOCAL_HTTPS_VITE_PORT: "5173"
     ports:
@@ -21,6 +22,12 @@ services:
         condition: service_started
     volumes:
       - ./local-https-development/edge.mjs:/app/edge.mjs:ro
+      - type: bind
+        source: ${SF_LOCAL_HTTPS_API_TARGET_FILE:?SF_LOCAL_HTTPS_API_TARGET_FILE is required}
+        target: /run/config/api-target.json
+        read_only: true
+        bind:
+          create_host_path: false
       - type: bind
         source: ${SF_LOCAL_HTTPS_CERT:?SF_LOCAL_HTTPS_CERT is required}
         target: /run/secrets/server.pem

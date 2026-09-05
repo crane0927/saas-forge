@@ -43,6 +43,14 @@ export function developmentHttpsPaths(repositoryRoot) {
     serverCertificate: path.join(directory, "server.pem"),
     serverRequest: path.join(directory, "server.csr"),
     serverExtensions: path.join(directory, "server.ext"),
+    apiTarget: path.join(
+      repositoryRoot,
+      "deploy",
+      "compose",
+      ".secrets",
+      "local-service-replacement",
+      "api-target.json",
+    ),
     viteLog: path.join(directory, "vite.log"),
     vitePid: path.join(directory, "vite.pid"),
   };
@@ -388,13 +396,15 @@ async function doctor(repositoryRoot, paths) {
   results.push(await doctorCertificate(paths));
   results.push(await doctorHosts());
   results.push(doctorTrust());
-  results.push(doctorPort());
+  results.push(doctorPort(paths));
   results.push(doctorDocker());
   results.push(doctorToolchain(repositoryRoot));
 
   let failures = 0;
   for (const result of results) {
-    console.log(`${result.ok ? "OK" : "BLOCKED"}: ${result.message}`);
+    console.log(
+      `${result.ok ? "OK" : "BLOCKED"} [${result.code}]: ${result.message}`,
+    );
     if (!result.ok) {
       failures += 1;
       console.log(`恢复：${result.recovery}`);
@@ -405,16 +415,57 @@ async function doctor(repositoryRoot, paths) {
 
 async function doctorCertificate(paths) {
   if (
+    !(await filesExist(
+      paths.certificateAuthorityKey,
+      paths.certificateAuthorityCertificate,
+      paths.serverKey,
+      paths.serverCertificate,
+    ))
+  ) {
+    return {
+      ok: false,
+      code: "CERTIFICATE_MISSING",
+      message: "本地 CA 或服务器证书文件缺失。",
+      recovery: "bash scripts/local-development.sh setup",
+    };
+  }
+  if (
+    !(await certificateHasRemainingValidity(
+      paths.certificateAuthorityCertificate,
+    )) ||
+    !(await certificateHasRemainingValidity(paths.serverCertificate))
+  ) {
+    return {
+      ok: false,
+      code: "CERTIFICATE_EXPIRED",
+      message: "本地 CA 或服务器证书已过期或将在 24 小时内过期。",
+      recovery: "bash scripts/local-development.sh setup",
+    };
+  }
+  if (!(await certificateCoversExpectedHosts(paths.serverCertificate))) {
+    return {
+      ok: false,
+      code: "CERTIFICATE_HOST_MISMATCH",
+      message: "服务器证书未覆盖固定 Platform/API Host。",
+      recovery: "bash scripts/local-development.sh setup",
+    };
+  }
+  if (
     !(await certificateAuthorityIsUsable(paths)) ||
     !(await serverCertificateIsUsable(paths))
   ) {
     return {
       ok: false,
-      message: "本地 CA 或服务器证书缺失、即将过期或不覆盖固定 Host。",
-      recovery: "bash scripts/local-https-development.sh setup",
+      code: "CERTIFICATE_INVALID",
+      message: "本地证书链或私钥匹配校验失败。",
+      recovery: "bash scripts/local-development.sh setup",
     };
   }
-  return { ok: true, message: "本地 CA 和服务器证书有效。" };
+  return {
+    ok: true,
+    code: "CERTIFICATE",
+    message: "本地 CA 和服务器证书有效。",
+  };
 }
 
 async function doctorHosts() {
@@ -422,18 +473,24 @@ async function doctorHosts() {
   if (!hasExpectedHosts(hosts)) {
     return {
       ok: false,
+      code: "HOSTS_MISSING",
       message:
         "platform.saasforge.test 或 api.saasforge.test 未在 /etc/hosts 指向 127.0.0.1。",
       recovery: "bash scripts/local-https-development.sh hosts",
     };
   }
-  return { ok: true, message: "两个本地域名均由 /etc/hosts 指向 127.0.0.1。" };
+  return {
+    ok: true,
+    code: "HOSTS",
+    message: "两个本地域名均由 /etc/hosts 指向 127.0.0.1。",
+  };
 }
 
 function doctorTrust() {
   if (process.platform !== "darwin") {
     return {
       ok: false,
+      code: "PLATFORM_UNSUPPORTED",
       message: "当前系统不是受支持的 macOS Docker Desktop 环境。",
       recovery: "请在 macOS Docker Desktop 中运行该入口。",
     };
@@ -441,26 +498,59 @@ function doctorTrust() {
   if (!isCertificateAuthorityTrusted()) {
     return {
       ok: false,
+      code: "CERTIFICATE_UNTRUSTED",
       message: "本地 CA 未安装到 macOS System Keychain。",
       recovery: "bash scripts/local-https-development.sh trust-ca",
     };
   }
-  return { ok: true, message: "本地 CA 已安装到 macOS System Keychain。" };
+  return {
+    ok: true,
+    code: "CERTIFICATE_TRUST",
+    message: "本地 CA 已安装到 macOS System Keychain。",
+  };
 }
 
-function doctorPort() {
+function doctorPort(paths) {
   const result = run("lsof", ["-nP", "-iTCP:443", "-sTCP:LISTEN"], {
     allowFailure: true,
   });
   if (result.status === 0) {
+    const edge = run(
+      "curl",
+      [
+        "--fail",
+        "--silent",
+        "--show-error",
+        "--connect-timeout",
+        "2",
+        "--max-time",
+        "5",
+        "--cacert",
+        paths.certificateAuthorityCertificate,
+        "https://platform.saasforge.test/",
+      ],
+      { allowFailure: true },
+    );
+    if (edge.status === 0) {
+      return {
+        ok: true,
+        code: "HTTPS_PORT",
+        message: "443 端口由可验证的本地 HTTPS Edge 提供。",
+      };
+    }
     return {
       ok: false,
+      code: "PORT_CONFLICT",
       message: "127.0.0.1:443 已有监听者。",
       recovery:
         "停止占用 443 的本地服务后重试；不要同时启动验收 console-tls 入口。",
     };
   }
-  return { ok: true, message: "443 端口可供 Docker TLS Edge 使用。" };
+  return {
+    ok: true,
+    code: "HTTPS_PORT",
+    message: "443 端口可供 Docker TLS Edge 使用。",
+  };
 }
 
 function doctorDocker() {
@@ -470,11 +560,12 @@ function doctorDocker() {
   if (result.status !== 0) {
     return {
       ok: false,
+      code: "DOCKER_UNAVAILABLE",
       message: "Docker Desktop 不可用。",
       recovery: "启动 Docker Desktop，然后重新运行 doctor。",
     };
   }
-  return { ok: true, message: "Docker Desktop 可用。" };
+  return { ok: true, code: "DOCKER", message: "Docker Desktop 可用。" };
 }
 
 function doctorToolchain(repositoryRoot) {
@@ -520,6 +611,7 @@ function doctorToolchain(repositoryRoot) {
   ) {
     return {
       ok: false,
+      code: "TOOLCHAIN_INVALID",
       message: `Platform Console 需要 Node ${expectedNodeVersion}、pnpm ${expectedPnpmVersion} 和既有依赖。`,
       recovery:
         "在 consoles/ 中显式运行 pnpm install --frozen-lockfile；doctor 与 start 不会安装依赖。",
@@ -527,6 +619,7 @@ function doctorToolchain(repositoryRoot) {
   }
   return {
     ok: true,
+    code: "TOOLCHAIN",
     message: "Platform Console Node、pnpm 和依赖目录均符合固定配置。",
   };
 }
@@ -541,6 +634,7 @@ async function start(repositoryRoot, paths) {
   if (!hasExpectedHosts(await readFile("/etc/hosts", "utf8"))) {
     throw new Error("本地域名尚未就绪；请先运行 hosts。");
   }
+  await ensureApiTarget(paths.apiTarget);
   const toolchain = doctorToolchain(repositoryRoot);
   if (!toolchain.ok)
     throw new Error(`${toolchain.message} ${toolchain.recovery}`);
@@ -548,7 +642,45 @@ async function start(repositoryRoot, paths) {
   await startVite(repositoryRoot, paths);
   await waitForVite();
   startEdge(repositoryRoot, paths);
+  await waitForEdge(paths);
   console.log("READY: https://platform.saasforge.test");
+}
+
+async function waitForEdge(paths) {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    const edge = run(
+      "curl",
+      [
+        "--fail",
+        "--silent",
+        "--show-error",
+        "--connect-timeout",
+        "2",
+        "--max-time",
+        "5",
+        "--cacert",
+        paths.certificateAuthorityCertificate,
+        "https://platform.saasforge.test/",
+      ],
+      { allowFailure: true },
+    );
+    if (edge.status === 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error("本地 HTTPS Edge 未在 30 秒内通过受信 TLS 就绪。");
+}
+
+async function ensureApiTarget(targetFile) {
+  try {
+    await access(targetFile, constants.R_OK);
+  } catch {
+    await mkdir(path.dirname(targetFile), { recursive: true, mode: 0o700 });
+    await chmod(path.dirname(targetFile), 0o700);
+    await writeFile(targetFile, '{"hostname":"gateway","port":8080}\n', {
+      mode: 0o600,
+    });
+  }
 }
 
 async function startVite(repositoryRoot, paths) {
@@ -602,34 +734,37 @@ async function waitForVite() {
   );
 }
 
+export function edgeStartArguments(repositoryRoot) {
+  const composeDirectory = path.join(repositoryRoot, "deploy", "compose");
+  return [
+    "compose",
+    "--project-directory",
+    composeDirectory,
+    "--file",
+    path.join(composeDirectory, "compose.yaml"),
+    "--file",
+    path.join(composeDirectory, "local-https-development.override.yaml"),
+    "up",
+    "--detach",
+    // Edge 是独立入口；启动依赖会重建应用拓扑，超出该恢复命令的边界。
+    "--no-deps",
+    "--force-recreate",
+    "local-https-edge",
+  ];
+}
+
 function startEdge(repositoryRoot, paths) {
   const composeDirectory = path.join(repositoryRoot, "deploy", "compose");
-  run(
-    "docker",
-    [
-      "compose",
-      "--project-directory",
-      composeDirectory,
-      "--file",
-      path.join(composeDirectory, "compose.yaml"),
-      "--file",
-      path.join(composeDirectory, "local-https-development.override.yaml"),
-      "up",
-      "--detach",
-      "local-https-edge",
-    ],
-    {
-      cwd: composeDirectory,
-      env: {
-        ...process.env,
-        SF_LOCAL_HTTPS_CERT: paths.serverCertificate,
-        SF_LOCAL_HTTPS_KEY: paths.serverKey,
-        SF_LOCAL_HTTPS_HOST_GID: String(
-          process.getgid?.() ?? os.userInfo().gid,
-        ),
-      },
+  run("docker", edgeStartArguments(repositoryRoot), {
+    cwd: composeDirectory,
+    env: {
+      ...process.env,
+      SF_LOCAL_HTTPS_CERT: paths.serverCertificate,
+      SF_LOCAL_HTTPS_API_TARGET_FILE: paths.apiTarget,
+      SF_LOCAL_HTTPS_KEY: paths.serverKey,
+      SF_LOCAL_HTTPS_HOST_GID: String(process.getgid?.() ?? os.userInfo().gid),
     },
-  );
+  });
 }
 
 function usage() {
