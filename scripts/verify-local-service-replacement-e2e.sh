@@ -8,9 +8,9 @@ readonly local_https_certificate_authority="$repository_root/deploy/compose/.sec
 readonly target="${1:-}"
 
 case "$target" in
-  gateway|tenant-access-service|entitlement-service|audit-service) ;;
+  gateway|iam-service|tenant-access-service|entitlement-service|audit-service) ;;
   *)
-    echo "用法：bash scripts/verify-local-service-replacement-e2e.sh <gateway|tenant-access-service|entitlement-service|audit-service>" >&2
+    echo "用法：bash scripts/verify-local-service-replacement-e2e.sh <gateway|iam-service|tenant-access-service|entitlement-service|audit-service>" >&2
     exit 2
     ;;
 esac
@@ -117,4 +117,4 @@ if [[ "$(snapshot_images)" != "$image_before" ]]; then
   exit 1
 fi
 
-echo "Issue #130 $target 本机替换与恢复验收通过。"
+echo "Issue #131 $target 本机替换与恢复验收通过。"

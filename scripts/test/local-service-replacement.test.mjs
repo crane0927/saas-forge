@@ -12,6 +12,8 @@ import {
   additionalServiceDefinition,
   callersAreReady,
   classifyServiceState,
+  diagnosticSuccessCode,
+  formatServiceStatus,
   localIamCallerEnvironment,
   localIamEnvironment,
   localAdditionalEnvironment,
@@ -23,10 +25,19 @@ import { edgeStartArguments } from "../local-https-development.mjs";
 
 test("requires the fixed, unique loopback gRPC host-port assignments", () => {
   assert.doesNotThrow(() =>
-    assertGrpcHostPortPlan({ iam: 9091, tenantAccess: 9092, entitlement: 9093 }),
+    assertGrpcHostPortPlan({
+      iam: 9091,
+      tenantAccess: 9092,
+      entitlement: 9093,
+    }),
   );
   assert.throws(
-    () => assertGrpcHostPortPlan({ iam: 9091, tenantAccess: 9091, entitlement: 9093 }),
+    () =>
+      assertGrpcHostPortPlan({
+        iam: 9091,
+        tenantAccess: 9091,
+        entitlement: 9093,
+      }),
     /tenant-access-service.*9092/u,
   );
 });
@@ -74,12 +85,18 @@ test("requires one explicit supported service target", () => {
 test("declares a fixed module and host port for each additional service", () => {
   assert.deepEqual(
     Object.fromEntries(
-      ["gateway", "tenant-access-service", "entitlement-service", "audit-service"].map(
-        (service) => {
-          const definition = additionalServiceDefinition(service);
-          return [service, [definition.module, definition.httpPort, definition.grpcPort]];
-        },
-      ),
+      [
+        "gateway",
+        "tenant-access-service",
+        "entitlement-service",
+        "audit-service",
+      ].map((service) => {
+        const definition = additionalServiceDefinition(service);
+        return [
+          service,
+          [definition.module, definition.httpPort, definition.grpcPort],
+        ];
+      }),
     ),
     {
       "audit-service": ["services/audit-service", 8084, undefined],
@@ -105,11 +122,14 @@ test("selects the Tenant Access executable JAR without its Maven test fixture", 
 });
 
 test("reuses the stopped target container before asking Compose to recreate it", () => {
-  assert.deepEqual(
-    reusableContainerStartArguments({ ID: "fbc8cc0b49bd" }),
-    ["start", "fbc8cc0b49bd"],
+  assert.deepEqual(reusableContainerStartArguments({ ID: "fbc8cc0b49bd" }), [
+    "start",
+    "fbc8cc0b49bd",
+  ]);
+  assert.equal(
+    reusableContainerStartArguments({ ID: "not-a-container" }),
+    undefined,
   );
-  assert.equal(reusableContainerStartArguments({ ID: "not-a-container" }), undefined);
   assert.equal(reusableContainerStartArguments(undefined), undefined);
 });
 
@@ -129,7 +149,10 @@ test("maps a local Gateway only to existing loopback application ports", () => {
   assert.equal(environment.SPRING_CLOUD_NACOS_DISCOVERY_IP, "192.168.65.254");
   assert.equal(environment.SPRING_DATA_REDIS_HOST, "127.0.0.1");
   assert.equal(environment.SAASFORGE_LOCAL_REPLACEMENT_ENABLED, "true");
-  assert.equal(environment.SAASFORGE_LOCAL_REPLACEMENT_IAM_SERVICE_PORT, "8081");
+  assert.equal(
+    environment.SAASFORGE_LOCAL_REPLACEMENT_IAM_SERVICE_PORT,
+    "8081",
+  );
   assert.equal(
     environment.SAASFORGE_LOCAL_REPLACEMENT_TENANT_ACCESS_SERVICE_PORT,
     "8082",
@@ -184,9 +207,15 @@ test("maps every local downstream contract to its fixed loopback port", () => {
   assert.equal(tenant.IAM_GRPC_ADDRESS, "static://127.0.0.1:9091");
   assert.equal(tenant.ENTITLEMENT_GRPC_ADDRESS, "static://127.0.0.1:9093");
   assert.equal(entitlement.IAM_GRPC_ADDRESS, "static://127.0.0.1:9091");
-  assert.equal(entitlement.TENANT_ACCESS_GRPC_ADDRESS, "static://127.0.0.1:9092");
+  assert.equal(
+    entitlement.TENANT_ACCESS_GRPC_ADDRESS,
+    "static://127.0.0.1:9092",
+  );
   assert.equal(audit.KAFKA_BOOTSTRAP_SERVERS, "127.0.0.1:29092");
-  assert.equal(audit.AUDIT_DATABASE_URL, "jdbc:postgresql://127.0.0.1:5432/audit_db");
+  assert.equal(
+    audit.AUDIT_DATABASE_URL,
+    "jdbc:postgresql://127.0.0.1:5432/audit_db",
+  );
 });
 
 test("keeps Gateway discovery to public route targets and grants each target self-observation", async () => {
@@ -204,7 +233,12 @@ test("keeps Gateway discovery to public route targets and grants each target sel
   assert.match(gatewayPermissions, /naming\/tenant-access-service:r/u);
   assert.match(gatewayPermissions, /naming\/entitlement-service:r/u);
   assert.doesNotMatch(gatewayPermissions, /naming\/audit-service:r/u);
-  for (const service of ["gateway", "tenant-access-service", "entitlement-service", "audit-service"]) {
+  for (const service of [
+    "gateway",
+    "tenant-access-service",
+    "entitlement-service",
+    "audit-service",
+  ]) {
     assert.match(nacosInit, new RegExp(`naming/${service}:r`, "u"));
   }
 });
@@ -286,6 +320,46 @@ test("classifies container, local, unavailable, and duplicate IAM states", () =>
     }),
     "DUPLICATE",
   );
+});
+
+test("formats shareable status with fixed ports, readiness, and Nacos count", () => {
+  assert.equal(
+    formatServiceStatus({
+      service: "tenant-access-service",
+      state: "LOCAL",
+      httpPort: 8082,
+      grpcPort: 9092,
+      healthyInstances: 1,
+    }),
+    "STATUS: tenant-access-service LOCAL http=8082 grpc=9092 readiness=READY nacos=1",
+  );
+  assert.equal(
+    formatServiceStatus({
+      service: "audit-service",
+      state: "DUPLICATE",
+      httpPort: 8084,
+      grpcPort: undefined,
+      healthyInstances: 2,
+    }),
+    "STATUS: audit-service DUPLICATE http=8084 readiness=NOT_READY nacos=2",
+  );
+  assert.equal(
+    formatServiceStatus({
+      service: "gateway",
+      state: "UNAVAILABLE",
+      httpPort: 8080,
+      grpcPort: undefined,
+      healthyInstances: "UNAVAILABLE",
+    }),
+    "STATUS: gateway UNAVAILABLE http=8080 readiness=NOT_READY nacos=UNAVAILABLE",
+  );
+});
+
+test("uses positive diagnostic labels without weakening failure classifications", () => {
+  assert.equal(diagnosticSuccessCode("MIGRATION_FAILED"), "MIGRATION");
+  assert.equal(diagnosticSuccessCode("SECRET_MISSING"), "SECRET");
+  assert.equal(diagnosticSuccessCode("SIGNING_KEY_INVALID"), "SIGNING_KEY");
+  assert.equal(diagnosticSuccessCode("NACOS_UNAVAILABLE"), "NACOS");
 });
 
 test("parses Compose JSON-lines status without reading application logs", () => {
@@ -377,7 +451,10 @@ test("maps only IAM runtime settings to host-reachable infrastructure", () => {
   assert.equal(environment.SPRING_DATA_REDIS_HOST, "127.0.0.1");
   assert.equal(environment.KAFKA_BOOTSTRAP_SERVERS, "127.0.0.1:29092");
   assert.equal(environment.SMTP_HOST, "127.0.0.1");
-  assert.equal(environment.TENANT_ACCESS_GRPC_ADDRESS, "static://127.0.0.1:9092");
+  assert.equal(
+    environment.TENANT_ACCESS_GRPC_ADDRESS,
+    "static://127.0.0.1:9092",
+  );
   assert.equal(
     environment.IAM_JWT_PEM_PRIVATE_KEY_LOCATION,
     "file:/secure/iam-key.pem",

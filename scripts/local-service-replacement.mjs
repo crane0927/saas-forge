@@ -43,7 +43,13 @@ const additionalServiceDefinitions = Object.freeze({
   "entitlement-service": {
     artifact: "entitlement-service",
     configDataId: "entitlement-service.yaml",
-    dependencies: ["iam-service", "nacos", "postgres", "redis", "tenant-access-service"],
+    dependencies: [
+      "iam-service",
+      "nacos",
+      "postgres",
+      "redis",
+      "tenant-access-service",
+    ],
     grpcPort: 9093,
     httpPort: 8083,
     migration: "entitlement-migrate",
@@ -79,7 +85,14 @@ const additionalServiceDefinitions = Object.freeze({
   "tenant-access-service": {
     artifact: "tenant-access-service",
     configDataId: "tenant-access-service.yaml",
-    dependencies: ["entitlement-service", "iam-service", "kafka", "nacos", "postgres", "redis"],
+    dependencies: [
+      "entitlement-service",
+      "iam-service",
+      "kafka",
+      "nacos",
+      "postgres",
+      "redis",
+    ],
     grpcPort: 9092,
     httpPort: 8082,
     migration: "tenant-access-migrate",
@@ -97,6 +110,13 @@ const additionalServiceDefinitions = Object.freeze({
 const supportedServices = new Set([
   "iam-service",
   ...Object.keys(additionalServiceDefinitions),
+]);
+export const localDevelopmentServices = Object.freeze([
+  "gateway",
+  "iam-service",
+  "tenant-access-service",
+  "entitlement-service",
+  "audit-service",
 ]);
 
 class BlockedError extends Error {}
@@ -167,6 +187,38 @@ export function classifyServiceState({
   return "UNAVAILABLE";
 }
 
+export function formatServiceStatus({
+  service,
+  state,
+  httpPort,
+  grpcPort,
+  healthyInstances,
+}) {
+  const ports = [`http=${httpPort}`];
+  if (grpcPort !== undefined) ports.push(`grpc=${grpcPort}`);
+  const readiness =
+    state === "CONTAINER" || state === "LOCAL" ? "READY" : "NOT_READY";
+  return `STATUS: ${service} ${state} ${ports.join(" ")} readiness=${readiness} nacos=${healthyInstances}`;
+}
+
+function unavailableServiceStatus(service) {
+  const definition =
+    service === supportedService
+      ? {
+          service,
+          httpPort: localHttpPort,
+          grpcPort: localGrpcPort,
+        }
+      : additionalServiceDefinition(service);
+  return formatServiceStatus({
+    service: definition.service,
+    state: "UNAVAILABLE",
+    httpPort: definition.httpPort,
+    grpcPort: definition.grpcPort,
+    healthyInstances: "UNAVAILABLE",
+  });
+}
+
 export function nacosHosts(payload) {
   const hosts = Array.isArray(payload?.data)
     ? payload.data
@@ -191,7 +243,9 @@ export function assertGrpcHostPortPlan({ iam, tenantAccess, entitlement }) {
       );
     }
   }
-  if (new Set(assignments.map(([, port]) => port)).size !== assignments.length) {
+  if (
+    new Set(assignments.map(([, port]) => port)).size !== assignments.length
+  ) {
     throw new BlockedError("本机 gRPC 端口映射必须唯一。");
   }
 }
@@ -264,7 +318,10 @@ function runtimePaths(root) {
   );
   return {
     directory,
-    iamLocalCallersOverride: path.join(directory, "iam-local-callers.override.yaml"),
+    iamLocalCallersOverride: path.join(
+      directory,
+      "iam-local-callers.override.yaml",
+    ),
     iamLog: path.join(directory, "iam-service.log"),
     iamPid: path.join(directory, "iam-service.pid"),
   };
@@ -308,7 +365,12 @@ function compose(context, ...arguments_) {
 function composeWithIamLocalCallers(context, paths, ...arguments_) {
   return execute(
     "docker",
-    [...context.compose.arguments_, "--file", paths.iamLocalCallersOverride, ...arguments_],
+    [
+      ...context.compose.arguments_,
+      "--file",
+      paths.iamLocalCallersOverride,
+      ...arguments_,
+    ],
     { cwd: context.compose.directory },
   );
 }
@@ -316,13 +378,15 @@ function composeWithIamLocalCallers(context, paths, ...arguments_) {
 function iamLocalCallersOverride() {
   return [
     "services:",
-    ...Object.entries(localIamCallerEnvironment()).flatMap(([service, environment]) => [
-      `  ${service}:`,
-      "    environment:",
-      ...Object.entries(environment).map(
-        ([name, value]) => `      ${name}: \"${value}\"`,
-      ),
-    ]),
+    ...Object.entries(localIamCallerEnvironment()).flatMap(
+      ([service, environment]) => [
+        `  ${service}:`,
+        "    environment:",
+        ...Object.entries(environment).map(
+          ([name, value]) => `      ${name}: \"${value}\"`,
+        ),
+      ],
+    ),
     "",
   ].join("\n");
 }
@@ -349,8 +413,9 @@ async function waitForCallersReady(context, token, description) {
     ]);
     // Compose 的 running 状态不代表 Gateway 已能从 Nacos 选择调用方实例。
     return (
-      localIamCallers.every((service) => isRunning(stateOf(entries, service))) &&
-      callersAreReady(Object.fromEntries(registrations))
+      localIamCallers.every((service) =>
+        isRunning(stateOf(entries, service)),
+      ) && callersAreReady(Object.fromEntries(registrations))
     );
   });
 }
@@ -458,7 +523,9 @@ function loadContext(root) {
   };
   assertGrpcHostPortPlan(grpcPorts);
   if (publishedPort(iam, 8080) !== localHttpPort) {
-    throw new BlockedError(`iam-service 必须将 HTTP 8080 固定发布为回环 ${localHttpPort}。`);
+    throw new BlockedError(
+      `iam-service 必须将 HTTP 8080 固定发布为回环 ${localHttpPort}。`,
+    );
   }
   const environment = iam.environment;
   return {
@@ -743,7 +810,9 @@ async function assertPortAvailable(port) {
   await new Promise((resolve, reject) => {
     const server = createServer();
     server.once("error", () => {
-      reject(new BlockedError(`本机端口 ${port} 已被占用；请释放后再替换 IAM。`));
+      reject(
+        new BlockedError(`本机端口 ${port} 已被占用；请释放后再替换 IAM。`),
+      );
     });
     server.listen({ exclusive: true, host: localHost, port }, () => {
       server.close((error) => {
@@ -982,12 +1051,35 @@ async function restore(context, paths) {
 }
 
 async function status(context, paths) {
-  const observed = await observe(
-    context,
-    paths,
-    await gatewayDiscoveryToken(context),
+  let observed;
+  try {
+    observed = await observe(
+      context,
+      paths,
+      await gatewayDiscoveryToken(context),
+    );
+  } catch {
+    console.log(
+      formatServiceStatus({
+        service: supportedService,
+        state: "UNAVAILABLE",
+        httpPort: localHttpPort,
+        grpcPort: localGrpcPort,
+        healthyInstances: "UNAVAILABLE",
+      }),
+    );
+    process.exitCode = 1;
+    return;
+  }
+  console.log(
+    formatServiceStatus({
+      service: supportedService,
+      state: observed.state,
+      httpPort: localHttpPort,
+      grpcPort: localGrpcPort,
+      healthyInstances: observed.instances.length,
+    }),
   );
-  console.log(`STATUS: iam-service ${observed.state}`);
   if (observed.state === "UNAVAILABLE" || observed.state === "DUPLICATE") {
     process.exitCode = 1;
   }
@@ -1042,12 +1134,14 @@ export function localAdditionalEnvironment(definition, environment, inputs) {
       IAM_GRPC_ADDRESS: `static://${localHost}:9091`,
       IAM_HTTP_BASE_URL: `http://${localHost}:8081`,
       IAM_JWT_ISSUER: environment.IAM_JWT_ISSUER,
-      IAM_SERVICE_CLIENT_ID_FILE: inputs.secretFiles["/run/secrets/iam-service-client-id"],
+      IAM_SERVICE_CLIENT_ID_FILE:
+        inputs.secretFiles["/run/secrets/iam-service-client-id"],
       KAFKA_BOOTSTRAP_SERVERS: `${localHost}:29092`,
       NACOS_TENANT_ACCESS_PASSWORD: environment.NACOS_TENANT_ACCESS_PASSWORD,
       NACOS_TENANT_ACCESS_USERNAME: environment.NACOS_TENANT_ACCESS_USERNAME,
       SAASFORGE_ENVIRONMENT: "dev",
-      SAASFORGE_SERVICE_CLIENT_ID_FILE: inputs.secretFiles["/run/secrets/service-client-id"],
+      SAASFORGE_SERVICE_CLIENT_ID_FILE:
+        inputs.secretFiles["/run/secrets/service-client-id"],
       SAASFORGE_SERVICE_CLIENT_SECRET_FILE:
         inputs.secretFiles["/run/secrets/service-client-secret"],
       SPRING_DATA_REDIS_HOST: localHost,
@@ -1068,7 +1162,8 @@ export function localAdditionalEnvironment(definition, environment, inputs) {
       NACOS_ENTITLEMENT_PASSWORD: environment.NACOS_ENTITLEMENT_PASSWORD,
       NACOS_ENTITLEMENT_USERNAME: environment.NACOS_ENTITLEMENT_USERNAME,
       SAASFORGE_ENVIRONMENT: "dev",
-      SAASFORGE_SERVICE_CLIENT_ID_FILE: inputs.secretFiles["/run/secrets/service-client-id"],
+      SAASFORGE_SERVICE_CLIENT_ID_FILE:
+        inputs.secretFiles["/run/secrets/service-client-id"],
       SAASFORGE_SERVICE_CLIENT_SECRET_FILE:
         inputs.secretFiles["/run/secrets/service-client-secret"],
       SPRING_DATA_REDIS_HOST: localHost,
@@ -1098,7 +1193,10 @@ function additionalEnvironmentNames(definition) {
   if (definition.service === "gateway") {
     return [...common, "IAM_JWT_ISSUER", "SPRING_DATA_REDIS_PASSWORD"];
   }
-  if (definition.service === "tenant-access-service" || definition.service === "entitlement-service") {
+  if (
+    definition.service === "tenant-access-service" ||
+    definition.service === "entitlement-service"
+  ) {
     return [
       ...common,
       "IAM_JWT_ISSUER",
@@ -1107,11 +1205,7 @@ function additionalEnvironmentNames(definition) {
       "SPRING_DATASOURCE_USERNAME",
     ];
   }
-  return [
-    ...common,
-    "AUDIT_DATABASE_PASSWORD",
-    "AUDIT_DATABASE_USERNAME",
-  ];
+  return [...common, "AUDIT_DATABASE_PASSWORD", "AUDIT_DATABASE_USERNAME"];
 }
 
 function additionalContext(root, definition) {
@@ -1126,7 +1220,9 @@ function additionalContext(root, definition) {
   try {
     document = JSON.parse(configuration.stdout);
   } catch {
-    throw new BlockedError("无法解析本地 Compose 配置。请先修复 deploy/compose/.env。");
+    throw new BlockedError(
+      "无法解析本地 Compose 配置。请先修复 deploy/compose/.env。",
+    );
   }
   const services = document.services ?? {};
   const application = services[definition.service];
@@ -1159,7 +1255,9 @@ function additionalContext(root, definition) {
       throw new BlockedError(`Compose 配置缺少本机替换所需的 ${service}。`);
     }
     if (publishedPort(services[service], targetPort) !== expectedPort) {
-      throw new BlockedError(`${service} 必须将 ${targetPort} 固定发布为回环 ${expectedPort}。`);
+      throw new BlockedError(
+        `${service} 必须将 ${targetPort} 固定发布为回环 ${expectedPort}。`,
+      );
     }
   }
   const environment = Object.fromEntries(
@@ -1220,7 +1318,9 @@ async function additionalPreflight(context) {
   for (const service of definition.dependencies) {
     const entry = stateOf(entries, service);
     if (!isRunning(entry) || (entry.Health && entry.Health !== "healthy")) {
-      throw new BlockedError(`${service} 未处于可供本机 ${definition.service} 使用的运行状态。`);
+      throw new BlockedError(
+        `${service} 未处于可供本机 ${definition.service} 使用的运行状态。`,
+      );
     }
   }
   await assertReadableNonEmpty(...Object.values(context.secretFiles));
@@ -1228,7 +1328,10 @@ async function additionalPreflight(context) {
 }
 
 async function localAdditionalProcess(paths, definition) {
-  const pid = Number.parseInt(await readFile(paths.pid, "utf8").catch(() => ""), 10);
+  const pid = Number.parseInt(
+    await readFile(paths.pid, "utf8").catch(() => ""),
+    10,
+  );
   if (!Number.isInteger(pid)) return undefined;
   const result = execute("ps", ["-p", String(pid), "-o", "command="], {
     allowFailure: true,
@@ -1236,7 +1339,9 @@ async function localAdditionalProcess(paths, definition) {
   if (result.status !== 0) return undefined;
   const expected = `/${definition.module}/target/${definition.artifact}-`;
   if (!result.stdout.includes(expected)) {
-    throw new BlockedError(`${definition.service} PID 文件未指向受管本机进程；拒绝操作未知进程。`);
+    throw new BlockedError(
+      `${definition.service} PID 文件未指向受管本机进程；拒绝操作未知进程。`,
+    );
   }
   return pid;
 }
@@ -1274,9 +1379,11 @@ async function additionalObserve(context, paths, token) {
     healthyInstances(context, token, definition.service),
     dockerHostAddress(context),
   ]);
-  const localReady = pid !== undefined && (await additionalReadiness(definition));
+  const localReady =
+    pid !== undefined && (await additionalReadiness(definition));
   const localRegistered = instances.some(
-    (instance) => instance.ip === hostAddress && instance.port === definition.httpPort,
+    (instance) =>
+      instance.ip === hostAddress && instance.port === definition.httpPort,
   );
   const containerRunning = isRunning(stateOf(entries, definition.service));
   return {
@@ -1293,7 +1400,8 @@ async function additionalObserve(context, paths, token) {
 
 async function assertAdditionalPortsAvailable(definition) {
   await assertPortAvailable(definition.httpPort);
-  if (definition.grpcPort !== undefined) await assertPortAvailable(definition.grpcPort);
+  if (definition.grpcPort !== undefined)
+    await assertPortAvailable(definition.grpcPort);
 }
 
 async function packageAdditionalService(context) {
@@ -1312,7 +1420,10 @@ async function packageAdditionalService(context) {
     { cwd: context.root, env: systemEnvironment() },
   );
   const target = path.join(context.root, definition.module, "target");
-  const jar = additionalExecutableJar(await readdir(target), definition.artifact);
+  const jar = additionalExecutableJar(
+    await readdir(target),
+    definition.artifact,
+  );
   if (jar === undefined) {
     throw new BlockedError(`无法确定本机 ${definition.service} 可执行 JAR。`);
   }
@@ -1338,7 +1449,8 @@ async function startAdditionalService(context, paths, jar, dockerHostAddress) {
     stdio: ["ignore", log.fd, log.fd],
   });
   await log.close();
-  if (!child.pid) throw new BlockedError(`无法启动本机 ${definition.service} 进程。`);
+  if (!child.pid)
+    throw new BlockedError(`无法启动本机 ${definition.service} 进程。`);
   child.unref();
   await writeFile(paths.pid, `${child.pid}\n`, { mode: 0o600 });
 }
@@ -1360,9 +1472,13 @@ async function stopAdditionalService(paths, definition) {
 async function writeGatewayEdgeTarget(paths, hostname) {
   await mkdir(paths.directory, { recursive: true, mode: 0o700 });
   await chmod(paths.directory, 0o700);
-  await writeFile(paths.apiTarget, `${JSON.stringify({ hostname, port: 8080 })}\n`, {
-    mode: 0o600,
-  });
+  await writeFile(
+    paths.apiTarget,
+    `${JSON.stringify({ hostname, port: 8080 })}\n`,
+    {
+      mode: 0o600,
+    },
+  );
 }
 
 async function routeAdditionalTraffic(context, paths) {
@@ -1384,7 +1500,9 @@ async function ensureAdditionalContainer(context, paths, token) {
   if (!isRunning(stateOf(entries, definition.service))) {
     await waitFor(
       `本机 ${definition.service} 从 Nacos 摘除`,
-      async () => (await healthyInstances(context, token, definition.service)).length === 0,
+      async () =>
+        (await healthyInstances(context, token, definition.service)).length ===
+        0,
     );
   }
   const startArguments = reusableContainerStartArguments(
@@ -1404,7 +1522,8 @@ async function ensureAdditionalContainer(context, paths, token) {
   }
   await waitFor(
     `容器 ${definition.service} 就绪`,
-    async () => (await additionalObserve(context, paths, token)).state === "CONTAINER",
+    async () =>
+      (await additionalObserve(context, paths, token)).state === "CONTAINER",
   );
   await restoreAdditionalTraffic(context, paths);
 }
@@ -1419,28 +1538,42 @@ async function replaceAdditional(context, paths) {
     return;
   }
   if (current.state === "DUPLICATE") {
-    throw new BlockedError(`Nacos 中存在多个健康 ${definition.service} 实例；拒绝替换。`);
+    throw new BlockedError(
+      `Nacos 中存在多个健康 ${definition.service} 实例；拒绝替换。`,
+    );
   }
   if (current.state !== "CONTAINER") {
-    throw new BlockedError(`${definition.service} 未处于可替换的容器状态。请先运行 status。`);
+    throw new BlockedError(
+      `${definition.service} 未处于可替换的容器状态。请先运行 status。`,
+    );
   }
   const jar = await packageAdditionalService(context);
   let containerStopped = false;
   try {
     compose(context, "stop", definition.service);
     containerStopped = true;
-    await waitFor(`容器 ${definition.service} 停止并从 Nacos 摘除`, async () => {
-      const entries = await composeEntries(context);
-      return (
-        !isRunning(stateOf(entries, definition.service)) &&
-        (await healthyInstances(context, token, definition.service)).length === 0
-      );
-    });
+    await waitFor(
+      `容器 ${definition.service} 停止并从 Nacos 摘除`,
+      async () => {
+        const entries = await composeEntries(context);
+        return (
+          !isRunning(stateOf(entries, definition.service)) &&
+          (await healthyInstances(context, token, definition.service))
+            .length === 0
+        );
+      },
+    );
     await assertAdditionalPortsAvailable(definition);
-    await startAdditionalService(context, paths, jar, await dockerHostAddress(context));
+    await startAdditionalService(
+      context,
+      paths,
+      jar,
+      await dockerHostAddress(context),
+    );
     await waitFor(
       `本机 ${definition.service} 就绪且完成 Nacos 注册`,
-      async () => (await additionalObserve(context, paths, token)).state === "LOCAL",
+      async () =>
+        (await additionalObserve(context, paths, token)).state === "LOCAL",
     );
     await routeAdditionalTraffic(context, paths);
   } catch (error) {
@@ -1450,7 +1583,9 @@ async function replaceAdditional(context, paths) {
         await ensureAdditionalContainer(context, paths, token);
         console.error(`RECOVERY: 已恢复容器 ${definition.service}。`);
       } catch {
-        console.error(`RECOVERY: 自动恢复容器 ${definition.service} 失败；请运行 restore ${definition.service}。`);
+        console.error(
+          `RECOVERY: 自动恢复容器 ${definition.service} 失败；请运行 restore ${definition.service}。`,
+        );
       }
     }
     throw error;
@@ -1463,7 +1598,9 @@ async function restoreAdditional(context, paths) {
   const current = await additionalObserve(context, paths, token);
   const { definition } = context;
   if (current.state === "DUPLICATE") {
-    throw new BlockedError(`Nacos 中存在多个健康 ${definition.service} 实例；拒绝在不明确状态下恢复。`);
+    throw new BlockedError(
+      `Nacos 中存在多个健康 ${definition.service} 实例；拒绝在不明确状态下恢复。`,
+    );
   }
   if (current.state === "CONTAINER") {
     await stopAdditionalService(paths, definition);
@@ -1476,27 +1613,311 @@ async function restoreAdditional(context, paths) {
 }
 
 async function statusAdditional(context, paths) {
-  const observed = await additionalObserve(
-    context,
-    paths,
-    await additionalDiscoveryToken(context),
+  let observed;
+  try {
+    observed = await additionalObserve(
+      context,
+      paths,
+      await additionalDiscoveryToken(context),
+    );
+  } catch {
+    console.log(
+      formatServiceStatus({
+        service: context.definition.service,
+        state: "UNAVAILABLE",
+        httpPort: context.definition.httpPort,
+        grpcPort: context.definition.grpcPort,
+        healthyInstances: "UNAVAILABLE",
+      }),
+    );
+    process.exitCode = 1;
+    return;
+  }
+  console.log(
+    formatServiceStatus({
+      service: context.definition.service,
+      state: observed.state,
+      httpPort: context.definition.httpPort,
+      grpcPort: context.definition.grpcPort,
+      healthyInstances: observed.instances.length,
+    }),
   );
-  console.log(`STATUS: ${context.definition.service} ${observed.state}`);
   if (observed.state === "UNAVAILABLE" || observed.state === "DUPLICATE") {
     process.exitCode = 1;
   }
 }
 
+async function diagnostic(code, service, recovery, check, success) {
+  try {
+    await check();
+    console.log(`OK [${diagnosticSuccessCode(code)}]: ${service} ${success}`);
+    return true;
+  } catch {
+    console.log(`BLOCKED [${code}]: ${service} 前置条件未满足。`);
+    console.log(`恢复：${recovery}`);
+    return false;
+  }
+}
+
+export function diagnosticSuccessCode(failureCode) {
+  return failureCode.replace(/_(?:FAILED|INVALID|MISSING|UNAVAILABLE)$/u, "");
+}
+
+function migrationIsSuccessful(entries, migration) {
+  const entry = stateOf(entries, migration);
+  if (entry?.State !== "exited" || Number(entry.ExitCode) !== 0) {
+    throw new BlockedError(`${migration} 未成功结束。`);
+  }
+}
+
+function infrastructureIsHealthy(entries, services, selectedService) {
+  for (const service of services) {
+    if (service === selectedService) continue;
+    const entry = stateOf(entries, service);
+    if (!isRunning(entry) || (entry.Health && entry.Health !== "healthy")) {
+      throw new BlockedError(`${service} 未处于健康运行状态。`);
+    }
+  }
+}
+
+async function diagnoseTopology(observeCurrent, ports) {
+  const observed = await observeCurrent();
+  if (observed.state === "DUPLICATE") {
+    return { code: "DUPLICATE_INSTANCE", observed };
+  }
+  if (observed.state === "UNAVAILABLE") {
+    try {
+      for (const port of ports) await assertPortAvailable(port);
+    } catch {
+      return { code: "PORT_CONFLICT", observed };
+    }
+    return { code: "SERVICE_UNAVAILABLE", observed };
+  }
+  return { code: "TOPOLOGY", observed };
+}
+
+async function doctorIam(context, paths) {
+  const entries = await composeEntries(context);
+  let failures = 0;
+  if (
+    !(await diagnostic(
+      "MIGRATION_FAILED",
+      supportedService,
+      "修复 iam-migrate 后重新运行 bash scripts/local-development.sh doctor。",
+      () => migrationIsSuccessful(entries, "iam-migrate"),
+      "迁移已成功完成。",
+    ))
+  )
+    failures += 1;
+  if (
+    !(await diagnostic(
+      "INFRASTRUCTURE_UNAVAILABLE",
+      supportedService,
+      "在 deploy/compose 中启动并恢复 PostgreSQL、Redis、Kafka、Mailpit 与 Nacos。",
+      () =>
+        infrastructureIsHealthy(entries, [
+          "postgres",
+          "redis",
+          "kafka",
+          "mailpit",
+          "nacos",
+        ]),
+      "基础设施健康。",
+    ))
+  )
+    failures += 1;
+  if (
+    !(await diagnostic(
+      "SECRET_MISSING",
+      supportedService,
+      "按 deploy/compose/README.md 准备 IAM 受限 Secret 文件。",
+      () =>
+        assertReadableNonEmpty(
+          context.signingKeyFile,
+          context.serviceClientIdFile,
+          context.serviceClientSecretFile,
+        ),
+      "所需 Secret 文件可读且非空。",
+    ))
+  )
+    failures += 1;
+  if (
+    !(await diagnostic(
+      "SIGNING_KEY_INVALID",
+      supportedService,
+      "运行 bash scripts/initialize-local-iam-signing-key.sh，并保留现有数据卷。",
+      () => verifySigningKey(context),
+      "ACTIVE Signing Key 与本地私钥匹配。",
+    ))
+  )
+    failures += 1;
+  if (
+    !(await diagnostic(
+      "NACOS_UNAVAILABLE",
+      supportedService,
+      "恢复 Nacos 与 iam-service.yaml 后重新运行 doctor。",
+      () => assertNacosConfiguration(context),
+      "Nacos 配置可读取。",
+    ))
+  )
+    failures += 1;
+  try {
+    const topology = await diagnoseTopology(
+      async () => observe(context, paths, await gatewayDiscoveryToken(context)),
+      [localHttpPort, localGrpcPort],
+    );
+    if (topology.code === "TOPOLOGY") {
+      console.log(
+        `OK [TOPOLOGY]: ${supportedService} ${topology.observed.state}，Nacos 健康实例数 ${topology.observed.instances.length}。`,
+      );
+    } else {
+      console.log(
+        `BLOCKED [${topology.code}]: ${supportedService} ${topology.observed.state}，Nacos 健康实例数 ${topology.observed.instances.length}。`,
+      );
+      console.log(
+        `恢复：运行 bash scripts/local-development.sh restore ${supportedService}；若端口冲突，先停止未知监听者。`,
+      );
+      failures += 1;
+    }
+  } catch {
+    console.log(
+      `BLOCKED [TOPOLOGY_UNREADABLE]: ${supportedService} 状态无法确认。`,
+    );
+    console.log(
+      "恢复：恢复 Docker 与 Nacos 后重新运行 doctor；若仍失败，再检查固定端口监听者。",
+    );
+    failures += 1;
+  }
+  return failures;
+}
+
+async function doctorAdditional(context, paths) {
+  const { definition } = context;
+  const entries = await composeEntries(context);
+  let failures = 0;
+  if (
+    definition.migration !== undefined &&
+    !(await diagnostic(
+      "MIGRATION_FAILED",
+      definition.service,
+      `修复 ${definition.migration} 后重新运行 bash scripts/local-development.sh doctor。`,
+      () => migrationIsSuccessful(entries, definition.migration),
+      "迁移已成功完成。",
+    ))
+  )
+    failures += 1;
+  if (
+    !(await diagnostic(
+      "INFRASTRUCTURE_UNAVAILABLE",
+      definition.service,
+      "启动该目标依赖的 Compose 基础设施与应用服务后重新运行 doctor。",
+      () =>
+        infrastructureIsHealthy(
+          entries,
+          definition.dependencies,
+          definition.service,
+        ),
+      "依赖服务健康。",
+    ))
+  )
+    failures += 1;
+  if (
+    !(await diagnostic(
+      "SECRET_MISSING",
+      definition.service,
+      "按 deploy/compose/README.md 准备该目标的受限 Secret 文件。",
+      () => assertReadableNonEmpty(...Object.values(context.secretFiles)),
+      "所需 Secret 文件可读且非空。",
+    ))
+  )
+    failures += 1;
+  if (
+    !(await diagnostic(
+      "NACOS_UNAVAILABLE",
+      definition.service,
+      `恢复 Nacos 与 ${definition.configDataId} 后重新运行 doctor。`,
+      () => additionalNacosConfiguration(context),
+      "Nacos 配置可读取。",
+    ))
+  )
+    failures += 1;
+  try {
+    const topology = await diagnoseTopology(
+      async () =>
+        additionalObserve(
+          context,
+          paths,
+          await additionalDiscoveryToken(context),
+        ),
+      [
+        definition.httpPort,
+        ...(definition.grpcPort === undefined ? [] : [definition.grpcPort]),
+      ],
+    );
+    if (topology.code === "TOPOLOGY") {
+      console.log(
+        `OK [TOPOLOGY]: ${definition.service} ${topology.observed.state}，Nacos 健康实例数 ${topology.observed.instances.length}。`,
+      );
+    } else {
+      console.log(
+        `BLOCKED [${topology.code}]: ${definition.service} ${topology.observed.state}，Nacos 健康实例数 ${topology.observed.instances.length}。`,
+      );
+      console.log(
+        `恢复：运行 bash scripts/local-development.sh restore ${definition.service}；若端口冲突，先停止未知监听者。`,
+      );
+      failures += 1;
+    }
+  } catch {
+    console.log(
+      `BLOCKED [TOPOLOGY_UNREADABLE]: ${definition.service} 状态无法确认。`,
+    );
+    console.log(
+      "恢复：恢复 Docker 与 Nacos 后重新运行 doctor；若仍失败，再检查该目标固定端口监听者。",
+    );
+    failures += 1;
+  }
+  return failures;
+}
+
+async function doctorTarget(root, service) {
+  try {
+    if (service === supportedService) {
+      const context = loadContext(root);
+      console.log(
+        `OK [PORTS]: ${service} http=${localHttpPort} grpc=${localGrpcPort} nacos-http=${context.nacosPort} nacos-grpc=${context.nacosGrpcPort}。`,
+      );
+      return await doctorIam(context, runtimePaths(root));
+    }
+    const definition = additionalServiceDefinition(service);
+    const context = additionalContext(root, definition);
+    console.log(
+      `OK [PORTS]: ${service} http=${definition.httpPort}${definition.grpcPort === undefined ? "" : ` grpc=${definition.grpcPort}`} nacos-http=${context.nacosPort}。`,
+    );
+    return await doctorAdditional(
+      context,
+      additionalRuntimePaths(root, definition),
+    );
+  } catch {
+    console.log(
+      `BLOCKED [COMPOSE_CONFIG_INVALID]: ${service} 无法加载固定端口、环境或 Secret 挂载配置。`,
+    );
+    console.log(
+      "恢复：修复 deploy/compose/.env 与 Compose 配置后重新运行 doctor；不要输出环境变量值。",
+    );
+    return 1;
+  }
+}
+
 function usage() {
   console.error(
-    "用法：bash scripts/local-service-replacement.sh <replace|status|restore> <gateway|iam-service|tenant-access-service|entitlement-service|audit-service>",
+    "用法：bash scripts/local-service-replacement.sh <doctor|replace|status|restore> <gateway|iam-service|tenant-access-service|entitlement-service|audit-service>",
   );
 }
 
 async function main(arguments_) {
   const [command, service] = arguments_;
   if (
-    !["replace", "status", "restore"].includes(command) ||
+    !["doctor", "replace", "status", "restore"].includes(command) ||
     arguments_.length !== 2
   ) {
     usage();
@@ -1506,6 +1927,10 @@ async function main(arguments_) {
   try {
     assertSupportedService(service);
     const root = rootDirectory();
+    if (command === "doctor") {
+      if ((await doctorTarget(root, service)) > 0) process.exitCode = 1;
+      return;
+    }
     if (service === supportedService) {
       const context = loadContext(root);
       const paths = runtimePaths(root);
@@ -1521,6 +1946,11 @@ async function main(arguments_) {
       if (command === "restore") await restoreAdditional(context, paths);
     }
   } catch (error) {
+    if (command === "status") {
+      console.log(unavailableServiceStatus(service));
+      process.exitCode = 1;
+      return;
+    }
     console.error(
       `BLOCKED: ${error instanceof Error ? error.message : "本地服务替换失败。"}`,
     );

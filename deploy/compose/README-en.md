@@ -39,15 +39,15 @@ An `Exited (0)` status for a `*-migrate` job means its migration succeeded. The 
 
 These operations require deployed frontends, HTTPS entry points, healthy backend services, and the appropriate account data. Running `docker compose up` alone does not make the product consoles available.
 
-| Operation | Current entry point | Prerequisite or boundary |
-| --- | --- | --- |
-| Platform Admin login, initial password change, subsequent login, and logout | Platform Console | Run the administrator bootstrap below first; use the initial password within 24 hours |
-| Session recovery after reload and coordination across tabs | Platform / Tenant Console | An established session; platform and tenant sessions are managed separately |
-| Tenant login, selection, switching, and logout | Tenant Console | Prepare accessible Tenants and Memberships through backend APIs first; selection or switching requires multiple accessible Memberships |
-| Set a Tenant administrator's first password | Password Setup link in a Mailpit email | Administrator initialization must have sent a still-valid link; return to Tenant Console to log in afterward |
-| Create the Platform Admin or reset its initial credential | Compose one-shot tasks below | No platform UI; the restricted reset cannot reset an established regular password |
-| Bootstrap reserved service OAuth Clients or replace revoked Clients | Compose one-shot tasks below | No platform UI |
-| Manage OAuth Clients, create Tenants, configure Quota/Plan or Subscription, initialize Tenant administrators | Formal backend APIs | No working management pages yet; platform `/oauth-clients` is only a placeholder |
+| Operation                                                                                                    | Current entry point                    | Prerequisite or boundary                                                                                                               |
+| ------------------------------------------------------------------------------------------------------------ | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Platform Admin login, initial password change, subsequent login, and logout                                  | Platform Console                       | Run the administrator bootstrap below first; use the initial password within 24 hours                                                  |
+| Session recovery after reload and coordination across tabs                                                   | Platform / Tenant Console              | An established session; platform and tenant sessions are managed separately                                                            |
+| Tenant login, selection, switching, and logout                                                               | Tenant Console                         | Prepare accessible Tenants and Memberships through backend APIs first; selection or switching requires multiple accessible Memberships |
+| Set a Tenant administrator's first password                                                                  | Password Setup link in a Mailpit email | Administrator initialization must have sent a still-valid link; return to Tenant Console to log in afterward                           |
+| Create the Platform Admin or reset its initial credential                                                    | Compose one-shot tasks below           | No platform UI; the restricted reset cannot reset an established regular password                                                      |
+| Bootstrap reserved service OAuth Clients or replace revoked Clients                                          | Compose one-shot tasks below           | No platform UI                                                                                                                         |
+| Manage OAuth Clients, create Tenants, configure Quota/Plan or Subscription, initialize Tenant administrators | Formal backend APIs                    | No working management pages yet; platform `/oauth-clients` is only a placeholder                                                       |
 
 The platform home and Tenant workspace currently show authentication status only, without a statistics Dashboard or business management actions. See the [Tenant lifecycle acceptance script](../../scripts/verify-tenant-lifecycle-e2e.sh) for API examples; API coverage in that script does not mean corresponding UI features exist.
 
@@ -71,40 +71,41 @@ The browser and shared Client handle cookies, Origin, and Fetch Metadata accordi
 
 ### Daily Platform HTTPS development
 
-Issue #127 adds a dedicated daily Platform Console entrypoint for macOS Docker Desktop; it does not reuse the Fresh Compose acceptance environment:
+Issue #131 provides one daily entrypoint for the Platform Console and five local service-replacement targets on macOS Docker Desktop; it does not reuse the Fresh Compose acceptance environment:
 
 ```bash
 cd ../..
-bash scripts/local-https-development.sh setup
-bash scripts/local-https-development.sh hosts
-bash scripts/local-https-development.sh trust-ca
-bash scripts/local-https-development.sh doctor
-bash scripts/local-https-development.sh start
+bash scripts/local-development.sh setup     # Once per machine; hosts and CA trust ask separately
+bash scripts/local-development.sh doctor    # Complete share-safe prerequisite diagnostics
+bash scripts/local-development.sh frontend  # Start Vite 5173 and TLS Edge 443
+bash scripts/local-development.sh status    # Show the topology of all five services
 ```
 
-The local CA, server certificate, and Vite diagnostics remain in a Git-ignored directory. `hosts` and `trust-ca` require explicit interactive consent before editing `/etc/hosts` or the System Keychain; daily `start` does not recreate certificates, reinstall trust, install frontend dependencies, or rewrite the lockfile. To recover a stale Docker Desktop loopback-port forwarding state, `start` force-recreates only the stateless TLS Edge container; it does not recreate certificates, application services, volumes, or business data, but briefly disconnects local HTTPS pages. TLS Edge publishes only loopback port `443`, accepts only `platform.saasforge.test` and `api.saasforge.test`, forwards Platform traffic (including HMR WebSocket) to host Vite on `5173`, and forwards API traffic to the Compose Gateway. It does not synthesize or rewrite Origin, Cookie, Fetch Metadata, or Authorization.
+The local CA, server certificate, and Vite diagnostics remain in a Git-ignored directory. `setup` asks for explicit interactive consent separately before editing `/etc/hosts` or the System Keychain; daily `frontend` does not recreate certificates, reinstall trust, install frontend dependencies, or rewrite the lockfile. To recover a stale Docker Desktop loopback-port forwarding state, `frontend` force-recreates only the stateless TLS Edge container; it does not recreate certificates, application services, volumes, or business data, but briefly disconnects local HTTPS pages. TLS Edge publishes only loopback port `443`, accepts only `platform.saasforge.test` and `api.saasforge.test`, forwards Platform traffic (including HMR WebSocket) to host Vite on `5173`, and forwards API traffic to the Compose Gateway. It does not synthesize or rewrite Origin, Cookie, Fetch Metadata, or Authorization.
+
+`doctor` continues through every category even after a failure. It uses share-safe classifications such as `CERTIFICATE_MISSING`, `CERTIFICATE_EXPIRED`, `CERTIFICATE_UNTRUSTED`, `PORT_CONFLICT`, `MIGRATION_FAILED`, `NACOS_UNAVAILABLE`, `SECRET_MISSING`, `INFRASTRUCTURE_UNAVAILABLE`, and `DUPLICATE_INSTANCE`, followed by a recovery action. It never renders passwords, Tokens, Cookies, Client Secrets, JWT private keys, or raw environment-variable values.
 
 The entrypoint does not host Tenant Console and does not replace this section's three-Origin deployment requirements or the Fresh Compose browser acceptance below.
 
 ### Local backend-service replacement development
 
-Issues #128/#129 provide the IAM lifecycle; Issue #130 extends the same interface to Gateway, Tenant Access, Entitlement, and Audit. A target must always be explicit:
+Always select one explicit target; all other application services and infrastructure remain containerized:
 
 ```bash
 cd ../..
-bash scripts/local-service-replacement.sh status gateway
-bash scripts/local-service-replacement.sh replace gateway
+bash scripts/local-development.sh status
+bash scripts/local-development.sh replace gateway
 # After changing or debugging the local service
-bash scripts/local-service-replacement.sh restore gateway
+bash scripts/local-development.sh restore gateway
 ```
 
-| Target | Fixed loopback HTTP | Fixed loopback gRPC |
-| --- | ---: | ---: |
-| `gateway` | `8080` | — |
-| `iam-service` | `8081` | `9091` |
-| `tenant-access-service` | `8082` | `9092` |
-| `entitlement-service` | `8083` | `9093` |
-| `audit-service` | `8084` | — |
+| Target                  | Fixed loopback HTTP | Fixed loopback gRPC |
+| ----------------------- | ------------------: | ------------------: |
+| `gateway`               |              `8080` |                   — |
+| `iam-service`           |              `8081` |              `9091` |
+| `tenant-access-service` |              `8082` |              `9092` |
+| `entitlement-service`   |              `8083` |              `9093` |
+| `audit-service`         |              `8084` |                   — |
 
 Before stopping a container, `replace` verifies the target's fixed ports, completed migration where applicable, Nacos `dev` configuration, constrained Secrets, infrastructure and dependencies, and exactly one healthy instance under the formal service name. It never prints credentials, cookies, or tokens. An occupied port, inconsistent configuration, duplicate Nacos instance, or readiness failure refuses the cutover. Every local JVM reuses the existing containerized infrastructure through loopback Nacos HTTP `8848`, Nacos 3 gRPC `9848`, PostgreSQL `5432`, Redis `6379`, and Kafka `29092`.
 
@@ -117,19 +118,21 @@ cd deploy/compose
 docker compose up --detach --no-deps --force-recreate nacos-init
 ```
 
-`status` reports `CONTAINER`, `LOCAL`, `UNAVAILABLE`, or `DUPLICATE`. `restore` terminates the managed local JVM, starts the existing container, and waits until the formal service name is again the sole healthy instance in the `dev` namespace. Repeated calls have no additional effect. The workflow never runs Docker build.
+`status` prints all five services at once. Each line contains `CONTAINER`, `LOCAL`, `UNAVAILABLE`, or `DUPLICATE`, fixed HTTP/gRPC ports, `READY`/`NOT_READY`, and the healthy Nacos instance count. `restore` terminates the managed local JVM, starts the existing container, and waits until the formal service name is again the sole healthy instance in the `dev` namespace. Repeated calls have no additional effect. The workflow never runs Docker build.
 
-With the trusted local HTTPS entry point and read-only credential files for a Platform Admin with a regular password prepared, run the complete container → local → container browser acceptance for an Issue #130 target:
+Run the commands directly from a terminal. In an IDE, configure the same command as an External Tool or before-launch task; the repository script still owns the service process so no Secrets, environment values, or personal IDE settings need to be copied. After changing Java, run `restore <target>` and then `replace <target>` to launch the new artifact; calling `replace` while that target is already local intentionally leaves the existing managed process running.
+
+With the trusted local HTTPS entry point and read-only credential files for a Platform Admin with a regular password prepared, run the complete five-service matrix:
 
 ```bash
 export SF_LOCAL_REPLACEMENT_PLATFORM_EMAIL_FILE=/absolute/path/to/platform-email
 export SF_LOCAL_REPLACEMENT_PLATFORM_PASSWORD_FILE=/absolute/path/to/platform-password
-bash scripts/verify-local-service-replacement-e2e.sh tenant-access-service
+bash scripts/verify-local-development-matrix.sh
 ```
 
 `SF_LOCAL_REPLACEMENT_PLATFORM_PASSWORD_FILE` must point to a restricted file containing the current regular password, not the initial-password file created by bootstrap; the initial password is invalidated after the first password change. If acceptance needs to retain the current regular password, use a separate Git-ignored file with restricted permissions, and never print its contents in a terminal, log, or chat.
 
-The check issues real `/api/*` operations from `https://platform.saasforge.test` while local replacement is active and again after restore, and checks browser console state, one Nacos instance, and unchanged application image identifiers. Gateway and Entitlement use the formal Quota Definition operation; Tenant Access uses formal Tenant creation; Audit uses the login-generated `SESSION_STARTED` Committed Fact and verifies that local Audit consumes and persists it. Created Tenants, the first `max_users` DRAFT Quota Definition, and audit facts are retained and must not be deleted without confirmation. This is not a Fresh Compose or production workflow.
+The matrix runs Gateway, IAM, Tenant Access, Entitlement, and Audit through container baseline → local replacement → real operation → container restore → repeated operation. The browser submits the real Platform login form and checks the visible Platform overview, actual `/api/*` requests and responses, console errors, failed requests, and 5xx responses. A separate HTTP localhost page proves that the localhost Origin still receives no credentialed CORS permission. Gateway and Entitlement use the formal Quota Definition operation; IAM uses formal login; Tenant Access uses formal Tenant creation; Audit uses the login-generated `SESSION_STARTED` Committed Fact and verifies that local Audit consumes and persists it. Before and after the matrix, it checks all five application image IDs, the Compose volume set, one container implementation per service, and the Nacos instance counts. Created Tenants, the first `max_users` DRAFT Quota Definition, and audit facts are retained and must not be deleted without confirmation. This is not a Fresh Compose or production workflow.
 
 ### Isolated browser acceptance
 
@@ -311,33 +314,33 @@ The task starts no HTTP server and mounts only these two read-only Secrets. In o
 
 Every host port binds only to `127.0.0.1`; none is exposed to the local network.
 
-| Component | Local port | Notes |
-| --- | ---: | --- |
-| Gateway | 8080 | HTTP |
-| IAM | 8081 | HTTP |
-| Tenant Access | 8082 | HTTP |
-| Entitlement | 8083 | HTTP |
-| Audit | 8084 | HTTP |
-| PostgreSQL | 5432 | Database connection |
-| Redis | 6379 | Authenticate with `REDIS_PASSWORD` |
-| Kafka | 29092 | Host external listener; containers use `kafka:9092` |
-| Mailpit | 1025 / 8025 | Development SMTP / mail web UI |
-| Nacos | 8848 / 8849 | Configuration and service-discovery API / local console; local development only |
-| OpenTelemetry Collector | 4317 / 4318 | OTLP gRPC / HTTP |
+| Component               |  Local port | Notes                                                                           |
+| ----------------------- | ----------: | ------------------------------------------------------------------------------- |
+| Gateway                 |        8080 | HTTP                                                                            |
+| IAM                     |        8081 | HTTP                                                                            |
+| Tenant Access           |        8082 | HTTP                                                                            |
+| Entitlement             |        8083 | HTTP                                                                            |
+| Audit                   |        8084 | HTTP                                                                            |
+| PostgreSQL              |        5432 | Database connection                                                             |
+| Redis                   |        6379 | Authenticate with `REDIS_PASSWORD`                                              |
+| Kafka                   |       29092 | Host external listener; containers use `kafka:9092`                             |
+| Mailpit                 | 1025 / 8025 | Development SMTP / mail web UI                                                  |
+| Nacos                   | 8848 / 8849 | Configuration and service-discovery API / local console; local development only |
+| OpenTelemetry Collector | 4317 / 4318 | OTLP gRPC / HTTP                                                                |
 
 ## Environment variables
 
 `.env.example` lists the required variable names but provides no default passwords. `POSTGRES_ADMIN_USER` is the PostgreSQL bootstrap administrator; the JWT issuer, Key Version reference, and local private-key path have development defaults within the local security boundary. The remaining values are passwords or Nacos authentication material.
 
-| Service | migrator password | app password |
-| --- | --- | --- |
-| PostgreSQL bootstrap | `POSTGRES_ADMIN_PASSWORD` | — |
-| IAM | `IAM_MIGRATOR_PASSWORD` | `IAM_APP_PASSWORD` |
-| Tenant Access | `TENANT_ACCESS_MIGRATOR_PASSWORD` | `TENANT_ACCESS_APP_PASSWORD` |
-| Entitlement | `ENTITLEMENT_MIGRATOR_PASSWORD` | `ENTITLEMENT_APP_PASSWORD` |
-| Audit | `AUDIT_MIGRATOR_PASSWORD` | `AUDIT_APP_PASSWORD` |
-| Redis | `REDIS_PASSWORD` | — |
-| Nacos | `NACOS_BOOTSTRAP_PASSWORD` | `NACOS_IAM_PASSWORD`, `NACOS_TENANT_ACCESS_PASSWORD`, `NACOS_ENTITLEMENT_PASSWORD`, `NACOS_AUDIT_PASSWORD`, `NACOS_GATEWAY_PASSWORD` |
+| Service              | migrator password                 | app password                                                                                                                         |
+| -------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| PostgreSQL bootstrap | `POSTGRES_ADMIN_PASSWORD`         | —                                                                                                                                    |
+| IAM                  | `IAM_MIGRATOR_PASSWORD`           | `IAM_APP_PASSWORD`                                                                                                                   |
+| Tenant Access        | `TENANT_ACCESS_MIGRATOR_PASSWORD` | `TENANT_ACCESS_APP_PASSWORD`                                                                                                         |
+| Entitlement          | `ENTITLEMENT_MIGRATOR_PASSWORD`   | `ENTITLEMENT_APP_PASSWORD`                                                                                                           |
+| Audit                | `AUDIT_MIGRATOR_PASSWORD`         | `AUDIT_APP_PASSWORD`                                                                                                                 |
+| Redis                | `REDIS_PASSWORD`                  | —                                                                                                                                    |
+| Nacos                | `NACOS_BOOTSTRAP_PASSWORD`        | `NACOS_IAM_PASSWORD`, `NACOS_TENANT_ACCESS_PASSWORD`, `NACOS_ENTITLEMENT_PASSWORD`, `NACOS_AUDIT_PASSWORD`, `NACOS_GATEWAY_PASSWORD` |
 
 `NACOS_IAM_USERNAME`, `NACOS_TENANT_ACCESS_USERNAME`, `NACOS_ENTITLEMENT_USERNAME`, `NACOS_AUDIT_USERNAME`, and `NACOS_GATEWAY_USERNAME` must be non-default development identities. Fill `NACOS_AUTH_IDENTITY_KEY`, `NACOS_AUTH_IDENTITY_VALUE`, and `NACOS_AUTH_TOKEN` with local-only random values; `NACOS_AUTH_TOKEN` must be a Base64 string generated from at least 32 raw characters. `nacos-init` uses the bootstrap administrator identity only to create the namespace, users, and permissions, then uses `NACOS_PUBLISH_USERNAME` to publish the manifest. Issue #130 target identities may additionally read only their own healthy instances for local-replacement verification; Gateway may read only itself and healthy `iam-service`, `tenant-access-service`, and `entitlement-service` instances. See [`../nacos/README.md`](../nacos/README.md) for the full manifest, CI publishing, and emergency reconciliation process.
 
