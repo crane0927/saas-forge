@@ -1,6 +1,8 @@
 import { ConfigProvider, theme as antTheme, type ThemeConfig } from 'antd';
+import type { Locale } from 'antd/es/locale';
 import enUS from 'antd/locale/en_US';
 import zhCN from 'antd/locale/zh_CN';
+import type { SupportedLocale } from '@saas-forge/i18n';
 import { createContext, useContext } from 'react';
 import {
   useEffect,
@@ -13,7 +15,7 @@ import {
 import { resolveTenantBrandProfile, type TenantBrandProfile } from './brand-theme';
 import { semanticTokens } from './tokens';
 
-export type DesignSystemLocale = 'zh-CN' | 'en-US';
+export type DesignSystemLocale = SupportedLocale;
 export type DesignSystemColorScheme = 'light' | 'dark';
 
 export interface DesignSystemProviderProps {
@@ -38,6 +40,10 @@ const sharedRootStyle = {
 
 const colorSchemeQuery = '(prefers-color-scheme: dark)';
 const DesignSystemLocaleContext = createContext<DesignSystemLocale>('zh-CN');
+const componentLocaleAdapters = {
+  'zh-CN': zhCN,
+  'en-US': enUS,
+} satisfies Record<SupportedLocale, Locale>;
 
 export function useDesignSystemLocale(): DesignSystemLocale {
   return useContext(DesignSystemLocaleContext);
@@ -142,7 +148,7 @@ export function DesignSystemProvider({
     <DesignSystemLocaleContext.Provider value={locale}>
       <ConfigProvider
         button={{ autoInsertSpace: false }}
-        locale={locale === 'zh-CN' ? zhCN : enUS}
+        locale={componentLocaleAdapters[locale]}
         theme={theme}
       >
         <div

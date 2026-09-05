@@ -1,11 +1,10 @@
 import { Table } from 'antd';
-import { createTranslator, defineMessages } from '@saas-forge/i18n';
+import { createTranslator } from '@saas-forge/i18n';
 import type { Key, ReactNode } from 'react';
 import { useState } from 'react';
 
 import { Button } from './foundation';
-import enUS from './messages/server-table/en-US.json';
-import zhCN from './messages/server-table/zh-CN.json';
+import { serverTableMessages } from './messages/server-table';
 import { ActionMenu, type ActionMenuItem } from './overlays';
 import {
   EmptyDataState,
@@ -73,11 +72,6 @@ export interface ServerTableProps<RecordType> {
   readonly filtered?: boolean;
   readonly emptyDescription?: string;
 }
-
-const serverTableMessages = defineMessages({
-  'en-US': enUS,
-  'zh-CN': zhCN,
-});
 
 function useServerTableTranslator() {
   return createTranslator({

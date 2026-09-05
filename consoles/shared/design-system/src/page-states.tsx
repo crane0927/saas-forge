@@ -1,10 +1,9 @@
 import { Skeleton, Spin } from 'antd';
-import { createTranslator, defineMessages } from '@saas-forge/i18n';
+import { createTranslator } from '@saas-forge/i18n';
 import type { ReactNode } from 'react';
 
 import { Button, DesignIcon, type DesignIconName } from './foundation';
-import enUS from './messages/page-states/en-US.json';
-import zhCN from './messages/page-states/zh-CN.json';
+import { pageStateMessages } from './messages/page-states';
 import { useDesignSystemLocale } from './theme-provider';
 
 export interface InitialContentLoadingProps {
@@ -51,11 +50,6 @@ interface PageStateProps {
   readonly action?: StateAction;
   readonly alert?: boolean;
 }
-
-const pageStateMessages = defineMessages({
-  'en-US': enUS,
-  'zh-CN': zhCN,
-});
 
 function usePageStateTranslator() {
   return createTranslator({

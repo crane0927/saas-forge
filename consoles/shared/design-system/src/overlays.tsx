@@ -1,9 +1,8 @@
 import { Button, ConfigProvider, Dropdown, Input, Modal, type ThemeConfig } from 'antd';
-import { createTranslator, defineMessages } from '@saas-forge/i18n';
+import { createTranslator } from '@saas-forge/i18n';
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 
-import enUS from './messages/overlays/en-US.json';
-import zhCN from './messages/overlays/zh-CN.json';
+import { overlayMessages } from './messages/overlays';
 import {
   currentFocus,
   removedObjectTargets,
@@ -74,11 +73,6 @@ const dialogTheme: ThemeConfig = {
     motion: false,
   },
 };
-
-const overlayMessages = defineMessages({
-  'en-US': enUS,
-  'zh-CN': zhCN,
-});
 
 function useOverlayTranslator() {
   return createTranslator({

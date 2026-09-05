@@ -1,15 +1,9 @@
 import { RouteFocusAnnouncement } from '@saas-forge/design-system';
-import { createTranslator, defineMessages, type SupportedLocale } from '@saas-forge/i18n';
+import { createTranslator, type SupportedLocale } from '@saas-forge/i18n';
 import type { AuthenticationShellRoute } from '@saas-forge/react-shell';
 import { useLocation } from 'react-router';
 
-import enUS from './messages/en-US.json';
-import zhCN from './messages/zh-CN.json';
-
-const tenantMessages = defineMessages({
-  'en-US': enUS,
-  'zh-CN': zhCN,
-});
+import { tenantMessages } from './messages';
 
 export const tenantAuthenticationRoutes = createTenantAuthenticationRoutes('zh-CN');
 

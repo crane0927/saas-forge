@@ -1,9 +1,8 @@
 import { Button as AntButton } from 'antd';
-import { createTranslator, defineMessages } from '@saas-forge/i18n';
+import { createTranslator } from '@saas-forge/i18n';
 import type { MouseEventHandler, ReactNode } from 'react';
 
-import enUS from './messages/foundation/en-US.json';
-import zhCN from './messages/foundation/zh-CN.json';
+import { foundationMessages } from './messages/foundation';
 import { useDesignSystemLocale } from './theme-provider';
 
 export type DesignIconName =
@@ -85,11 +84,6 @@ interface SplitLayoutLabelledByProps extends SplitLayoutContentProps {
 
 /** 辅助栏必须且只能通过直接名称或关联标题获得可访问名称。 */
 export type SplitLayoutProps = SplitLayoutLabelProps | SplitLayoutLabelledByProps;
-
-const foundationMessages = defineMessages({
-  'en-US': enUS,
-  'zh-CN': zhCN,
-});
 
 function useFoundationTranslator() {
   return createTranslator({

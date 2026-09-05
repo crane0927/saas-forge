@@ -1,11 +1,21 @@
 import IntlMessageFormat from 'intl-messageformat';
 
-export const supportedLocaleRegistry = [
-  { locale: 'zh-CN', selfName: '简体中文', language: 'zh' },
-  { locale: 'en-US', selfName: 'English', language: 'en' },
-] as const;
+import localeRegistry from './locale-registry.json';
 
-export type SupportedLocale = (typeof supportedLocaleRegistry)[number]['locale'];
+export interface LocaleRegistration<Locale extends string = string> {
+  readonly locale: Locale;
+  readonly selfName: string;
+  readonly language: string;
+}
+
+export type LocaleOf<Registry extends readonly LocaleRegistration[]> = Registry[number]['locale'];
+
+export type SupportedLocale = keyof typeof localeRegistry;
+
+export const supportedLocaleRegistry = Object.entries(localeRegistry).map(
+  ([locale, definition]) => ({ locale: locale as SupportedLocale, ...definition }),
+) satisfies readonly LocaleRegistration<SupportedLocale>[];
+
 export type MessageValues = Readonly<Record<string, string | number | Date>>;
 export type MessageCatalog = Readonly<Record<string, string>>;
 
@@ -55,16 +65,26 @@ export function isSupportedLocale(value: unknown): value is SupportedLocale {
  * 按浏览器候选顺序先精确匹配，再回退到当前注册表中同一语言系列的首个 Locale。
  */
 export function resolveLocale(candidates: readonly unknown[]): SupportedLocale {
+  return resolveLocaleFromRegistry(supportedLocaleRegistry, defaultSupportedLocale, candidates);
+}
+
+/** 测试及后续构建期扩展使用同一匹配算法；传入注册表不会改变生产启用语言。 */
+export function resolveLocaleFromRegistry<const Registry extends readonly LocaleRegistration[]>(
+  registry: Registry,
+  defaultLocale: LocaleOf<Registry>,
+  candidates: readonly unknown[],
+): LocaleOf<Registry> {
   for (const candidate of candidates) {
     const canonicalCandidate = canonicalizeLocale(candidate);
     if (canonicalCandidate === undefined) continue;
 
-    if (isSupportedLocale(canonicalCandidate)) {
-      return canonicalCandidate;
+    const exact = registry.find((entry) => entry.locale === canonicalCandidate);
+    if (exact !== undefined) {
+      return exact.locale;
     }
 
     const language = canonicalCandidate.split('-', 1)[0];
-    const fallback = supportedLocaleRegistry.find((entry) => entry.language === language);
+    const fallback = registry.find((entry) => entry.language === language);
     if (fallback !== undefined) {
       return fallback.locale;
     }
@@ -75,6 +95,13 @@ export function resolveLocale(candidates: readonly unknown[]): SupportedLocale {
 export function defineMessages<const Messages extends LocalizedMessageCatalog>(
   messages: Messages,
 ): Messages {
+  return messages;
+}
+
+export function defineMessagesForLocaleRegistry<
+  const Registry extends readonly LocaleRegistration[],
+  const Messages extends Readonly<Record<LocaleOf<Registry>, MessageCatalog>>,
+>(registry: Registry, messages: Messages): Messages {
   return messages;
 }
 
@@ -165,24 +192,25 @@ export function formatMoney({ value, locale, currency }: FormatMoneyInput): stri
   }
 }
 
-export function createTranslator<const Messages extends LocalizedMessageCatalog>({
+export function createTranslator<const Messages extends Readonly<Record<'en-US', MessageCatalog>>>({
   namespace,
   locale,
   messages,
 }: {
   readonly namespace: string;
-  readonly locale: SupportedLocale;
+  readonly locale: keyof Messages & string;
   readonly messages: Messages;
 }): Translator<keyof Messages['en-US'] & string> {
   return {
     namespace,
     translate(key, values) {
-      const currentMessage = messages[locale][key];
+      const currentMessage = (messages[locale] as MessageCatalog)[key];
       const englishMessage = messages['en-US'][key];
       return (
         formatMessage(currentMessage, locale, values) ??
         formatMessage(englishMessage, 'en-US', values) ??
-        safeRecoveryMessage[locale]
+        (safeRecoveryMessage as Readonly<Record<string, string | undefined>>)[locale] ??
+        safeRecoveryMessage[defaultSupportedLocale]
       );
     },
   };
@@ -253,7 +281,7 @@ function canonicalizeLocale(candidate: unknown): string | undefined {
 
 function formatMessage(
   message: string | undefined,
-  locale: SupportedLocale,
+  locale: string,
   values: MessageValues | undefined,
 ): string | undefined {
   if (message === undefined) return undefined;

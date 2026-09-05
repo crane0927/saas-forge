@@ -1,5 +1,5 @@
 import { Checkbox as AntCheckbox, Input as AntInput, Select as AntSelect } from 'antd';
-import { createTranslator, defineMessages } from '@saas-forge/i18n';
+import { createTranslator } from '@saas-forge/i18n';
 import {
   forwardRef,
   useCallback,
@@ -13,8 +13,7 @@ import {
   type SubmitEventHandler,
 } from 'react';
 
-import enUS from './messages/forms/en-US.json';
-import zhCN from './messages/forms/zh-CN.json';
+import { formMessages } from './messages/forms';
 import { useDesignSystemLocale } from './theme-provider';
 
 export interface FormLayoutProps {
@@ -97,11 +96,6 @@ export interface UnsavedChangesGuard {
   readonly continueEditing: () => void;
   readonly discardChanges: () => void;
 }
-
-const formMessages = defineMessages({
-  'en-US': enUS,
-  'zh-CN': zhCN,
-});
 
 function useFormTranslator() {
   return createTranslator({

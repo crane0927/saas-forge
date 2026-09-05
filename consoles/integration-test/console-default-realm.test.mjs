@@ -12,7 +12,10 @@ for (const [application, directory, heading] of [
 ]) {
   test(`default ${application} Console entry coordinates a single refresh across native tabs`, async (t) => {
     const root = fileURLToPath(new URL(`../${directory}`, import.meta.url));
-    const server = await createServer({ root, server: { host: '127.0.0.1', port: 0 } });
+    const server = await createServer({
+      root,
+      server: { host: '127.0.0.1', port: 0, strictPort: false },
+    });
     t.after(() => server.close());
     await server.listen();
     const browser = await { chromium, firefox, webkit }[
@@ -108,7 +111,10 @@ test('Platform 与 Tenant Console 的 Locale 偏好按 Origin 隔离', async (t)
   const [platformServer, tenantServer] = await Promise.all(
     ['platform-console', 'tenant-console-shell'].map(async (directory) => {
       const root = fileURLToPath(new URL(`../${directory}`, import.meta.url));
-      const server = await createServer({ root, server: { host: '127.0.0.1', port: 0 } });
+      const server = await createServer({
+        root,
+        server: { host: '127.0.0.1', port: 0, strictPort: false },
+      });
       await server.listen();
       return server;
     }),

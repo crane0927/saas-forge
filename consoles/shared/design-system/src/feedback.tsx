@@ -1,9 +1,8 @@
-import { createTranslator, defineMessages } from '@saas-forge/i18n';
+import { createTranslator } from '@saas-forge/i18n';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 
 import { Button, DesignIcon } from './foundation';
-import enUS from './messages/feedback/en-US.json';
-import zhCN from './messages/feedback/zh-CN.json';
+import { feedbackMessages } from './messages/feedback';
 import { useDesignSystemLocale } from './theme-provider';
 
 export interface FeedbackAction {
@@ -30,11 +29,6 @@ export interface PersistentErrorProps {
   readonly action?: FeedbackAction;
   readonly onClose?: () => void;
 }
-
-const feedbackMessages = defineMessages({
-  'en-US': enUS,
-  'zh-CN': zhCN,
-});
 
 function useFeedbackTranslator() {
   return createTranslator({

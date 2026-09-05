@@ -4,12 +4,7 @@ import type {
   IdempotentOperationHandle,
   MembershipCandidate,
 } from '@saas-forge/app-runtime';
-import {
-  createTranslator,
-  defineMessages,
-  type SupportedLocale,
-  type Translator,
-} from '@saas-forge/i18n';
+import { createTranslator, type SupportedLocale, type Translator } from '@saas-forge/i18n';
 import {
   ApplicationLoading,
   ApplicationFatalError,
@@ -35,8 +30,7 @@ import {
 } from 'react';
 import { matchPath, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
 
-import enUS from './messages/en-US.json';
-import zhCN from './messages/zh-CN.json';
+import { shellMessages } from './messages';
 import { useConsoleLocale } from './console-locale';
 
 export interface AuthenticationShellRoute {
@@ -62,11 +56,6 @@ export interface AuthenticationRootErrorBoundaryProps {
 interface AuthenticationRootErrorBoundaryState {
   readonly failed: boolean;
 }
-
-const shellMessages = defineMessages({
-  'en-US': enUS,
-  'zh-CN': zhCN,
-});
 
 type ShellTranslator = Translator<keyof (typeof shellMessages)['en-US']>;
 

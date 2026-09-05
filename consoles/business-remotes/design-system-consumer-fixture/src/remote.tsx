@@ -7,16 +7,10 @@ import {
   SuccessFeedback,
   TextField,
 } from '@saas-forge/design-system';
-import { createTranslator, defineMessages, type SupportedLocale } from '@saas-forge/i18n';
+import { createTranslator, type SupportedLocale } from '@saas-forge/i18n';
 import { useState } from 'react';
 
-import enUS from './locales/en-US.json';
-import zhCN from './locales/zh-CN.json';
-
-const remoteMessages = defineMessages({
-  'en-US': enUS,
-  'zh-CN': zhCN,
-});
+import { remoteMessages } from './locales';
 const contentItemKeys = ['contentSharedTheme', 'contentPublicEntry', 'contentResponsive'] as const;
 const statisticItems = [
   ['statisticThemeEntry', 'statisticThemeEntryValue'],

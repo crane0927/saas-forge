@@ -1,9 +1,8 @@
 import { Button, Spin } from 'antd';
-import { createTranslator, defineMessages, type SupportedLocale } from '@saas-forge/i18n';
+import { createTranslator, type SupportedLocale } from '@saas-forge/i18n';
 import { useId } from 'react';
 
-import enUS from './messages/en-US.json';
-import zhCN from './messages/zh-CN.json';
+import { bootstrapMessages } from './messages';
 import { useDesignSystemLocale } from './theme-provider';
 
 interface ApplicationLoadingProps {
@@ -22,11 +21,6 @@ export interface ApplicationFatalErrorProps {
   /** 根错误边界可能位于唯一 Provider 外，因此由 Shell 传入最后已知 Locale。 */
   readonly locale?: SupportedLocale;
 }
-
-const bootstrapMessages = defineMessages({
-  'en-US': enUS,
-  'zh-CN': zhCN,
-});
 
 function createBootstrapTranslator(locale: SupportedLocale) {
   return createTranslator({

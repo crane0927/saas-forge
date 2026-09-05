@@ -5,34 +5,67 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parse, TYPE } from '@formatjs/icu-messageformat-parser';
 
 const consoleRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const resourceDirectories = [
-  'business-remotes/design-system-consumer-fixture/src/locales',
-  'platform-console/src/messages',
-  'shared/design-system/src/messages',
-  'shared/design-system/src/messages/feedback',
-  'shared/design-system/src/messages/forms',
-  'shared/design-system/src/messages/foundation',
-  'shared/design-system/src/messages/overlays',
-  'shared/design-system/src/messages/page-states',
-  'shared/design-system/src/messages/server-table',
-  'shared/react-shell/src/messages',
-  'tenant-console-shell/src/messages',
-];
-const enabledLocales = ['en-US', 'zh-CN'];
+const ignoredDirectoryNames = new Set([
+  '.generated',
+  '.git',
+  'browser-test',
+  'dist',
+  'integration-test',
+  'node_modules',
+  'test',
+]);
+const localeRegistryFile = path.join(consoleRoot, 'shared/i18n/src/locale-registry.json');
+const localeRegistry = JSON.parse(await readFile(localeRegistryFile, 'utf8'));
+export const enabledLocales = Object.freeze(Object.keys(localeRegistry));
 
-export async function validateI18nResources(root = consoleRoot) {
+export async function validateI18nResources(root = consoleRoot, { locales = enabledLocales } = {}) {
   const errors = [];
-  for (const relativeDirectory of resourceDirectories) {
-    errors.push(...(await validateResourceDirectory(path.join(root, relativeDirectory))));
+  const resourceDirectories = await discoverResourceDirectories(root);
+  if (resourceDirectories.length === 0) {
+    return [`${root}: no Console i18n resource directories were discovered.`];
+  }
+  for (const directory of resourceDirectories) {
+    errors.push(...(await validateResourceDirectory(directory, { locales })));
   }
   return errors;
 }
 
-export async function validateResourceDirectory(directory) {
+export async function discoverResourceDirectories(root = consoleRoot) {
+  const directories = [];
+
+  async function visit(directory, insideResourceTree = false) {
+    let entries;
+    try {
+      entries = await readdir(directory, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    const hasJsonResource = entries.some((entry) => entry.isFile() && entry.name.endsWith('.json'));
+    if (insideResourceTree && hasJsonResource) {
+      directories.push(directory);
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory() || ignoredDirectoryNames.has(entry.name)) continue;
+      const child = path.join(directory, entry.name);
+      const childIsResourceTree =
+        insideResourceTree ||
+        ((entry.name === 'messages' || entry.name === 'locales') &&
+          path.basename(directory) === 'src');
+      await visit(child, childIsResourceTree);
+    }
+  }
+
+  await visit(root);
+  return directories.sort();
+}
+
+export async function validateResourceDirectory(directory, { locales = enabledLocales } = {}) {
   const errors = [];
   const resources = new Map();
 
-  for (const locale of enabledLocales) {
+  for (const locale of locales) {
     const file = path.join(directory, `${locale}.json`);
     try {
       resources.set(locale, await readResource(file, errors));
@@ -48,7 +81,7 @@ export async function validateResourceDirectory(directory) {
     errors.push(`${directory}: ${error instanceof Error ? error.message : String(error)}`);
     return errors;
   }
-  for (const locale of enabledLocales) {
+  for (const locale of locales) {
     declaredFiles.delete(`${locale}.json`);
   }
   for (const file of declaredFiles) {
@@ -59,7 +92,7 @@ export async function validateResourceDirectory(directory) {
 
   const english = resources.get('en-US');
   if (english === undefined) return errors;
-  for (const locale of enabledLocales.filter((candidate) => candidate !== 'en-US')) {
+  for (const locale of locales.filter((candidate) => candidate !== 'en-US')) {
     const resource = resources.get(locale);
     if (resource === undefined) continue;
     compareKeysAndParameters(english, resource, locale, directory, errors);
@@ -68,7 +101,12 @@ export async function validateResourceDirectory(directory) {
 }
 
 async function readResource(file, errors) {
-  const parsed = JSON.parse(await readFile(file, 'utf8'));
+  const source = await readFile(file, 'utf8');
+  for (const key of findDuplicateTopLevelKeys(source)) {
+    errors.push(`${file}:${key}: duplicate key is not allowed.`);
+  }
+
+  const parsed = JSON.parse(source);
   if (!isFlatMessageCatalog(parsed)) {
     throw new Error('resource must be a flat JSON object with string messages.');
   }
@@ -88,6 +126,91 @@ async function readResource(file, errors) {
     }
   }
   return { keys: new Set(Object.keys(parsed)), parameters: messages };
+}
+
+function findDuplicateTopLevelKeys(source) {
+  const duplicates = new Set();
+  const keys = new Set();
+  let index = skipWhitespace(source, 0);
+  if (source[index] !== '{') return duplicates;
+  index += 1;
+
+  while (index < source.length) {
+    index = skipWhitespace(source, index);
+    if (source[index] === '}') return duplicates;
+    if (source[index] !== '"') return duplicates;
+
+    const keyEnd = findJsonStringEnd(source, index);
+    if (keyEnd === undefined) return duplicates;
+    let key;
+    try {
+      key = JSON.parse(source.slice(index, keyEnd + 1));
+    } catch {
+      return duplicates;
+    }
+    if (keys.has(key)) duplicates.add(key);
+    keys.add(key);
+
+    index = skipWhitespace(source, keyEnd + 1);
+    if (source[index] !== ':') return duplicates;
+    index = findTopLevelValueEnd(source, index + 1);
+    if (source[index] === ',') {
+      index += 1;
+      continue;
+    }
+    return duplicates;
+  }
+  return duplicates;
+}
+
+function skipWhitespace(source, start) {
+  let index = start;
+  while (/\s/u.test(source[index] ?? '')) index += 1;
+  return index;
+}
+
+function findJsonStringEnd(source, start) {
+  let escaped = false;
+  for (let index = start + 1; index < source.length; index += 1) {
+    if (escaped) {
+      escaped = false;
+    } else if (source[index] === '\\') {
+      escaped = true;
+    } else if (source[index] === '"') {
+      return index;
+    }
+  }
+  return undefined;
+}
+
+function findTopLevelValueEnd(source, start) {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < source.length; index += 1) {
+    const character = source[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === '\\') {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+    } else if (character === '{' || character === '[') {
+      depth += 1;
+    } else if (character === '}' || character === ']') {
+      if (depth === 0) return index;
+      depth -= 1;
+    } else if (character === ',' && depth === 0) {
+      return index;
+    }
+  }
+  return source.length;
 }
 
 function isFlatMessageCatalog(value) {

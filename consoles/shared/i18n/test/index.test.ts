@@ -3,14 +3,35 @@ import { describe, expect, it } from 'vitest';
 import {
   createTranslator,
   defineMessages,
+  defineMessagesForLocaleRegistry,
   formatDate,
   formatInstant,
   formatMoney,
   formatNumber,
   isSupportedLocale,
   resolveLocale,
+  resolveLocaleFromRegistry,
   supportedLocaleRegistry,
+  type LocaleOf,
 } from '../src';
+
+const extensionLocaleRegistry = [
+  { locale: 'zh-CN', selfName: '简体中文', language: 'zh' },
+  { locale: 'en-US', selfName: 'English', language: 'en' },
+  { locale: 'zh-TW', selfName: '繁體中文', language: 'zh' },
+] as const;
+type ExtensionLocale = LocaleOf<typeof extensionLocaleRegistry>;
+const completeComponentAdapterFixture = {
+  'zh-CN': 'zh_CN',
+  'en-US': 'en_US',
+  'zh-TW': 'zh_TW',
+} satisfies Record<ExtensionLocale, string>;
+
+// @ts-expect-error 启用新语言但未提供组件适配时，不能形成完整支持配置。
+const incompleteComponentAdapterFixture: Record<ExtensionLocale, string> = {
+  'zh-CN': 'zh_CN',
+  'en-US': 'en_US',
+};
 
 describe('locale-aware formatting', () => {
   it('formats calendar dates without interpreting them in a local time zone', () => {
@@ -107,6 +128,15 @@ describe('Locale registry and resolution', () => {
     expect(resolveLocale([])).toBe('en-US');
     expect(resolveLocale(['', 'not_a_locale', 'fr-FR'])).toBe('en-US');
   });
+
+  it('uses the same registry contract to prefer a temporary third Locale exact match', () => {
+    expect(resolveLocaleFromRegistry(extensionLocaleRegistry, 'en-US', ['zh-TW', 'zh-HK'])).toBe(
+      'zh-TW',
+    );
+    expect(resolveLocaleFromRegistry(extensionLocaleRegistry, 'en-US', ['zh-HK'])).toBe('zh-CN');
+    expect(completeComponentAdapterFixture['zh-TW']).toBe('zh_TW');
+    expect(incompleteComponentAdapterFixture['zh-TW']).toBeUndefined();
+  });
 });
 
 describe('createTranslator', () => {
@@ -158,5 +188,20 @@ describe('createTranslator', () => {
     expect(translator.translate('broken', { name: 'Ada' })).toBe(
       'This content is temporarily unavailable.',
     );
+  });
+
+  it('renders a temporary third-Locale catalog through the shared message interface', () => {
+    const extensionMessages = defineMessagesForLocaleRegistry(extensionLocaleRegistry, {
+      'en-US': { greeting: 'Hello, {name}.' },
+      'zh-CN': { greeting: '你好，{name}。' },
+      'zh-TW': { greeting: '您好，{name}。' },
+    });
+    const translator = createTranslator({
+      namespace: '@saas-forge/third-locale-fixture',
+      locale: 'zh-TW',
+      messages: extensionMessages,
+    });
+
+    expect(translator.translate('greeting', { name: 'Ada' })).toBe('您好，Ada。');
   });
 });
