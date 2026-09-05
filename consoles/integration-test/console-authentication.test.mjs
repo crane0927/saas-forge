@@ -35,6 +35,7 @@ test('production Consoles expose independent login paths through trusted TLS', a
     }
   });
   const context = await browser.newContext({ ignoreHTTPSErrors: false });
+  await setConsoleLocalePreference(context, 'zh-CN');
   const platform = await context.newPage();
   const tenant = await context.newPage();
   pages.push(platform, tenant);
@@ -73,6 +74,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
     ignoreHTTPSErrors: false,
     viewport: { width: 390, height: 844 },
   });
+  await setConsoleLocalePreference(context, 'zh-CN');
   const diagnostics = [];
   context.on('page', (page) => {
     page.on('console', (message) => diagnostics.push(message.text()));
@@ -150,21 +152,27 @@ test('Platform and Tenant sessions survive independent recovery and logout after
   const password = `Acceptance-${randomBytes(24).toString('hex')}`;
 
   await platform.goto(`https://platform.${rootDomain}/`);
-  const initial = await login(platform, email, initialPassword);
+  await selectConsoleLocale(platform, 'English');
+  await expectRouteAccessibility(platform, 'Sign in to Platform Console', {
+    focusedElementId: 'console-locale',
+  });
+  const initial = await login(platform, email, initialPassword, 'en-US', {
+    focusedElementId: 'console-locale',
+  });
   assert.equal(initial.contextState, 'PASSWORD_CHANGE_REQUIRED');
   assert.equal(Object.hasOwn(initial, 'accessToken'), false);
   const initialCookieStored = (await context.cookies(`https://api.${rootDomain}`)).some(
     (cookie) => cookie.name === '__Host-sf_platform_refresh',
   );
-  await expectRouteAccessibility(platform, '设置新密码');
+  await expectRouteAccessibility(platform, 'Set a new password');
   await platform
-    .getByLabel(/^新密码/)
+    .getByLabel(/^New password/)
     .fill(password)
     .catch(() => {
       throw new Error('new password field unavailable');
     });
   const changed = platform.waitForResponse(isAuthResponse('password-changes'));
-  await platform.getByRole('button', { name: '更新密码', exact: true }).press('Enter');
+  await platform.getByRole('button', { name: 'Update password', exact: true }).press('Enter');
   const changedResponse = await changed;
   platform.off('response', observeCookie);
   const initialCookieEvents = await Promise.all(cookieEvents);
@@ -192,14 +200,18 @@ test('Platform and Tenant sessions survive independent recovery and logout after
     changeDiagnostic += `\n${initialCookieEvents.join('\n')}`;
   }
   assert.equal(changedResponse.status(), 204, changeDiagnostic);
-  await platform.getByRole('heading', { name: '登录 Platform Console', exact: true }).waitFor();
-  const platformLogin = await login(platform, email, password);
+  await platform
+    .getByRole('heading', { name: 'Sign in to Platform Console', exact: true })
+    .waitFor();
+  const platformLogin = await login(platform, email, password, 'en-US');
   assert.equal(platformLogin.contextState, 'ACCESS_TOKEN_ISSUED');
+  await expectRouteAccessibility(platform, 'Platform overview');
+  await selectConsoleLocale(platform, '简体中文');
   await platform.getByRole('heading', { name: 'Platform 总览', exact: true }).waitFor();
 
   // Node 侧正式 API 只用于准备 Tenant；浏览器认证断言仍由生产页面发起请求。
   // 使用同一 Identity 验证两个槽位，避免把不同账号误当成槽位隔离。
-  const firstTenant = await prepareTenant(context.request, platformLogin.accessToken, email);
+  const firstTenant = await prepareTenant(platformLogin.accessToken, email);
   await tenant.goto(`https://console.${rootDomain}/`);
   const tenantLogin = await login(tenant, email, password);
   assert.equal(tenantLogin.contextState, 'ACCESS_TOKEN_ISSUED');
@@ -239,7 +251,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
   await t.test(
     'multiple Memberships require an explicit selection before entering Tenant',
     async () => {
-      await prepareTenant(context.request, platformRelogin.accessToken, email, {
+      await prepareTenant(platformRelogin.accessToken, email, {
         planId: firstTenant.planId,
         displayName: 'Second Acceptance Tenant',
       });
@@ -663,6 +675,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         viewport: { width: 390, height: 844 },
       });
       try {
+        await setConsoleLocalePreference(fallback, 'zh-CN');
         // 只移除公开浏览器能力；并发请求和 Cookie 仍由浏览器及真实 IAM 处理。
         await fallback.addInitScript(() => {
           Object.defineProperty(navigator, 'locks', { value: undefined, configurable: true });
@@ -794,6 +807,51 @@ test('Platform and Tenant sessions survive independent recovery and logout after
     () => verifyClientRecovery(context),
   );
   await t.test(
+    'Platform Locale switching retains the protected route without an API request and persists through reload and logout',
+    async () => {
+      const home = platform.getByRole('link', { name: '首页', exact: true });
+      await home.focus();
+      await home.press('Enter');
+      await expectRouteAccessibility(platform, 'Platform 总览');
+      const requests = [];
+      const observe = (request) => {
+        const url = new URL(request.url());
+        if (url.origin === `https://api.${rootDomain}` && url.pathname.startsWith('/api/'))
+          requests.push(url.pathname);
+      };
+      platform.on('request', observe);
+      await selectConsoleLocale(platform, 'English');
+      await platform.getByRole('heading', { name: 'Platform overview', exact: true }).waitFor();
+      await platform
+        .getByRole('navigation', { name: 'Platform Console global navigation', exact: true })
+        .waitFor();
+      assert.deepEqual(requests, []);
+      platform.off('request', observe);
+
+      const refreshed = platform.waitForResponse(isAuthResponse('refresh'));
+      await platform.reload();
+      assert.equal(
+        (await refreshed).status(),
+        200,
+        'Locale reload keeps the real session recoverable',
+      );
+      await expectRouteAccessibility(platform, 'Platform overview');
+      const navigation = platform.getByRole('link', { name: 'OAuth Client', exact: true });
+      await navigation.focus();
+      await navigation.press('Enter');
+      await expectRouteAccessibility(platform, 'OAuth Client management');
+
+      const signedOut = platform.waitForResponse(isAuthResponse('logout'));
+      const signOut = platform.getByRole('button', { name: 'Sign out', exact: true });
+      await signOut.focus();
+      await signOut.press('Enter');
+      assert.equal((await signedOut).status(), 204, 'English logout reaches the real IAM service');
+      await expectRouteAccessibility(platform, 'Sign in to Platform Console');
+      assert.equal(await platform.evaluate(() => localStorage.getItem('sf:ui:locale')), 'en-US');
+      assert.deepEqual(errors, []);
+    },
+  );
+  await t.test(
     'browser storage, native messages and production logs retain no sensitive payloads',
     async () => {
       const api = await context.newPage();
@@ -866,6 +924,7 @@ test('browser-managed Origins reject mismatched Intent and invalid CSRF or media
   });
   t.after(() => browser.close());
   const context = await browser.newContext({ ignoreHTTPSErrors: false });
+  await setConsoleLocalePreference(context, 'zh-CN');
   const page = await context.newPage();
   await page.goto(`https://platform.${rootDomain}/`);
   await page.getByRole('heading', { name: '登录 Platform Console', exact: true }).waitFor();
@@ -962,6 +1021,7 @@ test('an opaque cross-site browser Origin is rejected before session logout', as
   });
   t.after(() => browser.close());
   const context = await browser.newContext({ ignoreHTTPSErrors: false });
+  await setConsoleLocalePreference(context, 'zh-CN');
   const page = await context.newPage();
   await page.goto(`https://platform.${rootDomain}/`);
   await page.getByRole('heading', { name: '登录 Platform Console', exact: true }).waitFor();
@@ -1027,9 +1087,15 @@ test('request Problems, malformed responses and unknown network results stay wit
   await verifyRequestProblemSurfaces(browser);
 });
 
-async function expectRouteAccessibility(page, title) {
+async function expectRouteAccessibility(page, title, { focusedElementId } = {}) {
   await page.getByRole('heading', { name: title, exact: true }).waitFor();
-  await page.waitForFunction((title) => document.activeElement?.textContent === title, title);
+  await page.waitForFunction(
+    ({ expectedTitle, expectedId }) =>
+      expectedId === undefined
+        ? document.activeElement?.textContent === expectedTitle
+        : document.activeElement?.id === expectedId,
+    { expectedTitle: title, expectedId: focusedElementId },
+  );
   const announcement = page.getByRole('status').filter({ hasText: title });
   assert.equal(await announcement.getAttribute('aria-live'), 'polite');
   assert.equal(await announcement.getAttribute('aria-atomic'), 'true');
@@ -1091,6 +1157,7 @@ test('production root errors show a safe reload surface without leaking the orig
       ignoreHTTPSErrors: false,
       viewport: { width: 390, height: 844 },
     });
+    await setConsoleLocalePreference(context, 'zh-CN');
     const marker = `private-root-error-${randomUUID()}`;
     await context.addInitScript(
       ({ marker, name }) => {
@@ -1146,28 +1213,78 @@ function isAuthResponse(operation) {
     response.request().method() === 'POST';
 }
 
-async function login(page, email, password) {
-  const title = await page.getByRole('heading', { name: /^登录 / }).textContent();
-  await expectRouteAccessibility(page, title);
-  await page.getByLabel(/^邮箱/).fill(email);
+async function login(page, email, password, locale = 'zh-CN', { focusedElementId } = {}) {
+  const labels =
+    locale === 'en-US'
+      ? { title: /^Sign in to /, email: /^Email/, password: /^Password/, submit: 'Sign in' }
+      : { title: /^登录 /, email: /^邮箱/, password: /^密码/, submit: '登录' };
+  const title = await page.getByRole('heading', { name: labels.title }).textContent();
+  await expectRouteAccessibility(page, title, { focusedElementId });
+  await page.getByLabel(labels.email).fill(email);
   await page.keyboard.press('Tab');
   assert.equal(
-    await page.getByLabel(/^密码/).evaluate((field) => field === document.activeElement),
+    await page.getByLabel(labels.password).evaluate((field) => field === document.activeElement),
     true,
     'email Tab order reaches the password',
   );
   // Playwright 的失败调用日志可能包含 fill 的参数，不能让随机密码进入测试日志。
   await page
-    .getByLabel(/^密码/)
+    .getByLabel(labels.password)
     .fill(password)
     .catch(() => {
       throw new Error('password field unavailable');
     });
   const pending = page.waitForResponse(isAuthResponse('login'));
-  await page.getByRole('button', { name: '登录', exact: true }).press('Enter');
+  await page.getByRole('button', { name: labels.submit, exact: true }).press('Enter');
   const response = await pending;
   assert.equal(response.status(), 200, 'browser login status');
   return response.json();
+}
+
+async function selectConsoleLocale(page, name) {
+  const selector = page.getByRole('combobox', { name: 'Language / 语言' });
+  await selector.focus();
+  await selector.press('Enter');
+  assert.equal(
+    await selector.getAttribute('aria-expanded'),
+    'true',
+    'locale selector opens by keyboard',
+  );
+  await page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)').waitFor();
+  const target = page.locator('.ant-select-item-option', { hasText: name });
+  await target.waitFor();
+  let targetActive = false;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    targetActive = await target.evaluate((option) =>
+      option.classList.contains('ant-select-item-option-active'),
+    );
+    if (targetActive) break;
+    const previousActiveDescendant = await selector.getAttribute('aria-activedescendant');
+    await selector.press('ArrowDown');
+    await page.waitForFunction(
+      ({ selectorId, previous }) => {
+        const current =
+          document.getElementById(selectorId)?.getAttribute('aria-activedescendant') ?? null;
+        return current !== null && current !== previous;
+      },
+      { selectorId: 'console-locale', previous: previousActiveDescendant },
+    );
+  }
+  assert.equal(targetActive, true, 'target locale is keyboard-active');
+  await selector.press('Enter');
+  assert.equal(
+    await page.evaluate(() => localStorage.getItem('sf:ui:locale')),
+    name === 'English' ? 'en-US' : 'zh-CN',
+    'locale selection persists',
+  );
+}
+
+async function setConsoleLocalePreference(context, locale) {
+  // 夹具的中文断言需脱离执行浏览器的系统语言；实际语言切换另由产品用例验证。
+  await context.addInitScript((preference) => {
+    if (localStorage.getItem('sf:ui:locale') === null)
+      localStorage.setItem('sf:ui:locale', preference);
+  }, locale);
 }
 
 async function recover(page, title) {
@@ -1186,7 +1303,7 @@ async function logout(page, application) {
   await expectRouteAccessibility(page, `登录 ${application}`);
 }
 
-async function prepareTenant(api, token, email, options = {}) {
+async function prepareTenant(token, email, options = {}) {
   async function post(path, data, expected) {
     const bytes = randomBytes(16);
     bytes.writeUIntBE(Date.now(), 0, 6);
@@ -1194,21 +1311,32 @@ async function prepareTenant(api, token, email, options = {}) {
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
     const hex = bytes.toString('hex');
     const key = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-    const response = await api
-      .post(`https://api.${rootDomain}/api/v1/platform/${path}`, {
-        headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key': key },
-        data,
-      })
-      .catch(() => {
-        throw new Error('fixture API transport unavailable');
-      });
-    if (response.status() !== expected) {
+    let response;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        response = await fetch(`https://api.${rootDomain}/api/v1/platform/${path}`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Idempotency-Key': key,
+          },
+          ...(data === undefined ? {} : { body: JSON.stringify(data) }),
+          signal: AbortSignal.timeout(10_000),
+        });
+        break;
+      } catch {
+        if (attempt === 2) throw new Error('fixture API transport unavailable');
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    }
+    if (response.status !== expected) {
       const problem = await response.json().catch(() => undefined);
       const code =
         typeof problem?.code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(problem.code)
           ? problem.code
           : 'UNAVAILABLE';
-      assert.equal(response.status(), expected, `fixture ${path} status; code=${code}`);
+      assert.equal(response.status, expected, `fixture ${path} status; code=${code}`);
     }
     return response.json();
   }

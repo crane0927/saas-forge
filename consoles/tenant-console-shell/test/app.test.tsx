@@ -1,5 +1,6 @@
 import { createRuntimeConfigBootstrap, type RuntimeConfigResult } from '@saas-forge/app-runtime';
 import { DesignSystemProvider } from '@saas-forge/design-system';
+import { ConsoleLocaleProvider } from '@saas-forge/react-shell';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -8,14 +9,22 @@ import { TenantConsoleShellApp, type TenantConsoleRootProps } from '../src/app';
 afterEach(cleanup);
 
 function TenantConsoleTestRoot({ children, tenantBrand }: TenantConsoleRootProps) {
-  return <DesignSystemProvider tenantBrand={tenantBrand}>{children}</DesignSystemProvider>;
+  return (
+    <ConsoleLocaleProvider initialLocale="zh-CN">
+      <DesignSystemProvider locale="zh-CN" tenantBrand={tenantBrand}>
+        {children}
+      </DesignSystemProvider>
+    </ConsoleLocaleProvider>
+  );
 }
 
 function EnglishTenantConsoleTestRoot({ children, tenantBrand }: TenantConsoleRootProps) {
   return (
-    <DesignSystemProvider locale="en-US" tenantBrand={tenantBrand}>
-      {children}
-    </DesignSystemProvider>
+    <ConsoleLocaleProvider initialLocale="en-US">
+      <DesignSystemProvider locale="en-US" tenantBrand={tenantBrand}>
+        {children}
+      </DesignSystemProvider>
+    </ConsoleLocaleProvider>
   );
 }
 
@@ -420,7 +429,7 @@ describe('TenantConsoleShellApp', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
 
-    expect(await screen.findByRole('heading', { name: '登录 Tenant Console' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Sign in to Tenant Console' })).toBeTruthy();
     expect(loader).toHaveBeenCalledTimes(2);
   });
 });

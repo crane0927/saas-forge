@@ -13,6 +13,10 @@ export async function verifyRequestProblemSurfaces(browser) {
       ignoreHTTPSErrors: false,
       viewport: { width: 390, height: 844 },
     });
+    // 故障断言使用中文文案，不能依赖执行浏览器的系统语言。
+    await context.addInitScript(() => {
+      localStorage.setItem('sf:ui:locale', 'zh-CN');
+    });
     try {
       const page = await context.newPage();
       const marker = `private-response-${randomUUID()}`;

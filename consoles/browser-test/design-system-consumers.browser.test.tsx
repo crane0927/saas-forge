@@ -112,8 +112,7 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
     await waitForLayout();
     const selector = page.getByRole('combobox', { name: 'Language / 语言' });
     selector.element().focus();
-    await userEvent.click(selector);
-    await userEvent.click(page.getByText('简体中文'));
+    await userEvent.keyboard('{Enter}{ArrowUp}{Enter}');
 
     await expect
       .element(page.getByRole('heading', { name: 'Platform Console 配置不可用' }))
@@ -149,7 +148,11 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
   ])(
     '%s 共享启动状态进入首个可操作页面并恢复标题焦点',
     async (_name, app, titleName, needsProvider) => {
-      render(needsProvider ? <DesignSystemProvider>{app}</DesignSystemProvider> : app);
+      render(
+        <ConsoleLocaleProvider initialLocale="zh-CN">
+          {needsProvider ? <DesignSystemProvider>{app}</DesignSystemProvider> : app}
+        </ConsoleLocaleProvider>,
+      );
 
       await expect.element(page.getByText('正在启动')).toBeInTheDocument();
       const title = page.getByRole('heading', { name: titleName });
@@ -218,12 +221,14 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
 
     try {
       render(
-        <TenantConsoleShellApp
-          root={TenantConsoleTestRoot}
-          bootstrap={readyBootstrap()}
-          authenticationFetch={authenticationFetch}
-          realm={{}}
-        />,
+        <ConsoleLocaleProvider initialLocale="zh-CN">
+          <TenantConsoleShellApp
+            root={TenantConsoleTestRoot}
+            bootstrap={readyBootstrap()}
+            authenticationFetch={authenticationFetch}
+            realm={{}}
+          />
+        </ConsoleLocaleProvider>,
       );
 
       await page.getByRole('textbox', { name: '邮箱' }).fill('member@example.test');
@@ -320,12 +325,14 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
       );
 
     render(
-      <TenantConsoleShellApp
-        root={TenantConsoleTestRoot}
-        bootstrap={readyBootstrap()}
-        authenticationFetch={authenticationFetch}
-        realm={{}}
-      />,
+      <ConsoleLocaleProvider initialLocale="zh-CN">
+        <TenantConsoleShellApp
+          root={TenantConsoleTestRoot}
+          bootstrap={readyBootstrap()}
+          authenticationFetch={authenticationFetch}
+          realm={{}}
+        />
+      </ConsoleLocaleProvider>,
     );
 
     await expect.element(page.getByText('Current Brand')).toBeInTheDocument();
