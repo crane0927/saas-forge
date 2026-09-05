@@ -25,6 +25,10 @@
 
 - HttpOnly Cookie、`Origin` 与 `Sec-Fetch-*` 是由浏览器管理的安全边界，不得暴露为 Console 或 Remote 的业务调用参数；消费者只能通过共享类型化 HTTP Client 调用正式 API operation，不得自行注入 Cookie、Origin、Fetch Metadata 或 Bearer Token。
 
+### Console 国际化资源
+
+- Design System 自有消息资源必须按可独立 tree-shake 的组件模块拆分；新增或移动资源目录必须接入 `consoles/scripts/validate-i18n-resources.mjs`，并通过 `pnpm --dir consoles run validate:i18n` 与 `pnpm --dir consoles run build:workspace`。不得因共享翻译入口将未使用组件文案打入 Console 或 Remote 首屏制品。
+
 ### Issue tracker
 
 问题与 PRD 通过本仓库的 GitHub Issues 跟踪。详见 `docs/agents/issue-tracker.md`。
