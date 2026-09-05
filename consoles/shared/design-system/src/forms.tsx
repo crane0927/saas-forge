@@ -1,4 +1,5 @@
 import { Checkbox as AntCheckbox, Input as AntInput, Select as AntSelect } from 'antd';
+import { createTranslator, defineMessages } from '@saas-forge/i18n';
 import {
   forwardRef,
   useCallback,
@@ -11,6 +12,10 @@ import {
   type ReactNode,
   type SubmitEventHandler,
 } from 'react';
+
+import enUS from './messages/forms/en-US.json';
+import zhCN from './messages/forms/zh-CN.json';
+import { useDesignSystemLocale } from './theme-provider';
 
 export interface FormLayoutProps {
   readonly children: ReactNode;
@@ -91,6 +96,19 @@ export interface UnsavedChangesGuard {
   readonly requestDiscard: (action: () => void) => void;
   readonly continueEditing: () => void;
   readonly discardChanges: () => void;
+}
+
+const formMessages = defineMessages({
+  'en-US': enUS,
+  'zh-CN': zhCN,
+});
+
+function useFormTranslator() {
+  return createTranslator({
+    namespace: '@saas-forge/design-system/forms',
+    locale: useDesignSystemLocale(),
+    messages: formMessages,
+  });
 }
 
 export function FormLayout({ children, onSubmit, ariaLabel }: FormLayoutProps) {
@@ -237,13 +255,14 @@ export function FieldError({ id, children }: FieldErrorProps) {
 }
 
 export const FormErrorSummary = forwardRef<HTMLDivElement, FormErrorSummaryProps>(
-  function FormErrorSummary({ errors, title = '请处理以下问题' }, ref) {
+  function FormErrorSummary({ errors, title }, ref) {
+    const translate = useFormTranslator();
     if (errors.length === 0) {
       return null;
     }
     return (
       <div className="sf-form-error-summary" ref={ref} role="alert" tabIndex={-1}>
-        <strong>{title}</strong>
+        <strong>{title ?? translate.translate('formProblemSummary')}</strong>
         <ul>
           {errors.map((error, index) => (
             <li key={`${error.fieldId ?? 'form'}-${String(index)}`}>

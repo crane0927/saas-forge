@@ -1,0 +1,14 @@
+{
+  "pageEmptyTitle": "暂无数据",
+  "pageFilteredDescription": "当前筛选条件下没有匹配结果。",
+  "pageFilteredReset": "重置筛选条件",
+  "pageFilteredTitle": "未找到匹配结果",
+  "pageInitialLoading": "正在加载页面内容",
+  "pageLoadFailureDescription": "内容暂时无法加载，当前条件已保留。",
+  "pageLoadFailureTitle": "加载失败",
+  "pageNotFoundDescription": "当前地址不存在，或页面已经移动。",
+  "pageNotFoundReturn": "返回上一页",
+  "pageNotFoundTitle": "页面不存在",
+  "pageRefreshing": "正在更新当前内容",
+  "pageRetry": "重试"
+}

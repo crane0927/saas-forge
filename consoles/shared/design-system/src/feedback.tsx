@@ -1,6 +1,10 @@
+import { createTranslator, defineMessages } from '@saas-forge/i18n';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 
 import { Button, DesignIcon } from './foundation';
+import enUS from './messages/feedback/en-US.json';
+import zhCN from './messages/feedback/zh-CN.json';
+import { useDesignSystemLocale } from './theme-provider';
 
 export interface FeedbackAction {
   readonly label: string;
@@ -25,6 +29,19 @@ export interface PersistentErrorProps {
   readonly children?: ReactNode;
   readonly action?: FeedbackAction;
   readonly onClose?: () => void;
+}
+
+const feedbackMessages = defineMessages({
+  'en-US': enUS,
+  'zh-CN': zhCN,
+});
+
+function useFeedbackTranslator() {
+  return createTranslator({
+    namespace: '@saas-forge/design-system/feedback',
+    locale: useDesignSystemLocale(),
+    messages: feedbackMessages,
+  });
 }
 
 export function SuccessFeedback({
@@ -70,6 +87,7 @@ export function WarningFeedback({ title, children }: WarningFeedbackProps) {
 }
 
 export function PersistentError({ title, children, action, onClose }: PersistentErrorProps) {
+  const translate = useFeedbackTranslator();
   return (
     <section className="sf-feedback sf-feedback-error" role="alert">
       <DesignIcon name="error" />
@@ -84,7 +102,7 @@ export function PersistentError({ title, children, action, onClose }: Persistent
       )}
       {onClose === undefined ? null : (
         <Button variant="text" onClick={onClose}>
-          关闭错误提示
+          {translate.translate('actionCloseError')}
         </Button>
       )}
     </section>

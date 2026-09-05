@@ -1,0 +1,11 @@
+{
+  "dialogCancel": "Cancel",
+  "dialogClose": "Close",
+  "dialogConfirmationInstruction": "Enter {confirmationText} to continue.",
+  "dialogConfirmationLabel": "Enter the object name to confirm",
+  "dialogObjectLabel": "Operation target:",
+  "dialogUnsavedContinue": "Continue editing",
+  "dialogUnsavedDescription": "Your unsaved changes will be lost if you leave.",
+  "dialogUnsavedDiscard": "Discard changes",
+  "dialogUnsavedTitle": "Discard unsaved changes?"
+}

@@ -1,0 +1,16 @@
+{
+  "tableActionColumn": "操作",
+  "tableEmptyDescription": "当前还没有可显示的数据。",
+  "tableInitialLoading": "正在加载{tableLabel}",
+  "tableMoreActions": "更多",
+  "tableQuery": "查询",
+  "tableQueryAriaLabel": "{tableLabel}查询条件",
+  "tableRefreshing": "正在更新{tableLabel}",
+  "tableReset": "重置",
+  "tableSelectColumn": "选择",
+  "tableSelectRow": "选择当前页记录",
+  "tableSelectionCleared": "已清除当前页选择。",
+  "tableSelectionCount": "{count, plural, other {已选择 # 项当前页记录。}}",
+  "tableSelectionNone": "当前页尚未选择记录。",
+  "tableTotal": "{count, plural, other {共 # 项}}"
+}

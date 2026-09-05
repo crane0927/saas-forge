@@ -1,0 +1,14 @@
+{
+  "pageEmptyTitle": "No data",
+  "pageFilteredDescription": "No results match the current filters.",
+  "pageFilteredReset": "Reset filters",
+  "pageFilteredTitle": "No matching results",
+  "pageInitialLoading": "Loading page content",
+  "pageLoadFailureDescription": "Content could not be loaded. Your current conditions were preserved.",
+  "pageLoadFailureTitle": "Loading failed",
+  "pageNotFoundDescription": "This address does not exist, or the page has moved.",
+  "pageNotFoundReturn": "Go back",
+  "pageNotFoundTitle": "Page not found",
+  "pageRefreshing": "Updating current content",
+  "pageRetry": "Retry"
+}

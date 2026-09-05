@@ -28,13 +28,17 @@ const bootstrapMessages = defineMessages({
   'zh-CN': zhCN,
 });
 
-export function ApplicationLoading({ applicationName }: ApplicationLoadingProps) {
-  const titleId = useId();
-  const translate = createTranslator({
-    namespace: '@saas-forge/design-system',
-    locale: useDesignSystemLocale(),
+function createBootstrapTranslator(locale: SupportedLocale) {
+  return createTranslator({
+    namespace: '@saas-forge/design-system/bootstrap-status',
+    locale,
     messages: bootstrapMessages,
   });
+}
+
+export function ApplicationLoading({ applicationName }: ApplicationLoadingProps) {
+  const titleId = useId();
+  const translate = createBootstrapTranslator(useDesignSystemLocale());
 
   return (
     <main className="sf-bootstrap-surface" aria-busy="true" aria-live="polite">
@@ -53,11 +57,7 @@ export function ConfigurationFailure({
   onRetry,
 }: ConfigurationFailureProps) {
   const titleId = useId();
-  const translate = createTranslator({
-    namespace: '@saas-forge/design-system',
-    locale: useDesignSystemLocale(),
-    messages: bootstrapMessages,
-  });
+  const translate = createBootstrapTranslator(useDesignSystemLocale());
 
   return (
     <main className="sf-bootstrap-surface">
@@ -86,11 +86,7 @@ export function ApplicationFatalError({
   const titleId = useId();
   const contextLocale = useDesignSystemLocale();
   const locale = fallbackLocale ?? contextLocale;
-  const translate = createTranslator({
-    namespace: '@saas-forge/design-system',
-    locale,
-    messages: bootstrapMessages,
-  });
+  const translate = createBootstrapTranslator(locale);
 
   return (
     <main className="sf-bootstrap-surface">

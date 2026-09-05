@@ -1,11 +1,22 @@
 import axe from 'axe-core';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
 
-import { ApplicationFatalError, DesignSystemProvider } from '../src';
+import {
+  ApplicationFatalError,
+  Button,
+  DesignSystemProvider,
+  FormErrorSummary,
+  IrreversibleDangerDialog,
+  ServerTable,
+  SuccessFeedback,
+  TextField,
+  type DesignSystemLocale,
+} from '../src';
+import { formatDate, formatInstant, formatMoney, formatNumber } from '@saas-forge/i18n';
 import {
   DesignSystemShowcase,
   LayoutShowcase,
@@ -382,4 +393,139 @@ describe('Design System 真实浏览器展示矩阵', () => {
 
     expect(reloaded).toBe(true);
   });
+
+  it('切换 Locale 时保留输入、弹窗、反馈和焦点，并直接展示计数与格式化结果', async () => {
+    render(<LocalizedComponentHarness locale="en-US" total={1} />);
+
+    await expect.element(page.getByText('Resolve the following issues')).toBeInTheDocument();
+    await expect.element(page.getByText('Name is required.').first()).toBeInTheDocument();
+    const memberName = page.getByRole('textbox', { name: 'Member name' });
+    await memberName.fill('Ada');
+    await page.getByRole('button', { name: 'Delete tenant' }).click();
+    const confirmation = page.getByRole('textbox', { name: 'Enter the object name to confirm' });
+    await confirmation.fill('North');
+    confirmation.element().focus();
+
+    await expect.element(page.getByText('1 item', { exact: true })).toBeInTheDocument();
+    await expect
+      .element(page.getByTestId('formatted-number'))
+      .toHaveTextContent('123,456,789,012,345,678,901,234,567,890.0012300');
+    await expect.element(page.getByTestId('formatted-usd')).toHaveTextContent('$1,200.40');
+    await expect.element(page.getByTestId('formatted-jpy')).toHaveTextContent('¥1,200');
+
+    rerender(<LocalizedComponentHarness locale="en-US" total={2} />);
+    await expect.element(page.getByText('2 items', { exact: true })).toBeInTheDocument();
+
+    rerender(<LocalizedComponentHarness locale="zh-CN" total={2} />);
+    await expect.element(page.getByRole('textbox', { name: '成员名称' })).toHaveValue('Ada');
+    await expect.element(page.getByRole('dialog', { name: '删除租户' })).toBeInTheDocument();
+    await expect.element(page.getByRole('button', { name: '取消' })).toBeInTheDocument();
+    await expect.element(page.getByText('租户操作已准备。')).toBeInTheDocument();
+    await expect.element(page.getByText('共 2 项', { exact: true })).toBeInTheDocument();
+    const translatedConfirmation = page.getByRole('textbox', { name: '输入对象名称确认' });
+    await expect.element(translatedConfirmation).toHaveValue('North');
+    await expect.element(translatedConfirmation).toHaveFocus();
+    await expect.element(page.getByTestId('formatted-date')).toHaveTextContent('2026年1月2日');
+    await expect.element(page.getByTestId('formatted-instant')).toHaveTextContent('2026年1月2日');
+
+    await page.getByRole('button', { name: '取消' }).click();
+    await page.getByRole('textbox', { name: '成员名称' }).fill('');
+    await expect.element(page.getByText('请处理以下问题')).toBeInTheDocument();
+    await expect.element(page.getByText('请输入名称。').first()).toBeInTheDocument();
+
+    await page.viewport(320, 1400);
+    expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(320);
+    const results = await axe.run(document);
+    expect(results.violations).toEqual([]);
+  });
 });
+
+function LocalizedComponentHarness({
+  locale,
+  total,
+}: {
+  readonly locale: DesignSystemLocale;
+  readonly total: number;
+}) {
+  const english = locale === 'en-US';
+  const [name, setName] = useState('');
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const validationMessage =
+    name === '' ? (english ? 'Name is required.' : '请输入名称。') : undefined;
+  return (
+    <DesignSystemProvider locale={locale}>
+      <main>
+        <h1>{english ? 'Localized component scenario' : '双语组件场景'}</h1>
+        <FormErrorSummary
+          errors={
+            validationMessage === undefined
+              ? []
+              : [{ fieldId: 'localized-member-name', message: validationMessage }]
+          }
+        />
+        <TextField
+          id="localized-member-name"
+          label={english ? 'Member name' : '成员名称'}
+          value={name}
+          error={validationMessage}
+          onValueChange={setName}
+        />
+        <Button
+          onClick={() => {
+            setDialogOpen(true);
+          }}
+        >
+          {english ? 'Delete tenant' : '删除租户'}
+        </Button>
+        <SuccessFeedback
+          stableKey="tenant-action-ready"
+          durationMs={60_000}
+          message={english ? 'Tenant action is ready.' : '租户操作已准备。'}
+        />
+        <ServerTable
+          ariaLabel={english ? 'Tenant table' : '租户表格'}
+          rows={[{ id: 'tenant-1', name: 'Northstar' }]}
+          rowKey={(row) => row.id}
+          columns={[{ key: 'name', title: english ? 'Name' : '名称', render: (row) => row.name }]}
+          page={1}
+          pageSize={10}
+          total={total}
+          onTableChange={() => undefined}
+        />
+        <dl style={{ overflowWrap: 'anywhere' }}>
+          <dt>{english ? 'Date' : '日期'}</dt>
+          <dd data-testid="formatted-date">{formatDate({ value: '2026-01-02', locale })}</dd>
+          <dt>{english ? 'Instant' : '时间点'}</dt>
+          <dd data-testid="formatted-instant">
+            {formatInstant({ value: '2026-01-02T01:30:00Z', locale, timeZone: 'Asia/Shanghai' })}
+          </dd>
+          <dt>{english ? 'Number' : '数字'}</dt>
+          <dd data-testid="formatted-number">
+            {formatNumber({ value: '123456789012345678901234567890.0012300', locale })}
+          </dd>
+          <dt>USD</dt>
+          <dd data-testid="formatted-usd">
+            {formatMoney({ value: '1200.40', currency: 'USD', locale })}
+          </dd>
+          <dt>JPY</dt>
+          <dd data-testid="formatted-jpy">
+            {formatMoney({ value: '1200', currency: 'JPY', locale })}
+          </dd>
+        </dl>
+      </main>
+      <IrreversibleDangerDialog
+        open={dialogOpen}
+        title={english ? 'Delete tenant' : '删除租户'}
+        objectName="Northstar"
+        consequence={english ? 'This action cannot be undone.' : '此操作无法撤销。'}
+        actionLabel={english ? 'Delete' : '删除'}
+        onCancel={() => {
+          setDialogOpen(false);
+        }}
+        onConfirm={() => {
+          setDialogOpen(false);
+        }}
+      />
+    </DesignSystemProvider>
+  );
+}

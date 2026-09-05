@@ -1,7 +1,11 @@
 import { Skeleton, Spin } from 'antd';
+import { createTranslator, defineMessages } from '@saas-forge/i18n';
 import type { ReactNode } from 'react';
 
 import { Button, DesignIcon, type DesignIconName } from './foundation';
+import enUS from './messages/page-states/en-US.json';
+import zhCN from './messages/page-states/zh-CN.json';
+import { useDesignSystemLocale } from './theme-provider';
 
 export interface InitialContentLoadingProps {
   readonly label?: string;
@@ -48,27 +52,39 @@ interface PageStateProps {
   readonly alert?: boolean;
 }
 
-export function InitialContentLoading({ label = '正在加载页面内容' }: InitialContentLoadingProps) {
+const pageStateMessages = defineMessages({
+  'en-US': enUS,
+  'zh-CN': zhCN,
+});
+
+function usePageStateTranslator() {
+  return createTranslator({
+    namespace: '@saas-forge/design-system/page-states',
+    locale: useDesignSystemLocale(),
+    messages: pageStateMessages,
+  });
+}
+
+export function InitialContentLoading({ label }: InitialContentLoadingProps) {
+  const translate = usePageStateTranslator();
+  const visibleLabel = label ?? translate.translate('pageInitialLoading');
   return (
-    <section className="sf-initial-loading" aria-busy="true" aria-label={label}>
+    <section className="sf-initial-loading" aria-busy="true" aria-label={visibleLabel}>
       <Spin aria-hidden="true" />
-      <span>{label}</span>
+      <span>{visibleLabel}</span>
       <Skeleton active title paragraph={{ rows: 4 }} />
     </section>
   );
 }
 
-export function RefreshingContent({
-  refreshing,
-  children,
-  label = '正在更新当前内容',
-}: RefreshingContentProps) {
+export function RefreshingContent({ refreshing, children, label }: RefreshingContentProps) {
+  const translate = usePageStateTranslator();
   return (
     <section className="sf-refreshing-content" aria-busy={refreshing}>
       {refreshing ? (
         <div className="sf-refreshing-indicator" role="status">
           <Spin size="small" aria-hidden="true" />
-          <span>{label}</span>
+          <span>{label ?? translate.translate('pageRefreshing')}</span>
         </div>
       ) : null}
       {children}
@@ -76,50 +92,55 @@ export function RefreshingContent({
   );
 }
 
-export function EmptyDataState({ title = '暂无数据', description, action }: EmptyDataStateProps) {
-  return <PageState icon="empty" title={title} description={description} action={action} />;
-}
-
-export function FilteredEmptyState({
-  description = '当前筛选条件下没有匹配结果。',
-  onReset,
-}: FilteredEmptyStateProps) {
+export function EmptyDataState({ title, description, action }: EmptyDataStateProps) {
+  const translate = usePageStateTranslator();
   return (
     <PageState
-      icon="search"
-      title="未找到匹配结果"
+      icon="empty"
+      title={title ?? translate.translate('pageEmptyTitle')}
       description={description}
-      action={{ label: '重置筛选条件', onAction: onReset }}
+      action={action}
     />
   );
 }
 
-export function LoadFailureState({
-  description = '内容暂时无法加载，当前条件已保留。',
-  onRetry,
-}: LoadFailureStateProps) {
+export function FilteredEmptyState({ description, onReset }: FilteredEmptyStateProps) {
+  const translate = usePageStateTranslator();
+  return (
+    <PageState
+      icon="search"
+      title={translate.translate('pageFilteredTitle')}
+      description={description ?? translate.translate('pageFilteredDescription')}
+      action={{ label: translate.translate('pageFilteredReset'), onAction: onReset }}
+    />
+  );
+}
+
+export function LoadFailureState({ description, onRetry }: LoadFailureStateProps) {
+  const translate = usePageStateTranslator();
   return (
     <PageState
       icon="reload"
-      title="加载失败"
-      description={description}
-      action={{ label: '重试', onAction: onRetry }}
+      title={translate.translate('pageLoadFailureTitle')}
+      description={description ?? translate.translate('pageLoadFailureDescription')}
+      action={{ label: translate.translate('pageRetry'), onAction: onRetry }}
       alert
     />
   );
 }
 
-export function NotFoundState({
-  description = '当前地址不存在，或页面已经移动。',
-  onReturn,
-  returnLabel = '返回上一页',
-}: NotFoundStateProps) {
+export function NotFoundState({ description, onReturn, returnLabel }: NotFoundStateProps) {
+  const translate = usePageStateTranslator();
   return (
     <PageState
       icon="not-found"
-      title="页面不存在"
-      description={description}
-      action={onReturn === undefined ? undefined : { label: returnLabel, onAction: onReturn }}
+      title={translate.translate('pageNotFoundTitle')}
+      description={description ?? translate.translate('pageNotFoundDescription')}
+      action={
+        onReturn === undefined
+          ? undefined
+          : { label: returnLabel ?? translate.translate('pageNotFoundReturn'), onAction: onReturn }
+      }
     />
   );
 }

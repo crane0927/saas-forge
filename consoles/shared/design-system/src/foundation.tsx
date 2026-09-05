@@ -1,5 +1,10 @@
 import { Button as AntButton } from 'antd';
+import { createTranslator, defineMessages } from '@saas-forge/i18n';
 import type { MouseEventHandler, ReactNode } from 'react';
+
+import enUS from './messages/foundation/en-US.json';
+import zhCN from './messages/foundation/zh-CN.json';
+import { useDesignSystemLocale } from './theme-provider';
 
 export type DesignIconName =
   'check' | 'warning' | 'error' | 'empty' | 'search' | 'reload' | 'not-found';
@@ -81,6 +86,19 @@ interface SplitLayoutLabelledByProps extends SplitLayoutContentProps {
 /** 辅助栏必须且只能通过直接名称或关联标题获得可访问名称。 */
 export type SplitLayoutProps = SplitLayoutLabelProps | SplitLayoutLabelledByProps;
 
+const foundationMessages = defineMessages({
+  'en-US': enUS,
+  'zh-CN': zhCN,
+});
+
+function useFoundationTranslator() {
+  return createTranslator({
+    namespace: '@saas-forge/design-system/foundation',
+    locale: useDesignSystemLocale(),
+    messages: foundationMessages,
+  });
+}
+
 const iconPaths: Record<DesignIconName, ReactNode> = {
   check: <path d="m6.5 12.5 3.5 3.5 7.5-8" />,
   warning: (
@@ -148,9 +166,10 @@ export function Button({
   variant = 'secondary',
   disabled = false,
   loading = false,
-  loadingLabel = '正在处理',
+  loadingLabel,
   type = 'button',
 }: ButtonProps) {
+  const translate = useFoundationTranslator();
   return (
     <AntButton
       type={
@@ -165,7 +184,7 @@ export function Button({
       loading={loading}
       htmlType={type}
       onClick={onClick}
-      aria-label={loading ? loadingLabel : undefined}
+      aria-label={loading ? (loadingLabel ?? translate.translate('buttonProcessing')) : undefined}
     >
       {children}
     </AntButton>
@@ -213,17 +232,22 @@ export function PageLayout({ title, children, width = 'standard' }: PageLayoutPr
 
 export function ApplicationShell({
   applicationName,
-  navigationLabel = `${applicationName} 全局导航`,
+  navigationLabel,
   navigationItems,
   onNavigate,
   actions,
   children,
 }: ApplicationShellProps) {
+  const translate = useFoundationTranslator();
   return (
     <div className="sf-application-shell">
       <header className="sf-application-header">
         <strong className="sf-application-name">{applicationName}</strong>
-        <nav aria-label={navigationLabel}>
+        <nav
+          aria-label={
+            navigationLabel ?? translate.translate('applicationNavigation', { applicationName })
+          }
+        >
           <ul className="sf-application-navigation">
             {navigationItems.map((item) => (
               <li key={item.href}>

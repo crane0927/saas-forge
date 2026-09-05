@@ -8,6 +8,12 @@ const consoleRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 const resourceDirectories = [
   'platform-console/src/messages',
   'shared/design-system/src/messages',
+  'shared/design-system/src/messages/feedback',
+  'shared/design-system/src/messages/forms',
+  'shared/design-system/src/messages/foundation',
+  'shared/design-system/src/messages/overlays',
+  'shared/design-system/src/messages/page-states',
+  'shared/design-system/src/messages/server-table',
   'shared/react-shell/src/messages',
   'tenant-console-shell/src/messages',
 ];
@@ -34,7 +40,13 @@ export async function validateResourceDirectory(directory) {
     }
   }
 
-  const declaredFiles = new Set(await readdir(directory));
+  let declaredFiles;
+  try {
+    declaredFiles = new Set(await readdir(directory));
+  } catch (error) {
+    errors.push(`${directory}: ${error instanceof Error ? error.message : String(error)}`);
+    return errors;
+  }
   for (const locale of enabledLocales) {
     declaredFiles.delete(`${locale}.json`);
   }

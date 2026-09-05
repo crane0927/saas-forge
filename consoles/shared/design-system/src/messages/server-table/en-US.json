@@ -1,0 +1,16 @@
+{
+  "tableActionColumn": "Actions",
+  "tableEmptyDescription": "There is no data to display yet.",
+  "tableInitialLoading": "Loading {tableLabel}",
+  "tableMoreActions": "More",
+  "tableQuery": "Search",
+  "tableQueryAriaLabel": "{tableLabel} filters",
+  "tableRefreshing": "Updating {tableLabel}",
+  "tableReset": "Reset",
+  "tableSelectColumn": "Select",
+  "tableSelectRow": "Select this page row",
+  "tableSelectionCleared": "Current-page selection cleared.",
+  "tableSelectionCount": "{count, plural, one {# current-page item selected.} other {# current-page items selected.}}",
+  "tableSelectionNone": "No current-page items selected.",
+  "tableTotal": "{count, plural, one {# item} other {# items}}"
+}

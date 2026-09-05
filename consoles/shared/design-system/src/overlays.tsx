@@ -1,6 +1,9 @@
 import { Button, ConfigProvider, Dropdown, Input, Modal, type ThemeConfig } from 'antd';
+import { createTranslator, defineMessages } from '@saas-forge/i18n';
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 
+import enUS from './messages/overlays/en-US.json';
+import zhCN from './messages/overlays/zh-CN.json';
 import {
   currentFocus,
   removedObjectTargets,
@@ -8,6 +11,7 @@ import {
   type RemovedObjectFocusTargets,
   useTopLayerEscape,
 } from './overlay-behavior';
+import { useDesignSystemLocale } from './theme-provider';
 
 export interface ActionMenuItem {
   readonly key: string;
@@ -71,6 +75,19 @@ const dialogTheme: ThemeConfig = {
   },
 };
 
+const overlayMessages = defineMessages({
+  'en-US': enUS,
+  'zh-CN': zhCN,
+});
+
+function useOverlayTranslator() {
+  return createTranslator({
+    namespace: '@saas-forge/design-system/overlays',
+    locale: useDesignSystemLocale(),
+    messages: overlayMessages,
+  });
+}
+
 interface DialogFrameProps {
   readonly open: boolean;
   readonly title: string;
@@ -133,13 +150,14 @@ export function StandardDialog({
   children,
   onClose,
   primaryAction,
-  closeLabel = '关闭',
+  closeLabel,
 }: StandardDialogProps) {
+  const translate = useOverlayTranslator();
   return (
     <DialogFrame
       open={open}
       title={title}
-      cancelLabel={closeLabel}
+      cancelLabel={closeLabel ?? translate.translate('dialogClose')}
       onCancel={onClose}
       confirmAction={primaryAction}
     >
@@ -152,18 +170,19 @@ export function UnsavedChangesDialog({
   open,
   onContinueEditing,
   onDiscard,
-  description = '离开后，本次未保存的修改不会保留。',
+  description,
 }: UnsavedChangesDialogProps) {
+  const translate = useOverlayTranslator();
   return (
     <DialogFrame
       open={open}
-      title="放弃未保存的修改？"
-      cancelLabel="继续编辑"
+      title={translate.translate('dialogUnsavedTitle')}
+      cancelLabel={translate.translate('dialogUnsavedContinue')}
       onCancel={onContinueEditing}
-      confirmAction={{ label: '放弃修改', onAction: onDiscard }}
+      confirmAction={{ label: translate.translate('dialogUnsavedDiscard'), onAction: onDiscard }}
       confirmDanger
     >
-      <p>{description}</p>
+      <p>{description ?? translate.translate('dialogUnsavedDescription')}</p>
     </DialogFrame>
   );
 }
@@ -178,18 +197,19 @@ export function RecoverableDangerDialog({
   onConfirm,
   removedObjectFocus,
 }: DangerDialogProps) {
+  const translate = useOverlayTranslator();
   return (
     <DialogFrame
       open={open}
       title={title}
-      cancelLabel="取消"
+      cancelLabel={translate.translate('dialogCancel')}
       onCancel={onCancel}
       confirmAction={{ label: actionLabel, onAction: onConfirm }}
       confirmDanger
       removedObjectFocus={removedObjectFocus}
     >
       <p>
-        操作对象：<strong>{objectName}</strong>
+        {translate.translate('dialogObjectLabel')} <strong>{objectName}</strong>
       </p>
       <p>{consequence}</p>
     </DialogFrame>
@@ -206,8 +226,9 @@ export function IrreversibleDangerDialog({
   onConfirm,
   removedObjectFocus,
   confirmationText = objectName,
-  confirmationLabel = '输入对象名称确认',
+  confirmationLabel,
 }: IrreversibleDangerDialogProps) {
+  const translate = useOverlayTranslator();
   const [confirmation, setConfirmation] = useState('');
   const previousOpen = useRef(false);
 
@@ -222,7 +243,7 @@ export function IrreversibleDangerDialog({
     <DialogFrame
       open={open}
       title={title}
-      cancelLabel="取消"
+      cancelLabel={translate.translate('dialogCancel')}
       onCancel={onCancel}
       confirmAction={{
         label: actionLabel,
@@ -233,14 +254,12 @@ export function IrreversibleDangerDialog({
       removedObjectFocus={removedObjectFocus}
     >
       <p>
-        操作对象：<strong>{objectName}</strong>
+        {translate.translate('dialogObjectLabel')} <strong>{objectName}</strong>
       </p>
       <p>{consequence}</p>
-      <p>
-        请输入 <strong>{confirmationText}</strong> 后继续。
-      </p>
+      <p>{translate.translate('dialogConfirmationInstruction', { confirmationText })}</p>
       <label className="sf-dialog-field">
-        <span>{confirmationLabel}</span>
+        <span>{confirmationLabel ?? translate.translate('dialogConfirmationLabel')}</span>
         <Input
           value={confirmation}
           onChange={(event) => {
