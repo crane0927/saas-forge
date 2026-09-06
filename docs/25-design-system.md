@@ -1,8 +1,8 @@
 # Design System 规范
 
-**状态：规则与底层组件选型已确认；正式共享包、系统浅色/深色主题、受控 Tenant 品牌解析、两个 Console 的启动状态与路由焦点接入，共享页面状态、浮层、表单、服务端表格、公共响应式布局，以及代表性 Remote 消费与浏览器边界已实现。两个 Console 的真实业务页面仍按对应 Issue 交付。**
+**状态：规则与底层组件选型已确认；正式共享包、系统浅色/深色主题、受控 Tenant 品牌颜色解析、两个 Console 的启动状态与路由焦点接入，共享页面状态、浮层、表单、服务端表格、公共响应式布局，以及代表性 Remote 消费与浏览器边界已实现。五项完整 Profile 解析与 React Shell 原子应用缝尚未实现；两个 Console 的真实业务页面仍按对应 Issue 交付。**
 
-本规范定义 Platform Console、Tenant Console Shell 与官方业务 Remote 共用的视觉、组件、反馈、键盘和焦点语义。架构边界见 [ADR 0037](adr/0037-browser-surfaces-use-one-shared-design-system.md)，Tenant 品牌边界见 [ADR 0036](adr/0036-tenant-access-owns-controlled-tenant-brand-profiles.md)，共享布局的 Remote 消费证据见 [共享响应式布局消费与浏览器验证记录](27-shared-responsive-layout-consumption-verification.md)。本规范本身不替代对应实现与浏览器证据。
+本规范定义 Platform Console、Tenant Console Shell 与官方业务 Remote 共用的视觉、组件、反馈、键盘和焦点语义。架构边界见 [ADR 0037](adr/0037-browser-surfaces-use-one-shared-design-system.md)，Tenant 品牌所有权见 [ADR 0036](adr/0036-tenant-access-owns-controlled-tenant-brand-profiles.md)，品牌解析与运行时应用见 [ADR 0042](adr/0042-browser-surfaces-atomically-apply-one-resolved-brand.md)，共享布局的 Remote 消费证据见 [共享响应式布局消费与浏览器验证记录](27-shared-responsive-layout-consumption-verification.md)。本规范本身不替代对应实现与浏览器证据。
 
 ## 1. 所有权与消费边界
 
@@ -33,9 +33,16 @@
 ## 4. 主题与品牌
 
 - 同时提供浅色与深色主题，默认跟随操作系统设置；MVP 不增加手动主题开关。
-- 平台第一版默认主色为 `#2563EB`，只由 Design System 的单一语义 Token 提供，Console 与 Remote 不得直接写入色值。
-- 平台主色后续可以集中替换，但必须重新验证浅色、深色、对比度和视觉快照后发布。
-- Tenant Brand Profile 只改变允许的显示名称、素材、主色和强调色。系统优先保留 Tenant 选择的颜色方向，自动生成浅色和深色主题下可辨识的实际颜色与前景色；仍无法满足对比度和状态辨识要求时拒绝保存。
+- Platform Brand Profile 是显示名称、Logo、favicon、主色和强调色组成的完整平台默认品牌，MVP 由 Design System 内的版本化构建期常量提供，不扩展当前只承载 API Origin 的 Runtime Config。平台第一版默认主色为 `#2563EB`；正式 Logo 与 favicon 实现前必须另行确认视觉稿，不得使用验收夹具代替。
+- Brand Token Set 是从某个有效 Brand Profile 派生的受控运行时视觉值，包含浅色与深色主题所需的主色、强调色及可读前景色。Console 与 Remote 不得直接写入颜色值或改写该 Token Set；平台品牌后续只能经集中替换并重新通过浅色、深色、对比度和视觉快照后发布。
+- Tenant Brand Profile 只改变显示名称、Logo、favicon、主色和强调色。已发布 v1 契约中 Logo/favicon 保持可选以避免破坏兼容，但第 4 阶段的新写入只能产生五字段完整 Profile；运行时读取到任一字段缺失或无效时拒绝整份 Tenant Profile，不部分应用。
+- Design System 是唯一品牌解析边界：它在提交 Tenant 品牌前校验完整结构、显示名称、颜色及受控同站素材引用，并确认 Logo 与 favicon 成功加载、可解码且 MIME 受允许。不接受任意外部 HTTPS URL；具体受控路径前缀、文件类型、大小与失效占位策略由第 4 阶段素材写入契约冻结。
+- 解析成功生成唯一不可变 Resolved Brand Profile，其中包含规范化后的完整 Profile、浅色/深色 Brand Token Set 与 `platform | tenant` 来源。Theme Provider、Shell 显示名称与 Logo、favicon 和浏览器标签页标题只能消费该对象；原始 Tenant Brand Profile 不得越过解析器。
+- 共享 React Shell 是唯一品牌运行时应用缝。“原子应用”指先完成解析与素材预加载，再只提交一个 Resolved Brand Profile，保证显示名称、Logo、favicon、标签页标题与 Token 始终来自同一 Profile；它不承诺浏览器对 favicon 的实际绘制与 React/CSS 位于同一帧。
+- 未取得权威 Tenant Context、Context 读取中、Tenant Context Switch 已提交但新 Context 未恢复，或 Tenant Profile 解析/素材加载失败时，Shell 均完整使用 Platform Brand Profile；品牌失败不阻断已合法建立的 Tenant Context。拒绝结果只暴露稳定且不含原始值的结构、素材引用、颜色或素材加载原因码与可测试回调，当前不新建遥测系统，不记录原始 Profile。
+- Platform Console 标签页标题为 `SaaS Forge Platform Console`；Tenant Console 在未建立 Context 或切换中时为 `SaaS Forge Tenant Console`，Tenant 品牌生效后为“`<Tenant 显示名称> · SaaS Forge Tenant Console`”。Tenant Logo 只在已认证 Tenant Shell 的全局品牌位显示；未认证、恢复、错误与切换中间态显示平台 Logo。
+- 品牌管理预览可复用同一解析器与品牌组件，但必须隔离在预览容器内，不改变当前 Shell、favicon 或标签页标题。只有保存成功并获得带 revision/ETag 的权威 Profile 或权威回读后，才能更新真实 Shell。
+- Remote 只继承 Shell 已提交的 Brand Token Set 与共享布局，不获取原始或 Resolved Brand Profile，不单独渲染品牌素材，不安装第二个 Theme Provider。
 - Tenant 品牌不得改变状态颜色、布局、组件、交互或无障碍约束。
 
 ## 5. 页面布局与响应式

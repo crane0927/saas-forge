@@ -9,8 +9,8 @@ SaaS 客户的逻辑隔离空间，其业务含义由接入产品定义；持久
 _Avoid_: Customer, account
 
 **Tenant Brand Profile**:
-Tenant 的受控品牌表达，仅在建立该 Tenant Context 后生效；未建立 Tenant Context 时使用平台品牌。它不改变平台统一的布局、组件和交互语义。
-_Avoid_: Tenant theme, custom CSS, branded layout
+Tenant 的受控品牌表达，由显示名称、Logo、favicon、主色和强调色组成；只有在建立该 Tenant Context 且整份 Profile 有效时才整体生效，否则完整使用平台品牌。它不改变平台统一的布局、组件、状态色、交互和无障碍语义。
+_Avoid_: 展示名、Tenant theme, custom CSS, branded layout
 
 **Tenant Context**:
 面向用户请求、由已验证 User Access Token 的 `membershipId` 解析出的可信 Tenant 安全上下文；客户端不能传入或覆盖它，Service Access Token 也不建立它。
