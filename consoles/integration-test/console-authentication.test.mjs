@@ -74,7 +74,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
     ignoreHTTPSErrors: false,
     viewport: { width: 390, height: 844 },
   });
-  await setConsoleLocalePreference(context, 'zh-CN');
+  await setConsoleLocalePreference(context, 'en-US');
   const diagnostics = [];
   context.on('page', (page) => {
     page.on('console', (message) => diagnostics.push(message.text()));
@@ -152,13 +152,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
   const password = `Acceptance-${randomBytes(24).toString('hex')}`;
 
   await platform.goto(`https://platform.${rootDomain}/`);
-  await selectConsoleLocale(platform, 'English');
-  await expectRouteAccessibility(platform, 'Sign in to Platform Console', {
-    focusedElementId: 'console-locale',
-  });
-  const initial = await login(platform, email, initialPassword, 'en-US', {
-    focusedElementId: 'console-locale',
-  });
+  const initial = await login(platform, email, initialPassword, 'en-US');
   assert.equal(initial.contextState, 'PASSWORD_CHANGE_REQUIRED');
   assert.equal(Object.hasOwn(initial, 'accessToken'), false);
   const initialCookieStored = (await context.cookies(`https://api.${rootDomain}`)).some(
@@ -213,13 +207,13 @@ test('Platform and Tenant sessions survive independent recovery and logout after
   // 使用同一 Identity 验证两个槽位，避免把不同账号误当成槽位隔离。
   const firstTenant = await prepareTenant(platformLogin.accessToken, email);
   await tenant.goto(`https://console.${rootDomain}/`);
-  const tenantLogin = await login(tenant, email, password);
+  const tenantLogin = await login(tenant, email, password, 'en-US');
   assert.equal(tenantLogin.contextState, 'ACCESS_TOKEN_ISSUED');
   assert.ok(
     tenantLogin.accessToken !== platformLogin.accessToken,
     'slots must issue distinct tokens',
   );
-  await tenant.getByRole('heading', { name: 'Tenant 工作台', exact: true }).waitFor();
+  await tenant.getByRole('heading', { name: 'Tenant workspace', exact: true }).waitFor();
   const cookieNames = (await context.cookies()).filter((cookie) =>
     cookie.name.endsWith('_refresh'),
   );
@@ -235,17 +229,17 @@ test('Platform and Tenant sessions survive independent recovery and logout after
   }
 
   await recover(platform, 'Platform 总览');
-  await recover(tenant, 'Tenant 工作台');
+  await recover(tenant, 'Tenant workspace');
   await logout(platform, 'Platform Console');
-  await recover(tenant, 'Tenant 工作台');
+  await recover(tenant, 'Tenant workspace');
   await platform.reload();
   await platform.getByRole('heading', { name: '登录 Platform Console', exact: true }).waitFor();
   const platformRelogin = await login(platform, email, password);
   await platform.getByRole('heading', { name: 'Platform 总览', exact: true }).waitFor();
-  await logout(tenant, 'Tenant Console');
+  await logout(tenant, 'Tenant Console', 'en-US');
   await recover(platform, 'Platform 总览');
   await tenant.reload();
-  await tenant.getByRole('heading', { name: '登录 Tenant Console', exact: true }).waitFor();
+  await tenant.getByRole('heading', { name: 'Sign in to Tenant Console', exact: true }).waitFor();
   assert.deepEqual(errors, []);
 
   await t.test(
@@ -255,22 +249,22 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         planId: firstTenant.planId,
         displayName: 'Second Acceptance Tenant',
       });
-      const selection = await login(tenant, email, password);
+      const selection = await login(tenant, email, password, 'en-US');
       assert.equal(selection.contextState, 'CONTEXT_SELECTION_REQUIRED');
       assert.equal(Object.hasOwn(selection, 'accessToken'), false);
       assert.equal(selection.memberships.length, 2);
-      await expectRouteAccessibility(tenant, '选择 Tenant');
+      await expectRouteAccessibility(tenant, 'Choose a Tenant');
       assert.equal(
-        await tenant.getByRole('heading', { name: 'Tenant 工作台', exact: true }).count(),
+        await tenant.getByRole('heading', { name: 'Tenant workspace', exact: true }).count(),
         0,
       );
       const selected = tenant.waitForResponse(isAuthResponse('context-selections'));
       await tenant
-        .getByRole('button', { name: '进入 Second Acceptance Tenant', exact: true })
+        .getByRole('button', { name: 'Enter Second Acceptance Tenant', exact: true })
         .press('Enter');
       assert.equal((await selected).status(), 200);
-      await tenant.getByRole('heading', { name: 'Tenant 工作台', exact: true }).waitFor();
-      await recover(tenant, 'Tenant 工作台');
+      await tenant.getByRole('heading', { name: 'Tenant workspace', exact: true }).waitFor();
+      await recover(tenant, 'Tenant workspace');
       await recover(platform, 'Platform 总览');
     },
   );
@@ -278,7 +272,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
   await t.test(
     'Tenant switch commits before refresh and replaces the active navigation context',
     async () => {
-      await tenant.getByRole('button', { name: '切换 Tenant', exact: true }).press('Enter');
+      await tenant.getByRole('button', { name: 'Switch Tenant', exact: true }).press('Enter');
       const sequence = [];
       const observe = (response) => {
         for (const operation of ['tenant-switches', 'refresh']) {
@@ -290,7 +284,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       const committed = tenant.waitForResponse(isAuthResponse('tenant-switches'));
       const refreshed = tenant.waitForResponse(isAuthResponse('refresh'));
       await tenant
-        .getByRole('button', { name: '切换到 Console Acceptance Tenant', exact: true })
+        .getByRole('button', { name: 'Switch to Console Acceptance Tenant', exact: true })
         .press('Enter');
       assert.equal((await committed).status(), 204);
       const response = await refreshed;
@@ -299,20 +293,29 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       tenant.off('response', observe);
       assert.deepEqual(sequence, ['tenant-switches:204', 'refresh:200']);
       assert.equal(body.tenantContext.tenantId, firstTenant.tenantId);
-      await tenant.getByRole('heading', { name: 'Tenant 工作台', exact: true }).waitFor();
+      await tenant.getByRole('heading', { name: 'Tenant workspace', exact: true }).waitFor();
       assert.equal(new URL(tenant.url()).pathname, '/');
       await tenant
-        .getByRole('navigation', { name: 'Console Acceptance Tenant 全局导航', exact: true })
+        .getByRole('navigation', {
+          name: 'Console Acceptance Tenant global navigation',
+          exact: true,
+        })
         .waitFor();
       assert.equal(
         await tenant
-          .getByRole('navigation', { name: 'Second Acceptance Tenant 全局导航', exact: true })
+          .getByRole('navigation', {
+            name: 'Second Acceptance Tenant global navigation',
+            exact: true,
+          })
           .count(),
         0,
       );
-      await recover(tenant, 'Tenant 工作台');
+      await recover(tenant, 'Tenant workspace');
       await tenant
-        .getByRole('navigation', { name: 'Console Acceptance Tenant 全局导航', exact: true })
+        .getByRole('navigation', {
+          name: 'Console Acceptance Tenant global navigation',
+          exact: true,
+        })
         .waitFor();
       await recover(platform, 'Platform 总览');
     },
@@ -321,7 +324,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
   await t.test(
     'a committed Tenant switch blocks old content until failed refresh is explicitly retried',
     async () => {
-      const beforeSwitch = await recover(tenant, 'Tenant 工作台');
+      const beforeSwitch = await recover(tenant, 'Tenant workspace');
       const switchRequests = [];
       const browserApiRequests = [];
       const observe = (request) => {
@@ -336,29 +339,36 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       tenant.on('request', observe);
       // 故障只发生在真实切换提交后的网络边界；切换本身和重试仍由真实服务处理。
       await tenant.route('**/api/v1/auth/refresh', (route) => route.abort('failed'), { times: 1 });
-      await tenant.getByRole('button', { name: '切换 Tenant', exact: true }).press('Enter');
+      await tenant.getByRole('button', { name: 'Switch Tenant', exact: true }).press('Enter');
       const committed = tenant.waitForResponse(isAuthResponse('tenant-switches'));
       await tenant
-        .getByRole('button', { name: '切换到 Second Acceptance Tenant', exact: true })
+        .getByRole('button', { name: 'Switch to Second Acceptance Tenant', exact: true })
         .press('Enter');
       assert.equal((await committed).status(), 204);
-      await tenant.getByRole('heading', { name: 'Tenant 切换已提交', exact: true }).waitFor();
-      await tenant.getByText('目标 Tenant 会话暂时无法恢复', { exact: true }).waitFor();
-      assert.equal(
-        await tenant.getByRole('heading', { name: 'Tenant 工作台', exact: true }).count(),
-        0,
-      );
-      assert.equal(await tenant.getByRole('navigation').count(), 0);
-      const requestCountBeforeLocaleChange = browserApiRequests.length;
-      await selectConsoleLocale(tenant, 'English');
       await tenant.getByRole('heading', { name: 'Tenant switch committed', exact: true }).waitFor();
       await tenant
         .getByText('Unable to restore the target Tenant session right now', { exact: true })
         .waitFor();
       assert.equal(
+        await tenant.getByRole('heading', { name: 'Tenant workspace', exact: true }).count(),
+        0,
+      );
+      assert.equal(await tenant.getByRole('navigation').count(), 0);
+      const requestCountBeforeLocaleChange = browserApiRequests.length;
+      await selectConsoleLocale(tenant, '简体中文');
+      await tenant.getByRole('heading', { name: 'Tenant 切换已提交', exact: true }).waitFor();
+      await tenant.getByText('目标 Tenant 会话暂时无法恢复', { exact: true }).waitFor();
+      assert.equal(
         browserApiRequests.length,
         requestCountBeforeLocaleChange,
         'Locale change must not send a Tenant business request',
+      );
+      await selectConsoleLocale(tenant, 'English');
+      await tenant.getByRole('heading', { name: 'Tenant switch committed', exact: true }).waitFor();
+      assert.equal(
+        browserApiRequests.length,
+        requestCountBeforeLocaleChange,
+        'Changing the Locale back must not send a Tenant business request',
       );
       // 服务端公共 HTTP 边界补充证明：旧 Token 已失效，不能作为 UI 回滚的后备凭据。
       const oldContext = await context.request
@@ -1321,11 +1331,15 @@ async function recover(page, title) {
   return response.json();
 }
 
-async function logout(page, application) {
+async function logout(page, application, locale = 'zh-CN') {
   const pending = page.waitForResponse(isAuthResponse('logout'));
-  await page.getByRole('button', { name: '退出登录', exact: true }).press('Enter');
+  const labels =
+    locale === 'en-US'
+      ? { action: 'Sign out', title: `Sign in to ${application}` }
+      : { action: '退出登录', title: `登录 ${application}` };
+  await page.getByRole('button', { name: labels.action, exact: true }).press('Enter');
   assert.equal((await pending).status(), 204, 'browser logout status');
-  await expectRouteAccessibility(page, `登录 ${application}`);
+  await expectRouteAccessibility(page, labels.title);
 }
 
 async function prepareTenant(token, email, options = {}) {

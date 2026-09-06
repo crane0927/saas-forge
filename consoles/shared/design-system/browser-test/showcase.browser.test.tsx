@@ -403,8 +403,9 @@ describe('Design System 真实浏览器展示矩阵', () => {
     await memberName.fill('Ada');
     await page.getByRole('button', { name: 'Delete tenant' }).click();
     const confirmation = page.getByRole('textbox', { name: 'Enter the object name to confirm' });
-    await confirmation.fill('North');
-    confirmation.element().focus();
+    await expect.element(page.getByRole('button', { name: 'Cancel', exact: true })).toHaveFocus();
+    await userEvent.type(confirmation, 'Northstar');
+    await expect.element(page.getByRole('button', { name: 'Delete', exact: true })).toBeEnabled();
 
     await expect.element(page.getByText('1 item', { exact: true })).toBeInTheDocument();
     await expect
@@ -423,7 +424,7 @@ describe('Design System 真实浏览器展示矩阵', () => {
     await expect.element(page.getByText('租户操作已准备。')).toBeInTheDocument();
     await expect.element(page.getByText('共 2 项', { exact: true })).toBeInTheDocument();
     const translatedConfirmation = page.getByRole('textbox', { name: '输入对象名称确认' });
-    await expect.element(translatedConfirmation).toHaveValue('North');
+    await expect.element(translatedConfirmation).toHaveValue('Northstar');
     await expect.element(translatedConfirmation).toHaveFocus();
     await expect.element(page.getByTestId('formatted-date')).toHaveTextContent('2026年1月2日');
     await expect.element(page.getByTestId('formatted-instant')).toHaveTextContent('2026年1月2日');
