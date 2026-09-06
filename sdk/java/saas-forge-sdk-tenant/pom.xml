@@ -12,4 +12,12 @@
     </parent>
 
     <artifactId>saas-forge-sdk-tenant</artifactId>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
 </project>

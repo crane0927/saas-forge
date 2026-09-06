@@ -2,6 +2,7 @@ package io.saasforge.starter.security;
 
 import io.saasforge.contracts.route.HttpRouteCatalog;
 import io.saasforge.sdk.auth.ReservedContextHeaderRegistry;
+import io.saasforge.sdk.tenant.TenantContextUnavailableException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -46,6 +47,9 @@ final class HttpReceiverAuthenticationFilter extends OncePerRequestFilter {
                 authenticate(request, route);
             }
             filterChain.doFilter(request, response);
+        } catch (TenantContextUnavailableException exception) {
+            problems.write(request, response, HttpStatus.FORBIDDEN,
+                    "ACCESS_CONTEXT_UNAVAILABLE", exception.getMessage());
         } catch (TokenRevocationStatusUnavailableException exception) {
             problems.write(request, response, HttpStatus.SERVICE_UNAVAILABLE,
                     "TOKEN_REVOCATION_STATUS_UNAVAILABLE", exception.detail());
@@ -62,6 +66,13 @@ final class HttpReceiverAuthenticationFilter extends OncePerRequestFilter {
                     exception.credentialsPresent() ? "Bearer error=\"invalid_token\"" : "Bearer");
             problems.write(request, response, HttpStatus.UNAUTHORIZED,
                     "ACCESS_TOKEN_INVALID", exception.detail());
+        } catch (ServletException exception) {
+            if (exception.getCause() instanceof TenantContextUnavailableException unavailable) {
+                problems.write(request, response, HttpStatus.FORBIDDEN,
+                        "ACCESS_CONTEXT_UNAVAILABLE", unavailable.getMessage());
+            } else {
+                throw exception;
+            }
         } finally {
             SecurityContextHolder.clearContext();
         }

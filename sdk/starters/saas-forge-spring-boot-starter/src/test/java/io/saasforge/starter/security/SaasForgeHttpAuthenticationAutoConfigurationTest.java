@@ -3,10 +3,13 @@ package io.saasforge.starter.security;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.saasforge.contracts.route.HttpRouteCatalog;
+import io.saasforge.sdk.auth.IdentityContextAccessor;
 import io.saasforge.sdk.auth.ServiceJwtVerificationKeyResolver;
 import io.saasforge.sdk.auth.ServiceAccessTokenRevocationChecker;
 import io.saasforge.sdk.auth.ServiceAccessTokenSignatureVerifier;
+import io.saasforge.sdk.auth.ServiceContextAccessor;
 import io.saasforge.sdk.auth.UserAccessTokenSignatureVerifier;
+import io.saasforge.sdk.tenant.TenantContextAccessor;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
@@ -19,11 +22,7 @@ import tools.jackson.databind.ObjectMapper;
 
 class SaasForgeHttpAuthenticationAutoConfigurationTest {
 
-    private final WebApplicationContextRunner contextRunner = new WebApplicationContextRunner()
-            .withConfiguration(AutoConfigurations.of(SaasForgeHttpAuthenticationAutoConfiguration.class))
-            .withPropertyValues("spring.application.name=receiver-service")
-            .withBean(HttpRouteCatalog.class, SaasForgeHttpAuthenticationAutoConfigurationTest::catalog)
-            .withBean(ObjectMapper.class, ObjectMapper::new)
+    private final WebApplicationContextRunner contextRunner = baseContextRunner()
             .withBean(UserAccessTokenSignatureVerifier.class,
                     SaasForgeHttpAuthenticationAutoConfigurationTest::userSignatures)
             .withBean(ServiceAccessTokenSignatureVerifier.class,
@@ -33,12 +32,23 @@ class SaasForgeHttpAuthenticationAutoConfigurationTest {
             .withBean(ServiceAccessTokenRevocationChecker.class,
                     () -> (clientId, kid) -> false);
 
+    private static WebApplicationContextRunner baseContextRunner() {
+        return new WebApplicationContextRunner()
+            .withConfiguration(AutoConfigurations.of(SaasForgeHttpAuthenticationAutoConfiguration.class))
+            .withPropertyValues("spring.application.name=receiver-service")
+            .withBean(HttpRouteCatalog.class, SaasForgeHttpAuthenticationAutoConfigurationTest::catalog)
+            .withBean(ObjectMapper.class, ObjectMapper::new);
+    }
+
     @Test
     void registersTheCatalogBoundAuthenticationFilter() {
         contextRunner.run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context).hasSingleBean(ReceiverRouteCatalog.class);
             assertThat(context).hasSingleBean(ReceiverTokenAuthenticators.class);
+            assertThat(context).hasSingleBean(IdentityContextAccessor.class);
+            assertThat(context).hasSingleBean(ServiceContextAccessor.class);
+            assertThat(context).hasSingleBean(TenantContextAccessor.class);
             FilterRegistrationBean<?> registration = context.getBean(
                     "saasForgeHttpReceiverAuthenticationFilter", FilterRegistrationBean.class);
             assertThat(registration.getFilter()).isInstanceOf(HttpReceiverAuthenticationFilter.class);
@@ -51,6 +61,53 @@ class SaasForgeHttpAuthenticationAutoConfigurationTest {
             assertThat(context).hasFailed();
             assertThat(context.getStartupFailure()).hasRootCauseMessage(
                     "当前服务与 HTTP Route Catalog 路由归属不匹配: other-service");
+        });
+    }
+
+    @Test
+    void failsApplicationStartupWithActionableDiagnosticsForEveryMissingAuthenticationAdapter() {
+        assertMissing(baseContextRunner()
+                        .withBean(ServiceAccessTokenSignatureVerifier.class,
+                                SaasForgeHttpAuthenticationAutoConfigurationTest::serviceSignatures)
+                        .withBean(UserAccessTokenContextRevocationChecker.class,
+                                () -> (jti, kid, membershipId, tenantId) -> false)
+                        .withBean(ServiceAccessTokenRevocationChecker.class,
+                                () -> (clientId, kid) -> false),
+                UserAccessTokenSignatureVerifier.class);
+
+        assertMissing(baseContextRunner()
+                        .withBean(UserAccessTokenSignatureVerifier.class,
+                                SaasForgeHttpAuthenticationAutoConfigurationTest::userSignatures)
+                        .withBean(UserAccessTokenContextRevocationChecker.class,
+                                () -> (jti, kid, membershipId, tenantId) -> false)
+                        .withBean(ServiceAccessTokenRevocationChecker.class,
+                                () -> (clientId, kid) -> false),
+                ServiceAccessTokenSignatureVerifier.class);
+
+        assertMissing(baseContextRunner()
+                        .withBean(UserAccessTokenSignatureVerifier.class,
+                                SaasForgeHttpAuthenticationAutoConfigurationTest::userSignatures)
+                        .withBean(ServiceAccessTokenSignatureVerifier.class,
+                                SaasForgeHttpAuthenticationAutoConfigurationTest::serviceSignatures)
+                        .withBean(ServiceAccessTokenRevocationChecker.class,
+                                () -> (clientId, kid) -> false),
+                UserAccessTokenContextRevocationChecker.class);
+
+        assertMissing(baseContextRunner()
+                        .withBean(UserAccessTokenSignatureVerifier.class,
+                                SaasForgeHttpAuthenticationAutoConfigurationTest::userSignatures)
+                        .withBean(ServiceAccessTokenSignatureVerifier.class,
+                                SaasForgeHttpAuthenticationAutoConfigurationTest::serviceSignatures)
+                        .withBean(UserAccessTokenContextRevocationChecker.class,
+                                () -> (jti, kid, membershipId, tenantId) -> false),
+                ServiceAccessTokenRevocationChecker.class);
+    }
+
+    private static void assertMissing(WebApplicationContextRunner runner, Class<?> adapterType) {
+        runner.run(context -> {
+            assertThat(context).hasFailed();
+            assertThat(context.getStartupFailure()).hasRootCauseMessage(
+                    "缺少必需认证适配器: " + adapterType.getName());
         });
     }
 

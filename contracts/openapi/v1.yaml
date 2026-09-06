@@ -22,6 +22,7 @@ paths:
       tags: [Authentication]
       operationId: getCurrentTenantContext
       x-saasforge-service: iam-service
+      x-saasforge-java-sdk: true
       summary: Read the current Tenant Context without rotating the browser session
       description: |
         Uses only the verified User Access Token to select the current Membership and Tenant.
@@ -317,6 +318,7 @@ paths:
       tags: [Authentication]
       operationId: issueClientCredentialsToken
       x-saasforge-service: iam-service
+      x-saasforge-java-sdk: true
       summary: Issue a Client Credentials Access Token
       description: |
         Supports only grant_type=client_credentials. The OAuth Client authenticates
@@ -349,6 +351,7 @@ paths:
       tags: [Discovery]
       operationId: getJwks
       x-saasforge-service: iam-service
+      x-saasforge-java-sdk: true
       summary: Get current JWT verification keys
       description: Anonymous RS256 verification-key discovery. Private material and internal signing-key metadata are never published.
       responses:
@@ -371,6 +374,7 @@ paths:
       tags: [Platform tenants]
       operationId: createPlatformTenant
       x-saasforge-service: tenant-access-service
+      x-saasforge-java-sdk: true
       summary: Create a pending Tenant
       description: Requires a Platform Admin user token. The new Tenant is PENDING until administrator initialization succeeds.
       security: [{ UserBearerAuth: [] }]
@@ -404,6 +408,7 @@ paths:
       tags: [Platform tenants]
       operationId: initializeTenantAdministrator
       x-saasforge-service: tenant-access-service
+      x-saasforge-java-sdk: true
       summary: Initialize the first Tenant Administrator
       description: |
         Requires a Platform Admin. The Tenant Access workflow verifies or creates the
@@ -438,6 +443,7 @@ paths:
       tags: [Platform tenants]
       operationId: resendTenantAdministratorPasswordSetup
       x-saasforge-service: tenant-access-service
+      x-saasforge-java-sdk: true
       summary: Resend the initial Tenant Administrator password setup email
       description: |
         Requires a Platform Admin. Tenant Access resolves the Identity only through
@@ -471,6 +477,7 @@ paths:
       tags: [Platform tenants]
       operationId: suspendTenant
       x-saasforge-service: tenant-access-service
+      x-saasforge-java-sdk: true
       summary: Suspend an active Tenant
       description: Requires a Platform Admin. Suspension revokes matching sessions before the Tenant becomes SUSPENDED.
       security: [{ UserBearerAuth: [] }]
@@ -505,6 +512,7 @@ paths:
       tags: [Platform tenants]
       operationId: resumeTenant
       x-saasforge-service: tenant-access-service
+      x-saasforge-java-sdk: true
       summary: Remove the current Tenant suspension
       description: Requires a Platform Admin. Resuming never restores revoked sessions.
       security: [{ UserBearerAuth: [] }]
@@ -541,6 +549,7 @@ paths:
       tags: [Platform tenants]
       operationId: recoverTenantSuspension
       x-saasforge-service: tenant-access-service
+      x-saasforge-java-sdk: true
       summary: Resume an exhausted Tenant suspension workflow
       description: |
         Requires a Platform Admin. Continues the existing fail-closed suspension workflow without
@@ -576,6 +585,7 @@ paths:
       tags: [Platform entitlement bootstrap]
       operationId: createQuotaDefinition
       x-saasforge-service: entitlement-service
+      x-saasforge-java-sdk: true
       summary: Create the max_users Quota Definition in DRAFT state
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -607,6 +617,7 @@ paths:
       tags: [Platform entitlement bootstrap]
       operationId: activateQuotaDefinition
       x-saasforge-service: entitlement-service
+      x-saasforge-java-sdk: true
       summary: Activate a DRAFT Quota Definition
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -632,6 +643,7 @@ paths:
       tags: [Platform entitlement bootstrap]
       operationId: createPlan
       x-saasforge-service: entitlement-service
+      x-saasforge-java-sdk: true
       summary: Create a DRAFT Plan with its max_users limit
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -663,6 +675,7 @@ paths:
       tags: [Platform entitlement bootstrap]
       operationId: activatePlan
       x-saasforge-service: entitlement-service
+      x-saasforge-java-sdk: true
       summary: Activate a DRAFT Plan
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -688,6 +701,7 @@ paths:
       tags: [Platform entitlement bootstrap]
       operationId: createInitialSubscription
       x-saasforge-service: entitlement-service
+      x-saasforge-java-sdk: true
       summary: Create the first active Subscription for a Tenant
       description: Requires a Platform Admin and an ACTIVE Plan. This batch supports only immediate ACTIVE Subscriptions.
       security: [{ UserBearerAuth: [] }]
@@ -721,6 +735,7 @@ paths:
       tags: [OAuth clients]
       operationId: createOAuthClient
       x-saasforge-service: iam-service
+      x-saasforge-java-sdk: true
       summary: Create an OAuth Client and reveal its Secret once
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -752,6 +767,7 @@ paths:
       tags: [OAuth clients]
       operationId: getOAuthClient
       x-saasforge-service: iam-service
+      x-saasforge-java-sdk: true
       summary: Read non-sensitive OAuth Client details
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -774,6 +790,7 @@ paths:
       tags: [OAuth clients]
       operationId: rotateOAuthClientSecret
       x-saasforge-service: iam-service
+      x-saasforge-java-sdk: true
       summary: Rotate an OAuth Client Secret and reveal the new Secret once
       description: The previous and new Secret overlap for the service-controlled rotation window; revocation ends all Client access immediately.
       security: [{ UserBearerAuth: [] }]
@@ -800,6 +817,7 @@ paths:
       tags: [OAuth clients]
       operationId: recoverOAuthClientSecret
       x-saasforge-service: iam-service
+      x-saasforge-java-sdk: true
       summary: Replace one lost OAuth Client Secret issuance result
       description: The original successful create or rotation can be recovered once by its original actor within ten minutes. No prior plaintext is retained or replayed.
       security: [{ UserBearerAuth: [] }]
@@ -831,6 +849,7 @@ paths:
       tags: [OAuth clients]
       operationId: revokeOAuthClient
       x-saasforge-service: iam-service
+      x-saasforge-java-sdk: true
       summary: Irreversibly revoke an OAuth Client
       security: [{ UserBearerAuth: [] }]
       parameters:

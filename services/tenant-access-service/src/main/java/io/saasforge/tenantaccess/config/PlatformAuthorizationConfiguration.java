@@ -1,10 +1,10 @@
 package io.saasforge.tenantaccess.config;
 
 import io.saasforge.contracts.iam.authorization.v1.PlatformAuthorizationServiceGrpc;
-import io.saasforge.sdk.auth.GrpcPlatformRoleChecker;
 import io.saasforge.sdk.auth.PlatformRequestAuthorizer;
 import io.saasforge.sdk.auth.UserAccessTokenVerifier;
 import io.saasforge.tenantaccess.application.authorization.PlatformAdminAuthorizer;
+import io.saasforge.tenantaccess.infrastructure.grpc.GrpcPlatformRoleChecker;
 import io.saasforge.tenantaccess.infrastructure.security.IamJwksKeyResolver;
 import io.saasforge.tenantaccess.infrastructure.security.IamServiceAccessTokenProvider;
 import io.saasforge.tenantaccess.infrastructure.security.RedisUserAccessTokenRevocationChecker;

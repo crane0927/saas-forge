@@ -4,13 +4,13 @@ import java.security.Principal;
 import java.util.UUID;
 
 /** 已由接收端复验的不可变用户身份；不携带 Token、签名或授权声明。 */
-public record UserAuthenticationContext(
+record UserAuthenticationContext(
         UUID identityId,
         ContextType contextType,
         UUID membershipId,
         UUID tenantId) implements Principal {
 
-    public UserAuthenticationContext {
+    UserAuthenticationContext {
         if (identityId == null || contextType == null) {
             throw new IllegalArgumentException("User Principal 字段不完整");
         }

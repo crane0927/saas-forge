@@ -63,9 +63,9 @@ public List<Report> list() {
 
 ## 服务调用与韧性
 
-- SDK 对平台 REST API 使用 `application/problem+json` 中的 `code` 进行异常映射，保留 `traceId`。
-- 仅自动重试幂等读取和携带稳定幂等键的写入；超时、退避、重试上限和熔断均可配置。
-- 无幂等保护的写入失败必须返回调用方显式处理，不自动重试。
+- 首版 `sdk-core` 只提供从正式 OpenAPI 显式安全子集生成的低层 REST Client；消费者显式配置 Gateway 地址和 operation 所需凭证，默认地址不可用于真实部署。
+- 首版保留生成 Client 的 HTTP 状态、响应体与传输失败契约，不增加完整 Problem Details 领域异常映射。
+- 首版不自动重试，也不提供熔断或领域 façade；调用方必须按 operation 的幂等契约和失败结果显式处理。后续领域 SDK 若增加韧性策略，必须独立评审其幂等和安全边界。
 - 业务系统通过 API / SDK 集成，不获得平台数据库访问权限。
 
 ## Starter 配置边界

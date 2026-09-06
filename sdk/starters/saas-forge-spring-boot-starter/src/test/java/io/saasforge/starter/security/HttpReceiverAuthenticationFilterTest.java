@@ -1,13 +1,14 @@
 package io.saasforge.starter.security;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.saasforge.contracts.route.HttpRouteCatalog;
+import io.saasforge.sdk.auth.IdentityContextAccessor;
 import io.saasforge.sdk.auth.ServiceAccessTokenInvalidException;
 import io.saasforge.sdk.auth.ServiceAccessTokenRevocationChecker;
+import io.saasforge.sdk.auth.ServiceContextAccessor;
 import io.saasforge.sdk.auth.UserAccessTokenInvalidException;
 import io.saasforge.sdk.auth.VerifiedServiceAccessTokenClaims;
 import io.saasforge.sdk.auth.VerifiedUserAccessTokenClaims;
@@ -54,36 +55,45 @@ class HttpReceiverAuthenticationFilterTest {
     }
 
     @Test
-    void establishesMutuallyExclusivePrincipalsBeforeControllerAndClearsAfterRequest() throws Exception {
+    void exposesMutuallyExclusiveSdkContextsAndDoesNotLeakThemAcrossExecutionBoundaries() throws Exception {
         userSignatures = authorization -> userClaims(MEMBERSHIP_ID, TENANT_ID);
         serviceSignatures = token -> serviceClaims(Set.of(
                 "runtime:read", "runtime:quota:write", "runtime:extra"));
         HttpReceiverAuthenticationFilter filter = filter((jti, kid, membershipId, tenantId) -> false,
                 (clientId, kid) -> false);
+        IdentityContextAccessor identities = new SpringSecurityIdentityContextAccessor();
+        ServiceContextAccessor services = new SpringSecurityServiceContextAccessor();
 
         MockHttpServletRequest userRequest = request("GET", "/api/user", "Bearer user-token");
         MockHttpServletResponse userResponse = new MockHttpServletResponse();
         filter.doFilter(userRequest, userResponse, (request, response) -> {
-            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-            UserAuthenticationContext principal = assertInstanceOf(
-                    UserAuthenticationContext.class, authentication.getPrincipal());
-            assertEquals(IDENTITY_ID, principal.identityId());
-            assertEquals(MEMBERSHIP_ID, principal.membershipId());
-            assertEquals(TENANT_ID, principal.tenantId());
-            assertChildThreadHasNoAuthentication();
+            assertEquals(IDENTITY_ID, identities.current().orElseThrow().identityId());
+            assertTrue(services.current().isEmpty());
+            assertChildThreadHasNoContexts(identities, services);
         });
-        assertNull(SecurityContextHolder.getContext().getAuthentication());
+        assertTrue(identities.current().isEmpty());
+        assertTrue(services.current().isEmpty());
+
+        userSignatures = authorization -> userClaims(null, null);
+        HttpReceiverAuthenticationFilter platformFilter = filter((jti, kid, membershipId, tenantId) -> false,
+                (clientId, kid) -> false);
+        platformFilter.doFilter(request("GET", "/api/user", "Bearer platform-token"),
+                new MockHttpServletResponse(), (request, response) -> {
+                    assertEquals(IDENTITY_ID, identities.current().orElseThrow().identityId());
+                    assertTrue(services.current().isEmpty());
+                });
+        assertTrue(identities.current().isEmpty());
 
         MockHttpServletRequest serviceRequest = request("POST", "/api/service/tenant-123", "Bearer service-token");
         MockHttpServletResponse serviceResponse = new MockHttpServletResponse();
         filter.doFilter(serviceRequest, serviceResponse, (request, response) -> {
-            ServiceAuthenticationContext principal = assertInstanceOf(
-                    ServiceAuthenticationContext.class,
-                    SecurityContextHolder.getContext().getAuthentication().getPrincipal());
-            assertEquals(CLIENT_ID, principal.clientId());
-            assertEquals(Set.of("runtime:read", "runtime:quota:write", "runtime:extra"), principal.scopes());
+            assertTrue(identities.current().isEmpty());
+            var service = services.current().orElseThrow();
+            assertEquals(CLIENT_ID, service.clientId());
+            assertEquals(Set.of("runtime:read", "runtime:quota:write", "runtime:extra"), service.scopes());
         });
-        assertNull(SecurityContextHolder.getContext().getAuthentication());
+        assertTrue(identities.current().isEmpty());
+        assertTrue(services.current().isEmpty());
     }
 
     @Test
@@ -276,10 +286,11 @@ class HttpReceiverAuthenticationFilterTest {
                 CLIENT_ID, scopes, JTI, "kid", Instant.EPOCH, Instant.MAX);
     }
 
-    private static void assertChildThreadHasNoAuthentication() {
-        AtomicReference<Authentication> childAuthentication = new AtomicReference<>();
-        Thread child = new Thread(() -> childAuthentication.set(
-                SecurityContextHolder.getContext().getAuthentication()));
+    private static void assertChildThreadHasNoContexts(
+            IdentityContextAccessor identities, ServiceContextAccessor services) {
+        AtomicReference<Boolean> childHasContext = new AtomicReference<>();
+        Thread child = new Thread(() -> childHasContext.set(
+                identities.current().isPresent() || services.current().isPresent()));
         child.start();
         try {
             child.join();
@@ -287,7 +298,7 @@ class HttpReceiverAuthenticationFilterTest {
             Thread.currentThread().interrupt();
             throw new AssertionError("等待子线程验证被中断", exception);
         }
-        assertNull(childAuthentication.get());
+        assertEquals(false, childHasContext.get());
     }
 
     private record RequestTarget(String method, String path, String authorization) {

@@ -1,14 +1,15 @@
-package io.saasforge.sdk.auth;
+package io.saasforge.tenantaccess.infrastructure.grpc;
 
 import io.grpc.Metadata;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.MetadataUtils;
 import io.saasforge.contracts.iam.authorization.v1.CheckPlatformRoleRequest;
 import io.saasforge.contracts.iam.authorization.v1.PlatformAuthorizationServiceGrpc;
+import io.saasforge.sdk.auth.PlatformRoleChecker;
 import java.util.UUID;
 import java.util.function.Supplier;
 
-/** 使用当前服务的短期 Service Access Token 调用 IAM Platform Role 权威校验。 */
+/** 使用 Tenant Access 的短期 Service Access Token 调用 IAM Platform Role 权威校验。 */
 public final class GrpcPlatformRoleChecker implements PlatformRoleChecker {
     private static final Metadata.Key<String> AUTHORIZATION =
             Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER);

@@ -2,11 +2,11 @@ package io.saasforge.entitlement.config;
 
 import io.saasforge.contracts.iam.authorization.v1.PlatformAuthorizationServiceGrpc;
 import io.saasforge.entitlement.application.authorization.PlatformAdminAuthorizer;
+import io.saasforge.entitlement.infrastructure.grpc.GrpcPlatformRoleChecker;
 import io.saasforge.entitlement.infrastructure.security.IamJwksKeyResolver;
 import io.saasforge.entitlement.infrastructure.security.IamServiceAccessTokenProvider;
 import io.saasforge.entitlement.infrastructure.security.RedisUserAccessTokenRevocationChecker;
 import io.saasforge.entitlement.infrastructure.security.SdkPlatformAdminAuthorizer;
-import io.saasforge.sdk.auth.GrpcPlatformRoleChecker;
 import io.saasforge.sdk.auth.PlatformRequestAuthorizer;
 import io.saasforge.sdk.auth.UserAccessTokenVerifier;
 import java.nio.file.Path;
