@@ -427,6 +427,16 @@
 
     <profiles>
         <profile>
+            <id>sdk-external-consumer-acceptance</id>
+            <properties>
+                <!-- 该 profile 故意把不继承仓库父 POM 的真实外部消费者加入 Reactor。 -->
+                <enforcer.skipRules>reactorModuleConvergence</enforcer.skipRules>
+            </properties>
+            <modules>
+                <module>test-support/sdk-external-consumer</module>
+            </modules>
+        </profile>
+        <profile>
             <id>platform-mechanism-acceptance</id>
             <modules>
                 <module>test-support</module>

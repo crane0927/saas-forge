@@ -1,0 +1,14 @@
+{
+  "registryVersion": 1,
+  "entries": [
+    {
+      "serviceId": "sdk-external-consumer-fixture",
+      "owner": "sdk-external-consumer-acceptance",
+      "modulePath": "test-support/sdk-external-consumer",
+      "artifactId": "saas-forge-external-consumer-fixture",
+      "nacosServiceName": "sdk-external-consumer-fixture",
+      "deployable": true,
+      "gatewayRouteTargetAllowed": true
+    }
+  ]
+}

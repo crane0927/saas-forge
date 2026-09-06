@@ -270,6 +270,7 @@ class RepositoryStandardsTest {
             }
         }
         assertEquals(routeTargets, HttpRouteCatalogLoader.load().routes().stream()
+                .filter(route -> !isAcceptanceRoute(route))
                 .map(HttpRouteCatalog.Route::serviceId).collect(java.util.stream.Collectors.toSet()),
                 "只有具有公网资格且拥有正式 OpenAPI operation 的服务才能进入 Route Catalog");
 
@@ -347,6 +348,9 @@ class RepositoryStandardsTest {
                 REPOSITORY.resolve("contracts/openapi/v1.yaml"));
         Map<String, HttpRouteCatalog.Route> routes = new HashMap<>();
         for (HttpRouteCatalog.Route route : HttpRouteCatalogLoader.load().routes()) {
+            if (isAcceptanceRoute(route)) {
+                continue;
+            }
             assertTrue(routes.put(route.operationId(), route) == null,
                     "Route Catalog 重复登记 operationId: " + route.operationId());
         }
@@ -365,6 +369,10 @@ class RepositoryStandardsTest {
             assertEquals(operation.credentialRequirement(), route.credentialRequirement().name(),
                     operation.operationId() + " 的凭据分类与 OpenAPI 不一致");
         }
+    }
+
+    private static boolean isAcceptanceRoute(HttpRouteCatalog.Route route) {
+        return route.path().startsWith("/__test/");
     }
 
     @Test

@@ -40,6 +40,7 @@ class JavaSdkReleaseBoundaryIT {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Path REPOSITORY = Path.of(System.getProperty("repositoryRoot"));
     private static final Path ALLOWLIST = REPOSITORY.resolve("sdk/public-api-allowlist.json");
+    private static final Path EXTERNAL_CONSUMER = REPOSITORY.resolve("test-support/sdk-external-consumer/pom.xml");
     private static final Set<String> CONSUMER_ARTIFACTS = Set.of(
             "saas-forge-sdk-core",
             "saas-forge-sdk-auth",
@@ -119,6 +120,56 @@ class JavaSdkReleaseBoundaryIT {
                 .forEach(unpublishedInternalDependencies::add);
         assertTrue(unpublishedInternalDependencies.isEmpty(),
                 "Starter 消费者 POM 不得引用未发布的仓库制品: " + unpublishedInternalDependencies);
+    }
+
+    @Test
+    void externalConsumerUsesOnlyTheBomAndStarterPublicEntryPoint() throws Exception {
+        Document consumer = parseXml(EXTERNAL_CONSUMER);
+        Node project = consumer.getDocumentElement();
+        Node parent = directChild(project, "parent");
+        assertNotNull(parent, "外部消费者必须显式选择自己的 Spring Boot parent");
+        assertEquals("org.springframework.boot", directChildText(parent, "groupId"));
+        assertEquals("spring-boot-starter-parent", directChildText(parent, "artifactId"));
+        assertEquals("", directChildText(parent, "relativePath"),
+                "外部消费者不得通过 relativePath 继承 saas-forge 根 POM");
+
+        Document root = parseXml(REPOSITORY.resolve("pom.xml"));
+        assertEquals(
+                directChildText(directChild(root.getDocumentElement(), "parent"), "version"),
+                directChildText(parent, "version"),
+                "消费者 Spring Boot 基线必须与当前仓库一致");
+        assertEquals(
+                property(root, "revision"),
+                property(consumer, "saas-forge.version"),
+                "消费者必须以当前 Reactor 版本导入 BOM");
+
+        List<Node> managed = dependencyNodes(directChild(project, "dependencyManagement"));
+        assertEquals(1, managed.size(), "消费者 dependencyManagement 只能导入 saas-forge BOM");
+        Node bom = managed.get(0);
+        assertEquals("io.github.crane0927", directChildText(bom, "groupId"));
+        assertEquals("saas-forge-bom", directChildText(bom, "artifactId"));
+        assertEquals("${saas-forge.version}", directChildText(bom, "version"));
+        assertEquals("pom", directChildText(bom, "type"));
+        assertEquals("import", directChildText(bom, "scope"));
+
+        List<Node> saasForgeDependencies = dependencyNodes(project).stream()
+                .filter(dependency -> "io.github.crane0927".equals(directChildText(dependency, "groupId")))
+                .toList();
+        assertEquals(1, saasForgeDependencies.size(), "消费者只能直接声明一个 saas-forge 依赖");
+        Node starter = saasForgeDependencies.get(0);
+        assertEquals("saas-forge-spring-boot-starter", directChildText(starter, "artifactId"));
+        assertTrue(directChildText(starter, "version") == null, "Starter 版本必须由 BOM 解析");
+
+        Node acceptanceProfile = profile(root, "sdk-external-consumer-acceptance");
+        assertNotNull(acceptanceProfile, "根项目必须提供外部消费者验收 profile");
+        assertEquals(
+                "reactorModuleConvergence",
+                directChildText(directChild(acceptanceProfile, "properties"), "enforcer.skipRules"),
+                "验收 profile 只能按设计跳过父 POM 收敛规则");
+        assertEquals(
+                List.of("test-support/sdk-external-consumer"),
+                directChildTexts(directChild(acceptanceProfile, "modules"), "module"),
+                "验收 profile 必须只引入独立消费者夹具");
     }
 
     @Test
@@ -299,6 +350,48 @@ class JavaSdkReleaseBoundaryIT {
             assertTrue(dependencies.put(artifactId, version) == null, "依赖重复: " + artifactId);
         }
         return dependencies;
+    }
+
+    private static List<Node> dependencyNodes(Node section) {
+        Node dependencies = section == null ? null : directChild(section, "dependencies");
+        if (dependencies == null) {
+            return List.of();
+        }
+        List<Node> nodes = new ArrayList<>();
+        for (Node child = dependencies.getFirstChild(); child != null; child = child.getNextSibling()) {
+            if (child.getNodeType() == Node.ELEMENT_NODE && "dependency".equals(child.getNodeName())) {
+                nodes.add(child);
+            }
+        }
+        return List.copyOf(nodes);
+    }
+
+    private static Node profile(Document document, String id) {
+        Node profiles = directChild(document.getDocumentElement(), "profiles");
+        if (profiles == null) {
+            return null;
+        }
+        for (Node child = profiles.getFirstChild(); child != null; child = child.getNextSibling()) {
+            if (child.getNodeType() == Node.ELEMENT_NODE
+                    && "profile".equals(child.getNodeName())
+                    && id.equals(directChildText(child, "id"))) {
+                return child;
+            }
+        }
+        return null;
+    }
+
+    private static List<String> directChildTexts(Node parent, String name) {
+        List<String> values = new ArrayList<>();
+        if (parent == null) {
+            return values;
+        }
+        for (Node child = parent.getFirstChild(); child != null; child = child.getNextSibling()) {
+            if (child.getNodeType() == Node.ELEMENT_NODE && name.equals(child.getNodeName())) {
+                values.add(child.getTextContent().trim());
+            }
+        }
+        return List.copyOf(values);
     }
 
     private static String property(Document document, String name) {

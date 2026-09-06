@@ -1,0 +1,73 @@
+openapi: 3.1.0
+info:
+  title: SaaS Forge External SDK Consumer Acceptance Overlay
+  version: 1.0.0
+paths:
+  /__test/sdk-consumer/tenant-context:
+    get:
+      operationId: readExternalConsumerTenantContext
+      x-saasforge-service: sdk-external-consumer-fixture
+      security:
+        - UserBearerAuth: []
+      responses:
+        '200':
+          description: Verified immutable Identity and Tenant Context
+  /__test/sdk-consumer/platform-context:
+    get:
+      operationId: rejectExternalConsumerPlatformTenantContext
+      x-saasforge-service: sdk-external-consumer-fixture
+      security:
+        - UserBearerAuth: []
+      responses:
+        '403':
+          description: Tenant Context is unavailable
+  /__test/sdk-consumer/service-context:
+    get:
+      operationId: rejectExternalConsumerServiceTenantContext
+      x-saasforge-service: sdk-external-consumer-fixture
+      security:
+        - ServiceOAuth2: [runtime:read]
+      responses:
+        '403':
+          description: Tenant Context is unavailable
+  /__test/sdk-consumer/anonymous-context:
+    get:
+      operationId: rejectExternalConsumerAnonymousTenantContext
+      x-saasforge-service: sdk-external-consumer-fixture
+      security: []
+      responses:
+        '403':
+          description: Tenant Context is unavailable
+  /__test/sdk-consumer/context-state:
+    get:
+      operationId: readExternalConsumerContextState
+      x-saasforge-service: sdk-external-consumer-fixture
+      security: []
+      responses:
+        '200':
+          description: Request starts without residual authentication context
+components:
+  securitySchemes:
+    UserBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    OAuthClientBasic:
+      type: http
+      scheme: basic
+    PlatformRefreshCookieAuth:
+      type: apiKey
+      in: cookie
+      name: __Host-sf_platform_refresh
+    TenantRefreshCookieAuth:
+      type: apiKey
+      in: cookie
+      name: __Host-sf_tenant_refresh
+    ServiceOAuth2:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: /oauth2/token
+          scopes:
+            runtime:read: Read runtime resources
+            runtime:quota:write: Write runtime quota usage

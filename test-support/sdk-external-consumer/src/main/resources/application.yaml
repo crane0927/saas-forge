@@ -1,0 +1,7 @@
+spring:
+  application:
+    name: sdk-external-consumer-fixture
+  cloud:
+    nacos:
+      discovery:
+        service: sdk-external-consumer-fixture

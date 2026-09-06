@@ -84,5 +84,12 @@
                 <route-catalog.openapi-overlay>${maven.multiModuleProjectDirectory}/test-support/platform-mechanism-receiver/openapi-overlay.yaml</route-catalog.openapi-overlay>
             </properties>
         </profile>
+        <profile>
+            <id>sdk-external-consumer-acceptance</id>
+            <properties>
+                <route-catalog.registry-overlay>${maven.multiModuleProjectDirectory}/test-support/sdk-external-consumer/registry-overlay.json</route-catalog.registry-overlay>
+                <route-catalog.openapi-overlay>${maven.multiModuleProjectDirectory}/test-support/sdk-external-consumer/openapi-overlay.yaml</route-catalog.openapi-overlay>
+            </properties>
+        </profile>
     </profiles>
 </project>
