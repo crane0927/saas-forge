@@ -430,7 +430,9 @@ describe('Design System 真实浏览器展示矩阵', () => {
     await expect.element(page.getByTestId('formatted-instant')).toHaveTextContent('2026年1月2日');
 
     await page.getByRole('button', { name: '取消' }).click();
-    await page.getByRole('textbox', { name: '成员名称' }).fill('');
+    const translatedMemberName = page.getByRole('textbox', { name: '成员名称' });
+    await translatedMemberName.clear();
+    await expect.element(translatedMemberName).toHaveValue('');
     await expect.element(page.getByText('请处理以下问题')).toBeInTheDocument();
     await expect.element(page.getByText('请输入名称。').first()).toBeInTheDocument();
 
