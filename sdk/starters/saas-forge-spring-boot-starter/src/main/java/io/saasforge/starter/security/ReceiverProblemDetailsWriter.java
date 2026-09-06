@@ -34,6 +34,7 @@ final class ReceiverProblemDetailsWriter {
 
     private static String title(String code) {
         return switch (code) {
+            case "ACCESS_CONTEXT_UNAVAILABLE" -> "Access context unavailable";
             case "ACCESS_TOKEN_INVALID" -> "Access Token invalid";
             case "ACCESS_TOKEN_SCOPE_INSUFFICIENT" -> "Access Token scope insufficient";
             case "TOKEN_REVOCATION_STATUS_UNAVAILABLE" -> "Token revocation status unavailable";

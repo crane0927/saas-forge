@@ -7,6 +7,7 @@ import io.saasforge.sdk.auth.ServiceAccessTokenRevocationChecker;
 import io.saasforge.sdk.auth.ServiceAccessTokenSignatureVerifier;
 import io.saasforge.sdk.auth.ServiceContextAccessor;
 import io.saasforge.sdk.auth.UserAccessTokenSignatureVerifier;
+import io.saasforge.sdk.tenant.TenantContextAccessor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -59,6 +60,11 @@ public class SaasForgeHttpAuthenticationAutoConfiguration {
     @Bean
     ServiceContextAccessor saasForgeServiceContextAccessor() {
         return new SpringSecurityServiceContextAccessor();
+    }
+
+    @Bean
+    TenantContextAccessor saasForgeTenantContextAccessor() {
+        return new SpringSecurityTenantContextAccessor();
     }
 
     @Bean

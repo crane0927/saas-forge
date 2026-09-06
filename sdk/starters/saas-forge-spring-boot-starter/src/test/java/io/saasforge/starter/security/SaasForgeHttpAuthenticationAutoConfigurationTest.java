@@ -9,6 +9,7 @@ import io.saasforge.sdk.auth.ServiceAccessTokenRevocationChecker;
 import io.saasforge.sdk.auth.ServiceAccessTokenSignatureVerifier;
 import io.saasforge.sdk.auth.ServiceContextAccessor;
 import io.saasforge.sdk.auth.UserAccessTokenSignatureVerifier;
+import io.saasforge.sdk.tenant.TenantContextAccessor;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
@@ -47,6 +48,7 @@ class SaasForgeHttpAuthenticationAutoConfigurationTest {
             assertThat(context).hasSingleBean(ReceiverTokenAuthenticators.class);
             assertThat(context).hasSingleBean(IdentityContextAccessor.class);
             assertThat(context).hasSingleBean(ServiceContextAccessor.class);
+            assertThat(context).hasSingleBean(TenantContextAccessor.class);
             FilterRegistrationBean<?> registration = context.getBean(
                     "saasForgeHttpReceiverAuthenticationFilter", FilterRegistrationBean.class);
             assertThat(registration.getFilter()).isInstanceOf(HttpReceiverAuthenticationFilter.class);
