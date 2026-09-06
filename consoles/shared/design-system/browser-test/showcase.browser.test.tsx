@@ -419,7 +419,8 @@ describe('Design System 真实浏览器展示矩阵', () => {
 
     rerender(<LocalizedComponentHarness locale="zh-CN" total={2} />);
     await expect.element(page.getByRole('textbox', { name: '成员名称' })).toHaveValue('Ada');
-    await expect.element(page.getByRole('dialog', { name: '删除租户' })).toBeInTheDocument();
+    const translatedDialog = page.getByRole('dialog', { name: '删除租户' });
+    await expect.element(translatedDialog).toBeInTheDocument();
     await expect.element(page.getByRole('button', { name: '取消' })).toBeInTheDocument();
     await expect.element(page.getByText('租户操作已准备。')).toBeInTheDocument();
     await expect.element(page.getByText('共 2 项', { exact: true })).toBeInTheDocument();
@@ -430,7 +431,10 @@ describe('Design System 真实浏览器展示矩阵', () => {
     await expect.element(page.getByTestId('formatted-instant')).toHaveTextContent('2026年1月2日');
 
     await page.getByRole('button', { name: '取消' }).click();
+    await expect.element(translatedDialog).not.toBeInTheDocument();
     const translatedMemberName = page.getByRole('textbox', { name: '成员名称' });
+    await translatedMemberName.click();
+    await expect.element(translatedMemberName).toHaveFocus();
     await translatedMemberName.clear();
     await expect.element(translatedMemberName).toHaveValue('');
     await expect.element(page.getByText('请处理以下问题')).toBeInTheDocument();
