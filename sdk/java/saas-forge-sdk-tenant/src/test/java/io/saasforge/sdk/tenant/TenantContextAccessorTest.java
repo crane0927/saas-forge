@@ -1,6 +1,8 @@
 package io.saasforge.sdk.tenant;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -16,5 +18,17 @@ class TenantContextAccessorTest {
         TenantContextAccessor contexts = () -> expected;
 
         assertSame(expected, contexts.requireCurrent());
+    }
+
+    @Test
+    void failsExplicitlyWhenTheCurrentTenantContextIsUnavailable() {
+        TenantContextAccessor contexts = () -> {
+            throw new TenantContextUnavailableException();
+        };
+
+        TenantContextUnavailableException exception =
+                assertThrows(TenantContextUnavailableException.class, contexts::requireCurrent);
+
+        assertEquals("Tenant Context is unavailable.", exception.getMessage());
     }
 }
