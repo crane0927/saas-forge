@@ -2,29 +2,23 @@ package io.saasforge.testsupport.receiver;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import io.saasforge.starter.security.ServiceAuthenticationContext;
+import io.saasforge.sdk.auth.ServiceContext;
+import io.saasforge.sdk.auth.ServiceContextAccessor;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.SecurityContextHolder;
 
 class PlatformMechanismReceiverControllerTest {
 
     @Test
     void returnsOnlyVerifiedServiceContextAndInstanceIdentity() {
         UUID clientId = UUID.fromString("019c04cf-4c00-7000-8000-000000000001");
-        var principal = new ServiceAuthenticationContext(
-                clientId, Set.of("runtime:quota:write", "runtime:read"));
-        var authentication = UsernamePasswordAuthenticationToken.authenticated(principal, null, Set.of());
+        ServiceContextAccessor serviceContexts = () -> Optional.of(new ServiceContext(
+                clientId, Set.of("runtime:quota:write", "runtime:read")));
 
-        SecurityContextHolder.getContext().setAuthentication(authentication);
-        PlatformMechanismReceiverController.Response response;
-        try {
-            response = new PlatformMechanismReceiverController("receiver-1").accept();
-        } finally {
-            SecurityContextHolder.clearContext();
-        }
+        PlatformMechanismReceiverController.Response response =
+                new PlatformMechanismReceiverController("receiver-1", serviceContexts).accept();
 
         assertEquals(clientId, response.clientId());
         assertEquals(Set.of("runtime:read", "runtime:quota:write"), response.scopes());
