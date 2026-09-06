@@ -64,6 +64,7 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <project.build.outputTimestamp>1980-01-01T00:00:02Z</project.build.outputTimestamp>
         <maven.deploy.skip>false</maven.deploy.skip>
+        <saasforge.public-api-boundary.skip>true</saasforge.public-api-boundary.skip>
         <jacoco.line.minimum>0.80</jacoco.line.minimum>
         <jacoco.branch.minimum>0.70</jacoco.branch.minimum>
         <jacoco.critical.line.minimum>0.90</jacoco.critical.line.minimum>
@@ -322,6 +323,32 @@
                                 <dependencyConvergence/>
                                 <reactorModuleConvergence/>
                                 <requirePluginVersions/>
+                            </rules>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>enforce-public-api-dependencies</id>
+                        <goals><goal>enforce</goal></goals>
+                        <configuration>
+                            <skip>${saasforge.public-api-boundary.skip}</skip>
+                            <rules>
+                                <bannedDependencies>
+                                    <excludes>
+                                        <exclude>com.google.protobuf:*</exclude>
+                                        <exclude>io.grpc:*</exclude>
+                                        <exclude>org.mybatis:*</exclude>
+                                        <exclude>org.mybatis.spring.boot:*</exclude>
+                                        <exclude>org.flywaydb:*</exclude>
+                                        <exclude>io.github.crane0927:*</exclude>
+                                    </excludes>
+                                    <includes>
+                                        <include>io.github.crane0927:saas-forge-http-route-catalog</include>
+                                        <include>io.github.crane0927:saas-forge-sdk-core</include>
+                                        <include>io.github.crane0927:saas-forge-sdk-auth</include>
+                                        <include>io.github.crane0927:saas-forge-sdk-tenant</include>
+                                    </includes>
+                                    <searchTransitive>true</searchTransitive>
+                                </bannedDependencies>
                             </rules>
                         </configuration>
                     </execution>

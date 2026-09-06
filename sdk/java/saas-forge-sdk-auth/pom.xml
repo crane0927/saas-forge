@@ -13,6 +13,11 @@
 
     <artifactId>saas-forge-sdk-auth</artifactId>
 
+    <properties>
+        <maven.deploy.skip>false</maven.deploy.skip>
+        <saasforge.public-api-boundary.skip>false</saasforge.public-api-boundary.skip>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>org.springframework.security</groupId>

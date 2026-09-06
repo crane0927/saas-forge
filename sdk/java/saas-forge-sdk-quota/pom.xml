@@ -12,4 +12,8 @@
     </parent>
 
     <artifactId>saas-forge-sdk-quota</artifactId>
+
+    <properties>
+        <maven.deploy.skip>true</maven.deploy.skip>
+    </properties>
 </project>

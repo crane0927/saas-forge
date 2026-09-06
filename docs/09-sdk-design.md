@@ -2,22 +2,32 @@
 
 ## 定位与版本
 
-Java SDK 与 Spring Boot Starter 是 Java 业务服务接入平台的正式集成层。SDK 与 Starter 使用语义化版本，并通过 BOM 统一锁定模块版本；破坏性 API 仅在主版本升级时引入。
+Java SDK 与 Spring Boot Starter 是 Java 业务服务接入平台的正式集成层。首版使用 BOM 统一锁定已交付模块的版本；首次正式发布后的破坏性 API 仅在主版本升级时引入。
 
 ```text
 saas-forge-java
 ├── saas-forge-bom
-├── saas-forge-sdk-core
-├── saas-forge-sdk-auth
-├── saas-forge-sdk-tenant
-├── saas-forge-sdk-permission
-├── saas-forge-sdk-feature
-├── saas-forge-sdk-quota
-├── saas-forge-sdk-audit
-└── saas-forge-spring-boot-starter
+├── saas-forge-sdk-core                 # 首版公开
+├── saas-forge-sdk-auth                 # 首版公开
+├── saas-forge-sdk-tenant               # 首版公开
+├── saas-forge-sdk-permission           # 后续占位，不发布
+├── saas-forge-sdk-feature              # 后续占位，不发布
+├── saas-forge-sdk-quota                # 后续占位，不发布
+├── saas-forge-sdk-audit                # 后续占位，不发布
+└── saas-forge-spring-boot-starter      # 首版公开
 ```
 
 业务服务通过 `io.github.crane0927:saas-forge-spring-boot-starter` 接入。除 Java 外的 SDK 不属于首期范围；Maven 坐标与 Java 包名分离的原因见 [ADR 0012](adr/0012-maven-coordinates-use-github-namespace.md)。
+
+## 首版发布面
+
+`saas-forge-bom` 只管理 `saas-forge-sdk-core`、`saas-forge-sdk-auth`、`saas-forge-sdk-tenant` 与 `saas-forge-spring-boot-starter`。Starter 在公开 SDK 中也只传递这三个 SDK；Permission、Feature、Quota 与 Audit 模块可以继续保留在 Reactor 中，但不进入 BOM、不成为 Starter 依赖，并显式跳过 Maven Central 发布。
+
+Starter 还依赖可发布的 `saas-forge-http-route-catalog` 支撑制品，以便与 Gateway 消费同一份不可变路由和认证分类。它不是 BOM 管理的消费者 SDK，也不应由业务应用直接声明。
+
+每个首版公开 SDK 与 Starter 的允许 package 和公共类型记录在 [`sdk/public-api-allowlist.json`](../sdk/public-api-allowlist.json)。构建会对照打包后的 JAR 检查该清单，并检查公共签名、JAR 内容、实现类型引用和传递依赖；新增公共类型或 package 必须显式修改清单。门禁拒绝平台内部 Protobuf、gRPC、持久化记录、数据库实体、MyBatis、Repository、迁移实现以及 Cookie、`Origin`、Fetch Metadata 等浏览器安全参数进入公开发布面。
+
+当前没有已正式发布的 Java SDK 制品，因此不建立虚构的二进制兼容基线。首个正式版本发布后，后续版本才以真实发布制品启用二进制兼容比较。
 
 ## 身份与上下文
 
@@ -40,7 +50,9 @@ MembershipContext.getMembershipId();
 
 上下文只能由已验证 Token 建立。用户请求不得通过请求头、查询参数、请求体或任何语义等价别名传入或覆盖 Tenant；这类输入必须在建立上下文前以 `400` 拒绝，业务代码也不得覆写上下文。Client Credentials 令牌不建立上述用户上下文；服务授权只基于 `client_id` 与显式 `scope`，不得伪造用户、Membership、Tenant 或用户 RBAC 上下文。
 
-## 授权、权益与配额
+## 后续授权、权益与配额
+
+以下能力是后续阶段的设计方向，不属于首版发布面；相应 SDK 当前只是不会发布的 Reactor 占位模块。
 
 | 能力 | SDK 行为 | 一致性规则 |
 |---|---|---|
@@ -70,7 +82,7 @@ public List<Report> list() {
 
 ## Starter 配置边界
 
-配置包含 Gateway 地址、JWKS 地址、服务端 Client Credentials、超时/重试和缓存策略。Client Secret 不得写入代码或普通配置文件，应由运行环境的受控密钥注入提供。
+当前 Starter 从共享 Route Catalog 选择本服务的 HTTP operation，并要求消费者提供 User/Service Token 签名验证与撤销检查适配器；缺失任何必需适配器时启动失败，不存在允许型回退。生产级 JWKS 自动发现、密钥缓存与 Redis 撤销适配不属于首版范围。
 
 Tenant Context、授权和审计的公共 API 是稳定集成面；平台内部服务或数据库实体不是 SDK 兼容性承诺。
 

@@ -1,0 +1,117 @@
+{
+  "artifacts": {
+    "saas-forge-sdk-core": {
+      "module": "sdk/java/saas-forge-sdk-core",
+      "packages": [
+        "io.saasforge.sdk.core.rest",
+        "io.saasforge.sdk.core.rest.api",
+        "io.saasforge.sdk.core.rest.model"
+      ],
+      "publicTypes": [
+        "io.saasforge.sdk.core.rest.ApiClient",
+        "io.saasforge.sdk.core.rest.ApiException",
+        "io.saasforge.sdk.core.rest.ApiResponse",
+        "io.saasforge.sdk.core.rest.Configuration",
+        "io.saasforge.sdk.core.rest.JSON",
+        "io.saasforge.sdk.core.rest.Pair",
+        "io.saasforge.sdk.core.rest.RFC3339DateFormat",
+        "io.saasforge.sdk.core.rest.RFC3339InstantDeserializer",
+        "io.saasforge.sdk.core.rest.RFC3339JavaTimeModule",
+        "io.saasforge.sdk.core.rest.ServerConfiguration",
+        "io.saasforge.sdk.core.rest.ServerVariable",
+        "io.saasforge.sdk.core.rest.api.AuthenticationApi",
+        "io.saasforge.sdk.core.rest.api.DiscoveryApi",
+        "io.saasforge.sdk.core.rest.api.OAuthClientsApi",
+        "io.saasforge.sdk.core.rest.api.PlatformEntitlementBootstrapApi",
+        "io.saasforge.sdk.core.rest.api.PlatformTenantsApi",
+        "io.saasforge.sdk.core.rest.model.AbstractOpenApiSchema",
+        "io.saasforge.sdk.core.rest.model.AdministratorInitializationRequest",
+        "io.saasforge.sdk.core.rest.model.ClientCredentialsTokenResponse",
+        "io.saasforge.sdk.core.rest.model.ClientCredentialsTokenResponse$TokenTypeEnum",
+        "io.saasforge.sdk.core.rest.model.CreateInitialSubscriptionRequest",
+        "io.saasforge.sdk.core.rest.model.CreateOAuthClientRequest",
+        "io.saasforge.sdk.core.rest.model.CreatePlanRequest",
+        "io.saasforge.sdk.core.rest.model.CreateQuotaDefinitionRequest",
+        "io.saasforge.sdk.core.rest.model.CreateQuotaDefinitionRequest$CodeEnum",
+        "io.saasforge.sdk.core.rest.model.CreateTenantRequest",
+        "io.saasforge.sdk.core.rest.model.GetCurrentTenantContext401Response",
+        "io.saasforge.sdk.core.rest.model.GetCurrentTenantContext403Response",
+        "io.saasforge.sdk.core.rest.model.IssueClientCredentialsToken400Response",
+        "io.saasforge.sdk.core.rest.model.IssueClientCredentialsToken400ResponseAllOfErrorsInner",
+        "io.saasforge.sdk.core.rest.model.Jwk",
+        "io.saasforge.sdk.core.rest.model.Jwk$AlgEnum",
+        "io.saasforge.sdk.core.rest.model.Jwk$KtyEnum",
+        "io.saasforge.sdk.core.rest.model.Jwk$UseEnum",
+        "io.saasforge.sdk.core.rest.model.Jwks",
+        "io.saasforge.sdk.core.rest.model.MembershipCandidate",
+        "io.saasforge.sdk.core.rest.model.OAuthClientDetail",
+        "io.saasforge.sdk.core.rest.model.OAuthClientSecretResult",
+        "io.saasforge.sdk.core.rest.model.OAuthClientStatus",
+        "io.saasforge.sdk.core.rest.model.OAuthClientType",
+        "io.saasforge.sdk.core.rest.model.Plan",
+        "io.saasforge.sdk.core.rest.model.PlanQuotaLimit",
+        "io.saasforge.sdk.core.rest.model.PlanStatus",
+        "io.saasforge.sdk.core.rest.model.QuotaDefinition",
+        "io.saasforge.sdk.core.rest.model.QuotaDefinition$CodeEnum",
+        "io.saasforge.sdk.core.rest.model.QuotaDefinitionStatus",
+        "io.saasforge.sdk.core.rest.model.ReservedServiceKey",
+        "io.saasforge.sdk.core.rest.model.RuntimeScope",
+        "io.saasforge.sdk.core.rest.model.SecretIssuanceRecoveryRequest",
+        "io.saasforge.sdk.core.rest.model.Subscription",
+        "io.saasforge.sdk.core.rest.model.Subscription$StatusEnum",
+        "io.saasforge.sdk.core.rest.model.Tenant",
+        "io.saasforge.sdk.core.rest.model.TenantAuthenticationContext",
+        "io.saasforge.sdk.core.rest.model.TenantBrandProfile",
+        "io.saasforge.sdk.core.rest.model.TenantStatus"
+      ]
+    },
+    "saas-forge-sdk-auth": {
+      "module": "sdk/java/saas-forge-sdk-auth",
+      "packages": ["io.saasforge.sdk.auth"],
+      "publicTypes": [
+        "io.saasforge.sdk.auth.IdentityContext",
+        "io.saasforge.sdk.auth.IdentityContextAccessor",
+        "io.saasforge.sdk.auth.PlatformAuthorizationDeniedException",
+        "io.saasforge.sdk.auth.PlatformRequestAuthorizer",
+        "io.saasforge.sdk.auth.PlatformRoleChecker",
+        "io.saasforge.sdk.auth.ReservedContextHeaderRegistry",
+        "io.saasforge.sdk.auth.ServiceAccessAuthorization",
+        "io.saasforge.sdk.auth.ServiceAccessTokenAuthorizer",
+        "io.saasforge.sdk.auth.ServiceAccessTokenClaims",
+        "io.saasforge.sdk.auth.ServiceAccessTokenInvalidException",
+        "io.saasforge.sdk.auth.ServiceAccessTokenRevocationChecker",
+        "io.saasforge.sdk.auth.ServiceAccessTokenScopeException",
+        "io.saasforge.sdk.auth.ServiceAccessTokenSignatureVerifier",
+        "io.saasforge.sdk.auth.ServiceAccessTokenVerifier",
+        "io.saasforge.sdk.auth.ServiceContext",
+        "io.saasforge.sdk.auth.ServiceContextAccessor",
+        "io.saasforge.sdk.auth.ServiceJwtVerificationKey",
+        "io.saasforge.sdk.auth.ServiceJwtVerificationKeyResolver",
+        "io.saasforge.sdk.auth.UserAccessTokenClaims",
+        "io.saasforge.sdk.auth.UserAccessTokenInvalidException",
+        "io.saasforge.sdk.auth.UserAccessTokenRevocationChecker",
+        "io.saasforge.sdk.auth.UserAccessTokenSignatureVerifier",
+        "io.saasforge.sdk.auth.UserAccessTokenVerifier",
+        "io.saasforge.sdk.auth.VerifiedServiceAccessTokenClaims",
+        "io.saasforge.sdk.auth.VerifiedUserAccessTokenClaims"
+      ]
+    },
+    "saas-forge-sdk-tenant": {
+      "module": "sdk/java/saas-forge-sdk-tenant",
+      "packages": ["io.saasforge.sdk.tenant"],
+      "publicTypes": [
+        "io.saasforge.sdk.tenant.TenantContextAccessor",
+        "io.saasforge.sdk.tenant.TenantContextSnapshot",
+        "io.saasforge.sdk.tenant.TenantContextUnavailableException"
+      ]
+    },
+    "saas-forge-spring-boot-starter": {
+      "module": "sdk/starters/saas-forge-spring-boot-starter",
+      "packages": ["io.saasforge.starter.security"],
+      "publicTypes": [
+        "io.saasforge.starter.security.SaasForgeHttpAuthenticationAutoConfiguration",
+        "io.saasforge.starter.security.UserAccessTokenContextRevocationChecker"
+      ]
+    }
+  }
+}

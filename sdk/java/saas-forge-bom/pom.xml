@@ -14,6 +14,10 @@
     <artifactId>saas-forge-bom</artifactId>
     <packaging>pom</packaging>
 
+    <properties>
+        <maven.deploy.skip>false</maven.deploy.skip>
+    </properties>
+
     <dependencyManagement>
         <dependencies>
             <dependency>
@@ -29,26 +33,6 @@
             <dependency>
                 <groupId>io.github.crane0927</groupId>
                 <artifactId>saas-forge-sdk-tenant</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.github.crane0927</groupId>
-                <artifactId>saas-forge-sdk-permission</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.github.crane0927</groupId>
-                <artifactId>saas-forge-sdk-feature</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.github.crane0927</groupId>
-                <artifactId>saas-forge-sdk-quota</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.github.crane0927</groupId>
-                <artifactId>saas-forge-sdk-audit</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

@@ -14,6 +14,10 @@
     <artifactId>test-support</artifactId>
     <packaging>pom</packaging>
 
+    <properties>
+        <maven.deploy.skip>true</maven.deploy.skip>
+    </properties>
+
     <modules>
         <module>platform-mechanism-receiver</module>
     </modules>

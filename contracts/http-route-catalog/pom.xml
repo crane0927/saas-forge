@@ -15,6 +15,7 @@
     <name>saas-forge HTTP Route Catalog</name>
 
     <properties>
+        <maven.deploy.skip>false</maven.deploy.skip>
         <route-catalog.registry-overlay>-</route-catalog.registry-overlay>
         <route-catalog.openapi-overlay>-</route-catalog.openapi-overlay>
     </properties>
