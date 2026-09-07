@@ -8,6 +8,7 @@ export {
 } from './bootstrap-status';
 export {
   ApplicationShell,
+  ApplicationIdentity,
   Button,
   DesignIcon,
   Link,

@@ -14,6 +14,7 @@ import {
 
 import { resolveTenantBrandProfile, type TenantBrandProfile } from './brand-theme';
 import { platformBrandTokenSet } from './platform-brand';
+import type { ResolvedBrandProfile } from './resolved-brand';
 import { semanticTokens } from './tokens';
 
 export type DesignSystemLocale = SupportedLocale;
@@ -23,6 +24,7 @@ export interface DesignSystemProviderProps {
   readonly children: ReactNode;
   readonly locale?: DesignSystemLocale;
   readonly tenantBrand?: TenantBrandProfile;
+  readonly resolvedBrand?: ResolvedBrandProfile;
   readonly onTenantBrandRejected?: (reason: string) => void;
   /** 仅供私有展示册与自动测试固定渲染；产品界面不得将其连接为手动主题开关。 */
   readonly forcedColorScheme?: DesignSystemColorScheme;
@@ -75,9 +77,13 @@ export function DesignSystemProvider({
   children,
   locale = 'zh-CN',
   tenantBrand,
+  resolvedBrand,
   onTenantBrandRejected,
   forcedColorScheme,
 }: DesignSystemProviderProps) {
+  if (tenantBrand !== undefined && resolvedBrand !== undefined) {
+    throw new Error('DesignSystemProvider 不能同时接收原始与已解析品牌。');
+  }
   const systemColorScheme = useSyncExternalStore<DesignSystemColorScheme>(
     subscribeToSystemColorScheme,
     readSystemColorScheme,
@@ -90,7 +96,7 @@ export function DesignSystemProvider({
   );
   const acceptedBrand = brandResolution?.accepted === true ? brandResolution : undefined;
   const palette = semanticTokens.color[colorScheme];
-  const brandTheme = acceptedBrand?.[colorScheme];
+  const brandTheme = resolvedBrand?.tokenSet[colorScheme] ?? acceptedBrand?.[colorScheme];
   const platformTheme = platformBrandTokenSet[colorScheme];
   const primary = brandTheme?.primary.color ?? platformTheme.primary.color;
   const primaryForeground = brandTheme?.primary.foreground ?? platformTheme.primary.foreground;
@@ -158,7 +164,9 @@ export function DesignSystemProvider({
           style={rootStyle}
           lang={locale}
           data-color-scheme={colorScheme}
-          data-brand={acceptedBrand === undefined ? 'platform' : 'tenant'}
+          data-brand={
+            resolvedBrand?.source ?? (acceptedBrand === undefined ? 'platform' : 'tenant')
+          }
         >
           {children}
         </div>

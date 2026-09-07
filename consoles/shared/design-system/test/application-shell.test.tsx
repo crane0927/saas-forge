@@ -12,6 +12,8 @@ describe('ApplicationShell', () => {
     render(
       <ApplicationShell
         applicationName="Platform Console"
+        applicationLogoUrl="/brand.svg"
+        applicationLogoAlt="Platform Logo"
         navigationItems={[
           { href: '/', label: '首页', current: true },
           { href: '/oauth-clients', label: 'OAuth Client' },
@@ -24,6 +26,9 @@ describe('ApplicationShell', () => {
     );
 
     expect(screen.getByRole('navigation', { name: 'Platform Console 全局导航' })).toBeTruthy();
+    expect(screen.getByRole('img', { name: 'Platform Logo' }).getAttribute('src')).toBe(
+      '/brand.svg',
+    );
     expect(screen.getByRole('link', { name: '首页' }).getAttribute('aria-current')).toBe('page');
     fireEvent.click(screen.getByRole('link', { name: 'OAuth Client' }));
     expect(navigate).toHaveBeenCalledWith('/oauth-clients');

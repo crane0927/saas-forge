@@ -7,8 +7,9 @@ import { page, userEvent } from 'vitest/browser';
 import { DesignSystemConsumerRemote } from '../business-remotes/design-system-consumer-fixture/src/remote';
 import { PlatformConsoleApp } from '../platform-console/src/app';
 import { createRuntimeConfigBootstrap, type RuntimeConfigResult } from '../shared/app-runtime/src';
-import { DesignSystemProvider } from '../shared/design-system/src';
+import { DesignSystemProvider, platformResolvedBrandProfile } from '../shared/design-system/src';
 import {
+  BrandApplicationProvider,
   ConsoleLocaleProvider,
   ConsoleLocaleSelector,
   useConsoleLocale,
@@ -22,6 +23,7 @@ let renderedRoot: Root | undefined;
 let renderedContainer: HTMLDivElement | undefined;
 
 afterEach(() => {
+  vi.restoreAllMocks();
   renderedRoot?.unmount();
   renderedContainer?.remove();
   renderedRoot = undefined;
@@ -66,14 +68,18 @@ function PlatformConsoleLocaleHost({
 }) {
   const { locale } = useConsoleLocale();
   return (
-    <DesignSystemProvider locale={locale}>
+    <BrandApplicationProvider
+      resolvedBrand={platformResolvedBrandProfile}
+      surface="platform"
+      locale={locale}
+    >
       <ConsoleLocaleSelector />
       <PlatformConsoleApp
         bootstrap={bootstrap}
         authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
         realm={{}}
       />
-    </DesignSystemProvider>
+    </BrandApplicationProvider>
   );
 }
 
@@ -111,6 +117,66 @@ async function waitForLayout() {
 }
 
 describe('三个 Design System 消费者的真实浏览器契约', () => {
+  it('Platform Console 从匿名到已认证始终提交同一完整平台品牌', async () => {
+    const consoleError = vi.spyOn(console, 'error');
+    const consoleWarning = vi.spyOn(console, 'warn');
+    const authenticationFetch = vi
+      .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'platform-token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      );
+
+    render(
+      <ConsoleLocaleProvider initialLocale="zh-CN">
+        <BrandApplicationProvider resolvedBrand={platformResolvedBrandProfile} surface="platform">
+          <PlatformConsoleApp
+            bootstrap={readyBootstrap()}
+            authenticationFetch={authenticationFetch}
+            realm={{}}
+          />
+        </BrandApplicationProvider>
+      </ConsoleLocaleProvider>,
+    );
+
+    const loginTitle = page.getByRole('heading', { name: '登录 SaaS Forge' });
+    await expect.element(loginTitle).toBeInTheDocument();
+    const loginLogo = page.getByRole('img', { name: 'SaaS Forge Logo' });
+    await expect.element(loginLogo).toBeVisible();
+    const loginLogoElement = loginLogo.element() as HTMLImageElement;
+    expect(loginLogoElement.complete).toBe(true);
+    expect(loginLogoElement.naturalWidth).toBeGreaterThan(0);
+    expect(document.title).toBe('SaaS Forge Platform Console');
+    expect(document.querySelector('link[rel~="icon"]')?.getAttribute('href')).toBe(
+      platformResolvedBrandProfile.profile.faviconUrl,
+    );
+    const provider = document.querySelector<HTMLElement>('.sf-design-system-root');
+    expect(provider?.dataset.brand).toBe('platform');
+    expect(provider?.style.getPropertyValue('--sf-color-primary')).toBe(
+      platformResolvedBrandProfile.tokenSet.light.primary.color,
+    );
+    expect(provider?.style.getPropertyValue('--sf-color-accent')).toBe(
+      platformResolvedBrandProfile.tokenSet.light.accent.color,
+    );
+
+    await page.getByLabelText(/^邮箱/).fill('admin@example.test');
+    await page.getByLabelText(/^密码/).fill('secret');
+    await page.getByRole('button', { name: '登录' }).click();
+
+    await expect.element(page.getByRole('heading', { name: 'Platform 总览' })).toBeInTheDocument();
+    expect(page.getByRole('img', { name: 'SaaS Forge Logo' }).element()).not.toBe(loginLogoElement);
+    expect(document.querySelectorAll('.sf-application-logo')).toHaveLength(1);
+    expect(document.title).toBe('SaaS Forge Platform Console');
+    expect(document.querySelector('vite-error-overlay')).toBeNull();
+    expect(consoleError).not.toHaveBeenCalled();
+    expect(consoleWarning).not.toHaveBeenCalled();
+  });
+
   it('语言选择器在配置失败页面即时切换、保留焦点且不发业务请求', async () => {
     const loader = vi
       .fn<() => Promise<RuntimeConfigResult>>()
@@ -122,7 +188,7 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
     );
 
     await expect
-      .element(page.getByRole('heading', { name: 'Platform Console configuration is unavailable' }))
+      .element(page.getByRole('heading', { name: 'SaaS Forge configuration is unavailable' }))
       .toBeInTheDocument();
     await page.viewport(320, 800);
     await waitForLayout();
@@ -131,7 +197,7 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
     await userEvent.keyboard('{Enter}{ArrowUp}{Enter}');
 
     await expect
-      .element(page.getByRole('heading', { name: 'Platform Console 配置不可用' }))
+      .element(page.getByRole('heading', { name: 'SaaS Forge 配置不可用' }))
       .toBeInTheDocument();
     await expect.element(selector).toHaveFocus();
     expect(document.documentElement.lang).toBe('zh-CN');
@@ -147,7 +213,7 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
         bootstrap={readyBootstrap()}
         authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
       />,
-      '登录 Platform Console',
+      '登录 SaaS Forge',
       true,
     ],
     [
@@ -166,7 +232,16 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
     async (_name, app, titleName, needsProvider) => {
       render(
         <ConsoleLocaleProvider initialLocale="zh-CN">
-          {needsProvider ? <DesignSystemProvider>{app}</DesignSystemProvider> : app}
+          {needsProvider ? (
+            <BrandApplicationProvider
+              resolvedBrand={platformResolvedBrandProfile}
+              surface="platform"
+            >
+              {app}
+            </BrandApplicationProvider>
+          ) : (
+            app
+          )}
         </ConsoleLocaleProvider>,
       );
 
@@ -565,6 +640,30 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
       consoleWarning.mockRestore();
     }
   });
+
+  it.skipIf(import.meta.env.SF_VISUAL_SNAPSHOTS === 'false')(
+    '固定 Platform Console 完整品牌的桌面与窄屏证据',
+    async () => {
+      render(
+        <ConsoleLocaleProvider initialLocale="zh-CN">
+          <BrandApplicationProvider resolvedBrand={platformResolvedBrandProfile} surface="platform">
+            <PlatformConsoleApp
+              bootstrap={readyBootstrap()}
+              authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
+              realm={{}}
+            />
+          </BrandApplicationProvider>
+        </ConsoleLocaleProvider>,
+      );
+      await expect.element(page.getByRole('heading', { name: '登录 SaaS Forge' })).toBeVisible();
+
+      await page.viewport(1280, 900);
+      await expect(page.getByRole('main')).toMatchScreenshot('platform-brand-login-1280');
+      await page.viewport(390, 900);
+      await expect(page.getByRole('main')).toMatchScreenshot('platform-brand-login-390');
+      expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
+    },
+  );
 
   it.skipIf(import.meta.env.SF_VISUAL_SNAPSHOTS === 'false')(
     '固定 Remote 的桌面与窄屏消费证据',

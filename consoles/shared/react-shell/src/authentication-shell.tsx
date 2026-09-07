@@ -9,6 +9,7 @@ import {
   ApplicationLoading,
   ApplicationFatalError,
   ApplicationShell,
+  ApplicationIdentity,
   Button,
   FormLayout,
   FormRow,
@@ -23,15 +24,18 @@ import {
 import {
   Component,
   useEffect,
+  useContext,
   useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
+  type ContextType,
 } from 'react';
 import { matchPath, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
 
 import { shellMessages } from './messages';
 import { useConsoleLocale } from './console-locale';
+import { BrandApplicationContext } from './brand-application';
 
 export interface AuthenticationShellRoute {
   readonly path: string;
@@ -40,7 +44,7 @@ export interface AuthenticationShellRoute {
 }
 
 export interface AuthenticationShellProps {
-  readonly applicationName: string;
+  readonly applicationName?: string;
   readonly runtime: AuthenticationRuntime;
   readonly defaultPath: string;
   readonly routes: readonly AuthenticationShellRoute[];
@@ -63,6 +67,8 @@ export class AuthenticationRootErrorBoundary extends Component<
   AuthenticationRootErrorBoundaryProps,
   AuthenticationRootErrorBoundaryState
 > {
+  public static contextType = BrandApplicationContext;
+  declare public context: ContextType<typeof BrandApplicationContext>;
   public state: AuthenticationRootErrorBoundaryState = { failed: false };
 
   public static getDerivedStateFromError(): AuthenticationRootErrorBoundaryState {
@@ -79,7 +85,9 @@ export class AuthenticationRootErrorBoundary extends Component<
     }
     return (
       <ApplicationFatalError
-        applicationName={this.props.applicationName}
+        applicationName={this.context?.applicationName ?? this.props.applicationName}
+        applicationLogoUrl={this.context?.resolvedBrand.profile.logoUrl}
+        applicationLogoAlt={this.context?.logoAlt}
         locale={this.props.locale}
         onReload={this.reload}
       />
@@ -101,6 +109,11 @@ export function AuthenticationShell({
   defaultPath,
   routes,
 }: AuthenticationShellProps) {
+  const brand = useContext(BrandApplicationContext);
+  const resolvedApplicationName = brand?.applicationName ?? applicationName;
+  if (resolvedApplicationName === undefined) {
+    throw new Error('AuthenticationShell requires a brand application or applicationName.');
+  }
   const { locale } = useConsoleLocale();
   const translate = createShellTranslator(locale);
   const location = useLocation();
@@ -167,12 +180,22 @@ export function AuthenticationShell({
   }, [defaultPath, location, navigate, recoveryComplete, recoveryProblem, routes, state]);
 
   if (!recoveryComplete || state.transition === 'recover') {
-    return <ApplicationLoading applicationName={applicationName} />;
+    return (
+      <ApplicationLoading
+        applicationName={resolvedApplicationName}
+        applicationLogoUrl={brand?.resolvedBrand.profile.logoUrl}
+        applicationLogoAlt={brand?.logoAlt}
+      />
+    );
   }
 
   if (state.status === 'authenticated' && state.transition === 'sessionSync') {
     return state.synchronizationProblem === undefined ? (
-      <ApplicationLoading applicationName={applicationName} />
+      <ApplicationLoading
+        applicationName={resolvedApplicationName}
+        applicationLogoUrl={brand?.resolvedBrand.profile.logoUrl}
+        applicationLogoAlt={brand?.logoAlt}
+      />
     ) : (
       <RecoveryPage
         runtime={runtime}
@@ -222,8 +245,12 @@ export function AuthenticationShell({
     }
     return (
       <ApplicationShell
-        applicationName={applicationName}
-        navigationLabel={translate.translate('globalNavigation', { applicationName })}
+        applicationName={resolvedApplicationName}
+        applicationLogoUrl={brand?.resolvedBrand.profile.logoUrl}
+        applicationLogoAlt={brand?.logoAlt}
+        navigationLabel={translate.translate('globalNavigation', {
+          applicationName: resolvedApplicationName,
+        })}
         navigationItems={routes.map((route) => ({
           href: route.path,
           label: route.label,
@@ -352,7 +379,7 @@ export function AuthenticationShell({
 
   return (
     <LoginPage
-      applicationName={applicationName}
+      applicationName={resolvedApplicationName}
       runtime={runtime}
       passwordChanged={passwordChanged}
       tenantSessionEnded={tenantSessionEnded}
@@ -934,8 +961,16 @@ function ShellPageTitle({
   readonly description?: string;
 }) {
   const location = useLocation();
+  const brand = useContext(BrandApplicationContext);
   return (
     <>
+      {brand === undefined ? null : (
+        <ApplicationIdentity
+          applicationName={brand.applicationName}
+          logoUrl={brand.resolvedBrand.profile.logoUrl}
+          logoAlt={brand.logoAlt}
+        />
+      )}
       <RouteFocusAnnouncement routeKey={location.key} pageTitle={title} focusTargetId={headingId} />
       <PageTitle headingId={headingId} description={description}>
         {title}

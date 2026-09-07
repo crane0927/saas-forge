@@ -134,6 +134,19 @@ body {
   white-space: nowrap;
 }
 
+.sf-application-identity {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sf-space-sm);
+}
+
+.sf-application-logo {
+  inline-size: auto;
+  block-size: 2rem;
+  flex: none;
+  object-fit: contain;
+}
+
 .sf-application-navigation {
   display: flex;
   flex-wrap: wrap;

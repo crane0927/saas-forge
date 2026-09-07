@@ -3,20 +3,27 @@ import { createTranslator, type SupportedLocale } from '@saas-forge/i18n';
 import { useId } from 'react';
 
 import { bootstrapMessages } from './messages';
+import { ApplicationIdentity } from './foundation';
 import { useDesignSystemLocale } from './theme-provider';
 
 interface ApplicationLoadingProps {
   readonly applicationName: string;
+  readonly applicationLogoUrl?: string;
+  readonly applicationLogoAlt?: string;
 }
 
 interface ConfigurationFailureProps {
   readonly applicationName: string;
+  readonly applicationLogoUrl?: string;
+  readonly applicationLogoAlt?: string;
   readonly errorCode: string;
   readonly onRetry: () => void;
 }
 
 export interface ApplicationFatalErrorProps {
   readonly applicationName: string;
+  readonly applicationLogoUrl?: string;
+  readonly applicationLogoAlt?: string;
   readonly onReload: () => void;
   /** 根错误边界可能位于唯一 Provider 外，因此由 Shell 传入最后已知 Locale。 */
   readonly locale?: SupportedLocale;
@@ -30,13 +37,22 @@ function createBootstrapTranslator(locale: SupportedLocale) {
   });
 }
 
-export function ApplicationLoading({ applicationName }: ApplicationLoadingProps) {
+export function ApplicationLoading({
+  applicationName,
+  applicationLogoUrl,
+  applicationLogoAlt,
+}: ApplicationLoadingProps) {
   const titleId = useId();
   const translate = createBootstrapTranslator(useDesignSystemLocale());
 
   return (
     <main className="sf-bootstrap-surface" aria-busy="true" aria-live="polite">
       <section className="sf-bootstrap-panel" aria-labelledby={titleId}>
+        <ApplicationIdentity
+          applicationName={applicationName}
+          logoUrl={applicationLogoUrl}
+          logoAlt={applicationLogoAlt}
+        />
         <Spin size="large" aria-label={translate.translate('applicationLoadingAriaLabel')} />
         <h1 id={titleId}>{translate.translate('applicationLoadingTitle', { applicationName })}</h1>
         <p>{translate.translate('applicationLoadingDescription')}</p>
@@ -47,6 +63,8 @@ export function ApplicationLoading({ applicationName }: ApplicationLoadingProps)
 
 export function ConfigurationFailure({
   applicationName,
+  applicationLogoUrl,
+  applicationLogoAlt,
   errorCode,
   onRetry,
 }: ConfigurationFailureProps) {
@@ -56,6 +74,11 @@ export function ConfigurationFailure({
   return (
     <main className="sf-bootstrap-surface">
       <section className="sf-bootstrap-panel" aria-labelledby={titleId} aria-live="assertive">
+        <ApplicationIdentity
+          applicationName={applicationName}
+          logoUrl={applicationLogoUrl}
+          logoAlt={applicationLogoAlt}
+        />
         <h1 id={titleId}>
           {translate.translate('configurationFailureTitle', { applicationName })}
         </h1>
@@ -74,6 +97,8 @@ export function ConfigurationFailure({
  */
 export function ApplicationFatalError({
   applicationName,
+  applicationLogoUrl,
+  applicationLogoAlt,
   onReload,
   locale: fallbackLocale,
 }: ApplicationFatalErrorProps) {
@@ -85,6 +110,11 @@ export function ApplicationFatalError({
   return (
     <main className="sf-bootstrap-surface">
       <section className="sf-bootstrap-panel" aria-labelledby={titleId} aria-live="assertive">
+        <ApplicationIdentity
+          applicationName={applicationName}
+          logoUrl={applicationLogoUrl}
+          logoAlt={applicationLogoAlt}
+        />
         <h1 id={titleId}>{translate.translate('fatalErrorTitle', { applicationName })}</h1>
         <p>{translate.translate('fatalErrorDescription')}</p>
         <code className="sf-bootstrap-code">APPLICATION_FATAL</code>

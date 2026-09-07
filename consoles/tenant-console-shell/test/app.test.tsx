@@ -3,11 +3,14 @@ import { DesignSystemProvider } from '@saas-forge/design-system';
 import { ConsoleLocaleProvider, useConsoleLocale } from '@saas-forge/react-shell';
 import { cleanup, fireEvent, render as renderReact, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { TenantConsoleShellApp, type TenantConsoleRootProps } from '../src/app';
 
 afterEach(cleanup);
+beforeEach(() => {
+  window.history.replaceState({}, '', '/');
+});
 
 function TenantConsoleTestRoot({ children, tenantBrand }: TenantConsoleRootProps) {
   const { locale, setLocale } = useConsoleLocale();

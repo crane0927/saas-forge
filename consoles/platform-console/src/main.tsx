@@ -1,6 +1,7 @@
-import { DesignSystemProvider } from '@saas-forge/design-system';
+import { platformResolvedBrandProfile } from '@saas-forge/design-system';
 import {
   AuthenticationRootErrorBoundary,
+  BrandApplicationProvider,
   ConsoleLocaleProvider,
   ConsoleLocaleSelector,
   resolveInitialConsoleLocale,
@@ -30,11 +31,15 @@ function PlatformConsoleEntry() {
   const { locale } = useConsoleLocale();
 
   return (
-    <DesignSystemProvider locale={locale}>
-      <AuthenticationRootErrorBoundary applicationName="Platform Console" locale={locale}>
+    <BrandApplicationProvider
+      resolvedBrand={platformResolvedBrandProfile}
+      surface="platform"
+      locale={locale}
+    >
+      <AuthenticationRootErrorBoundary applicationName="SaaS Forge" locale={locale}>
         <ConsoleLocaleSelector />
         <PlatformConsoleApp />
       </AuthenticationRootErrorBoundary>
-    </DesignSystemProvider>
+    </BrandApplicationProvider>
   );
 }

@@ -49,6 +49,12 @@ test('rejects duplicate public components and detects repeated Theme Providers',
     `),
     2,
   );
+  assert.equal(
+    providerUsageCount(`
+      <BrandApplicationProvider><App /></BrandApplicationProvider>
+    `),
+    1,
+  );
 });
 
 test('resolves all three consumers to the same workspace Design System version', async () => {

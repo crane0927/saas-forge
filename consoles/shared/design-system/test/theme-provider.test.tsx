@@ -5,6 +5,7 @@ import {
   contrastRatio,
   DesignSystemProvider,
   platformBrandProfile,
+  platformResolvedBrandProfile,
   platformBrandTokenSet,
   platformConsoleTitle,
   resolveTenantBrandProfile,
@@ -92,6 +93,23 @@ describe('Design System 主题与品牌', () => {
       semanticTokens.color.platformAccent,
     );
     expect(root.getAttribute('lang')).toBe('zh-CN');
+  });
+
+  it.each(['light', 'dark'] as const)('直接消费已解析品牌的 %s Token', (scheme) => {
+    render(
+      <DesignSystemProvider forcedColorScheme={scheme} resolvedBrand={platformResolvedBrandProfile}>
+        <p>{scheme}</p>
+      </DesignSystemProvider>,
+    );
+
+    const root = providerRoot(scheme);
+    expect(root.dataset.brand).toBe('platform');
+    expect(root.style.getPropertyValue('--sf-color-primary')).toBe(
+      platformResolvedBrandProfile.tokenSet[scheme].primary.color,
+    );
+    expect(root.style.getPropertyValue('--sf-color-accent')).toBe(
+      platformResolvedBrandProfile.tokenSet[scheme].accent.color,
+    );
   });
 
   it('为两种主题原子生成可读品牌颜色与前景色', () => {

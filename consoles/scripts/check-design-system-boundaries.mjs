@@ -160,7 +160,12 @@ export async function findBoundaryViolations(root = consoleRoot) {
       const providerEntrySource = await readFile(providerEntry, 'utf8');
       if (providerUsageCount(providerEntrySource, providerEntry) !== 1) {
         violations.push(
-          `${path.relative(root, providerEntry)}: Shell 入口必须且只能安装一个 DesignSystemProvider。`,
+          `${path.relative(root, providerEntry)}: Shell 入口必须且只能安装一个品牌或 Design System Provider。`,
+        );
+      }
+      if (!providerEntrySource.includes(`<${consumer.requiredProvider}`)) {
+        violations.push(
+          `${path.relative(root, providerEntry)}: Shell 入口必须安装 ${consumer.requiredProvider}。`,
         );
       }
     }
@@ -169,7 +174,11 @@ export async function findBoundaryViolations(root = consoleRoot) {
       const absoluteForbiddenRoot = path.join(packageRoot, forbiddenRoot);
       for (const file of await sourceFiles(absoluteForbiddenRoot)) {
         const source = await readFile(file, 'utf8');
-        if (providerUsageCount(source, file) > 0 || source.includes('DesignSystemProvider')) {
+        if (
+          providerUsageCount(source, file) > 0 ||
+          source.includes('DesignSystemProvider') ||
+          source.includes('BrandApplicationProvider')
+        ) {
           violations.push(
             `${path.relative(root, file)}: Remote 必须继承 Shell 主题，不得安装 DesignSystemProvider。`,
           );
@@ -211,6 +220,8 @@ async function discoverConsumers(root) {
       packageRoot: entry.name,
       runtimeRoots: ['src'],
       providerEntry: 'src/main.tsx',
+      requiredProvider:
+        entry.name === 'platform-console' ? 'BrandApplicationProvider' : 'DesignSystemProvider',
     });
   }
 
@@ -231,6 +242,7 @@ async function discoverConsumers(root) {
       packageRoot,
       runtimeRoots,
       providerEntry: entryNames.has('host') ? 'host/main.tsx' : undefined,
+      requiredProvider: 'DesignSystemProvider',
       providerForbiddenRoots: entryNames.has('src') ? ['src'] : [],
     });
   }
@@ -286,7 +298,8 @@ export function providerUsageCount(source, file = 'consumer.tsx') {
     if (
       (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
       ts.isIdentifier(node.tagName) &&
-      node.tagName.text === 'DesignSystemProvider'
+      (node.tagName.text === 'DesignSystemProvider' ||
+        node.tagName.text === 'BrandApplicationProvider')
     ) {
       count += 1;
     }
