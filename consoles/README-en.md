@@ -62,14 +62,18 @@ pnpm --filter @saas-forge/design-system run dev:showcase
 For daily Platform Console work on macOS Docker Desktop, run the following from the repository root:
 
 ```bash
-bash scripts/local-https-development.sh setup
-bash scripts/local-https-development.sh hosts
-bash scripts/local-https-development.sh trust-ca
-bash scripts/local-https-development.sh doctor
-bash scripts/local-https-development.sh start
+bash scripts/local-development.sh setup
+bash scripts/local-development.sh doctor
+bash scripts/local-development.sh frontend start platform
+bash scripts/local-development.sh frontend status platform
+bash scripts/local-development.sh frontend stop platform
 ```
 
-`setup` only creates or reuses Git-ignored local CA and server material for `platform.saasforge.test` and `api.saasforge.test`. `hosts` and `trust-ca` describe their `/etc/hosts` or macOS System Keychain change and require explicit interactive authorization; `start` never runs either action implicitly. It launches Platform Vite on the fixed Node `24.14.1`, pnpm `11.22.0`, and port `5173`, then Docker TLS Edge serves `https://platform.saasforge.test` on `127.0.0.1:443`. It does not install dependencies or rewrite the lockfile.
+`setup` only creates or reuses Git-ignored local CA and server material for `platform.saasforge.test` and `api.saasforge.test`. Hosts and Keychain trust changes describe their impact separately and require explicit interactive authorization; daily `frontend` commands never perform them implicitly. Every `frontend` command requires both an operation and the `platform` target. The obsolete no-argument form exits nonzero with safe usage.
+
+`start` uses the fixed Node `24.14.1` and pnpm `11.22.0`, binds Platform Vite only to `127.0.0.1:5173` with a strict port, and exposes `https://platform.saasforge.test` through the shared Docker TLS Edge. Its read-only preflight checks certificates, hosts, CA trust, the toolchain, existing dependencies, and ports. It does not install dependencies, generate the API client, modify system configuration, or start backend services. A healthy compatible Edge is reused.
+
+Platform keeps a separate 0600 managed PID and append-only log in the Git-ignored directory. `status` reports `RUNNING`, `STOPPED`, `STARTING`, `STALE`, `UNMANAGED`, or `UNREADY`. `stop` sends `SIGTERM` only to a current-repository Platform process whose identity matches, then stops an unused Edge without deleting its container, backend services, or volumes. A matching legacy `vite.pid` is adopted while its old log is retained; unknown PIDs and unknown port-5173 listeners are never signalled.
 
 This entrypoint covers only Platform and API: the Edge forwards Platform HTTP and HMR WebSocket traffic to host Vite and API traffic to the Compose Gateway, while preserving Origin, Cookie, Fetch Metadata, and Authorization. Tenant Console remains outside this Issue's daily development scope; prepare accounts, Gateway, and Compose services separately.
 

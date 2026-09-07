@@ -27,8 +27,8 @@ function controlledDevelopmentRuntimeConfig(): Plugin {
 export default defineConfig({
   plugins: [controlledDevelopmentRuntimeConfig(), react()],
   server: {
-    // Docker Desktop Edge 需要连接宿主 Vite；浏览器仍应经固定 HTTPS Host 进入。
-    host: '0.0.0.0',
+    // 正式本地入口只允许经共享 HTTPS Edge 访问，不能把 Vite 暴露到 LAN。
+    host: '127.0.0.1',
     port: 5173,
     strictPort: true,
     allowedHosts: ['platform.saasforge.test'],

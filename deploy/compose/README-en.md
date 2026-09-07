@@ -77,11 +77,15 @@ Issue #131 provides one daily entrypoint for the Platform Console and five local
 cd ../..
 bash scripts/local-development.sh setup     # Once per machine; hosts and CA trust ask separately
 bash scripts/local-development.sh doctor    # Complete share-safe prerequisite diagnostics
-bash scripts/local-development.sh frontend  # Start Vite 5173 and TLS Edge 443
+bash scripts/local-development.sh frontend start platform   # Explicitly start Platform and Edge
+bash scripts/local-development.sh frontend status platform  # Read Platform lifecycle status
+bash scripts/local-development.sh frontend stop platform    # Safely stop Platform and an unused Edge
 bash scripts/local-development.sh status    # Show the topology of all five services
 ```
 
-The local CA, server certificate, and Vite diagnostics remain in a Git-ignored directory. `setup` asks for explicit interactive consent separately before editing `/etc/hosts` or the System Keychain; daily `frontend` does not recreate certificates, reinstall trust, install frontend dependencies, or rewrite the lockfile. To recover a stale Docker Desktop loopback-port forwarding state, `frontend` force-recreates only the stateless TLS Edge container; it does not recreate certificates, application services, volumes, or business data, but briefly disconnects local HTTPS pages. TLS Edge publishes only loopback port `443`, accepts only `platform.saasforge.test` and `api.saasforge.test`, forwards Platform traffic (including HMR WebSocket) to host Vite on `5173`, and forwards API traffic to the Compose Gateway. It does not synthesize or rewrite Origin, Cookie, Fetch Metadata, or Authorization.
+The local CA, server certificate, managed PID, and Vite diagnostics remain in a Git-ignored directory. `setup` asks for explicit interactive consent separately before editing `/etc/hosts` or the System Keychain. Daily `frontend` commands do not recreate certificates, reinstall trust, install frontend dependencies, generate the API client, or rewrite the lockfile. Platform Vite uses a strict port and listens only on `127.0.0.1:5173`. TLS Edge publishes only loopback port `443`, accepts only `platform.saasforge.test` and `api.saasforge.test`, and preserves HMR WebSocket, Origin, Cookie, Fetch Metadata, and Authorization traffic verbatim.
+
+A healthy Edge with a compatible configuration hash and loopback binding is reused. The Platform PID, process group, start time, repository directory, and package identity must all match; `RUNNING` additionally requires both port 5173 and the formal HTTPS Host to be ready. Normal and repeated stops succeed. Stopping the last managed Console uses only `docker compose stop`; it does not delete the Edge container, application services, volumes, or business data. A matching legacy PID can be adopted and a stale PID can be cleaned by a mutating command. Unknown PIDs and unknown listeners on ports 5173 or 443 always fail closed.
 
 `doctor` continues through every category even after a failure. It uses share-safe classifications such as `CERTIFICATE_MISSING`, `CERTIFICATE_EXPIRED`, `CERTIFICATE_UNTRUSTED`, `PORT_CONFLICT`, `MIGRATION_FAILED`, `NACOS_UNAVAILABLE`, `SECRET_MISSING`, `INFRASTRUCTURE_UNAVAILABLE`, and `DUPLICATE_INSTANCE`, followed by a recovery action. It never renders passwords, Tokens, Cookies, Client Secrets, JWT private keys, or raw environment-variable values.
 

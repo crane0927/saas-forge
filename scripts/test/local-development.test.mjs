@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
@@ -19,7 +20,23 @@ test("provides one daily interface for setup, frontend, replacement, and restore
       ["local-https-development.sh", "trust-ca"],
     ],
   );
-  assert.deepEqual(localDevelopmentPlan(["frontend"])[0].arguments, ["start"]);
+  for (const operation of ["start", "status", "stop"]) {
+    assert.deepEqual(
+      localDevelopmentPlan(["frontend", operation, "platform"]),
+      [
+        {
+          script: "local-https-development.sh",
+          arguments: [operation, "platform"],
+        },
+      ],
+    );
+  }
+  assert.equal(localDevelopmentPlan(["frontend"]), undefined);
+  assert.equal(localDevelopmentPlan(["frontend", "start"]), undefined);
+  assert.equal(
+    localDevelopmentPlan(["frontend", "start", "platform", "extra"]),
+    undefined,
+  );
   assert.deepEqual(
     localDevelopmentPlan(["replace", "audit-service"])[0].arguments,
     ["replace", "audit-service"],
@@ -53,6 +70,22 @@ test("status and doctor cover all five targets even when one check fails", () =>
   }));
   assert.equal(calls, 5);
   assert.equal(exitCode, 1);
+});
+
+test("rejects incomplete and obsolete frontend CLI invocations with safe usage", () => {
+  const script = new URL("../local-development.sh", import.meta.url).pathname;
+  for (const arguments_ of [
+    ["frontend"],
+    ["frontend", "start"],
+    ["frontend", "start", "platform", "extra"],
+    ["frontend", "start", "unknown"],
+  ]) {
+    const result = spawnSync("bash", [script, ...arguments_], {
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /frontend <start\|status\|stop> platform/u);
+  }
 });
 
 test("the acceptance matrix covers every target and preserves images and volumes", async () => {

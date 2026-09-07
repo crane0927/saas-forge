@@ -77,11 +77,15 @@ Issue #131 将 macOS Docker Desktop 的 Platform Console 与五服务本机替�
 cd ../..
 bash scripts/local-development.sh setup     # 每台机器一次；hosts 与 CA 信任分别要求确认
 bash scripts/local-development.sh doctor    # 可安全分享的完整前置条件诊断
-bash scripts/local-development.sh frontend  # 启动 Vite 5173 与 TLS Edge 443
+bash scripts/local-development.sh frontend start platform   # 显式启动 Platform 与 Edge
+bash scripts/local-development.sh frontend status platform  # 只读查看 Platform 生命周期
+bash scripts/local-development.sh frontend stop platform    # 安全停止 Platform 与未使用的 Edge
 bash scripts/local-development.sh status    # 查看五个服务的当前拓扑
 ```
 
-本地 CA、服务器证书与 Vite 诊断文件都位于 Git 忽略目录。`setup` 在改写 `/etc/hosts`、System Keychain 前分别要求交互式明确授权；日常 `frontend` 不会生成证书、重复安装信任、安装前端依赖或改写 lockfile。为恢复 Docker Desktop 失效的回环端口转发，`frontend` 会强制重建唯一无状态的 TLS Edge 容器；它不重建证书、应用服务、卷或业务数据，但会短暂中断本地 HTTPS 页面。TLS Edge 只发布回环 `443`，只接收 `platform.saasforge.test` 和 `api.saasforge.test`，并将 Platform（含 HMR WebSocket）转发到宿主 Vite `5173`、将 API 转发到 Compose Gateway。它不补造或改写浏览器的 Origin、Cookie、Fetch Metadata 或 Authorization。
+本地 CA、服务器证书、受管 PID 与 Vite 诊断文件都位于 Git 忽略目录。`setup` 在改写 `/etc/hosts`、System Keychain 前分别要求交互式明确授权；日常 `frontend` 不会生成证书、重复安装信任、安装前端依赖、生成 API Client 或改写 lockfile。Platform Vite 使用 strict port 且只监听 `127.0.0.1:5173`；TLS Edge 只发布回环 `443`，只接收 `platform.saasforge.test` 和 `api.saasforge.test`，并原样转发 HMR WebSocket、Origin、Cookie、Fetch Metadata 与 Authorization。
+
+健康且配置哈希、回环端口绑定均兼容的 Edge 会直接复用。Platform PID、进程组、启动时间、仓库目录与包身份必须全部匹配，`RUNNING` 还要求 5173 与正式 HTTPS Host 均就绪。正常停止与重复停止都成功；停止最后一个受管 Console 时只执行 `docker compose stop`，不删除 Edge 容器、应用服务、卷或业务数据。旧 PID 可在身份正确时认领，陈旧 PID 可由变更命令清理；未知 PID、未知 5173/443 监听者始终失败关闭。
 
 `doctor` 会继续检查所有类别，即使其中一项失败。输出使用 `CERTIFICATE_MISSING`、`CERTIFICATE_EXPIRED`、`CERTIFICATE_UNTRUSTED`、`PORT_CONFLICT`、`MIGRATION_FAILED`、`NACOS_UNAVAILABLE`、`SECRET_MISSING`、`INFRASTRUCTURE_UNAVAILABLE`、`DUPLICATE_INSTANCE` 等非敏感分类，并在下一行给出恢复操作；不会显示密码、Token、Cookie、Client Secret、JWT 私钥或原始环境变量值。
 

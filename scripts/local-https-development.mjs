@@ -15,6 +15,8 @@ import process from "node:process";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 
+import { createPlatformLifecycle } from "./frontend-lifecycle.mjs";
+
 const expectedNodeVersion = "24.14.1";
 const expectedPnpmVersion = "11.22.0";
 const certificateValiditySeconds = 24 * 60 * 60;
@@ -51,8 +53,10 @@ export function developmentHttpsPaths(repositoryRoot) {
       "local-service-replacement",
       "api-target.json",
     ),
-    viteLog: path.join(directory, "vite.log"),
-    vitePid: path.join(directory, "vite.pid"),
+    platformLog: path.join(directory, "platform-vite.log"),
+    platformPid: path.join(directory, "platform-vite.pid"),
+    legacyViteLog: path.join(directory, "vite.log"),
+    legacyVitePid: path.join(directory, "vite.pid"),
   };
 }
 
@@ -186,9 +190,10 @@ export function viteDevelopmentCommand(consoleRoot) {
       "dev",
       "--",
       "--host",
-      "0.0.0.0",
+      "127.0.0.1",
       "--port",
       "5173",
+      "--strictPort",
     ],
     cwd: consoleRoot,
   };
@@ -649,53 +654,6 @@ export function doctorToolchain(repositoryRoot, execute = run) {
   };
 }
 
-async function start(repositoryRoot, paths) {
-  if (
-    !(await certificateAuthorityIsUsable(paths)) ||
-    !(await serverCertificateIsUsable(paths))
-  ) {
-    throw new Error("本地证书尚未就绪；请先运行 setup。");
-  }
-  if (!hasExpectedHosts(await readFile("/etc/hosts", "utf8"))) {
-    throw new Error("本地域名尚未就绪；请先运行 hosts。");
-  }
-  await ensureApiTarget(paths.apiTarget);
-  const toolchain = doctorToolchain(repositoryRoot);
-  if (!toolchain.ok)
-    throw new Error(`${toolchain.message} ${toolchain.recovery}`);
-
-  await startVite(repositoryRoot, paths);
-  await waitForVite();
-  startEdge(repositoryRoot, paths);
-  await waitForEdge(paths);
-  console.log("READY: https://platform.saasforge.test");
-}
-
-async function waitForEdge(paths) {
-  const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
-    const edge = run(
-      "curl",
-      [
-        "--fail",
-        "--silent",
-        "--show-error",
-        "--connect-timeout",
-        "2",
-        "--max-time",
-        "5",
-        "--cacert",
-        paths.certificateAuthorityCertificate,
-        "https://platform.saasforge.test/",
-      ],
-      { allowFailure: true },
-    );
-    if (edge.status === 0) return;
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  throw new Error("本地 HTTPS Edge 未在 30 秒内通过受信 TLS 就绪。");
-}
-
 async function ensureApiTarget(targetFile) {
   try {
     await access(targetFile, constants.R_OK);
@@ -706,57 +664,6 @@ async function ensureApiTarget(targetFile) {
       mode: 0o600,
     });
   }
-}
-
-async function startVite(repositoryRoot, paths) {
-  const existingPid = Number.parseInt(
-    await readFile(paths.vitePid, "utf8").catch(() => ""),
-    10,
-  );
-  if (Number.isInteger(existingPid) && processIsAlive(existingPid)) {
-    console.log("VITE: 已在运行，未重复启动。");
-    return;
-  }
-  await rm(paths.vitePid, { force: true });
-  const command = viteDevelopmentCommand(path.join(repositoryRoot, "consoles"));
-  const log = await open(paths.viteLog, "a", 0o600);
-  const child = spawn(command.command, command.args, {
-    cwd: command.cwd,
-    detached: true,
-    env: {
-      ...process.env,
-      COREPACK_ENABLE_NETWORK: "0",
-      PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE: "false",
-    },
-    stdio: ["ignore", log.fd, log.fd],
-  });
-  child.unref();
-  await writeFile(paths.vitePid, `${child.pid}\n`, { mode: 0o600 });
-  await log.close();
-  console.log("VITE: 已以固定端口 5173 启动。");
-}
-
-function processIsAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function waitForVite() {
-  const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
-    const response = await fetch("http://127.0.0.1:5173/", {
-      signal: AbortSignal.timeout(1_000),
-    }).catch(() => undefined);
-    if (response?.ok) return;
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  throw new Error(
-    "Vite 未在 30 秒内就绪；请查看 deploy/compose/.secrets/local-https-development/vite.log。",
-  );
 }
 
 export function edgeStartArguments(repositoryRoot) {
@@ -778,36 +685,379 @@ export function edgeStartArguments(repositoryRoot) {
   ];
 }
 
-function startEdge(repositoryRoot, paths) {
+function edgeComposePrefix(repositoryRoot) {
   const composeDirectory = path.join(repositoryRoot, "deploy", "compose");
-  run("docker", edgeStartArguments(repositoryRoot), {
-    cwd: composeDirectory,
-    env: {
-      ...process.env,
-      SF_LOCAL_HTTPS_CERT: paths.serverCertificate,
-      SF_LOCAL_HTTPS_API_TARGET_FILE: paths.apiTarget,
-      SF_LOCAL_HTTPS_KEY: paths.serverKey,
-      SF_LOCAL_HTTPS_HOST_GID: String(process.getgid?.() ?? os.userInfo().gid),
+  return [
+    "compose",
+    "--project-directory",
+    composeDirectory,
+    "--file",
+    path.join(composeDirectory, "compose.yaml"),
+    "--file",
+    path.join(composeDirectory, "local-https-development.override.yaml"),
+  ];
+}
+
+function edgeEnvironment(paths) {
+  return {
+    ...process.env,
+    SF_LOCAL_HTTPS_CERT: paths.serverCertificate,
+    SF_LOCAL_HTTPS_API_TARGET_FILE: paths.apiTarget,
+    SF_LOCAL_HTTPS_KEY: paths.serverKey,
+    SF_LOCAL_HTTPS_HOST_GID: String(process.getgid?.() ?? os.userInfo().gid),
+  };
+}
+
+function inspectProcess(pid) {
+  const fields = {};
+  for (const [name, format] of [
+    ["pid", "pid="],
+    ["processGroupId", "pgid="],
+    ["startedAt", "lstart="],
+    ["command", "command="],
+  ]) {
+    const result = run("ps", ["-p", String(pid), "-o", format], {
+      allowFailure: true,
+    });
+    if (result.status !== 0 || result.stdout.trim().length === 0)
+      return undefined;
+    fields[name] = result.stdout.trim();
+  }
+  const cwd = run("lsof", ["-a", "-p", String(pid), "-d", "cwd", "-Fn"], {
+    allowFailure: true,
+  })
+    .stdout.split(/\r?\n/u)
+    .find((line) => line.startsWith("n"))
+    ?.slice(1);
+  if (cwd === undefined) return undefined;
+  return {
+    pid: Number.parseInt(fields.pid, 10),
+    processGroupId: Number.parseInt(fields.processGroupId, 10),
+    startedAt: fields.startedAt,
+    command: fields.command,
+    cwd,
+  };
+}
+
+function inspectListener(port) {
+  const result = run(
+    "lsof",
+    ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-FpFn"],
+    { allowFailure: true },
+  );
+  if (result.status !== 0) return undefined;
+  const lines = result.stdout.split(/\r?\n/u);
+  const pid = Number.parseInt(
+    lines.find((line) => line.startsWith("p"))?.slice(1) ?? "",
+    10,
+  );
+  const name = lines.find((line) => line.startsWith("n"))?.slice(1);
+  if (!Number.isSafeInteger(pid) || name === undefined) {
+    return { address: "UNKNOWN", port, processGroupId: undefined };
+  }
+  const owner = inspectProcess(pid);
+  const suffix = `:${port}`;
+  return {
+    address: name.endsWith(suffix) ? name.slice(0, -suffix.length) : name,
+    port,
+    processGroupId: owner?.processGroupId,
+  };
+}
+
+function isHttpsReady(paths) {
+  return (
+    run(
+      "curl",
+      [
+        "--fail",
+        "--silent",
+        "--show-error",
+        "--connect-timeout",
+        "2",
+        "--max-time",
+        "5",
+        "--cacert",
+        paths.certificateAuthorityCertificate,
+        "https://platform.saasforge.test/",
+      ],
+      { allowFailure: true },
+    ).status === 0
+  );
+}
+
+function inspectEdge(repositoryRoot, paths) {
+  const composeDirectory = path.join(repositoryRoot, "deploy", "compose");
+  const prefix = edgeComposePrefix(repositoryRoot);
+  const env = edgeEnvironment(paths);
+  const containerId = run(
+    "docker",
+    [...prefix, "ps", "--all", "--quiet", "local-https-edge"],
+    { allowFailure: true, cwd: composeDirectory, env },
+  );
+  if (containerId.status !== 0) {
+    throw new Error("无法检查共享 HTTPS Edge；请确认 Docker Desktop 可用。");
+  }
+  const id = containerId.stdout.trim();
+  if (id.length === 0)
+    return { exists: false, running: false, compatible: false };
+  const inspection = run("docker", ["inspect", id], { allowFailure: true });
+  if (inspection.status !== 0) {
+    throw new Error("无法读取共享 HTTPS Edge 容器身份。");
+  }
+  let container;
+  try {
+    [container] = JSON.parse(inspection.stdout);
+  } catch {
+    throw new Error("共享 HTTPS Edge 容器状态不可解析。");
+  }
+  const expectedHash = run(
+    "docker",
+    [...prefix, "config", "--hash", "local-https-edge"],
+    { allowFailure: true, cwd: composeDirectory, env },
+  );
+  const hash = expectedHash.stdout.trim().split(/\s+/u).at(-1);
+  const publishedPort = container?.NetworkSettings?.Ports?.["8443/tcp"] ?? [];
+  const health = container?.State?.Health?.Status;
+  return {
+    exists: true,
+    running: container?.State?.Running === true,
+    compatible:
+      expectedHash.status === 0 &&
+      container?.Config?.Labels?.["com.docker.compose.config-hash"] === hash &&
+      publishedPort.some(
+        (binding) =>
+          binding.HostIp === "127.0.0.1" && binding.HostPort === "443",
+      ) &&
+      (health === undefined || health === "healthy"),
+  };
+}
+
+function matchesManagedPlatform(processInfo, record, repositoryRoot) {
+  return (
+    processInfo.pid === record.pid &&
+    processInfo.processGroupId === record.pid &&
+    processInfo.startedAt === record.processStartedAt &&
+    processInfo.cwd === path.join(repositoryRoot, "consoles") &&
+    processInfo.command.includes("@saas-forge/platform-console")
+  );
+}
+
+async function readOptionalFile(file) {
+  try {
+    return await readFile(file, "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
+function createPlatformSystem(repositoryRoot, paths) {
+  const composeDirectory = path.join(repositoryRoot, "deploy", "compose");
+  let edgeCompatibility;
+
+  function compatibleEdge() {
+    const now = Date.now();
+    if (
+      edgeCompatibility !== undefined &&
+      now - edgeCompatibility.checkedAt < 1_000
+    ) {
+      return edgeCompatibility.compatible;
+    }
+    let compatible = false;
+    try {
+      const edge = inspectEdge(repositoryRoot, paths);
+      compatible = edge.running && edge.compatible;
+    } catch {
+      compatible = false;
+    }
+    edgeCompatibility = { checkedAt: now, compatible };
+    return compatible;
+  }
+
+  return {
+    now: () => Date.now(),
+    readPidFile: () => readOptionalFile(paths.platformPid),
+    readLegacyPidFile: () => readOptionalFile(paths.legacyVitePid),
+    inspectProcess: async (pid) => inspectProcess(pid),
+    inspectListener: async (port) => inspectListener(port),
+    isHttpsReady: async () => compatibleEdge() && isHttpsReady(paths),
+    wait: (milliseconds) =>
+      new Promise((resolve) => setTimeout(resolve, milliseconds)),
+    async preflight({ allowManagedPlatform }) {
+      if (
+        !(await certificateAuthorityIsUsable(paths)) ||
+        !(await serverCertificateIsUsable(paths))
+      ) {
+        throw new Error("本地证书尚未就绪；请先运行 setup。");
+      }
+      if (!hasExpectedHosts(await readFile("/etc/hosts", "utf8"))) {
+        throw new Error("本地域名尚未就绪；请先运行 hosts。");
+      }
+      if (!isCertificateAuthorityTrusted()) {
+        throw new Error("本地 CA 尚未受信；请先运行 trust-ca。");
+      }
+      const toolchain = doctorToolchain(repositoryRoot);
+      if (!toolchain.ok)
+        throw new Error(`${toolchain.message} ${toolchain.recovery}`);
+      if (doctorDocker().ok !== true) {
+        throw new Error("Docker Desktop 不可用；请先启动 Docker Desktop。");
+      }
+      if (!allowManagedPlatform && inspectListener(5173) !== undefined) {
+        throw new Error("127.0.0.1:5173 已有未知监听者，拒绝启动。");
+      }
+      const listener = inspectListener(443);
+      if (listener !== undefined) {
+        const edge = inspectEdge(repositoryRoot, paths);
+        if (!edge.running || !edge.compatible) {
+          throw new Error("127.0.0.1:443 已由未知或不兼容的监听者占用。");
+        }
+      }
+      await ensureApiTarget(paths.apiTarget);
     },
+    async spawnPlatform(options) {
+      await mkdir(paths.directory, { recursive: true, mode: 0o700 });
+      await chmod(paths.directory, 0o700);
+      const log = await open(
+        paths.platformLog,
+        options.append ? "a" : "w",
+        options.logMode,
+      );
+      await chmod(paths.platformLog, options.logMode);
+      const command = viteDevelopmentCommand(
+        path.join(repositoryRoot, "consoles"),
+      );
+      let child;
+      try {
+        child = spawn(command.command, command.args, {
+          cwd: command.cwd,
+          detached: true,
+          env: {
+            ...process.env,
+            COREPACK_ENABLE_NETWORK: "0",
+            PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE: "false",
+          },
+          stdio: ["ignore", log.fd, log.fd],
+        });
+        child.unref();
+      } finally {
+        await log.close();
+      }
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        const processInfo = inspectProcess(child.pid);
+        if (processInfo !== undefined) {
+          return { pid: child.pid, processStartedAt: processInfo.startedAt };
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      try {
+        process.kill(-child.pid, "SIGTERM");
+      } catch {
+        // 进程可能已自行退出；此处不能升级为按端口终止。
+      }
+      throw new Error(`Platform 进程启动失败；请查看 ${paths.platformLog}。`);
+    },
+    async writePidFile(value, options) {
+      await writeFile(paths.platformPid, `${value}\n`, options);
+      await chmod(paths.platformPid, options.mode);
+    },
+    removePidFile: () => rm(paths.platformPid, { force: true }),
+    removeLegacyPidFile: () => rm(paths.legacyVitePid, { force: true }),
+    async ensureEdge() {
+      const listener = inspectListener(443);
+      const edge = inspectEdge(repositoryRoot, paths);
+      if (edge.running && edge.compatible && listener !== undefined)
+        return "reused";
+      if (listener !== undefined) {
+        throw new Error("127.0.0.1:443 已由未知或不兼容的监听者占用。");
+      }
+      const env = edgeEnvironment(paths);
+      if (edge.exists && edge.compatible && !edge.running) {
+        run(
+          "docker",
+          [...edgeComposePrefix(repositoryRoot), "start", "local-https-edge"],
+          {
+            cwd: composeDirectory,
+            env,
+          },
+        );
+      } else {
+        run("docker", edgeStartArguments(repositoryRoot), {
+          cwd: composeDirectory,
+          env,
+        });
+      }
+      edgeCompatibility = { checkedAt: Date.now(), compatible: true };
+      return "started";
+    },
+    async terminatePlatform(record, signal) {
+      const processInfo = inspectProcess(record.pid);
+      if (
+        processInfo === undefined ||
+        !matchesManagedPlatform(processInfo, record, repositoryRoot)
+      ) {
+        throw new Error("Platform 进程身份在发送信号前发生变化，拒绝停止。");
+      }
+      process.kill(-record.pid, signal);
+    },
+    async stopEdgeIfUnused() {
+      const edge = inspectEdge(repositoryRoot, paths);
+      if (!edge.exists || !edge.running) return "already-stopped";
+      run(
+        "docker",
+        [...edgeComposePrefix(repositoryRoot), "stop", "local-https-edge"],
+        { cwd: composeDirectory, env: edgeEnvironment(paths) },
+      );
+      edgeCompatibility = { checkedAt: Date.now(), compatible: false };
+      return "stopped";
+    },
+  };
+}
+
+async function runPlatformLifecycle(command, repositoryRoot, paths) {
+  const lifecycle = createPlatformLifecycle({
+    repositoryRoot,
+    system: createPlatformSystem(repositoryRoot, paths),
   });
+  const result = await lifecycle.run(command);
+  console.log(`PLATFORM: ${result.state}`);
+  if (command === "start" && result.state === "RUNNING") {
+    console.log("READY: https://platform.saasforge.test");
+  }
+  process.exitCode = result.exitCode;
 }
 
 function usage() {
   console.error(
-    "用法：bash scripts/local-https-development.sh <setup|hosts|trust-ca|doctor|start>",
+    "用法：bash scripts/local-https-development.sh <start|status|stop> platform\n" +
+      "      bash scripts/local-https-development.sh <setup|hosts|trust-ca|doctor>",
   );
 }
 
-async function main(arguments_) {
-  const [command] = arguments_;
+export function localHttpsDevelopmentCommand(arguments_) {
   if (
-    !["setup", "hosts", "trust-ca", "doctor", "start"].includes(command) ||
-    arguments_.length !== 1
+    arguments_.length === 1 &&
+    ["setup", "hosts", "trust-ca", "doctor"].includes(arguments_[0])
   ) {
+    return { command: arguments_[0] };
+  }
+  if (
+    arguments_.length === 2 &&
+    ["start", "status", "stop"].includes(arguments_[0]) &&
+    arguments_[1] === "platform"
+  ) {
+    return { command: arguments_[0], target: arguments_[1] };
+  }
+  return undefined;
+}
+
+async function main(arguments_) {
+  const request = localHttpsDevelopmentCommand(arguments_);
+  if (request === undefined) {
     usage();
     process.exitCode = 2;
     return;
   }
+  const { command } = request;
   const repositoryRoot = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
     "..",
@@ -835,7 +1085,9 @@ async function main(arguments_) {
         await doctor(repositoryRoot, paths);
         break;
       case "start":
-        await start(repositoryRoot, paths);
+      case "status":
+      case "stop":
+        await runPlatformLifecycle(command, repositoryRoot, paths);
         break;
       default:
         throw new Error("不支持的命令。");

@@ -12,6 +12,7 @@ import {
   doctorToolchain,
   ensureCertificateMaterial,
   hasExpectedHosts,
+  localHttpsDevelopmentCommand,
   viteDevelopmentCommand,
 } from '../../scripts/local-https-development.mjs';
 import {
@@ -154,16 +155,39 @@ test('recognizes the idempotent local hosts entry and fixes Vite to the Edge-fac
   assert.equal(hasExpectedHosts('127.0.0.1 platform.saasforge.test\n'), false);
 
   const command = viteDevelopmentCommand('/workspace/consoles');
-  assert.deepEqual(command.args.slice(-7), [
+  assert.deepEqual(command.args.slice(-8), [
     'run',
     'dev',
     '--',
     '--host',
-    '0.0.0.0',
+    '127.0.0.1',
     '--port',
     '5173',
+    '--strictPort',
   ]);
   assert.equal(command.args.includes('install'), false);
+});
+
+test('keeps the managed Platform PID and log separate from legacy diagnostics', () => {
+  const paths = developmentHttpsPaths('/workspace');
+  assert.match(paths.platformPid, /\/platform-vite\.pid$/u);
+  assert.match(paths.platformLog, /\/platform-vite\.log$/u);
+  assert.match(paths.legacyVitePid, /\/vite\.pid$/u);
+  assert.match(paths.legacyViteLog, /\/vite\.log$/u);
+  assert.notEqual(paths.platformPid, paths.legacyVitePid);
+  assert.notEqual(paths.platformLog, paths.legacyViteLog);
+});
+
+test('requires an explicit operation and Platform target for lifecycle commands', () => {
+  for (const operation of ['start', 'status', 'stop']) {
+    assert.deepEqual(localHttpsDevelopmentCommand([operation, 'platform']), {
+      command: operation,
+      target: 'platform',
+    });
+  }
+  assert.equal(localHttpsDevelopmentCommand(['start']), undefined);
+  assert.equal(localHttpsDevelopmentCommand(['start', 'platform', 'extra']), undefined);
+  assert.equal(localHttpsDevelopmentCommand(['start', 'tenant']), undefined);
 });
 
 test('pins the Vite dependency layout and rejects an incompatible installed workspace', async () => {

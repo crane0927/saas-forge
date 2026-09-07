@@ -33,7 +33,7 @@ assert_platform_https_edge() {
     --cacert "$local_https_certificate_authority" \
     --output /dev/null \
     https://platform.saasforge.test/; then
-    echo "本机 HTTPS Edge 无法通过受信 TLS 访问 Platform；请先运行 bash scripts/local-https-development.sh start 后重试。" >&2
+    echo "本机 HTTPS Edge 无法通过受信 TLS 访问 Platform；请先运行 bash scripts/local-development.sh frontend start platform 后重试。" >&2
     exit 1
   fi
 }

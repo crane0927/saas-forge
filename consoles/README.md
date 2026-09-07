@@ -62,14 +62,18 @@ pnpm --filter @saas-forge/design-system run dev:showcase
 在 macOS Docker Desktop 上日常开发 Platform Console 时，从仓库根目录依次执行：
 
 ```bash
-bash scripts/local-https-development.sh setup
-bash scripts/local-https-development.sh hosts
-bash scripts/local-https-development.sh trust-ca
-bash scripts/local-https-development.sh doctor
-bash scripts/local-https-development.sh start
+bash scripts/local-development.sh setup
+bash scripts/local-development.sh doctor
+bash scripts/local-development.sh frontend start platform
+bash scripts/local-development.sh frontend status platform
+bash scripts/local-development.sh frontend stop platform
 ```
 
-`setup` 只创建或复用 Git 忽略的本地 CA 和同时覆盖 `platform.saasforge.test`、`api.saasforge.test` 的服务器证书。`hosts` 与 `trust-ca` 会说明对 `/etc/hosts` 或 macOS System Keychain 的影响，并要求在交互终端输入明确授权；不会由 `start` 隐式执行。`start` 使用固定 Node `24.14.1`、pnpm `11.22.0` 与端口 `5173` 启动 Platform Vite，再由 Docker TLS Edge 在 `127.0.0.1:443` 提供 `https://platform.saasforge.test`。它不安装依赖或改写 lockfile。
+`setup` 只创建或复用 Git 忽略的本地 CA 和同时覆盖 `platform.saasforge.test`、`api.saasforge.test` 的服务器证书。hosts 与 Keychain 信任变更会分别说明影响并要求交互式明确授权；不会由日常 `frontend` 命令隐式执行。`frontend` 必须同时提供操作和 `platform` 目标，旧的无参数形式会返回非零退出码和安全用法。
+
+`start` 使用固定 Node `24.14.1`、pnpm `11.22.0`，以 strict port 将 Platform Vite 仅绑定到 `127.0.0.1:5173`，再由共享 Docker TLS Edge 提供 `https://platform.saasforge.test`。启动前只读检查证书、hosts、CA 信任、工具链、既有依赖和端口；不会安装依赖、生成 API Client、修改系统配置或启动后端。健康且配置兼容的 Edge 会直接复用。
+
+Platform 使用 Git 忽略目录中的独立 0600 PID 与追加日志。`status` 可报告 `RUNNING`、`STOPPED`、`STARTING`、`STALE`、`UNMANAGED` 或 `UNREADY`；`stop` 只向当前仓库且身份匹配的 Platform 进程发送 `SIGTERM`，最后停止未再使用的 Edge，但不删除容器、后端服务或数据卷。旧 `vite.pid` 仅在身份匹配时认领，旧日志保留；未知 PID 或 5173 监听者不会收到信号。
 
 该入口目前只覆盖 Platform 和 API Host：Edge 将 Platform 的 HTTP 与 HMR WebSocket 转发至宿主 Vite，将 API 转发至 Compose Gateway，并原样保留 Origin、Cookie、Fetch Metadata 与 Authorization。Tenant Console 不属于本 Issue 的日常入口范围；实际账户、Gateway 与 Compose 环境仍须先准备就绪。
 
