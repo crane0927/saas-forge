@@ -1,21 +1,44 @@
 import { createRuntimeConfigBootstrap, type RuntimeConfigResult } from '@saas-forge/app-runtime';
-import { DesignSystemProvider } from '@saas-forge/design-system';
-import { ConsoleLocaleProvider, useConsoleLocale } from '@saas-forge/react-shell';
+import {
+  platformResolvedBrandProfile,
+  tenantConsolePlatformTitle,
+  type BrandAssetPreloader,
+} from '@saas-forge/design-system';
+import {
+  BrandApplicationProvider,
+  ConsoleLocaleProvider,
+  useConsoleLocale,
+} from '@saas-forge/react-shell';
 import { cleanup, fireEvent, render as renderReact, screen, waitFor } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { TenantConsoleShellApp, type TenantConsoleRootProps } from '../src/app';
+import {
+  TenantConsoleShellApp as TenantConsoleShellAppUnderTest,
+  type TenantConsoleRootProps,
+} from '../src/app';
 
 afterEach(cleanup);
 beforeEach(() => {
   window.history.replaceState({}, '', '/');
 });
 
-function TenantConsoleTestRoot({ children, tenantBrand }: TenantConsoleRootProps) {
+const successfulBrandAssetPreloader: BrandAssetPreloader = ({ kind }) =>
+  Promise.resolve({ loaded: true, mimeType: kind === 'logo' ? 'image/svg+xml' : 'image/png' });
+
+function TenantConsoleShellApp(props: ComponentProps<typeof TenantConsoleShellAppUnderTest>) {
+  return (
+    <TenantConsoleShellAppUnderTest
+      brandAssetPreloader={successfulBrandAssetPreloader}
+      {...props}
+    />
+  );
+}
+
+function TenantConsoleTestRoot({ children, resolvedBrand }: TenantConsoleRootProps) {
   const { locale, setLocale } = useConsoleLocale();
   return (
-    <DesignSystemProvider locale={locale} tenantBrand={tenantBrand}>
+    <BrandApplicationProvider resolvedBrand={resolvedBrand} surface="tenant" locale={locale}>
       <button
         type="button"
         onClick={() => {
@@ -25,7 +48,7 @@ function TenantConsoleTestRoot({ children, tenantBrand }: TenantConsoleRootProps
         切换为英文
       </button>
       {children}
-    </DesignSystemProvider>
+    </BrandApplicationProvider>
   );
 }
 
@@ -36,7 +59,133 @@ function render(ui: ReactNode, initialLocale: 'zh-CN' | 'en-US' = 'zh-CN') {
 }
 
 describe('TenantConsoleShellApp', () => {
-  it('applies and removes the Tenant favicon when the production document has no initial icon', async () => {
+  it('uses the complete Platform brand before an authoritative Tenant Context exists', async () => {
+    render(
+      <TenantConsoleShellApp
+        root={TenantConsoleTestRoot}
+        bootstrap={createRuntimeConfigBootstrap(() => Promise.resolve(success()))}
+        authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
+        realm={{}}
+      />,
+    );
+
+    expect(await screen.findByRole('heading', { name: '登录 SaaS Forge' })).toBeTruthy();
+    expect(screen.getByRole('img', { name: 'SaaS Forge Logo' }).getAttribute('src')).toBe(
+      platformResolvedBrandProfile.profile.logoUrl,
+    );
+    expect(document.title).toBe(tenantConsolePlatformTitle);
+    expect(document.querySelector('link[rel~="icon"]')?.getAttribute('href')).toBe(
+      platformResolvedBrandProfile.profile.faviconUrl,
+    );
+  });
+
+  it('atomically applies a complete Tenant brand after both assets are ready', async () => {
+    const membership = {
+      membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6070',
+      tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6072',
+      tenantDisplayName: 'Current Tenant',
+    };
+    const finishAssetLoads: Array<(result: Awaited<ReturnType<BrandAssetPreloader>>) => void> = [];
+    const preloadAsset = vi.fn<BrandAssetPreloader>(
+      () =>
+        new Promise((resolve) => {
+          finishAssetLoads.push(resolve);
+        }),
+    );
+
+    render(
+      <TenantConsoleShellApp
+        root={TenantConsoleTestRoot}
+        bootstrap={createRuntimeConfigBootstrap(() => Promise.resolve(success()))}
+        authenticationFetch={() =>
+          Promise.resolve(
+            tenantAccessToken('current-token', membership, [membership], {
+              displayName: 'Current Brand',
+              logoUrl: '/brands/current-logo.svg',
+              faviconUrl: '/brands/current-favicon.svg',
+              primaryColor: '#155EEF',
+              accentColor: '#7A5AF8',
+            }),
+          )
+        }
+        brandAssetPreloader={preloadAsset}
+        realm={{}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(preloadAsset).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.getByRole('navigation', { name: 'SaaS Forge 全局导航' })).toBeTruthy();
+    expect(screen.queryByText('Current Brand')).toBeNull();
+    expect(document.title).toBe(tenantConsolePlatformTitle);
+
+    for (const [index, finish] of finishAssetLoads.entries()) {
+      const kind = preloadAsset.mock.calls[index]?.[0].kind;
+      finish({ loaded: true, mimeType: kind === 'logo' ? 'image/svg+xml' : 'image/png' });
+    }
+
+    expect(await screen.findByText('Current Brand')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Tenant 工作台' })).toBeTruthy();
+    expect(screen.getByRole('img', { name: 'Current Brand Logo' }).getAttribute('src')).toBe(
+      '/brands/current-logo.svg',
+    );
+    expect(document.title).toBe('Current Brand · SaaS Forge Tenant Console');
+    expect(document.querySelector('link[rel~="icon"]')?.getAttribute('href')).toBe(
+      '/brands/current-favicon.svg',
+    );
+    const root = document.querySelector('.sf-design-system-root');
+    expect(root?.getAttribute('data-brand')).toBe('tenant');
+    expect(root?.getAttribute('style')).toContain('--sf-color-primary: #155EEF');
+    expect(preloadAsset.mock.calls.map(([request]) => `${request.kind}:${request.url}`)).toEqual([
+      'logo:/brands/current-logo.svg',
+      'favicon:/brands/current-favicon.svg',
+    ]);
+  });
+
+  it('rejects an incomplete Tenant brand without ending its authenticated context', async () => {
+    const membership = {
+      membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6070',
+      tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6072',
+      tenantDisplayName: 'Current Tenant',
+    };
+    const onBrandRejected = vi.fn();
+
+    render(
+      <TenantConsoleShellApp
+        root={TenantConsoleTestRoot}
+        bootstrap={createRuntimeConfigBootstrap(() => Promise.resolve(success()))}
+        authenticationFetch={() =>
+          Promise.resolve(
+            tenantAccessToken('current-token', membership, [membership], {
+              displayName: 'Must Not Leak',
+              logoUrl: undefined,
+              faviconUrl: '/brands/rejected-favicon.svg',
+              primaryColor: '#155EEF',
+              accentColor: '#7A5AF8',
+            }),
+          )
+        }
+        onBrandRejected={onBrandRejected}
+        realm={{}}
+      />,
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Tenant 工作台' })).toBeTruthy();
+    expect(screen.getByRole('navigation', { name: 'SaaS Forge 全局导航' })).toBeTruthy();
+    expect(screen.queryByText('Must Not Leak')).toBeNull();
+    expect(screen.getByRole('img', { name: 'SaaS Forge Logo' }).getAttribute('src')).toBe(
+      platformResolvedBrandProfile.profile.logoUrl,
+    );
+    expect(document.title).toBe(tenantConsolePlatformTitle);
+    expect(document.querySelector('.sf-design-system-root')?.getAttribute('data-brand')).toBe(
+      'platform',
+    );
+    expect(onBrandRejected).toHaveBeenCalledOnce();
+    expect(onBrandRejected).toHaveBeenCalledWith('PROFILE_INVALID');
+  });
+
+  it('replaces the Tenant favicon with the Platform favicon after logout', async () => {
     expect(document.querySelector('link[rel~="icon"]')).toBeNull();
     const membership = {
       membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6070',
@@ -67,8 +216,10 @@ describe('TenantConsoleShellApp', () => {
       '/brands/current-favicon.svg',
     );
     fireEvent.click(screen.getByRole('button', { name: '退出登录' }));
-    expect(await screen.findByRole('heading', { name: '登录 Tenant Console' })).toBeTruthy();
-    expect(document.querySelector('link[rel~="icon"]')).toBeNull();
+    expect(await screen.findByRole('heading', { name: '登录 SaaS Forge' })).toBeTruthy();
+    expect(document.querySelector('link[rel~="icon"]')?.getAttribute('href')).toBe(
+      platformResolvedBrandProfile.profile.faviconUrl,
+    );
   });
 
   it('switches Tenant context, brand, and favicon only after the committed refresh succeeds', async () => {
@@ -95,6 +246,7 @@ describe('TenantConsoleShellApp', () => {
           [currentMembership, targetMembership],
           {
             displayName: 'Current Brand',
+            logoUrl: '/brands/current-logo.svg',
             faviconUrl: '/brands/current-favicon.svg',
             primaryColor: '#155EEF',
             accentColor: '#7A5AF8',
@@ -106,6 +258,7 @@ describe('TenantConsoleShellApp', () => {
       .mockResolvedValueOnce(
         tenantAccessToken('target-token', targetMembership, [currentMembership, targetMembership], {
           displayName: 'Target Brand',
+          logoUrl: '/brands/target-logo.svg',
           faviconUrl: '/brands/target-favicon.svg',
           primaryColor: '#7C3AED',
           accentColor: '#C026D3',
@@ -130,10 +283,21 @@ describe('TenantConsoleShellApp', () => {
     expect(screen.queryByRole('navigation')).toBeNull();
     expect(screen.queryByRole('heading', { name: 'Tenant 工作台' })).toBeNull();
     expect(await screen.findByText('错误代码：REFRESH_LEASE_BUSY')).toBeTruthy();
+    expect(screen.getByRole('img', { name: 'SaaS Forge Logo' }).getAttribute('src')).toBe(
+      platformResolvedBrandProfile.profile.logoUrl,
+    );
+    expect(initialIcon.getAttribute('href')).toBe(platformResolvedBrandProfile.profile.faviconUrl);
+    expect(document.title).toBe(tenantConsolePlatformTitle);
+    expect(document.querySelector('.sf-design-system-root')?.getAttribute('data-brand')).toBe(
+      'platform',
+    );
     fireEvent.click(screen.getByRole('button', { name: '重试完成切换' }));
 
     expect(await screen.findByText('Target Brand')).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Tenant 工作台' })).toBeTruthy();
+    expect(screen.getByRole('img', { name: 'Target Brand Logo' }).getAttribute('src')).toBe(
+      '/brands/target-logo.svg',
+    );
     await waitFor(() => {
       expect(initialIcon.getAttribute('href')).toBe('/brands/target-favicon.svg');
     });
@@ -187,8 +351,9 @@ describe('TenantConsoleShellApp', () => {
 
     expect(await screen.findByText('Tenant switch rejected')).toBeTruthy();
     expect(screen.getByText('Error code: TENANT_CONTEXT_SWITCH_REJECTED')).toBeTruthy();
-    expect(screen.getByText('Current Brand')).toBeTruthy();
-    expect(screen.getByRole('navigation')).toBeTruthy();
+    expect(
+      screen.getByRole('navigation', { name: 'Current Brand global navigation' }),
+    ).toBeTruthy();
   });
 
   it('keeps the unknown switch retry target and sends no request when Locale changes', async () => {
@@ -239,7 +404,7 @@ describe('TenantConsoleShellApp', () => {
 
     expect(screen.getByText('Tenant switch result unknown')).toBeTruthy();
     expect(screen.getByRole('button', { name: /Retry switching to Target Tenant/ })).toBeTruthy();
-    expect(screen.getByText('Current Tenant')).toBeTruthy();
+    expect(screen.getAllByText('Current Tenant')).not.toHaveLength(0);
     expect(authenticationFetch).toHaveBeenCalledTimes(requestCountBeforeLocaleChange);
   });
 
@@ -286,7 +451,7 @@ describe('TenantConsoleShellApp', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Switch Tenant' }));
     fireEvent.click(screen.getByRole('button', { name: 'Switch to Target Tenant' }));
 
-    expect(await screen.findByRole('heading', { name: 'Sign in to Tenant Console' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Sign in to SaaS Forge' })).toBeTruthy();
     expect(screen.getByText('Tenant session ended')).toBeTruthy();
     expect(screen.queryByRole('navigation')).toBeNull();
   });
@@ -358,7 +523,7 @@ describe('TenantConsoleShellApp', () => {
       ),
     ).toBeTruthy();
     expect(screen.getByText('Error code: ACCESS_CONTEXT_UNAVAILABLE')).toBeTruthy();
-    expect(screen.getByRole('form', { name: 'Sign in to Tenant Console' })).toBeTruthy();
+    expect(screen.getByRole('form', { name: 'Sign in to SaaS Forge' })).toBeTruthy();
     expect(screen.queryByRole('navigation')).toBeNull();
   });
 
@@ -387,7 +552,7 @@ describe('TenantConsoleShellApp', () => {
       await screen.findByText('Accessible Membership 数量超过当前选择上限，请联系平台管理员。'),
     ).toBeTruthy();
     expect(screen.getByText('错误代码：ACCESSIBLE_MEMBERSHIP_LIMIT_EXCEEDED')).toBeTruthy();
-    expect(screen.getByRole('form', { name: '登录 Tenant Console' })).toBeTruthy();
+    expect(screen.getByRole('form', { name: '登录 SaaS Forge' })).toBeTruthy();
     expect(screen.queryByRole('navigation')).toBeNull();
   });
 
@@ -416,7 +581,7 @@ describe('TenantConsoleShellApp', () => {
     expect(await screen.findByText('当前 Tenant 会话槽位已有活动会话。')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '先登出当前 Tenant 会话' }));
 
-    expect(await screen.findByRole('heading', { name: '登录 Tenant Console' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '登录 SaaS Forge' })).toBeTruthy();
     expect(authenticationFetch.mock.calls[2]?.[0]).toBe(
       'https://api.example.test/api/v1/auth/logout',
     );
@@ -450,7 +615,7 @@ describe('TenantConsoleShellApp', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '退出登录' }));
 
-    expect(await screen.findByRole('heading', { name: '登录 Tenant Console' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '登录 SaaS Forge' })).toBeTruthy();
     expect(jsonRequestBody(authenticationFetch.mock.calls[1])).toEqual({ sessionSlot: 'TENANT' });
   });
 
@@ -466,8 +631,8 @@ describe('TenantConsoleShellApp', () => {
       />,
     );
 
-    expect(screen.getByRole('heading', { name: '正在启动 Tenant Console' })).toBeTruthy();
-    expect(await screen.findByRole('heading', { name: '登录 Tenant Console' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '正在启动 SaaS Forge' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '登录 SaaS Forge' })).toBeTruthy();
     expect(loader).toHaveBeenCalledOnce();
   });
 
@@ -488,14 +653,14 @@ describe('TenantConsoleShellApp', () => {
     );
 
     expect(
-      await screen.findByRole('heading', { name: 'Tenant Console configuration is unavailable' }),
+      await screen.findByRole('heading', { name: 'SaaS Forge configuration is unavailable' }),
     ).toBeTruthy();
     expect(screen.getByText('CONFIG_UNAVAILABLE')).toBeTruthy();
     expect(loader).toHaveBeenCalledOnce();
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
 
-    expect(await screen.findByRole('heading', { name: 'Sign in to Tenant Console' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Sign in to SaaS Forge' })).toBeTruthy();
     expect(loader).toHaveBeenCalledTimes(2);
   });
 });
@@ -545,6 +710,7 @@ function tenantAccessToken(
   }[],
   brandProfile: {
     readonly displayName: string;
+    readonly logoUrl?: string;
     readonly faviconUrl: string;
     readonly primaryColor: string;
     readonly accentColor: string;
@@ -558,7 +724,7 @@ function tenantAccessToken(
     tenantContext: {
       ...currentMembership,
       accessibleMemberships,
-      brandProfile,
+      brandProfile: { logoUrl: '/brands/test-logo.svg', ...brandProfile },
     },
   });
 }

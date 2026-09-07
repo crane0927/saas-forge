@@ -1,6 +1,6 @@
-import { DesignSystemProvider } from '@saas-forge/design-system';
 import {
   AuthenticationRootErrorBoundary,
+  BrandApplicationProvider,
   ConsoleLocaleProvider,
   ConsoleLocaleSelector,
   resolveInitialConsoleLocale,
@@ -10,13 +10,15 @@ import { createRoot } from 'react-dom/client';
 
 import { TenantConsoleShellApp, type TenantConsoleRootProps } from './app';
 
-function TenantConsoleRoot({ children, tenantBrand }: TenantConsoleRootProps) {
+function TenantConsoleRoot({ children, resolvedBrand }: TenantConsoleRootProps) {
   const { locale } = useConsoleLocale();
   return (
-    <DesignSystemProvider locale={locale} tenantBrand={tenantBrand}>
-      <ConsoleLocaleSelector />
-      {children}
-    </DesignSystemProvider>
+    <BrandApplicationProvider resolvedBrand={resolvedBrand} surface="tenant" locale={locale}>
+      <AuthenticationRootErrorBoundary applicationName="SaaS Forge" locale={locale}>
+        <ConsoleLocaleSelector />
+        {children}
+      </AuthenticationRootErrorBoundary>
+    </BrandApplicationProvider>
   );
 }
 
@@ -37,11 +39,5 @@ createRoot(rootElement, {
 );
 
 function TenantConsoleEntry() {
-  const { locale } = useConsoleLocale();
-
-  return (
-    <AuthenticationRootErrorBoundary applicationName="Tenant Console" locale={locale}>
-      <TenantConsoleShellApp root={TenantConsoleRoot} />
-    </AuthenticationRootErrorBoundary>
-  );
+  return <TenantConsoleShellApp root={TenantConsoleRoot} />;
 }

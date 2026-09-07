@@ -198,7 +198,7 @@ async function createBoundaryWorkspace() {
       name: '@saas-forge/platform-console',
       dependencies: { '@saas-forge/design-system': 'workspace:*' },
     },
-    { 'src/main.tsx': '<DesignSystemProvider><App /></DesignSystemProvider>\n' },
+    { 'src/main.tsx': '<BrandApplicationProvider><App /></BrandApplicationProvider>\n' },
   );
   await writePackage(
     workspaceRoot,
@@ -207,7 +207,7 @@ async function createBoundaryWorkspace() {
       name: '@saas-forge/tenant-console-shell',
       dependencies: { '@saas-forge/design-system': 'workspace:*' },
     },
-    { 'src/main.tsx': '<DesignSystemProvider><App /></DesignSystemProvider>\n' },
+    { 'src/main.tsx': '<BrandApplicationProvider><App /></BrandApplicationProvider>\n' },
   );
   await writePackage(
     workspaceRoot,

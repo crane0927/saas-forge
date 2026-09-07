@@ -221,7 +221,9 @@ async function discoverConsumers(root) {
       runtimeRoots: ['src'],
       providerEntry: 'src/main.tsx',
       requiredProvider:
-        entry.name === 'platform-console' ? 'BrandApplicationProvider' : 'DesignSystemProvider',
+        entry.name === 'platform-console' || entry.name === 'tenant-console-shell'
+          ? 'BrandApplicationProvider'
+          : 'DesignSystemProvider',
     });
   }
 

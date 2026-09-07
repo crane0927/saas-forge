@@ -8,13 +8,21 @@ import {
   type RuntimeConfigBootstrap,
 } from '@saas-forge/app-runtime';
 import {
-  ApplicationLoading,
-  ConfigurationFailure,
-  type TenantBrandProfile,
+  platformResolvedBrandProfile,
+  resolveBrandProfile,
+  type BrandAssetPreloader,
+  type BrandRejectionReasonCode,
+  type ResolvedBrandProfile,
 } from '@saas-forge/design-system';
-import { AuthenticationShell, useConsoleLocale } from '@saas-forge/react-shell';
+import {
+  AuthenticationShell,
+  BrandApplicationLoading,
+  BrandConfigurationFailure,
+  useConsoleLocale,
+} from '@saas-forge/react-shell';
 import {
   useEffect,
+  useEffectEvent,
   useMemo,
   useState,
   useSyncExternalStore,
@@ -29,12 +37,14 @@ interface TenantConsoleShellAppProps {
   readonly bootstrap?: RuntimeConfigBootstrap;
   readonly authenticationFetch?: AuthenticationFetch;
   readonly realm?: object;
+  readonly brandAssetPreloader?: BrandAssetPreloader;
+  readonly onBrandRejected?: (reason: BrandRejectionReasonCode) => void;
   readonly root: ComponentType<TenantConsoleRootProps>;
 }
 
 export interface TenantConsoleRootProps {
   readonly children: ReactNode;
-  readonly tenantBrand?: TenantBrandProfile;
+  readonly resolvedBrand: ResolvedBrandProfile;
 }
 
 const defaultBootstrap = createRuntimeConfigBootstrap();
@@ -46,6 +56,8 @@ export function TenantConsoleShellApp({
   bootstrap = defaultBootstrap,
   authenticationFetch = defaultAuthenticationFetch,
   realm = defaultRealm,
+  brandAssetPreloader,
+  onBrandRejected,
   root,
 }: TenantConsoleShellAppProps) {
   const state = useSyncExternalStore(
@@ -63,6 +75,8 @@ export function TenantConsoleShellApp({
       state={state}
       authenticationFetch={authenticationFetch}
       realm={realm}
+      brandAssetPreloader={brandAssetPreloader}
+      onBrandRejected={onBrandRejected}
       root={root}
     />
   );
@@ -73,12 +87,16 @@ function BootstrapSurface({
   state,
   authenticationFetch,
   realm,
+  brandAssetPreloader,
+  onBrandRejected,
   root: Root,
 }: {
   readonly bootstrap: RuntimeConfigBootstrap;
   readonly state: BootstrapState;
   readonly authenticationFetch: AuthenticationFetch;
   readonly realm: object;
+  readonly brandAssetPreloader?: BrandAssetPreloader;
+  readonly onBrandRejected?: (reason: BrandRejectionReasonCode) => void;
   readonly root: ComponentType<TenantConsoleRootProps>;
 }) {
   if (state.status === 'ready') {
@@ -88,6 +106,8 @@ function BootstrapSurface({
           config={state.config}
           authenticationFetch={authenticationFetch}
           realm={realm}
+          brandAssetPreloader={brandAssetPreloader}
+          onBrandRejected={onBrandRejected}
           root={Root}
         />
       </BrowserRouter>
@@ -96,9 +116,8 @@ function BootstrapSurface({
 
   if (state.status === 'failed') {
     return (
-      <Root>
-        <ConfigurationFailure
-          applicationName="Tenant Console"
+      <Root resolvedBrand={platformResolvedBrandProfile}>
+        <BrandConfigurationFailure
           errorCode={state.error.code}
           onRetry={() => void bootstrap.retry()}
         />
@@ -107,8 +126,8 @@ function BootstrapSurface({
   }
 
   return (
-    <Root>
-      <ApplicationLoading applicationName="Tenant Console" />
+    <Root resolvedBrand={platformResolvedBrandProfile}>
+      <BrandApplicationLoading />
     </Root>
   );
 }
@@ -117,11 +136,15 @@ function TenantAuthenticationPath({
   config,
   authenticationFetch,
   realm,
+  brandAssetPreloader,
+  onBrandRejected,
   root: Root,
 }: {
   readonly config: RuntimeConfig;
   readonly authenticationFetch: AuthenticationFetch;
   readonly realm: object;
+  readonly brandAssetPreloader?: BrandAssetPreloader;
+  readonly onBrandRejected?: (reason: BrandRejectionReasonCode) => void;
   readonly root: ComponentType<TenantConsoleRootProps>;
 }) {
   const [runtimeResult] = useState(() =>
@@ -132,9 +155,8 @@ function TenantAuthenticationPath({
   );
   if (!runtimeResult.ok) {
     return (
-      <Root>
-        <ConfigurationFailure
-          applicationName="Tenant Console"
+      <Root resolvedBrand={platformResolvedBrandProfile}>
+        <BrandConfigurationFailure
           errorCode={runtimeResult.error.code}
           onRetry={() => {
             window.location.reload();
@@ -143,14 +165,25 @@ function TenantAuthenticationPath({
       </Root>
     );
   }
-  return <TenantRuntimeSurface runtime={runtimeResult.runtime} root={Root} />;
+  return (
+    <TenantRuntimeSurface
+      runtime={runtimeResult.runtime}
+      brandAssetPreloader={brandAssetPreloader}
+      onBrandRejected={onBrandRejected}
+      root={Root}
+    />
+  );
 }
 
 function TenantRuntimeSurface({
   runtime,
+  brandAssetPreloader,
+  onBrandRejected,
   root: Root,
 }: {
   readonly runtime: AuthenticationRuntime;
+  readonly brandAssetPreloader?: BrandAssetPreloader;
+  readonly onBrandRejected?: (reason: BrandRejectionReasonCode) => void;
   readonly root: ComponentType<TenantConsoleRootProps>;
 }) {
   const { locale } = useConsoleLocale();
@@ -161,35 +194,44 @@ function TenantRuntimeSurface({
   );
   const tenantContext = state.status === 'authenticated' ? state.tenantContext : undefined;
   const brandProfile = tenantContext?.brandProfile;
+  const [resolved, setResolved] = useState<{
+    readonly input: typeof brandProfile;
+    readonly brand: ResolvedBrandProfile;
+  }>();
+  const reportBrandRejection = useEffectEvent((reason: BrandRejectionReasonCode) => {
+    onBrandRejected?.(reason);
+  });
 
   useEffect(() => {
-    if (brandProfile?.faviconUrl === undefined) return;
-    const existingIcon = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
-    const icon = existingIcon ?? document.createElement('link');
-    const originalHref = icon.getAttribute('href');
-    icon.setAttribute('href', brandProfile.faviconUrl);
-    // 默认生产 HTML 没有图标；仅在会话携带品牌时创建，退出或切换时恢复宿主原状。
-    if (existingIcon === null) {
-      icon.rel = 'icon';
-      document.head.append(icon);
-    }
+    if (brandProfile === undefined) return;
+    const controller = new AbortController();
+    let current = true;
+    void resolveBrandProfile(brandProfile, {
+      signal: controller.signal,
+      isCurrent: () => current,
+      onRejected: (reason) => {
+        if (current) reportBrandRejection(reason);
+      },
+      ...(brandAssetPreloader === undefined ? {} : { preloadAsset: brandAssetPreloader }),
+    }).then((resolution) => {
+      if (!current) return;
+      setResolved({ input: brandProfile, brand: resolution.resolvedBrand });
+    });
     return () => {
-      if (existingIcon === null) icon.remove();
-      else if (originalHref === null) icon.removeAttribute('href');
-      else icon.setAttribute('href', originalHref);
+      current = false;
+      controller.abort();
     };
-  }, [brandProfile?.faviconUrl]);
+  }, [brandAssetPreloader, brandProfile]);
+
+  const resolutionPending = brandProfile !== undefined && resolved?.input !== brandProfile;
+  const resolvedBrand =
+    brandProfile === undefined || resolutionPending
+      ? platformResolvedBrandProfile
+      : (resolved?.brand ?? platformResolvedBrandProfile);
 
   return (
-    <Root tenantBrand={brandProfile}>
-      <AuthenticationShell
-        applicationName={
-          brandProfile?.displayName ?? tenantContext?.tenantDisplayName ?? 'Tenant Console'
-        }
-        runtime={runtime}
-        defaultPath="/"
-        routes={routes}
-      />
+    <Root resolvedBrand={resolvedBrand}>
+      <AuthenticationShell runtime={runtime} defaultPath="/" routes={routes} />
     </Root>
   );
 }
