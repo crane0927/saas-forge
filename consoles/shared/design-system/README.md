@@ -4,6 +4,7 @@ SaaS Forge 浏览器界面的唯一公共 Design System 包。当前公共根入
 
 - `DesignSystemProvider`：安装唯一 Ant Design Theme Provider，默认跟随系统浅色/深色主题，并应用受控 Locale 与 Tenant 品牌；
 - `semanticTokens`：唯一平台主色、浅色/深色表面、固定状态色、系统字体与 `4px` 级间距；
+- `resolveBrandProfile`：异步生成唯一且不可变的完整 Resolved Brand Profile；Tenant 结构、颜色或素材失败时返回完整 Platform 品牌与稳定原因码；
 - `resolveTenantBrandProfile`：同时解析浅色与深色品牌颜色和前景色，任一输入不合法时原子拒绝；
 - `RouteFocusAnnouncement`：路由切换后聚焦新页面主标题并通知读屏软件；
 - `ApplicationLoading`：应用首次启动和部署配置加载状态；
@@ -23,6 +24,8 @@ SaaS Forge 浏览器界面的唯一公共 Design System 包。当前公共根入
 - `ServerTable`：提供服务端分页、单列排序、当前页逐行选择、固定操作列与危险菜单边界。
 
 消费者只能从 `@saas-forge/design-system` 根入口导入，不得导入 `antd`、本包内部文件或额外全局样式。缺少公共能力时先扩展本包，再升级消费者；不复制等价组件作为临时实现。
+
+Tenant Logo 与 favicon 仅接受无查询、无片段的 `/brands/` 根相对引用。解析器并行加载两项素材，限制同站凭据并禁止重定向；Logo 允许 `image/png`、`image/svg+xml`、`image/webp`，favicon 允许 `image/png`、`image/svg+xml`、`image/x-icon`、`image/vnd.microsoft.icon`。两项图片都解码成功后才接受整份 Tenant Profile。调用方可通过 `AbortSignal` 或页面当前性检查丢弃取消、卸载或迟到结果；拒绝回调只接收稳定原因码。
 
 ## 缺少公共能力时的贡献路径
 
@@ -46,4 +49,4 @@ pnpm --filter @saas-forge/design-system run verify
 pnpm --filter @saas-forge/design-system run dev:showcase
 ```
 
-当前展示入口覆盖启动、页面状态、反馈、图标、浮层、完整表单、服务端表格，以及中英文、浅色/深色、平台/Tenant 品牌与关键稳定状态矩阵。
+当前展示入口覆盖启动、页面状态、反馈、图标、浮层、完整表单、服务端表格，以及中英文、浅色/深色、平台/Tenant 品牌、Resolved Brand Profile 接受/整份回退与关键稳定状态矩阵。

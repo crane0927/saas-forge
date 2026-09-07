@@ -2,7 +2,7 @@ import axe from 'axe-core';
 import { useState, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
 
 import {
@@ -14,6 +14,7 @@ import {
   ServerTable,
   SuccessFeedback,
   TextField,
+  resolveBrandProfile,
   type DesignSystemLocale,
 } from '../src';
 import { formatDate, formatInstant, formatMoney, formatNumber } from '@saas-forge/i18n';
@@ -21,6 +22,7 @@ import {
   DesignSystemShowcase,
   LayoutShowcase,
   PlatformBrandMatrix,
+  ResolvedBrandProfileShowcase,
   SplitLayoutShowcase,
   ThemeLocaleMatrix,
 } from '../showcase/main';
@@ -33,6 +35,7 @@ afterEach(() => {
   renderedContainer?.remove();
   renderedRoot = undefined;
   renderedContainer = undefined;
+  vi.restoreAllMocks();
 });
 
 function render(ui: ReactNode) {
@@ -132,6 +135,156 @@ describe('Design System 真实浏览器展示矩阵', () => {
     expect(matrix.textContent).toContain('#2563EB');
     expect(matrix.textContent).toContain('#C026D3');
     expect(matrix.querySelectorAll('[data-brand="platform"]')).toHaveLength(4);
+  });
+
+  it('展示册独立覆盖完整接受与每类整份平台回退', async () => {
+    render(
+      <DesignSystemProvider>
+        <ResolvedBrandProfileShowcase />
+      </DesignSystemProvider>,
+    );
+
+    const matrix = page.getByTestId('resolved-brand-profile-showcase');
+    await expect.element(matrix.getByText('TENANT_ACCEPTED')).toBeInTheDocument();
+    for (const reason of [
+      'PROFILE_INVALID',
+      'ASSET_REFERENCE_INVALID',
+      'COLOR_INVALID',
+      'ASSET_HTTP_ERROR',
+      'ASSET_MIME_UNSUPPORTED',
+      'ASSET_DECODE_FAILED',
+      'ASSET_LOAD_CANCELLED',
+      'ASSET_LOAD_STALE',
+    ]) {
+      await expect.element(matrix.getByText(reason)).toBeInTheDocument();
+    }
+    expect(
+      matrix.element().querySelector('[data-demo="accepted"]')?.getAttribute('data-brand'),
+    ).toBe('tenant');
+    expect(matrix.element().querySelectorAll('[data-brand="platform"]')).toHaveLength(8);
+
+    if (import.meta.env.SF_VISUAL_SNAPSHOTS !== 'false') {
+      await page.viewport(1440, 900);
+      await expect(matrix).toMatchScreenshot('resolved-brand-profile-1440');
+      await page.viewport(390, 1600);
+      await expect(matrix).toMatchScreenshot('resolved-brand-profile-390');
+      expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
+    }
+  });
+
+  it('真实浏览器预加载并解码两项受控同站 SVG 素材', async () => {
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="#2563EB"/></svg>';
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
+      Promise.resolve(
+        new Response(svg, {
+          status: 200,
+          headers: { 'content-type': 'image/svg+xml; charset=utf-8' },
+        }),
+      ),
+    );
+
+    const result = await resolveBrandProfile({
+      displayName: '北辰科技',
+      logoUrl: '/brands/logo.svg',
+      faviconUrl: '/brands/favicon.svg',
+      primaryColor: '#7C3AED',
+      accentColor: '#2563EB',
+    });
+
+    expect(result.accepted).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    for (const call of fetchMock.mock.calls) {
+      expect(call[0]).toBeTypeOf('string');
+      if (typeof call[0] === 'string') {
+        expect(call[0]).toMatch(/^\/brands\//);
+      }
+      expect(call[1]).toMatchObject({
+        cache: 'no-store',
+        credentials: 'same-origin',
+        redirect: 'error',
+      });
+    }
+  });
+
+  it.each([
+    [404, 'image/svg+xml', '<svg/>', 'ASSET_HTTP_ERROR'],
+    [200, 'text/html', '<svg/>', 'ASSET_MIME_UNSUPPORTED'],
+    [200, 'image/svg+xml', 'not an image', 'ASSET_DECODE_FAILED'],
+  ] as const)('真实浏览器拒绝素材状态、MIME 与解码失败 %#', async (status, mime, body, reason) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
+      Promise.resolve(new Response(body, { status, headers: { 'content-type': mime } })),
+    );
+
+    const result = await resolveBrandProfile({
+      displayName: '北辰科技',
+      logoUrl: '/brands/logo.svg',
+      faviconUrl: '/brands/favicon.svg',
+      primaryColor: '#7C3AED',
+      accentColor: '#2563EB',
+    });
+
+    expect(result).toMatchObject({ accepted: false, reason });
+    expect(result.resolvedBrand.source).toBe('platform');
+  });
+
+  it('真实浏览器在预载进行中取消时立即回退并忽略迟到响应', async () => {
+    const controller = new AbortController();
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      () =>
+        new Promise(() => {
+          // 刻意模拟不遵守 AbortSignal 的迟到网络实现，解析器仍必须立即停止等待。
+        }),
+    );
+
+    const resolution = resolveBrandProfile(
+      {
+        displayName: '北辰科技',
+        logoUrl: '/brands/logo.svg',
+        faviconUrl: '/brands/favicon.svg',
+        primaryColor: '#7C3AED',
+        accentColor: '#2563EB',
+      },
+      { signal: controller.signal },
+    );
+    controller.abort();
+
+    await expect(resolution).resolves.toMatchObject({
+      accepted: false,
+      reason: 'ASSET_LOAD_CANCELLED',
+      resolvedBrand: { source: 'platform' },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('真实浏览器素材解码完成后仍拒绝已经过期的结果', async () => {
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><circle cx="8" cy="8" r="8" fill="#2563EB"/></svg>';
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
+      Promise.resolve(
+        new Response(svg, {
+          status: 200,
+          headers: { 'content-type': 'image/svg+xml' },
+        }),
+      ),
+    );
+
+    const result = await resolveBrandProfile(
+      {
+        displayName: '北辰科技',
+        logoUrl: '/brands/logo.svg',
+        faviconUrl: '/brands/favicon.svg',
+        primaryColor: '#7C3AED',
+        accentColor: '#2563EB',
+      },
+      { isCurrent: () => false },
+    );
+
+    expect(result).toMatchObject({
+      accepted: false,
+      reason: 'ASSET_LOAD_STALE',
+      resolvedBrand: { source: 'platform' },
+    });
   });
 
   it.skipIf(import.meta.env.SF_VISUAL_SNAPSHOTS === 'false')(

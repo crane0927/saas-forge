@@ -17,11 +17,13 @@ import {
   PageTitle,
   PasswordField,
   platformBrandProfile,
+  platformResolvedBrandProfile,
   platformConsoleTitle,
   PersistentError,
   RecoverableDangerDialog,
   RefreshingContent,
   ResponsiveGrid,
+  resolveBrandProfile,
   SelectField,
   ServerTable,
   SplitLayout,
@@ -34,6 +36,8 @@ import {
   useUnsavedChangesGuard,
   WarningFeedback,
   type FormErrorItem,
+  type BrandAssetLoadResult,
+  type BrandResolution,
   type DesignSystemColorScheme,
   type DesignSystemLocale,
   type PageLayoutWidth,
@@ -685,6 +689,117 @@ export function PlatformBrandMatrix() {
   );
 }
 
+type BrandResolutionDemoId =
+  | 'accepted'
+  | 'structure'
+  | 'reference'
+  | 'color'
+  | 'http'
+  | 'mime'
+  | 'decode'
+  | 'cancelled'
+  | 'stale';
+
+interface BrandResolutionDemo {
+  readonly id: BrandResolutionDemoId;
+  readonly label: string;
+}
+
+interface BrandResolutionDemoResult extends BrandResolutionDemo {
+  readonly resolution: BrandResolution;
+}
+
+const brandResolutionDemos: readonly BrandResolutionDemo[] = [
+  { id: 'accepted', label: '完整 Profile' },
+  { id: 'structure', label: '缺失字段' },
+  { id: 'reference', label: '非受控引用' },
+  { id: 'color', label: '非法颜色' },
+  { id: 'http', label: '素材 404' },
+  { id: 'mime', label: '错误 MIME' },
+  { id: 'decode', label: '解码失败' },
+  { id: 'cancelled', label: '加载取消' },
+  { id: 'stale', label: '迟到结果' },
+] as const;
+
+const showcaseResolvedTenantProfile: TenantBrandProfile = {
+  displayName: '北辰科技',
+  logoUrl: '/brands/showcase-logo.svg',
+  faviconUrl: '/brands/showcase-favicon.svg',
+  primaryColor: '#7C3AED',
+  accentColor: '#2563EB',
+};
+
+function brandDemoProfile(id: BrandResolutionDemoId): TenantBrandProfile {
+  if (id === 'structure') return { ...showcaseResolvedTenantProfile, faviconUrl: undefined };
+  if (id === 'reference') {
+    return { ...showcaseResolvedTenantProfile, logoUrl: 'https://outside.invalid/logo.svg' };
+  }
+  if (id === 'color') return { ...showcaseResolvedTenantProfile, accentColor: '#GGGGGG' };
+  return showcaseResolvedTenantProfile;
+}
+
+function demoAssetResult(id: BrandResolutionDemoId): BrandAssetLoadResult {
+  if (id === 'http') return { loaded: false, reason: 'http' };
+  if (id === 'mime') return { loaded: true, mimeType: 'text/html' };
+  if (id === 'decode') return { loaded: false, reason: 'decode' };
+  if (id === 'cancelled') return { loaded: false, reason: 'cancelled' };
+  return { loaded: true, mimeType: 'image/svg+xml' };
+}
+
+export function ResolvedBrandProfileShowcase() {
+  const [results, setResults] = useState<
+    ReadonlyMap<BrandResolutionDemoId, BrandResolutionDemoResult>
+  >(new Map());
+
+  useEffect(() => {
+    let current = true;
+    void Promise.all(
+      brandResolutionDemos.map(async (demo) => {
+        const result = await resolveBrandProfile(brandDemoProfile(demo.id), {
+          preloadAsset: () => Promise.resolve(demoAssetResult(demo.id)),
+          isCurrent: demo.id === 'stale' ? () => false : undefined,
+        });
+        return {
+          ...demo,
+          resolution: result,
+        };
+      }),
+    ).then((resolved) => {
+      if (current) {
+        setResults(new Map(resolved.map((result) => [result.id, result])));
+      }
+    });
+    return () => {
+      current = false;
+    };
+  }, []);
+
+  return (
+    <div className="sf-showcase-brand-resolution" data-testid="resolved-brand-profile-showcase">
+      {brandResolutionDemos.map((demo) => {
+        const result = results.get(demo.id);
+        const resolution = result?.resolution;
+        const brand = resolution?.resolvedBrand ?? platformResolvedBrandProfile;
+        return (
+          <article key={demo.id} data-demo={demo.id} data-brand={brand.source}>
+            <div className="sf-showcase-brand-resolution-heading">
+              <strong>{demo.label}</strong>
+              <span>
+                {resolution === undefined
+                  ? '解析中'
+                  : resolution.accepted
+                    ? 'TENANT_ACCEPTED'
+                    : resolution.reason}
+              </span>
+            </div>
+            <p>{brand.profile.displayName}</p>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
 const contentExamples = [
   ['成员目录', '查看成员身份、状态与最近活动。'],
   ['访问策略', '集中检查角色与权限分配。'],
@@ -888,6 +1003,16 @@ export function DesignSystemShowcase() {
             </div>
           </div>
           <PlatformBrandMatrix />
+        </section>
+
+        <section className="sf-showcase-section" aria-labelledby="resolved-brand-title">
+          <div className="sf-showcase-section-heading">
+            <div>
+              <h2 id="resolved-brand-title">Resolved Brand Profile 完整解析</h2>
+              <p>完整 Profile 才接受 Tenant 品牌；任一失败都只输出稳定原因码并整份回退平台品牌。</p>
+            </div>
+          </div>
+          <ResolvedBrandProfileShowcase />
         </section>
 
         <section className="sf-showcase-section" aria-labelledby="theme-matrix-title">

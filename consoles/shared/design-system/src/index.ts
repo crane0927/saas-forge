@@ -117,6 +117,21 @@ export {
   type PlatformBrandProfile,
   type PlatformBrandTokenSet,
 } from './platform-brand';
+export {
+  platformResolvedBrandProfile,
+  resolveBrandProfile,
+  type BrandAssetKind,
+  type BrandAssetLoadRequest,
+  type BrandAssetLoadResult,
+  type BrandAssetPreloader,
+  type BrandRejectionReasonCode,
+  type BrandResolution,
+  type BrandSource,
+  type BrandTokenSet,
+  type CompleteBrandProfile,
+  type ResolvedBrandProfile,
+  type ResolveBrandProfileOptions,
+} from './resolved-brand';
 export { RouteFocusAnnouncement, type RouteFocusAnnouncementProps } from './route-accessibility';
 export {
   DesignSystemProvider,
