@@ -707,6 +707,123 @@ describe('same-Origin session coordination through AuthenticationRuntime', () =>
     expect(requests.filter((url) => url.endsWith('/auth/context'))).toHaveLength(1);
   });
 
+  it.each(['profile', 'error'] as const)(
+    'keeps the newest same-session Tenant context when an older %s read returns late',
+    async (lateResult) => {
+      const origin = browserOrigin();
+      const reads: ((response: Response) => void)[] = [];
+      const current = tenantContext();
+      const newest = {
+        ...current,
+        brandProfile: { ...current.brandProfile, displayName: 'Newest Brand' },
+      };
+      const tab = runtime(
+        origin.realm(),
+        (input) => {
+          if (!requestUrl(input).endsWith('/auth/context'))
+            throw new Error('only Tenant context reads are expected');
+          return new Promise<Response>((resolve) => reads.push(resolve));
+        },
+        () => 0,
+        'TENANT',
+      );
+      origin.deliver({
+        event: 'refresh-succeeded',
+        contextType: 'TENANT',
+        generation: 1,
+        accessToken: 'same-session-token',
+        expiresAt: 120_000,
+      });
+      await expect.poll(() => reads).toHaveLength(1);
+
+      const retry = tab.retryRecovery();
+      await expect.poll(() => reads).toHaveLength(2);
+      reads[1](Response.json(newest));
+      await expect(retry).resolves.toMatchObject({ ok: true });
+
+      reads[0](
+        lateResult === 'profile'
+          ? Response.json(current)
+          : problem(503, 'TOKEN_REVOCATION_STATUS_UNAVAILABLE', '0'),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(tab.getState()).toMatchObject({
+        status: 'authenticated',
+        transition: null,
+        tenantContext: newest,
+      });
+      expect(tab.getState()).not.toHaveProperty('synchronizationProblem');
+    },
+  );
+
+  it('checks the Session Slot generation again before publishing a Tenant context', async () => {
+    const origin = browserOrigin();
+    let resolveContext!: (response: Response) => void;
+    const tab = runtime(
+      origin.realm(),
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveContext = resolve;
+        }),
+      () => 0,
+      'TENANT',
+    );
+    origin.deliver({
+      event: 'refresh-succeeded',
+      contextType: 'TENANT',
+      generation: 1,
+      accessToken: 'tenant-token',
+      expiresAt: 120_000,
+    });
+    await expect.poll(() => typeof resolveContext).toBe('function');
+    origin.values.set('sf:session:https://api.example.test:TENANT:generation', '2');
+
+    resolveContext(Response.json(tenantContext()));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(tab.getState()).toEqual({ status: 'authenticated', transition: 'sessionSync' });
+  });
+
+  it('discards a Tenant context response after its page Runtime is destroyed', async () => {
+    const origin = browserOrigin();
+    const realm = origin.realm();
+    let resolveContext!: (response: Response) => void;
+    const tab = runtime(
+      realm,
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveContext = resolve;
+        }),
+      () => 0,
+      'TENANT',
+    );
+    const states: unknown[] = [];
+    tab.subscribe((state) => states.push(state));
+    origin.deliver({
+      event: 'refresh-succeeded',
+      contextType: 'TENANT',
+      generation: 1,
+      accessToken: 'tenant-token',
+      expiresAt: 120_000,
+    });
+    await expect.poll(() => typeof resolveContext).toBe('function');
+    expect(states).toHaveLength(1);
+
+    tab.destroy();
+    resolveContext(Response.json(tenantContext()));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(states).toHaveLength(1);
+    const replacement = runtime(
+      realm,
+      () => Promise.resolve(Response.json({})),
+      () => 0,
+      'TENANT',
+    );
+    expect(replacement).not.toBe(tab);
+    replacement.destroy();
+  });
+
   it.each(['self', 'peer'])(
     'discards an in-flight refresh after %s requests logout',
     async (initiator) => {

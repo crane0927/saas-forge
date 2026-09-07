@@ -19,6 +19,7 @@ interface BrowserRealm {
   readonly BroadcastChannel?: typeof BroadcastChannel;
   readonly localStorage?: Storage;
   addEventListener?: (type: string, listener: (event: Event) => void) => void;
+  removeEventListener?: (type: string, listener: (event: Event) => void) => void;
 }
 
 /** 仅使用浏览器原子锁；协调状态绝不包含持久化 Token。 */
@@ -97,6 +98,7 @@ export function createBrowserSession(
     }
   };
   let watermark = generation;
+  const currentGeneration = () => Math.max(generation, watermark, readGeneration());
   let receipt = Promise.resolve();
   const arrivals = new Set<() => void>();
   const nextGeneration = () => {
@@ -113,17 +115,18 @@ export function createBrowserSession(
     }
     return generation;
   };
-  try {
-    browser.addEventListener?.('storage', (event) => {
-      if ((event as StorageEvent).key === pendingKey && isLogoutPending()) logoutPending();
-      if ((event as StorageEvent).key === generationKey) {
-        const latest = readGeneration();
-        if (latest > Math.max(generation, watermark)) {
-          watermark = latest;
-          invalidate();
-        }
+  const storageListener = (event: Event) => {
+    if ((event as StorageEvent).key === pendingKey && isLogoutPending()) logoutPending();
+    if ((event as StorageEvent).key === generationKey) {
+      const latest = readGeneration();
+      if (latest > Math.max(generation, watermark)) {
+        watermark = latest;
+        invalidate();
       }
-    });
+    }
+  };
+  try {
+    browser.addEventListener?.('storage', storageListener);
   } catch {
     disable();
   }
@@ -153,6 +156,7 @@ export function createBrowserSession(
   };
 
   return {
+    generation: currentGeneration,
     changed: () => {
       nextGeneration();
     },
@@ -213,6 +217,12 @@ export function createBrowserSession(
     },
     authenticated: (accessToken: string, expiresAt: number) => {
       send({ event: 'refresh-succeeded', contextType: intent, accessToken, expiresAt });
+    },
+    destroy: () => {
+      browser.removeEventListener?.('storage', storageListener);
+      for (const arrival of arrivals) arrival();
+      arrivals.clear();
+      disable();
     },
   };
 }

@@ -208,6 +208,8 @@ export interface AuthenticationRuntime {
   switchTenantContext(input: SwitchTenantContextInput): Promise<TenantSwitchResult>;
   retryTenantSwitchRefresh(signal?: AbortSignal): Promise<AuthenticationOperationResult>;
   logout(signal?: AbortSignal): Promise<AuthenticationOperationResult>;
+  /** 释放当前页面 Realm 的协调资源；销毁后的 Runtime 不得继续使用。 */
+  destroy(): void;
 }
 
 const realmRuntimes = new WeakMap<object, Map<AuthenticationIntent, AuthenticationRuntime>>();
@@ -256,6 +258,9 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
     }
   };
   let sessionEpoch = 0;
+  let tenantContextReadGeneration = 0;
+  let tenantContextReadPending = false;
+  let destroyed = false;
   const now = options.now ?? Date.now;
   let synchronizationRetryAt = 0;
   const session = createBrowserSession(
@@ -341,25 +346,48 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
     epoch: number,
     signal?: AbortSignal,
   ): Promise<AuthenticationOperationResult> {
+    const readGeneration = ++tenantContextReadGeneration;
+    const sessionGeneration = session.generation();
+    const readAccessToken = accessToken;
+    tenantContextReadPending = true;
+    const staleResult = (): AuthenticationOperationResult | undefined => {
+      if (
+        destroyed ||
+        epoch !== sessionEpoch ||
+        session.generation() !== sessionGeneration ||
+        accessToken !== readAccessToken ||
+        session.isLogoutPending()
+      ) {
+        return { ok: false, problem: { code: 'SESSION_ENDED' } };
+      }
+      if (readGeneration !== tenantContextReadGeneration) {
+        return { ok: false, problem: { code: 'SESSION_CHANGED' } };
+      }
+      return undefined;
+    };
+    const finish = <T extends AuthenticationOperationResult>(result: T): T => {
+      if (readGeneration === tenantContextReadGeneration) tenantContextReadPending = false;
+      return result;
+    };
     let problem: AuthenticationProblem;
     try {
       const context = parseTenantAuthenticationContext(
         await authenticationApi.getCurrentTenantContext({ signal }),
       );
-      if (epoch !== sessionEpoch || session.isLogoutPending())
-        return { ok: false, problem: { code: 'SESSION_ENDED' } };
+      const stale = staleResult();
+      if (stale !== undefined) return finish(stale);
       if (context !== undefined) {
         publish(authenticatedTransitionState(null, context));
         synchronizationRetryAt = 0;
-        return { ok: true, state };
+        return finish({ ok: true, state });
       }
       problem = { code: 'INVALID_SERVICE_RESPONSE' };
     } catch (error) {
-      if (epoch !== sessionEpoch || session.isLogoutPending())
-        return { ok: false, problem: { code: 'SESSION_ENDED' } };
+      let stale = staleResult();
+      if (stale !== undefined) return finish(stale);
       problem = await normalizeOperationError(error);
-      if (epoch !== sessionEpoch || session.isLogoutPending())
-        return { ok: false, problem: { code: 'SESSION_ENDED' } };
+      stale = staleResult();
+      if (stale !== undefined) return finish(stale);
       if (
         error instanceof ResponseError &&
         (error.response.status === 401 || error.response.status === 403)
@@ -367,7 +395,7 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
         publish({ status: 'anonymous', transition: null });
         // 广播接收不持锁；先完成接收再排队发布失效，避免等待自己的 receipt。
         void invalidateRejectedToken(accessToken);
-        return { ok: false, problem };
+        return finish({ ok: false, problem });
       }
     }
     synchronizationRetryAt = now() + (problem.retryAfterSeconds ?? 0) * 1_000;
@@ -376,7 +404,7 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
       transition: 'sessionSync',
       synchronizationProblem: problem,
     });
-    return { ok: false, problem };
+    return finish({ ok: false, problem });
   }
 
   async function refreshForBusinessRequest(
@@ -739,6 +767,14 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
         publish({ status: 'authenticated', transition: 'sessionSync' });
         return synchronizeTenantContext(sessionEpoch, signal);
       }
+      if (
+        state.status === 'authenticated' &&
+        state.transition === 'sessionSync' &&
+        accessToken !== undefined &&
+        tenantContextReadPending
+      ) {
+        return synchronizeTenantContext(sessionEpoch, signal);
+      }
       if (!recoveryPending || state.status !== 'anonymous' || state.transition !== null) {
         return { ok: false, problem: { code: 'INVALID_AUTHENTICATION_TRANSITION' } };
       }
@@ -1070,6 +1106,19 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
       slotLogoutAllowed = false;
       publish({ status: 'anonymous', transition: null });
       return { ok: true, state };
+    },
+    destroy: () => {
+      if (destroyed) return;
+      destroyed = true;
+      sessionEpoch += 1;
+      tenantContextReadGeneration += 1;
+      tenantContextReadPending = false;
+      listeners.clear();
+      session.destroy();
+      const runtimes = realmRuntimes.get(options.realm);
+      if (runtimes?.get(options.intent) !== runtime) return;
+      runtimes.delete(options.intent);
+      if (runtimes.size === 0) realmRuntimes.delete(options.realm);
     },
   };
   const recover = runtime.recover.bind(runtime);

@@ -17,6 +17,7 @@ void runtime.client.createOAuthClient({
   request: { displayName: 'Runtime Client', allowedScopes: new Set(['runtime:read']) },
   operationHandle,
 });
+runtime.destroy();
 void createAuthenticationRuntimeAfterConfig(
   parseRuntimeConfig({ schemaVersion: 1, apiBaseUrl: 'https://api.example.test' }),
   { realm: globalThis, intent: 'PLATFORM', fetch: globalThis.fetch },
