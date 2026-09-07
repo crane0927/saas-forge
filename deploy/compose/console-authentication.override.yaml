@@ -87,7 +87,8 @@ services:
       SF_ACCEPTANCE_ROOT_DOMAIN: ${SF_ACCEPTANCE_ROOT_DOMAIN:-saasforge.test}
     volumes:
       - ./console-authentication/serve.mjs:/app/serve.mjs:ro
-      - ../../consoles/tenant-console-shell/dist:/app/dist:ro
+      # 同一真实 Tenant App 与认证 Shell，仅在验收构建追加静态 Remote 消费路由。
+      - ../../consoles/integration-test/dist/tenant-console:/app/dist:ro
   console-tls:
     image: node:24.14.1-alpine
     user: node

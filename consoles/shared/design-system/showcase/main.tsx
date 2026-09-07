@@ -1,3 +1,4 @@
+import type { TenantBrandProfile } from '../src/brand-theme';
 import {
   ActionMenu,
   Button,
@@ -43,7 +44,6 @@ import {
   type PageLayoutWidth,
   type ServerTableRequest,
   type ServerTableSort,
-  type TenantBrandProfile,
 } from '@saas-forge/design-system';
 import { useEffect, useRef, useState } from 'react';
 
@@ -77,8 +77,8 @@ type ProfileErrors = Partial<Record<ProfileField, string>>;
 
 const showcaseTenantBrand: TenantBrandProfile = {
   displayName: 'Northstar Labs',
-  logoUrl: '/tenant-assets/northstar.svg',
-  faviconUrl: 'https://assets.example.test/northstar.ico',
+  logoUrl: '/brands/northstar.svg',
+  faviconUrl: '/brands/northstar.ico',
   primaryColor: '#7C3AED',
   accentColor: '#C026D3',
 };
@@ -564,6 +564,19 @@ function TableShowcase({ onResult }: { readonly onResult: (result: string) => vo
 }
 
 export function ThemeLocaleMatrix() {
+  const [tenantResolution, setTenantResolution] = useState<BrandResolution>();
+  useEffect(() => {
+    let current = true;
+    // 隔离展示册只演示 Token；素材加载行为由完整品牌展示册及产品浏览器验收覆盖。
+    void resolveBrandProfile(showcaseTenantBrand, {
+      preloadAsset: () => Promise.resolve({ loaded: true, mimeType: 'image/svg+xml' }),
+    }).then((resolution) => {
+      if (current) setTenantResolution(resolution);
+    });
+    return () => {
+      current = false;
+    };
+  }, []);
   const variants: readonly {
     scheme: DesignSystemColorScheme;
     locale: DesignSystemLocale;
@@ -584,7 +597,9 @@ export function ThemeLocaleMatrix() {
             <DesignSystemProvider
               forcedColorScheme={scheme}
               locale={locale}
-              tenantBrand={brand === 'tenant' ? showcaseTenantBrand : undefined}
+              resolvedBrand={
+                brand === 'tenant' ? tenantResolution?.resolvedBrand : platformResolvedBrandProfile
+              }
             >
               <article aria-label={`${locale} ${scheme} ${brand}`}>
                 <p className="sf-showcase-theme-label">

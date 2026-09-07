@@ -143,47 +143,51 @@ describe('TenantConsoleShellApp', () => {
     ]);
   });
 
-  it('rejects an incomplete Tenant brand without ending its authenticated context', async () => {
-    const membership = {
-      membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6070',
-      tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6072',
-      tenantDisplayName: 'Current Tenant',
-    };
-    const onBrandRejected = vi.fn();
+  it.each(['displayName', 'logoUrl', 'faviconUrl', 'primaryColor', 'accentColor'] as const)(
+    'rejects missing %s without ending its authenticated context',
+    async (missingField) => {
+      const membership = {
+        membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6070',
+        tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6072',
+        tenantDisplayName: 'Current Tenant',
+      };
+      const onBrandRejected = vi.fn();
 
-    render(
-      <TenantConsoleShellApp
-        root={TenantConsoleTestRoot}
-        bootstrap={createRuntimeConfigBootstrap(() => Promise.resolve(success()))}
-        authenticationFetch={() =>
-          Promise.resolve(
-            tenantAccessToken('current-token', membership, [membership], {
-              displayName: 'Must Not Leak',
-              logoUrl: undefined,
-              faviconUrl: '/brands/rejected-favicon.svg',
-              primaryColor: '#155EEF',
-              accentColor: '#7A5AF8',
-            }),
-          )
-        }
-        onBrandRejected={onBrandRejected}
-        realm={{}}
-      />,
-    );
+      render(
+        <TenantConsoleShellApp
+          root={TenantConsoleTestRoot}
+          bootstrap={createRuntimeConfigBootstrap(() => Promise.resolve(success()))}
+          authenticationFetch={() =>
+            Promise.resolve(
+              tenantAccessToken('current-token', membership, [membership], {
+                displayName: 'Must Not Leak',
+                logoUrl: '/brands/rejected-logo.svg',
+                faviconUrl: '/brands/rejected-favicon.svg',
+                primaryColor: '#155EEF',
+                accentColor: '#7A5AF8',
+                [missingField]: undefined,
+              }),
+            )
+          }
+          onBrandRejected={onBrandRejected}
+          realm={{}}
+        />,
+      );
 
-    expect(await screen.findByRole('heading', { name: 'Tenant 工作台' })).toBeTruthy();
-    expect(screen.getByRole('navigation', { name: 'SaaS Forge 全局导航' })).toBeTruthy();
-    expect(screen.queryByText('Must Not Leak')).toBeNull();
-    expect(screen.getByRole('img', { name: 'SaaS Forge Logo' }).getAttribute('src')).toBe(
-      platformResolvedBrandProfile.profile.logoUrl,
-    );
-    expect(document.title).toBe(tenantConsolePlatformTitle);
-    expect(document.querySelector('.sf-design-system-root')?.getAttribute('data-brand')).toBe(
-      'platform',
-    );
-    expect(onBrandRejected).toHaveBeenCalledOnce();
-    expect(onBrandRejected).toHaveBeenCalledWith('PROFILE_INVALID');
-  });
+      expect(await screen.findByRole('heading', { name: 'Tenant 工作台' })).toBeTruthy();
+      expect(screen.getByRole('navigation', { name: 'SaaS Forge 全局导航' })).toBeTruthy();
+      expect(screen.queryByText('Must Not Leak')).toBeNull();
+      expect(screen.getByRole('img', { name: 'SaaS Forge Logo' }).getAttribute('src')).toBe(
+        platformResolvedBrandProfile.profile.logoUrl,
+      );
+      expect(document.title).toBe(tenantConsolePlatformTitle);
+      expect(document.querySelector('.sf-design-system-root')?.getAttribute('data-brand')).toBe(
+        'platform',
+      );
+      expect(onBrandRejected).toHaveBeenCalledOnce();
+      expect(onBrandRejected).toHaveBeenCalledWith('PROFILE_INVALID');
+    },
+  );
 
   it('replaces the Tenant favicon with the Platform favicon after logout', async () => {
     expect(document.querySelector('link[rel~="icon"]')).toBeNull();
@@ -709,11 +713,11 @@ function tenantAccessToken(
     readonly tenantDisplayName: string;
   }[],
   brandProfile: {
-    readonly displayName: string;
+    readonly displayName?: string;
     readonly logoUrl?: string;
-    readonly faviconUrl: string;
-    readonly primaryColor: string;
-    readonly accentColor: string;
+    readonly faviconUrl?: string;
+    readonly primaryColor?: string;
+    readonly accentColor?: string;
   },
 ): Response {
   return Response.json({

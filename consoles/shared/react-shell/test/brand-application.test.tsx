@@ -2,7 +2,7 @@ import { platformResolvedBrandProfile } from '@saas-forge/design-system';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { BrandApplicationLoading, BrandApplicationProvider, brandApplicationTitle } from '../src';
+import { BrandApplicationLoading, BrandApplicationProvider } from '../src';
 
 const updatedPlatformBrand = {
   source: 'platform',
@@ -56,14 +56,19 @@ describe('BrandApplicationProvider', () => {
     originalIcon.remove();
   });
 
-  it('derives Console titles from the same resolved profile', () => {
-    expect(brandApplicationTitle(platformResolvedBrandProfile, 'platform')).toBe(
-      'SaaS Forge Platform Console',
-    );
-    expect(brandApplicationTitle(platformResolvedBrandProfile, 'tenant')).toBe(
-      'SaaS Forge Tenant Console',
-    );
-  });
+  it.each(['platform', 'tenant'] as const)(
+    'applies the %s Console title through the public provider',
+    (surface) => {
+      render(
+        <BrandApplicationProvider resolvedBrand={platformResolvedBrandProfile} surface={surface}>
+          <BrandApplicationLoading />
+        </BrandApplicationProvider>,
+      );
+      expect(document.title).toBe(
+        surface === 'platform' ? 'SaaS Forge Platform Console' : 'SaaS Forge Tenant Console',
+      );
+    },
+  );
 
   it('commits every branded surface from the replacement profile together', () => {
     const view = render(

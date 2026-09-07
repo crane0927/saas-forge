@@ -31,6 +31,10 @@ docker info --format '{{.ServerVersion}}' >/dev/null
 }
 [[ "${1:-}" == '--preflight' ]] && exit 0
 
+# 浏览器证据独立于临时 Compose 目录保留，项目清理不会删除截图。
+export SF_BRAND_EVIDENCE_DIRECTORY="${SF_BRAND_EVIDENCE_DIRECTORY:-$(mktemp -d "${TMPDIR:-/tmp}/sf-brand-evidence.XXXXXX")}"
+printf 'EVIDENCE: %s\n' "$SF_BRAND_EVIDENCE_DIRECTORY"
+
 readonly project_name="saas-forge-console-$(date +%s)-$$-$(openssl rand -hex 3)"
 readonly work_directory="$(mktemp -d)"
 readonly secret_directory="$work_directory/secrets"

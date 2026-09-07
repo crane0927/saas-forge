@@ -1,14 +1,33 @@
 /* global document */
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { chromium, firefox, webkit } from 'playwright';
 import { verifyClientRecovery } from './console-client-acceptance.mjs';
 import { verifyRequestProblemSurfaces } from './console-problem-acceptance.mjs';
+import { verifyBrandRemoteInheritance } from './brand-remote-acceptance.mjs';
+import { verifyLatestBrandRead } from './brand-concurrency-acceptance.mjs';
 
 const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saasforge.test';
+
+async function captureBrandEvidence(page, scenario) {
+  const directory = process.env.SF_BRAND_EVIDENCE_DIRECTORY;
+  if (
+    !directory ||
+    (process.env.SF_BROWSER ?? 'chromium') !== 'chromium' ||
+    process.env.SF_BROWSER_CHANNEL
+  )
+    return;
+  await mkdir(directory, { recursive: true });
+  await page.screenshot({
+    path: path.join(directory, `${scenario}.png`),
+    fullPage: true,
+    animations: 'disabled',
+  });
+}
 
 // 此入口只访问生产构建与真实服务；不得用 route.fulfill 或忽略证书错误让正常路径通过。
 test('production Consoles expose independent login paths through trusted TLS', async (t) => {
@@ -57,7 +76,8 @@ test('production Consoles expose independent login paths through trusted TLS', a
     const response = await page.goto(`https://${host}.${rootDomain}/`);
     assert.equal(response.status(), 200);
     assert.ok(await response.securityDetails(), 'the document must use TLS');
-    await page.getByRole('heading', { name: `登录 ${name}`, exact: true }).waitFor();
+    await page.getByRole('heading', { name: '登录 SaaS Forge', exact: true }).waitFor();
+    assert.equal(await page.title(), `SaaS Forge ${name}`);
     assert.equal(new URL(page.url()).pathname, '/login');
     assert.equal(await page.getByRole('textbox', { name: '邮箱', exact: true }).count(), 1);
     assert.equal(await page.getByLabel(/^密码/).getAttribute('type'), 'password');
@@ -194,9 +214,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
     changeDiagnostic += `\n${initialCookieEvents.join('\n')}`;
   }
   assert.equal(changedResponse.status(), 204, changeDiagnostic);
-  await platform
-    .getByRole('heading', { name: 'Sign in to Platform Console', exact: true })
-    .waitFor();
+  await platform.getByRole('heading', { name: 'Sign in to SaaS Forge', exact: true }).waitFor();
   const platformLogin = await login(platform, email, password, 'en-US');
   assert.equal(platformLogin.contextState, 'ACCESS_TOKEN_ISSUED');
   await expectRouteAccessibility(platform, 'Platform overview');
@@ -233,13 +251,13 @@ test('Platform and Tenant sessions survive independent recovery and logout after
   await logout(platform, 'Platform Console');
   await recover(tenant, 'Tenant workspace');
   await platform.reload();
-  await platform.getByRole('heading', { name: '登录 Platform Console', exact: true }).waitFor();
+  await platform.getByRole('heading', { name: '登录 SaaS Forge', exact: true }).waitFor();
   const platformRelogin = await login(platform, email, password);
   await platform.getByRole('heading', { name: 'Platform 总览', exact: true }).waitFor();
   await logout(tenant, 'Tenant Console', 'en-US');
   await recover(platform, 'Platform 总览');
   await tenant.reload();
-  await tenant.getByRole('heading', { name: 'Sign in to Tenant Console', exact: true }).waitFor();
+  await tenant.getByRole('heading', { name: 'Sign in to SaaS Forge', exact: true }).waitFor();
   assert.deepEqual(errors, []);
 
   await t.test(
@@ -297,7 +315,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       assert.equal(new URL(tenant.url()).pathname, '/');
       await tenant
         .getByRole('navigation', {
-          name: 'Console Acceptance Tenant global navigation',
+          name: 'SaaS Forge global navigation',
           exact: true,
         })
         .waitFor();
@@ -313,7 +331,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       await recover(tenant, 'Tenant workspace');
       await tenant
         .getByRole('navigation', {
-          name: 'Console Acceptance Tenant global navigation',
+          name: 'SaaS Forge global navigation',
           exact: true,
         })
         .waitFor();
@@ -391,7 +409,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       await tenant.getByRole('heading', { name: 'Tenant workspace', exact: true }).waitFor();
       await tenant
         .getByRole('navigation', {
-          name: 'Second Acceptance Tenant global navigation',
+          name: 'SaaS Forge global navigation',
           exact: true,
         })
         .waitFor();
@@ -425,12 +443,12 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         await Promise.all([tenant.reload(), peer.reload()]);
         for (const page of [tenant, peer]) {
           const outcome = page.getByRole('heading', {
-            name: /^(Tenant 工作台|暂时无法恢复会话|登录 Tenant Console)$/,
+            name: /^(Tenant 工作台|暂时无法恢复会话|登录 SaaS Forge)$/,
           });
           await outcome.waitFor();
           assert.equal(await outcome.textContent(), 'Tenant 工作台');
           await page
-            .getByRole('navigation', { name: 'Second Acceptance Tenant 全局导航', exact: true })
+            .getByRole('navigation', { name: 'SaaS Forge 全局导航', exact: true })
             .waitFor();
         }
         tenant.off('response', observe);
@@ -438,10 +456,10 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         assert.ok(statuses.includes(200), 'concurrent recovery must reach the real IAM service');
         console.info(JSON.stringify({ concurrentTenantRefreshStatuses: statuses }));
         await Promise.all([logout(tenant, 'Tenant Console'), peer.reload()]);
-        await peer.getByRole('heading', { name: '登录 Tenant Console', exact: true }).waitFor();
+        await peer.getByRole('heading', { name: '登录 SaaS Forge', exact: true }).waitFor();
         await Promise.all([tenant.reload(), peer.reload()]);
         for (const page of [tenant, peer]) {
-          await page.getByRole('heading', { name: '登录 Tenant Console', exact: true }).waitFor();
+          await page.getByRole('heading', { name: '登录 SaaS Forge', exact: true }).waitFor();
           assert.equal(
             await page.getByRole('heading', { name: 'Tenant 工作台', exact: true }).count(),
             0,
@@ -541,7 +559,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
           'retry must retain its operation key',
         );
         for (const page of [tenant, peer])
-          await page.getByRole('heading', { name: '登录 Tenant Console', exact: true }).waitFor();
+          await page.getByRole('heading', { name: '登录 SaaS Forge', exact: true }).waitFor();
         const generation = await tenant.evaluate(
           (name) => Number(globalThis.localStorage.getItem(`${name}:generation`)),
           channelName,
@@ -579,7 +597,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         );
         for (const page of [tenant, peer]) {
           await page.waitForFunction(() => globalThis.acceptanceReplayObserved === true);
-          await page.getByRole('heading', { name: '登录 Tenant Console', exact: true }).waitFor();
+          await page.getByRole('heading', { name: '登录 SaaS Forge', exact: true }).waitFor();
           assert.equal(
             await page.evaluate(
               (name) => Number(globalThis.localStorage.getItem(`${name}:generation`)),
@@ -597,8 +615,8 @@ test('Platform and Tenant sessions survive independent recovery and logout after
     },
   );
   await t.test(
-    'Tenant brand colors, navigation and favicon follow the committed context',
-    async () => {
+    'complete Tenant brand follows the committed context and refresh recovery',
+    async (brandTest) => {
       const selection = await login(tenant, email, password);
       const secondTenant = selection.memberships.find(
         (membership) => membership.tenantDisplayName === 'Second Acceptance Tenant',
@@ -629,9 +647,9 @@ test('Platform and Tenant sessions survive independent recovery and logout after
             `second_tenant=${secondTenant.tenantId}`,
           ],
           {
-            input: `INSERT INTO tenant_brand_profiles (tenant_id, display_name, favicon_url, primary_color, accent_color)
-          VALUES (:'first_tenant', 'Acceptance Blue Brand', '/acceptance-brands/blue.svg', '#155EEF', '#7A5AF8'),
-                 (:'second_tenant', 'Acceptance Violet Brand', '/acceptance-brands/violet.svg', '#7C3AED', '#C026D3');`,
+            input: `INSERT INTO tenant_brand_profiles (tenant_id, display_name, logo_url, favicon_url, primary_color, accent_color)
+          VALUES (:'first_tenant', 'Acceptance Blue Brand', '/brands/acceptance-blue.svg', '/brands/acceptance-blue.svg', '#155EEF', '#7A5AF8'),
+                 (:'second_tenant', 'Acceptance Violet Brand', '/brands/acceptance-violet.svg', '/brands/acceptance-violet.svg', '#7C3AED', '#C026D3');`,
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'pipe'],
           },
@@ -647,22 +665,51 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         await tenant.getByRole('heading', { name: 'Tenant 工作台', exact: true }).waitFor();
         await tenant.getByRole('navigation', { name: `${name} 全局导航`, exact: true }).waitFor();
         assert.equal(new URL(tenant.url()).pathname, '/');
-        assert.equal(
-          await tenant
-            .locator('.sf-design-system-root')
-            .evaluate((root) =>
-              globalThis.getComputedStyle(root).getPropertyValue('--sf-color-primary').trim(),
-            ),
-          color,
+        assert.equal(await tenant.title(), `${name} · SaaS Forge Tenant Console`);
+        const logo = tenant.getByRole('img', { name: `${name} Logo`, exact: true });
+        await logo.waitFor({ state: 'visible' });
+        const navigationBounds = await tenant
+          .getByRole('navigation', { name: `${name} 全局导航`, exact: true })
+          .boundingBox();
+        const localeBounds = await tenant.locator('.sf-console-locale-control').boundingBox();
+        assert.ok(navigationBounds && localeBounds);
+        assert.ok(
+          localeBounds.y + localeBounds.height <= navigationBounds.y,
+          'Narrow-screen language control must not overlap the brand navigation',
         );
+        assert.equal(await logo.getAttribute('src'), `/brands/acceptance-${asset}.svg`);
         assert.equal(
-          await tenant
-            .locator('.sf-design-system-root')
-            .evaluate((root) =>
-              globalThis.getComputedStyle(root).getPropertyValue('--sf-color-accent').trim(),
-            ),
-          accent,
+          await logo.evaluate((image) => image.complete && image.naturalWidth > 0),
+          true,
         );
+        for (const scheme of ['light', 'dark']) {
+          await tenant.emulateMedia({ colorScheme: scheme });
+          await tenant.waitForFunction(
+            (scheme) =>
+              document.querySelector('.sf-design-system-root')?.dataset.colorScheme === scheme,
+            scheme,
+          );
+          assert.equal(
+            await tenant
+              .locator('.sf-design-system-root')
+              .evaluate((root) =>
+                globalThis.getComputedStyle(root).getPropertyValue('--sf-color-primary').trim(),
+              ),
+            color,
+          );
+          assert.equal(
+            await tenant
+              .locator('.sf-design-system-root')
+              .evaluate((root) =>
+                globalThis.getComputedStyle(root).getPropertyValue('--sf-color-accent').trim(),
+              ),
+            accent,
+          );
+          assert.equal(await tenant.title(), `${name} · SaaS Forge Tenant Console`);
+          assert.equal(await logo.getAttribute('src'), `/brands/acceptance-${asset}.svg`);
+          await captureBrandEvidence(tenant, `tenant-${asset}-${scheme}`);
+        }
+        await tenant.emulateMedia({ colorScheme: 'light' });
         const favicon = await tenant.evaluate(async () => {
           const icon = document.querySelector('link[rel~="icon"]');
           if (icon === null) return null;
@@ -674,31 +721,212 @@ test('Platform and Tenant sessions survive independent recovery and logout after
           };
         });
         assert.deepEqual(favicon, {
-          path: `/acceptance-brands/${asset}.svg`,
+          path: `/brands/acceptance-${asset}.svg`,
           status: 200,
           type: 'image/svg+xml',
         });
+        await captureBrandEvidence(tenant, `tenant-${asset}`);
       }
       await expectBrand('Acceptance Blue Brand', '#155EEF', '#7A5AF8', 'blue');
-      await tenant.getByRole('button', { name: '切换 Tenant', exact: true }).press('Enter');
-      const switched = tenant.waitForResponse(isAuthResponse('tenant-switches'));
+      await verifyBrandRemoteInheritance(tenant);
+      const refreshPath = '**/api/v1/auth/refresh';
+      const stalledRefresh = Promise.withResolvers();
+      const failFirstRefresh = async (route) => {
+        await stalledRefresh.promise;
+        await route.abort('failed');
+      };
+      await tenant.route(refreshPath, failFirstRefresh);
+      try {
+        await tenant.getByRole('button', { name: '切换 Tenant', exact: true }).press('Enter');
+        const switched = tenant.waitForResponse(isAuthResponse('tenant-switches'));
+        await tenant
+          .getByRole('button', { name: '切换到 Second Acceptance Tenant', exact: true })
+          .press('Enter');
+        assert.equal((await switched).status(), 204);
+        await tenant.getByRole('heading', { name: 'Tenant 切换已提交', exact: true }).waitFor();
+        assert.equal(await tenant.title(), 'SaaS Forge Tenant Console');
+        assert.equal(
+          await tenant
+            .getByRole('img', { name: 'Acceptance Blue Brand Logo', exact: true })
+            .count(),
+          0,
+        );
+        assert.match(
+          await tenant.locator('link[rel~="icon"]').getAttribute('href'),
+          /platform-favicon/,
+        );
+        await captureBrandEvidence(tenant, 'switch-committed-platform');
+        stalledRefresh.resolve();
+        await tenant.getByText('目标 Tenant 会话暂时无法恢复', { exact: true }).waitFor();
+        assert.equal(
+          await tenant.locator('.sf-design-system-root').getAttribute('data-brand'),
+          'platform',
+        );
+        assert.equal(await tenant.title(), 'SaaS Forge Tenant Console');
+        await captureBrandEvidence(tenant, 'switch-refresh-failed-platform');
+      } finally {
+        stalledRefresh.resolve();
+        await tenant.unroute(refreshPath, failFirstRefresh);
+      }
       const refreshed = tenant.waitForResponse(isAuthResponse('refresh'));
-      await tenant
-        .getByRole('button', { name: '切换到 Second Acceptance Tenant', exact: true })
-        .press('Enter');
-      assert.equal((await switched).status(), 204);
+      await tenant.getByRole('button', { name: '重试完成切换', exact: true }).click();
       assert.equal((await refreshed).status(), 200);
       await expectBrand('Acceptance Violet Brand', '#7C3AED', '#C026D3', 'violet');
+      await verifyBrandRemoteInheritance(tenant);
       assert.equal(
         await tenant
           .getByRole('navigation', { name: 'Acceptance Blue Brand 全局导航', exact: true })
           .count(),
         0,
       );
+      console.info('BRAND: switched Remote verified; starting cold recovery');
       await recover(tenant, 'Tenant 工作台');
       await expectBrand('Acceptance Violet Brand', '#7C3AED', '#C026D3', 'violet');
+      console.info('BRAND: cold recovery verified');
+      function writeBrandFault(assignment, scenario) {
+        try {
+          execFileSync(
+            'docker',
+            [
+              'exec',
+              '-i',
+              `${project}-postgres-1`,
+              'psql',
+              '-U',
+              'saasforge_console_e2e',
+              '-d',
+              'tenant_access_db',
+              '-v',
+              'ON_ERROR_STOP=1',
+              '-v',
+              `tenant=${secondTenant.tenantId}`,
+            ],
+            {
+              input: `UPDATE tenant_brand_profiles SET display_name = 'Acceptance Violet Brand',
+                logo_url = '/brands/acceptance-violet.svg', favicon_url = '/brands/acceptance-violet.svg',
+                primary_color = '#7C3AED', accent_color = '#C026D3' WHERE tenant_id = :'tenant';
+                UPDATE tenant_brand_profiles SET ${assignment} WHERE tenant_id = :'tenant';`,
+              encoding: 'utf8',
+              stdio: ['pipe', 'pipe', 'pipe'],
+            },
+          );
+        } catch {
+          throw new Error(`isolated brand fault fixture unavailable: ${scenario}`);
+        }
+      }
+      async function expectPlatformFallback(scenario, reason) {
+        await tenant.waitForFunction(
+          (reason) => globalThis.acceptanceBrandReasons?.includes(reason),
+          reason,
+        );
+        assert.equal(
+          await tenant.evaluate(
+            (reason) => globalThis.acceptanceBrandReasons.every((value) => value === reason),
+            reason,
+          ),
+          true,
+        );
+        await tenant
+          .getByRole('navigation', { name: 'SaaS Forge 全局导航', exact: true })
+          .waitFor();
+        assert.equal(await tenant.title(), 'SaaS Forge Tenant Console');
+        const logo = tenant.getByRole('img', { name: 'SaaS Forge Logo', exact: true });
+        await logo.waitFor({ state: 'visible' });
+        assert.match(await logo.getAttribute('src'), /platform-logo/);
+        assert.match(
+          await tenant.locator('link[rel~="icon"]').getAttribute('href'),
+          /platform-favicon/,
+        );
+        for (const scheme of ['light', 'dark']) {
+          await tenant.emulateMedia({ colorScheme: scheme });
+          await tenant.waitForFunction(
+            (scheme) =>
+              document.querySelector('.sf-design-system-root')?.dataset.colorScheme === scheme,
+            scheme,
+          );
+          const tokens = await tenant.locator('.sf-design-system-root').evaluate((root) => ({
+            brand: root.dataset.brand,
+            primary: globalThis
+              .getComputedStyle(root)
+              .getPropertyValue('--sf-color-primary')
+              .trim(),
+            accent: globalThis.getComputedStyle(root).getPropertyValue('--sf-color-accent').trim(),
+          }));
+          assert.deepEqual(tokens, { brand: 'platform', primary: '#2563EB', accent: '#C026D3' });
+        }
+        await expectSafeStorage(tenant);
+        await captureBrandEvidence(tenant, scenario);
+      }
+      await brandTest.test(
+        'a late real Context response cannot replace a newer same-session brand',
+        async () => {
+          await verifyLatestBrandRead(context, `https://console.${rootDomain}/`, {
+            source: tenant,
+            publishLatest: () =>
+              writeBrandFault("display_name = 'Acceptance Newest Brand'", 'latest'),
+            restore: () => writeBrandFault("display_name = 'Acceptance Violet Brand'", 'restore'),
+            capture: captureBrandEvidence,
+          });
+        },
+      );
+      // 每个故障只改变本次随机 Compose 项目的读模型；权威回读、认证与素材响应均不 Mock。
+      for (const [scenario, assignment, reason] of [
+        ['missing-logo', 'logo_url = NULL', 'PROFILE_INVALID'],
+        ['missing-favicon', 'favicon_url = NULL', 'PROFILE_INVALID'],
+        ['invalid-name', "display_name = 'Invalid' || chr(1)", 'PROFILE_INVALID'],
+        ['invalid-color', "primary_color = '#B91C1C'", 'COLOR_INVALID'],
+        [
+          'external-logo',
+          "logo_url = 'https://outside.invalid/logo.svg'",
+          'ASSET_REFERENCE_INVALID',
+        ],
+        [
+          'external-favicon',
+          "favicon_url = 'https://outside.invalid/favicon.svg'",
+          'ASSET_REFERENCE_INVALID',
+        ],
+        ['asset-http', "logo_url = '/brands/acceptance-missing.svg'", 'ASSET_HTTP_ERROR'],
+        ['asset-mime', "logo_url = '/brands/acceptance-wrong-mime.svg'", 'ASSET_MIME_UNSUPPORTED'],
+        ['asset-decode', "logo_url = '/brands/acceptance-decode.svg'", 'ASSET_DECODE_FAILED'],
+      ]) {
+        await brandTest.test(`complete Platform fallback: ${scenario}`, async () => {
+          writeBrandFault(assignment, scenario);
+          await recover(tenant, 'Tenant 工作台');
+          await expectPlatformFallback(scenario, reason);
+        });
+      }
+      writeBrandFault("primary_color = '#7C3AED'", 'restore');
+      for (const field of ['displayName', 'primaryColor', 'accentColor']) {
+        await brandTest.test(`complete Platform fallback: missing-${field}`, async () => {
+          const path = '**/api/v1/auth/refresh';
+          const injectMissingBrandField = async (route) => {
+            // 仅负向注入：先取得真实 Refresh 响应，保持认证、Cookie 与 Context 不变，只移除品牌字段。
+            const response = await route.fetch();
+            assert.equal(response.status(), 200);
+            const body = await response.json();
+            body.tenantContext.brandProfile = Object.fromEntries(
+              Object.entries(body.tenantContext.brandProfile).filter(([key]) => key !== field),
+            );
+            await route.fulfill({ response, json: body });
+          };
+          await tenant.route(path, injectMissingBrandField);
+          try {
+            await recover(tenant, 'Tenant 工作台');
+            await expectPlatformFallback(`missing-${field}`, 'PROFILE_INVALID');
+          } finally {
+            await tenant.unroute(path, injectMissingBrandField);
+          }
+        });
+      }
       await logout(tenant, 'Tenant Console');
-      assert.equal(await tenant.locator('link[rel~="icon"]').count(), 0);
+      assert.equal(await tenant.title(), 'SaaS Forge Tenant Console');
+      assert.match(
+        await tenant.locator('link[rel~="icon"]').getAttribute('href'),
+        /platform-favicon/,
+      );
+      await tenant
+        .getByRole('img', { name: 'SaaS Forge Logo', exact: true })
+        .waitFor({ state: 'visible' });
       await recover(platform, 'Platform 总览');
     },
   );
@@ -788,7 +1016,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         assert.equal(requests[2].key === original.key, true, 'explicit retry preserves its handle');
         await logout(loser, 'Tenant Console');
         await winner.reload();
-        await winner.getByRole('heading', { name: '登录 Tenant Console', exact: true }).waitFor();
+        await winner.getByRole('heading', { name: '登录 SaaS Forge', exact: true }).waitFor();
       } finally {
         await fallback.close();
       }
@@ -824,9 +1052,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       }, marker);
       await page.goto(`https://platform.${rootDomain}/oauth-clients`);
       await expectRouteAccessibility(page, '当前页面出现错误');
-      await page
-        .getByRole('navigation', { name: 'Platform Console 全局导航', exact: true })
-        .waitFor();
+      await page.getByRole('navigation', { name: 'SaaS Forge 全局导航', exact: true }).waitFor();
       assert.equal((await page.locator('body').innerText()).includes(marker), false);
       const home = page.getByRole('button', { name: '返回首页', exact: true });
       await home.focus();
@@ -858,7 +1084,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       await selectConsoleLocale(platform, 'English');
       await platform.getByRole('heading', { name: 'Platform overview', exact: true }).waitFor();
       await platform
-        .getByRole('navigation', { name: 'Platform Console global navigation', exact: true })
+        .getByRole('navigation', { name: 'SaaS Forge global navigation', exact: true })
         .waitFor();
       assert.deepEqual(requests, []);
       platform.off('request', observe);
@@ -881,7 +1107,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       await signOut.focus();
       await signOut.press('Enter');
       assert.equal((await signedOut).status(), 204, 'English logout reaches the real IAM service');
-      await expectRouteAccessibility(platform, 'Sign in to Platform Console');
+      await expectRouteAccessibility(platform, 'Sign in to SaaS Forge');
       assert.equal(await platform.evaluate(() => localStorage.getItem('sf:ui:locale')), 'en-US');
       assert.deepEqual(errors, []);
     },
@@ -919,6 +1145,20 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         ...cookieNames.map((cookie) => cookie.value),
         'Console Acceptance Tenant',
         'Second Acceptance Tenant',
+        'Acceptance Blue Brand',
+        'Acceptance Violet Brand',
+        'Acceptance Newest Brand',
+        '/brands/acceptance-blue.svg',
+        '/brands/acceptance-violet.svg',
+        '#155EEF',
+        '#7A5AF8',
+        '#7C3AED',
+        '#C026D3',
+        '#B91C1C',
+        'outside.invalid',
+        '/brands/acceptance-missing.svg',
+        '/brands/acceptance-wrong-mime.svg',
+        '/brands/acceptance-decode.svg',
       ];
       const containsSensitiveData = (text) =>
         secrets.some((secret) => text.includes(secret)) ||
@@ -962,7 +1202,7 @@ test('browser-managed Origins reject mismatched Intent and invalid CSRF or media
   await setConsoleLocalePreference(context, 'zh-CN');
   const page = await context.newPage();
   await page.goto(`https://platform.${rootDomain}/`);
-  await page.getByRole('heading', { name: '登录 Platform Console', exact: true }).waitFor();
+  await page.getByRole('heading', { name: '登录 SaaS Forge', exact: true }).waitFor();
   const deniedProbes = [];
   const attempt = (slot, csrf, contentType, probe = '') =>
     page.evaluate(
@@ -1059,7 +1299,7 @@ test('an opaque cross-site browser Origin is rejected before session logout', as
   await setConsoleLocalePreference(context, 'zh-CN');
   const page = await context.newPage();
   await page.goto(`https://platform.${rootDomain}/`);
-  await page.getByRole('heading', { name: '登录 Platform Console', exact: true }).waitFor();
+  await page.getByRole('heading', { name: '登录 SaaS Forge', exact: true }).waitFor();
   await page.evaluate(() => {
     const frame = document.createElement('iframe');
     frame.sandbox.add('allow-scripts');
@@ -1195,7 +1435,7 @@ test('production root errors show a safe reload surface without leaking the orig
     await setConsoleLocalePreference(context, 'zh-CN');
     const marker = `private-root-error-${randomUUID()}`;
     await context.addInitScript(
-      ({ marker, name }) => {
+      ({ marker }) => {
         // 从 DOM 公共边界注入渲染故障，不暴露 Runtime 或增加产品测试开关。
         const descriptor = Object.getOwnPropertyDescriptor(
           globalThis.Node.prototype,
@@ -1204,12 +1444,12 @@ test('production root errors show a safe reload surface without leaking the orig
         Object.defineProperty(globalThis.Node.prototype, 'textContent', {
           ...descriptor,
           set(value) {
-            if (this.nodeName === 'H1' && value === `登录 ${name}`) throw new Error(marker);
+            if (this.nodeName === 'H1' && value === '登录 SaaS Forge') throw new Error(marker);
             descriptor.set.call(this, value);
           },
         });
       },
-      { marker, name },
+      { marker },
     );
     const page = await context.newPage();
     let leaked = false;
@@ -1220,7 +1460,8 @@ test('production root errors show a safe reload surface without leaking the orig
       leaked ||= error.message.includes(marker);
     });
     await page.goto(`https://${host}.${rootDomain}/`);
-    await page.getByRole('heading', { name: `${name} 无法继续运行`, exact: true }).waitFor();
+    assert.equal(await page.title(), `SaaS Forge ${name}`);
+    await page.getByRole('heading', { name: 'SaaS Forge 无法继续运行', exact: true }).waitFor();
     assert.equal((await page.locator('body').innerText()).includes(marker), false);
     assert.equal(await page.locator('[aria-live="assertive"]').count(), 1);
     assert.equal(
@@ -1232,7 +1473,7 @@ test('production root errors show a safe reload surface without leaking the orig
     const navigation = page.waitForEvent('domcontentloaded');
     await reload.press('Enter');
     await navigation;
-    await page.getByRole('heading', { name: `${name} 无法继续运行`, exact: true }).waitFor();
+    await page.getByRole('heading', { name: 'SaaS Forge 无法继续运行', exact: true }).waitFor();
     assert.equal(
       leaked,
       false,
@@ -1335,11 +1576,12 @@ async function logout(page, application, locale = 'zh-CN') {
   const pending = page.waitForResponse(isAuthResponse('logout'));
   const labels =
     locale === 'en-US'
-      ? { action: 'Sign out', title: `Sign in to ${application}` }
-      : { action: '退出登录', title: `登录 ${application}` };
+      ? { action: 'Sign out', title: 'Sign in to SaaS Forge' }
+      : { action: '退出登录', title: '登录 SaaS Forge' };
   await page.getByRole('button', { name: labels.action, exact: true }).press('Enter');
   assert.equal((await pending).status(), 204, 'browser logout status');
   await expectRouteAccessibility(page, labels.title);
+  assert.equal(await page.title(), `SaaS Forge ${application}`);
 }
 
 async function prepareTenant(token, email, options = {}) {

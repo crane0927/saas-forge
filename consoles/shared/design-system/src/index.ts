@@ -102,14 +102,7 @@ export {
   type ServerTableSort,
   type ServerTableSortDirection,
 } from './server-table';
-export {
-  contrastRatio,
-  resolveTenantBrandProfile,
-  type BrandColorPair,
-  type ResolvedBrandTheme,
-  type TenantBrandProfile,
-  type TenantBrandResolution,
-} from './brand-theme';
+export { contrastRatio, type BrandColorPair, type ResolvedBrandTheme } from './brand-theme';
 export {
   platformBrandProfile,
   platformBrandTokenSet,

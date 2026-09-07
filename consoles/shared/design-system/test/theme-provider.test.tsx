@@ -1,4 +1,5 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import type { TenantBrandProfile } from '../src/brand-theme';
+import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -8,10 +9,9 @@ import {
   platformResolvedBrandProfile,
   platformBrandTokenSet,
   platformConsoleTitle,
-  resolveTenantBrandProfile,
+  resolveBrandProfile,
   semanticTokens,
   tenantConsolePlatformTitle,
-  type TenantBrandProfile,
 } from '../src';
 
 afterEach(() => {
@@ -21,8 +21,8 @@ afterEach(() => {
 
 const tenantBrand: TenantBrandProfile = {
   displayName: '北辰科技',
-  logoUrl: '/tenant-assets/beichen-logo.svg',
-  faviconUrl: 'https://assets.example.test/beichen.ico',
+  logoUrl: '/brands/beichen-logo.svg',
+  faviconUrl: '/brands/beichen.ico',
   primaryColor: '#7C3AED',
   accentColor: '#C026D3',
 };
@@ -112,16 +112,18 @@ describe('Design System 主题与品牌', () => {
     );
   });
 
-  it('为两种主题原子生成可读品牌颜色与前景色', () => {
-    const resolution = resolveTenantBrandProfile(tenantBrand);
+  it('为两种主题原子生成可读品牌颜色与前景色', async () => {
+    const resolution = await resolveBrandProfile(tenantBrand, {
+      preloadAsset: () => Promise.resolve({ loaded: true, mimeType: 'image/svg+xml' }),
+    });
     expect(resolution.accepted).toBe(true);
     if (!resolution.accepted) {
       return;
     }
 
     for (const [scheme, surface] of [
-      [resolution.light, semanticTokens.color.light.surface],
-      [resolution.dark, semanticTokens.color.dark.surface],
+      [resolution.resolvedBrand.tokenSet.light, semanticTokens.color.light.surface],
+      [resolution.resolvedBrand.tokenSet.dark, semanticTokens.color.dark.surface],
     ] as const) {
       expect(contrastRatio(scheme.primary.color, surface)).toBeGreaterThanOrEqual(3);
       expect(contrastRatio(scheme.primary.color, scheme.primary.foreground)).toBeGreaterThanOrEqual(
@@ -136,12 +138,12 @@ describe('Design System 主题与品牌', () => {
 
   it('非法品牌不发生部分切换并报告拒绝原因', async () => {
     const rejected = vi.fn();
+    const resolution = await resolveBrandProfile(
+      { ...tenantBrand, faviconUrl: 'javascript:alert(1)', accentColor: '#GGGGGG' },
+      { onRejected: rejected },
+    );
     render(
-      <DesignSystemProvider
-        forcedColorScheme="light"
-        tenantBrand={{ ...tenantBrand, faviconUrl: 'javascript:alert(1)', accentColor: '#GGGGGG' }}
-        onTenantBrandRejected={rejected}
-      >
+      <DesignSystemProvider forcedColorScheme="light" resolvedBrand={resolution.resolvedBrand}>
         <p>平台回退</p>
       </DesignSystemProvider>,
     );
@@ -154,26 +156,32 @@ describe('Design System 主题与品牌', () => {
     expect(root.style.getPropertyValue('--sf-color-accent')).toBe(
       semanticTokens.color.platformAccent,
     );
-    await waitFor(() => {
-      expect(rejected).toHaveBeenCalledOnce();
-    });
+    expect(rejected).toHaveBeenCalledExactlyOnceWith('ASSET_REFERENCE_INVALID');
   });
 
-  it('拒绝会与固定危险状态混淆的品牌颜色', () => {
-    const resolution = resolveTenantBrandProfile({
+  it('拒绝会与固定危险状态混淆的品牌颜色', async () => {
+    const resolution = await resolveBrandProfile({
       ...tenantBrand,
       primaryColor: semanticTokens.color.status.danger,
     });
 
     expect(resolution).toEqual({
       accepted: false,
-      reason: 'Tenant 品牌颜色与固定状态色无法可靠区分。',
+      reason: 'COLOR_INVALID',
+      resolvedBrand: platformResolvedBrandProfile,
     });
   });
 
-  it('允许展示册固定浅色、深色和英文，但不改变默认系统跟随行为', () => {
+  it('允许展示册固定浅色、深色和英文，但不改变默认系统跟随行为', async () => {
+    const resolution = await resolveBrandProfile(tenantBrand, {
+      preloadAsset: () => Promise.resolve({ loaded: true, mimeType: 'image/svg+xml' }),
+    });
     const { rerender } = render(
-      <DesignSystemProvider forcedColorScheme="light" locale="en-US" tenantBrand={tenantBrand}>
+      <DesignSystemProvider
+        forcedColorScheme="light"
+        locale="en-US"
+        resolvedBrand={resolution.resolvedBrand}
+      >
         <p>Preview</p>
       </DesignSystemProvider>,
     );
@@ -183,7 +191,11 @@ describe('Design System 主题与品牌', () => {
     expect(root.getAttribute('lang')).toBe('en-US');
 
     rerender(
-      <DesignSystemProvider forcedColorScheme="dark" locale="en-US" tenantBrand={tenantBrand}>
+      <DesignSystemProvider
+        forcedColorScheme="dark"
+        locale="en-US"
+        resolvedBrand={resolution.resolvedBrand}
+      >
         <p>Preview</p>
       </DesignSystemProvider>,
     );

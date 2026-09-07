@@ -123,6 +123,23 @@ export async function findBoundaryViolations(root = consoleRoot) {
       violations.push(`${consumer.packageRoot}/package.json: 消费者不得声明 antd 依赖。`);
     }
 
+    // HTML 入口在 src/host 之外，也不能绕过共享 Shell 安装 favicon 或品牌样式。
+    const htmlEntry = await readFile(path.join(packageRoot, 'index.html'), 'utf8').catch(
+      (error) => {
+        if (error.code === 'ENOENT') return '';
+        throw error;
+      },
+    );
+    if (
+      /<link\b[^>]*\brel\s*=\s*["'][^"']*\bicon\b/i.test(htmlEntry) ||
+      /\/brands\//.test(htmlEntry) ||
+      /--sf-color-(?:primary|accent)(?:-foreground)?\s*:/.test(htmlEntry)
+    ) {
+      violations.push(
+        `${consumer.packageRoot}/index.html: HTML 入口不得独立安装品牌素材或受控 Token。`,
+      );
+    }
+
     for (const runtimeRoot of consumer.runtimeRoots) {
       const absoluteRuntimeRoot = path.join(packageRoot, runtimeRoot);
       for (const file of await filesRecursively(absoluteRuntimeRoot)) {
@@ -147,10 +164,21 @@ export async function findBoundaryViolations(root = consoleRoot) {
             }
           }
           inspectDeclarations(sourceFile, relativeFile, violations);
+          violations.push(
+            ...brandBoundaryViolations(source, relativeFile, {
+              remote: consumer.providerForbiddenRoots?.includes(runtimeRoot) === true,
+              providerEntry:
+                relativeFile === path.join(consumer.packageRoot, consumer.providerEntry ?? ''),
+              previewHost: runtimeRoot === 'host',
+            }),
+          );
         }
 
         if (/\.(?:css|less|sass|scss)$/.test(extension)) {
           inspectSelectors(source, relativeFile, violations);
+          if (/--sf-color-(?:primary|accent)(?:-foreground)?\s*:/.test(source)) {
+            violations.push(`${relativeFile}: 消费者不得重写受控 Brand Token。`);
+          }
         }
       }
     }
@@ -220,10 +248,7 @@ async function discoverConsumers(root) {
       packageRoot: entry.name,
       runtimeRoots: ['src'],
       providerEntry: 'src/main.tsx',
-      requiredProvider:
-        entry.name === 'platform-console' || entry.name === 'tenant-console-shell'
-          ? 'BrandApplicationProvider'
-          : 'DesignSystemProvider',
+      requiredProvider: 'BrandApplicationProvider',
     });
   }
 
@@ -285,6 +310,179 @@ function inspectSelectors(source, relativeFile, violations) {
       );
     }
   }
+}
+
+/** Console 只允许整份转交解析结果；Remote 连解析入口也不能获取。 */
+export function brandBoundaryViolations(source, file, options = {}) {
+  const sourceFile = ts.createSourceFile(
+    file,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const violations = [];
+  const forbiddenImports = new Set([
+    'resolveTenantBrandProfile',
+    'TenantBrandResolution',
+    'TenantBrandProfile',
+    'TenantBrandProfileSnapshot',
+    'platformBrandProfile',
+    'platformBrandTokenSet',
+    'useBrandApplication',
+    'BrandApplicationContextValue',
+    'brandApplicationTitle',
+  ]);
+  if (!options.previewHost) forbiddenImports.add('DesignSystemProvider');
+  if (options.remote) {
+    for (const name of [
+      'resolveBrandProfile',
+      'platformResolvedBrandProfile',
+      'ResolvedBrandProfile',
+      'CompleteBrandProfile',
+      'BrandResolution',
+      'BrandApplicationProvider',
+    ])
+      forbiddenImports.add(name);
+  }
+  const providerAliases = new Set(['DesignSystemProvider', 'BrandApplicationProvider']);
+  const brandVariables = new Set(['brandProfile', 'resolvedBrand', 'platformResolvedBrandProfile']);
+  const brandFields = new Set([
+    'displayName',
+    'logoUrl',
+    'faviconUrl',
+    'primaryColor',
+    'accentColor',
+    'profile',
+    'tokenSet',
+  ]);
+  const report = (node, reason) =>
+    violations.push(
+      `${file}:${sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1}: ${reason}`,
+    );
+  const propertyName = (node) => {
+    if (ts.isPropertyAccessExpression(node)) return node.name.text;
+    if (ts.isElementAccessExpression(node) && ts.isStringLiteralLike(node.argumentExpression))
+      return node.argumentExpression.text;
+    return undefined;
+  };
+  const isBrand = (node) => {
+    if (ts.isIdentifier(node)) return brandVariables.has(node.text);
+    return (
+      ['brandProfile', 'resolvedBrand'].includes(propertyName(node)) ||
+      ((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) &&
+        isBrand(node.expression))
+    );
+  };
+  // 先收集别名，避免通过 import alias 或局部变量改名绕过消费检查。
+  const collect = (node) => {
+    if (ts.isImportDeclaration(node) && ts.isStringLiteralLike(node.moduleSpecifier)) {
+      const specifier = node.moduleSpecifier.text;
+      if (
+        /shared\/(?:design-system|react-shell)\//.test(specifier) ||
+        specifier.startsWith('@saas-forge/react-shell/')
+      ) {
+        report(node, '消费者不得导入内部品牌路径。');
+      }
+      if (
+        [
+          '@saas-forge/design-system',
+          '@saas-forge/react-shell',
+          '@saas-forge/app-runtime',
+        ].includes(specifier)
+      ) {
+        const bindings = node.importClause?.namedBindings;
+        if (bindings && ts.isNamespaceImport(bindings)) {
+          report(node, '品牌边界要求共享包使用可检查的具名导入。');
+        }
+        if (bindings && ts.isNamedImports(bindings)) {
+          for (const element of bindings.elements) {
+            const name = (element.propertyName ?? element.name).text;
+            if (forbiddenImports.has(name)) report(element, `消费者不得获取品牌入口 ${name}。`);
+            if (providerAliases.has(name)) providerAliases.add(element.name.text);
+            if (brandVariables.has(name)) brandVariables.add(element.name.text);
+          }
+        }
+      }
+    }
+    if (ts.isVariableDeclaration(node) && node.initializer && isBrand(node.initializer)) {
+      if (ts.isIdentifier(node.name)) brandVariables.add(node.name.text);
+      else report(node, '消费者不得解构原始或 Resolved Brand Profile。');
+    }
+    if (ts.isBindingElement(node)) {
+      const name = (node.propertyName ?? node.name).getText(sourceFile).replace(/['"]/g, '');
+      if (name === 'brandProfile' || name === 'resolvedBrand') {
+        if (options.remote) report(node, 'Remote 不得获取原始或 Resolved Brand Profile。');
+        if (ts.isIdentifier(node.name)) brandVariables.add(node.name.text);
+        else report(node, '消费者不得解构原始或 Resolved Brand Profile。');
+      }
+    }
+    ts.forEachChild(node, collect);
+  };
+  collect(sourceFile);
+  const visit = (node) => {
+    if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
+      const name = propertyName(node);
+      if (
+        (isBrand(node.expression) && brandFields.has(name)) ||
+        (options.remote && ['brandProfile', 'resolvedBrand'].includes(name))
+      ) {
+        report(node, '消费者不得直接读取原始或 Resolved Brand Profile 字段。');
+      }
+    }
+    if (
+      (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
+      ts.isIdentifier(node.tagName)
+    ) {
+      if (providerAliases.has(node.tagName.text) && !options.providerEntry) {
+        report(node, '消费者不得在入口之外安装第二个 Theme Provider。');
+      }
+      for (const attribute of node.attributes.properties) {
+        if (
+          ts.isJsxAttribute(attribute) &&
+          /^(?:tenantBrand|onTenantBrandRejected|applicationLogoUrl|applicationLogoAlt|logoUrl|faviconUrl)$/.test(
+            attribute.name.text,
+          )
+        ) {
+          report(attribute, '消费者不得使用旧品牌参数或独立渲染品牌素材。');
+        }
+        if (
+          node.tagName.text === 'link' &&
+          ts.isJsxAttribute(attribute) &&
+          attribute.name.text === 'rel' &&
+          attribute.initializer &&
+          /icon/.test(attribute.initializer.getText(sourceFile))
+        ) {
+          report(attribute, '消费者不得独立渲染 favicon。');
+        }
+      }
+    }
+    if (ts.isStringLiteralLike(node)) {
+      if (/^\/brands\//.test(node.text)) report(node, '消费者不得独立引用品牌素材。');
+      if (/--sf-color-(?:primary|accent)(?:-foreground)?\s*:/.test(node.text)) {
+        report(node, '消费者不得重写受控 Brand Token。');
+      }
+      if (/^--sf-color-(?:primary|accent)(?:-foreground)?$/.test(node.text)) {
+        const parent = node.parent;
+        if (
+          ts.isPropertyAssignment(parent) ||
+          (ts.isCallExpression(parent) && propertyName(parent.expression) === 'setProperty')
+        ) {
+          report(node, '消费者不得重写受控 Brand Token。');
+        }
+      }
+    }
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      node.left.getText(sourceFile) === 'document.title'
+    ) {
+      report(node, '消费者不得独立应用品牌标题。');
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return violations;
 }
 
 export function providerUsageCount(source, file = 'consumer.tsx') {
