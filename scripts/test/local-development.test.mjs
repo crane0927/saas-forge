@@ -21,6 +21,12 @@ test("provides one daily interface for setup, frontend, replacement, and restore
     ],
   );
   for (const operation of ["start", "status", "stop"]) {
+    assert.deepEqual(localDevelopmentPlan(["frontend", operation, "tenant"]), [
+      {
+        script: "local-https-development.sh",
+        arguments: [operation, "tenant"],
+      },
+    ]);
     assert.deepEqual(
       localDevelopmentPlan(["frontend", operation, "platform"]),
       [

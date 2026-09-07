@@ -12,6 +12,8 @@ const apiTargetFile = process.env.SF_LOCAL_HTTPS_API_TARGET_FILE;
 export function targetForHost(host) {
   if (host === "platform.saasforge.test")
     return { hostname: viteHost, port: vitePort };
+  if (host === "console.saasforge.test")
+    return { hostname: viteHost, port: 5174 };
   if (host === "api.saasforge.test") return { hostname: "gateway", port: 8080 };
   return undefined;
 }
@@ -49,7 +51,8 @@ export function createEdgeServer({
       key,
       minVersion: "TLSv1.2",
     },
-    (incoming, outgoing) => proxy(incoming, outgoing, targets, configuredApiTargetFile),
+    (incoming, outgoing) =>
+      proxy(incoming, outgoing, targets, configuredApiTargetFile),
   );
   server.on("upgrade", (incoming, socket, head) =>
     proxyUpgrade(incoming, socket, head, targets, configuredApiTargetFile),
@@ -60,6 +63,7 @@ export function createEdgeServer({
 function defaultTargets() {
   return {
     "platform.saasforge.test": { hostname: viteHost, port: vitePort },
+    "console.saasforge.test": { hostname: viteHost, port: 5174 },
     "api.saasforge.test": { hostname: "gateway", port: 8080 },
   };
 }
@@ -121,7 +125,13 @@ async function proxy(incoming, outgoing, targets, configuredApiTargetFile) {
   incoming.pipe(upstream);
 }
 
-async function proxyUpgrade(incoming, socket, head, targets, configuredApiTargetFile) {
+async function proxyUpgrade(
+  incoming,
+  socket,
+  head,
+  targets,
+  configuredApiTargetFile,
+) {
   const target = await resolveTarget(
     incoming.headers.host,
     targets,

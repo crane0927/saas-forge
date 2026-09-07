@@ -26,13 +26,13 @@ export function localDevelopmentPlan(arguments_) {
   if (
     command === "frontend" &&
     ["start", "status", "stop"].includes(service) &&
-    arguments_[2] === "platform" &&
+    ["platform", "tenant"].includes(arguments_[2]) &&
     arguments_.length === 3
   ) {
     return [
       {
         script: "local-https-development.sh",
-        arguments: [service, "platform"],
+        arguments: [service, arguments_[2]],
       },
     ];
   }
@@ -74,7 +74,7 @@ export function localDevelopmentPlan(arguments_) {
 
 function usage() {
   console.error(
-    "用法：bash scripts/local-development.sh frontend <start|status|stop> platform\n" +
+    "用法：bash scripts/local-development.sh frontend <start|status|stop> platform|tenant\n" +
       "      bash scripts/local-development.sh <setup|doctor|status>\n" +
       "      bash scripts/local-development.sh <replace|restore> <gateway|iam-service|tenant-access-service|entitlement-service|audit-service>",
   );

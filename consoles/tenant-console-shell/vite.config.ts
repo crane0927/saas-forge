@@ -26,4 +26,16 @@ function controlledDevelopmentRuntimeConfig(): Plugin {
 
 export default defineConfig({
   plugins: [controlledDevelopmentRuntimeConfig(), react()],
+  server: {
+    // 正式本地入口只允许经共享 HTTPS Edge 访问，不能把 Vite 暴露到 LAN。
+    host: '127.0.0.1',
+    port: 5174,
+    strictPort: true,
+    allowedHosts: ['console.saasforge.test'],
+    hmr: {
+      protocol: 'wss',
+      host: 'console.saasforge.test',
+      clientPort: 443,
+    },
+  },
 });

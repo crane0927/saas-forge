@@ -69,27 +69,33 @@ docker compose ps --all
 
 浏览器 Cookie、Origin 和 Fetch Metadata 由浏览器及共享 Client 按协议处理，页面操作不需要手动复制 Token 或 Cookie。HTTP `8080` 是后端本地端口，不是产品控制台入口。完整部署边界见 [部署文档](../../docs/14-deployment.md)。
 
-### Platform 日常 HTTPS 开发
+### 受控 HTTPS Console 开发入口
 
-Issue #131 将 macOS Docker Desktop 的 Platform Console 与五服务本机替换收敛为统一日常入口，而不是复用 Fresh Compose 验收环境：
+在 macOS Docker Desktop 上，从仓库根目录执行一次性准备，再显式选择 Console：
 
 ```bash
-cd ../..
-bash scripts/local-development.sh setup     # 每台机器一次；hosts 与 CA 信任分别要求确认
-bash scripts/local-development.sh doctor    # 可安全分享的完整前置条件诊断
-bash scripts/local-development.sh frontend start platform   # 显式启动 Platform 与 Edge
-bash scripts/local-development.sh frontend status platform  # 只读查看 Platform 生命周期
-bash scripts/local-development.sh frontend stop platform    # 安全停止 Platform 与未使用的 Edge
-bash scripts/local-development.sh status    # 查看五个服务的当前拓扑
+bash scripts/local-development.sh setup
+bash scripts/local-development.sh doctor
+bash scripts/local-development.sh frontend start platform
+bash scripts/local-development.sh frontend start tenant
+bash scripts/local-development.sh frontend status tenant
+bash scripts/local-development.sh frontend stop tenant
+bash scripts/local-development.sh frontend stop platform
 ```
 
-本地 CA、服务器证书、受管 PID 与 Vite 诊断文件都位于 Git 忽略目录。`setup` 在改写 `/etc/hosts`、System Keychain 前分别要求交互式明确授权；日常 `frontend` 不会生成证书、重复安装信任、安装前端依赖、生成 API Client 或改写 lockfile。Platform Vite 使用 strict port 且只监听 `127.0.0.1:5173`；TLS Edge 只发布回环 `443`，只接收 `platform.saasforge.test` 和 `api.saasforge.test`，并原样转发 HMR WebSocket、Origin、Cookie、Fetch Metadata 与 Authorization。
+`setup` 复用有效的本地 CA；服务器证书缺少受控 Host、将在 24 小时内失效或无法通过链/私钥校验时才重签 leaf。证书覆盖 `platform.saasforge.test`、`console.saasforge.test`、`api.saasforge.test`。旧双 Host 安装需重新执行 setup；hosts 和 Keychain 变更仍分别要求交互式明确授权，已配置时幂等跳过，非交互环境拒绝系统变更。
 
-健康且配置哈希、回环端口绑定均兼容的 Edge 会直接复用。Platform PID、进程组、启动时间、仓库目录与包身份必须全部匹配，`RUNNING` 还要求 5173 与正式 HTTPS Host 均就绪。正常停止与重复停止都成功；停止最后一个受管 Console 时只执行 `docker compose stop`，不删除 Edge 容器、应用服务、卷或业务数据。旧 PID 可在身份正确时认领，陈旧 PID 可由变更命令清理；未知 PID、未知 5173/443 监听者始终失败关闭。
+`frontend` 必须提供 `start|status|stop` 和 `platform|tenant`。Platform Vite 固定监听 `127.0.0.1:5173`，Tenant 固定监听 `127.0.0.1:5174`，均启用 strict port，分别只接受对应受控 Host，HMR 使用对应 HTTPS Origin 的 WSS 443。Edge 通过 `host.docker.internal` 访问两个回环 Vite，将 API 转发到当前 Gateway，并保留浏览器安全头。未知 Host 被拒绝；不得为解决 Docker Desktop 连通性问题将 Vite 改为所有网络接口。
+
+启动使用 Node `24.14.1`、pnpm `11.22.0` 和既有依赖，复用健康兼容的 Edge。日常启停不生成证书、不修改 hosts/信任、不安装依赖、不生成 API Client，也不启动后端或重置账户。已有不兼容 Edge 占用 443 时会阻止启动；升级旧 Edge 前先停止两个 Console，再重新启动。
+
+两个 Console 各自使用 Git 忽略目录 `deploy/compose/.secrets/local-https-development/` 内的 `platform-vite.pid|log` 和 `tenant-vite.pid|log`，PID 与追加日志权限均为 0600。`status` 报告 `RUNNING`、`STOPPED`、`STARTING`、`STALE`、`UNMANAGED` 或 `UNREADY`；RUNNING 要求 PID、进程组、启动时间、仓库、包身份、回环监听和正式 HTTPS 就绪全部匹配。停止只向身份匹配的目标发送 SIGTERM；另一个 Console 活动或身份不明时保留 Edge，最后一个停止后仅停止 Edge 容器，不删除容器、后端服务或卷。旧 `vite.pid` 只由 Platform 在身份匹配时认领，旧日志保留；陈旧记录仅在确认原进程不存在后清理。
+
+包级 `pnpm --filter @saas-forge/tenant-console-shell run dev` 仍可前台调试；占用 5174 时，统一生命周期报告 UNMANAGED 并拒绝终止它。前台 HTTP 调试不能替代受控 HTTPS 验收。
+
+此切片仅提供 Tenant Shell 普通路由，**尚不包含 Tenant Password Setup 特殊 Gateway 路径，也不构成完整 Tenant 认证验收**。账户、Gateway 与后端仍需另行准备。
 
 `doctor` 会继续检查所有类别，即使其中一项失败。输出使用 `CERTIFICATE_MISSING`、`CERTIFICATE_EXPIRED`、`CERTIFICATE_UNTRUSTED`、`PORT_CONFLICT`、`MIGRATION_FAILED`、`NACOS_UNAVAILABLE`、`SECRET_MISSING`、`INFRASTRUCTURE_UNAVAILABLE`、`DUPLICATE_INSTANCE` 等非敏感分类，并在下一行给出恢复操作；不会显示密码、Token、Cookie、Client Secret、JWT 私钥或原始环境变量值。
-
-此入口不托管 Tenant Console，也不取代本节的完整三 Origin 部署条件或下文的 Fresh Compose 浏览器验收。
 
 ### 本机后端服务替换开发
 

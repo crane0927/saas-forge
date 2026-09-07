@@ -69,27 +69,33 @@ The platform home and Tenant workspace currently show authentication status only
 
 The browser and shared Client handle cookies, Origin, and Fetch Metadata according to the protocol; UI users do not copy Tokens or cookies. HTTP port `8080` is a local backend port, not a product console. See the [deployment documentation](../../docs/14-deployment.md) for the complete boundary.
 
-### Daily Platform HTTPS development
+### Controlled HTTPS Console development entrypoint
 
-Issue #131 provides one daily entrypoint for the Platform Console and five local service-replacement targets on macOS Docker Desktop; it does not reuse the Fresh Compose acceptance environment:
+On macOS Docker Desktop, run setup once from the repository root, then choose a Console explicitly:
 
 ```bash
-cd ../..
-bash scripts/local-development.sh setup     # Once per machine; hosts and CA trust ask separately
-bash scripts/local-development.sh doctor    # Complete share-safe prerequisite diagnostics
-bash scripts/local-development.sh frontend start platform   # Explicitly start Platform and Edge
-bash scripts/local-development.sh frontend status platform  # Read Platform lifecycle status
-bash scripts/local-development.sh frontend stop platform    # Safely stop Platform and an unused Edge
-bash scripts/local-development.sh status    # Show the topology of all five services
+bash scripts/local-development.sh setup
+bash scripts/local-development.sh doctor
+bash scripts/local-development.sh frontend start platform
+bash scripts/local-development.sh frontend start tenant
+bash scripts/local-development.sh frontend status tenant
+bash scripts/local-development.sh frontend stop tenant
+bash scripts/local-development.sh frontend stop platform
 ```
 
-The local CA, server certificate, managed PID, and Vite diagnostics remain in a Git-ignored directory. `setup` asks for explicit interactive consent separately before editing `/etc/hosts` or the System Keychain. Daily `frontend` commands do not recreate certificates, reinstall trust, install frontend dependencies, generate the API client, or rewrite the lockfile. Platform Vite uses a strict port and listens only on `127.0.0.1:5173`. TLS Edge publishes only loopback port `443`, accepts only `platform.saasforge.test` and `api.saasforge.test`, and preserves HMR WebSocket, Origin, Cookie, Fetch Metadata, and Authorization traffic verbatim.
+`setup` reuses a valid local CA and reissues the leaf only when a controlled Host is missing, expiry is within 24 hours, or chain/key validation fails. The certificate covers `platform.saasforge.test`, `console.saasforge.test`, and `api.saasforge.test`. Existing two-Host installations must rerun setup. Hosts and Keychain changes still require separate explicit interactive authorization; existing configuration is skipped idempotently, and noninteractive system changes are refused.
 
-A healthy Edge with a compatible configuration hash and loopback binding is reused. The Platform PID, process group, start time, repository directory, and package identity must all match; `RUNNING` additionally requires both port 5173 and the formal HTTPS Host to be ready. Normal and repeated stops succeed. Stopping the last managed Console uses only `docker compose stop`; it does not delete the Edge container, application services, volumes, or business data. A matching legacy PID can be adopted and a stale PID can be cleaned by a mutating command. Unknown PIDs and unknown listeners on ports 5173 or 443 always fail closed.
+Every `frontend` invocation requires `start|status|stop` and `platform|tenant`. Platform Vite binds to `127.0.0.1:5173` and Tenant to `127.0.0.1:5174`, with strict ports, their respective controlled Hosts, and HMR over each HTTPS Origin's WSS port 443. Edge reaches both loopback Vite servers through `host.docker.internal`, forwards API traffic to the current Gateway, and preserves browser security headers. Unknown Hosts are rejected. Do not widen Vite listeners to all interfaces to work around Docker Desktop connectivity failures.
+
+Start uses Node `24.14.1`, pnpm `11.22.0`, and existing dependencies, reusing a healthy compatible Edge. Daily start/stop never generates certificates, changes hosts/trust, installs dependencies, generates the API client, starts backend services, or resets accounts. An incompatible Edge occupying 443 blocks start; stop both Consoles before upgrading an old Edge and restarting.
+
+Each Console has its own `platform-vite.pid|log` or `tenant-vite.pid|log` under the Git-ignored `deploy/compose/.secrets/local-https-development/` directory. Both PID files and append-only logs use mode 0600. Status is `RUNNING`, `STOPPED`, `STARTING`, `STALE`, `UNMANAGED`, or `UNREADY`. RUNNING requires matching PID, process group, start time, repository, package identity, loopback listener, and formal HTTPS readiness. Stop sends SIGTERM only to a matching target. Edge is retained while another Console is active or has an unknown identity; stopping the last Console only stops the Edge container without deleting containers, backend services, or volumes. Only Platform adopts a matching legacy `vite.pid`, retaining its old log. Stale records are cleaned only after confirming the original process no longer exists.
+
+The package-level `pnpm --filter @saas-forge/tenant-console-shell run dev` command remains available for foreground debugging. If it occupies 5174, managed lifecycle reports UNMANAGED and refuses to terminate it. Foreground HTTP debugging is not controlled HTTPS acceptance.
+
+This slice serves ordinary Tenant Shell routes only. **Tenant Password Setup special Gateway paths are not included, and this is not complete Tenant authentication acceptance.** Prepare accounts, Gateway, and backend services separately.
 
 `doctor` continues through every category even after a failure. It uses share-safe classifications such as `CERTIFICATE_MISSING`, `CERTIFICATE_EXPIRED`, `CERTIFICATE_UNTRUSTED`, `PORT_CONFLICT`, `MIGRATION_FAILED`, `NACOS_UNAVAILABLE`, `SECRET_MISSING`, `INFRASTRUCTURE_UNAVAILABLE`, and `DUPLICATE_INSTANCE`, followed by a recovery action. It never renders passwords, Tokens, Cookies, Client Secrets, JWT private keys, or raw environment-variable values.
-
-The entrypoint does not host Tenant Console and does not replace this section's three-Origin deployment requirements or the Fresh Compose browser acceptance below.
 
 ### Local backend-service replacement development
 

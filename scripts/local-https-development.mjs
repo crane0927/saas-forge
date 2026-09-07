@@ -15,17 +15,23 @@ import process from "node:process";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 
-import { createPlatformLifecycle } from "./frontend-lifecycle.mjs";
+import {
+  createFrontendLifecycle,
+  frontendTarget,
+  frontendTargets,
+  stopUnusedEdge,
+} from "./frontend-lifecycle.mjs";
 
 const expectedNodeVersion = "24.14.1";
 const expectedPnpmVersion = "11.22.0";
 const certificateValiditySeconds = 24 * 60 * 60;
 const certificateAuthorityName = "SaaS Forge Local Development CA";
 const hostsEntry =
-  "127.0.0.1 platform.saasforge.test api.saasforge.test # SaaS Forge local HTTPS";
+  "127.0.0.1 platform.saasforge.test console.saasforge.test api.saasforge.test # SaaS Forge local HTTPS";
 
 export const developmentHosts = Object.freeze([
   "platform.saasforge.test",
+  "console.saasforge.test",
   "api.saasforge.test",
 ]);
 
@@ -53,6 +59,8 @@ export function developmentHttpsPaths(repositoryRoot) {
       "local-service-replacement",
       "api-target.json",
     ),
+    tenantLog: path.join(directory, "tenant-vite.log"),
+    tenantPid: path.join(directory, "tenant-vite.pid"),
     platformLog: path.join(directory, "platform-vite.log"),
     platformPid: path.join(directory, "platform-vite.pid"),
     legacyViteLog: path.join(directory, "vite.log"),
@@ -70,7 +78,9 @@ export async function certificateCoversExpectedHosts(certificate) {
   );
   return (
     result.status === 0 &&
-    developmentHosts.every((host) => result.stdout.includes(`DNS:${host}`))
+    developmentHosts.every((host) =>
+      (result.stdout.match(/DNS:([^,\s]+)/gu) ?? []).includes(`DNS:${host}`),
+    )
   );
 }
 
@@ -175,7 +185,8 @@ export function hasExpectedHosts(content) {
   return developmentHosts.every((host) => configuredHosts.has(host));
 }
 
-export function viteDevelopmentCommand(consoleRoot) {
+export function viteDevelopmentCommand(consoleRoot, target = "platform") {
+  const configuration = frontendTarget(target);
   return {
     command: "mise",
     args: [
@@ -185,14 +196,14 @@ export function viteDevelopmentCommand(consoleRoot) {
       "corepack",
       "pnpm",
       "--filter",
-      "@saas-forge/platform-console",
+      configuration.package,
       "run",
       "dev",
       "--",
       "--host",
       "127.0.0.1",
       "--port",
-      "5173",
+      String(configuration.port),
       "--strictPort",
     ],
     cwd: consoleRoot,
@@ -319,17 +330,22 @@ function run(command, args, { allowFailure = false, cwd, env, input } = {}) {
   };
 }
 
-async function installHosts() {
-  const existing = await readFile("/etc/hosts", "utf8");
+export async function installHosts({
+  readHosts = () => readFile("/etc/hosts", "utf8"),
+  authorize = confirm,
+  appendHosts = (entry) =>
+    run("sudo", ["tee", "-a", "/etc/hosts"], { input: entry }),
+} = {}) {
+  const existing = await readHosts();
   if (hasExpectedHosts(existing)) {
     console.log("HOSTS: 已配置，未修改 /etc/hosts。");
     return;
   }
-  await confirm(
-    "此操作将向 /etc/hosts 添加两个仅指向 127.0.0.1 的本地域名。输入 HOSTS 以明确授权： ",
+  await authorize(
+    "此操作将向 /etc/hosts 添加三个仅指向 127.0.0.1 的本地域名。输入 HOSTS 以明确授权： ",
     "HOSTS",
   );
-  run("sudo", ["tee", "-a", "/etc/hosts"], { input: `${hostsEntry}\n` });
+  await appendHosts(`${hostsEntry}\n`);
   console.log("HOSTS: 已添加本地域名。");
 }
 
@@ -378,7 +394,7 @@ function isCertificateAuthorityTrusted() {
   );
 }
 
-async function confirm(question, expectedValue) {
+export async function confirm(question, expectedValue) {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     throw new Error("拒绝在非交互终端修改系统设置。请在终端中重新执行此命令。");
   }
@@ -451,7 +467,7 @@ async function doctorCertificate(paths) {
     return {
       ok: false,
       code: "CERTIFICATE_HOST_MISMATCH",
-      message: "服务器证书未覆盖固定 Platform/API Host。",
+      message: "服务器证书未覆盖固定 Platform/Tenant/API Host。",
       recovery: "bash scripts/local-development.sh setup",
     };
   }
@@ -479,15 +495,14 @@ async function doctorHosts() {
     return {
       ok: false,
       code: "HOSTS_MISSING",
-      message:
-        "platform.saasforge.test 或 api.saasforge.test 未在 /etc/hosts 指向 127.0.0.1。",
+      message: "Platform、Tenant 或 API Host 未在 /etc/hosts 指向 127.0.0.1。",
       recovery: "bash scripts/local-https-development.sh hosts",
     };
   }
   return {
     ok: true,
     code: "HOSTS",
-    message: "两个本地域名均由 /etc/hosts 指向 127.0.0.1。",
+    message: "三个本地域名均由 /etc/hosts 指向 127.0.0.1。",
   };
 }
 
@@ -573,9 +588,13 @@ function doctorDocker() {
   return { ok: true, code: "DOCKER", message: "Docker Desktop 可用。" };
 }
 
-export function doctorToolchain(repositoryRoot, execute = run) {
+export function doctorToolchain(
+  repositoryRoot,
+  execute = run,
+  target = "platform",
+) {
   const consoleRoot = path.join(repositoryRoot, "consoles");
-  const command = viteDevelopmentCommand(consoleRoot);
+  const command = viteDevelopmentCommand(consoleRoot, target);
   const environment = {
     ...process.env,
     COREPACK_ENABLE_NETWORK: "0",
@@ -620,7 +639,7 @@ export function doctorToolchain(repositoryRoot, execute = run) {
       "corepack",
       "pnpm",
       "--filter",
-      "@saas-forge/platform-console",
+      frontendTarget(target).package,
       "exec",
       "vite",
       "--version",
@@ -642,7 +661,7 @@ export function doctorToolchain(repositoryRoot, execute = run) {
     return {
       ok: false,
       code: "TOOLCHAIN_INVALID",
-      message: `Platform Console 需要 Node ${expectedNodeVersion}、pnpm ${expectedPnpmVersion} 和既有依赖。`,
+      message: `Console 需要 Node ${expectedNodeVersion}、pnpm ${expectedPnpmVersion} 和既有依赖。`,
       recovery:
         "在 consoles/ 中显式运行 pnpm install --frozen-lockfile；doctor 与 start 不会安装依赖。",
     };
@@ -650,7 +669,7 @@ export function doctorToolchain(repositoryRoot, execute = run) {
   return {
     ok: true,
     code: "TOOLCHAIN",
-    message: "Platform Console Node、pnpm 和依赖目录均符合固定配置。",
+    message: "Console Node、pnpm 和依赖目录均符合固定配置。",
   };
 }
 
@@ -764,7 +783,7 @@ function inspectListener(port) {
   };
 }
 
-function isHttpsReady(paths) {
+function isHttpsReady(paths, host) {
   return (
     run(
       "curl",
@@ -778,7 +797,7 @@ function isHttpsReady(paths) {
         "5",
         "--cacert",
         paths.certificateAuthorityCertificate,
-        "https://platform.saasforge.test/",
+        `https://${host}/`,
       ],
       { allowFailure: true },
     ).status === 0
@@ -832,13 +851,13 @@ function inspectEdge(repositoryRoot, paths) {
   };
 }
 
-function matchesManagedPlatform(processInfo, record, repositoryRoot) {
+function matchesManagedConsole(processInfo, record, repositoryRoot, target) {
   return (
     processInfo.pid === record.pid &&
     processInfo.processGroupId === record.pid &&
     processInfo.startedAt === record.processStartedAt &&
     processInfo.cwd === path.join(repositoryRoot, "consoles") &&
-    processInfo.command.includes("@saas-forge/platform-console")
+    processInfo.command.split(/\s+/u).includes(frontendTarget(target).package)
   );
 }
 
@@ -851,7 +870,10 @@ async function readOptionalFile(file) {
   }
 }
 
-function createPlatformSystem(repositoryRoot, paths) {
+function createConsoleSystem(repositoryRoot, paths, target) {
+  const { label, port } = frontendTarget(target);
+  const pidPath = paths[`${target}Pid`];
+  const logPath = paths[`${target}Log`];
   const composeDirectory = path.join(repositoryRoot, "deploy", "compose");
   let edgeCompatibility;
 
@@ -876,14 +898,15 @@ function createPlatformSystem(repositoryRoot, paths) {
 
   return {
     now: () => Date.now(),
-    readPidFile: () => readOptionalFile(paths.platformPid),
-    readLegacyPidFile: () => readOptionalFile(paths.legacyVitePid),
+    readPidFile: () => readOptionalFile(pidPath),
+    readLegacyPidFile: () =>
+      target === "platform" ? readOptionalFile(paths.legacyVitePid) : undefined,
     inspectProcess: async (pid) => inspectProcess(pid),
     inspectListener: async (port) => inspectListener(port),
-    isHttpsReady: async () => compatibleEdge() && isHttpsReady(paths),
+    isHttpsReady: async (host) => compatibleEdge() && isHttpsReady(paths, host),
     wait: (milliseconds) =>
       new Promise((resolve) => setTimeout(resolve, milliseconds)),
-    async preflight({ allowManagedPlatform }) {
+    async preflight({ allowManagedConsole }) {
       if (
         !(await certificateAuthorityIsUsable(paths)) ||
         !(await serverCertificateIsUsable(paths))
@@ -896,14 +919,14 @@ function createPlatformSystem(repositoryRoot, paths) {
       if (!isCertificateAuthorityTrusted()) {
         throw new Error("本地 CA 尚未受信；请先运行 trust-ca。");
       }
-      const toolchain = doctorToolchain(repositoryRoot);
+      const toolchain = doctorToolchain(repositoryRoot, run, target);
       if (!toolchain.ok)
         throw new Error(`${toolchain.message} ${toolchain.recovery}`);
       if (doctorDocker().ok !== true) {
         throw new Error("Docker Desktop 不可用；请先启动 Docker Desktop。");
       }
-      if (!allowManagedPlatform && inspectListener(5173) !== undefined) {
-        throw new Error("127.0.0.1:5173 已有未知监听者，拒绝启动。");
+      if (!allowManagedConsole && inspectListener(port) !== undefined) {
+        throw new Error(`127.0.0.1:${port} 已有未知监听者，拒绝启动。`);
       }
       const listener = inspectListener(443);
       if (listener !== undefined) {
@@ -914,17 +937,18 @@ function createPlatformSystem(repositoryRoot, paths) {
       }
       await ensureApiTarget(paths.apiTarget);
     },
-    async spawnPlatform(options) {
+    async spawnConsole(options) {
       await mkdir(paths.directory, { recursive: true, mode: 0o700 });
       await chmod(paths.directory, 0o700);
       const log = await open(
-        paths.platformLog,
+        logPath,
         options.append ? "a" : "w",
         options.logMode,
       );
-      await chmod(paths.platformLog, options.logMode);
+      await chmod(logPath, options.logMode);
       const command = viteDevelopmentCommand(
         path.join(repositoryRoot, "consoles"),
+        target,
       );
       let child;
       try {
@@ -954,13 +978,13 @@ function createPlatformSystem(repositoryRoot, paths) {
       } catch {
         // 进程可能已自行退出；此处不能升级为按端口终止。
       }
-      throw new Error(`Platform 进程启动失败；请查看 ${paths.platformLog}。`);
+      throw new Error(`${label} 进程启动失败；请查看 ${logPath}。`);
     },
     async writePidFile(value, options) {
-      await writeFile(paths.platformPid, `${value}\n`, options);
-      await chmod(paths.platformPid, options.mode);
+      await writeFile(pidPath, `${value}\n`, options);
+      await chmod(pidPath, options.mode);
     },
-    removePidFile: () => rm(paths.platformPid, { force: true }),
+    removePidFile: () => rm(pidPath, { force: true }),
     removeLegacyPidFile: () => rm(paths.legacyVitePid, { force: true }),
     async ensureEdge() {
       const listener = inspectListener(443);
@@ -989,46 +1013,57 @@ function createPlatformSystem(repositoryRoot, paths) {
       edgeCompatibility = { checkedAt: Date.now(), compatible: true };
       return "started";
     },
-    async terminatePlatform(record, signal) {
+    async terminateConsole(record, signal) {
       const processInfo = inspectProcess(record.pid);
       if (
         processInfo === undefined ||
-        !matchesManagedPlatform(processInfo, record, repositoryRoot)
+        !matchesManagedConsole(processInfo, record, repositoryRoot, target)
       ) {
-        throw new Error("Platform 进程身份在发送信号前发生变化，拒绝停止。");
+        throw new Error(`${label} 进程身份在发送信号前发生变化，拒绝停止。`);
       }
       process.kill(-record.pid, signal);
     },
     async stopEdgeIfUnused() {
-      const edge = inspectEdge(repositoryRoot, paths);
-      if (!edge.exists || !edge.running) return "already-stopped";
-      run(
-        "docker",
-        [...edgeComposePrefix(repositoryRoot), "stop", "local-https-edge"],
-        { cwd: composeDirectory, env: edgeEnvironment(paths) },
-      );
-      edgeCompatibility = { checkedAt: Date.now(), compatible: false };
-      return "stopped";
+      return stopUnusedEdge({
+        observe: (name) =>
+          createFrontendLifecycle({
+            repositoryRoot,
+            target: name,
+            system: createConsoleSystem(repositoryRoot, paths, name),
+          }).run("status"),
+        stop: async () => {
+          const edge = inspectEdge(repositoryRoot, paths);
+          if (!edge.exists || !edge.running) return "already-stopped";
+          run(
+            "docker",
+            [...edgeComposePrefix(repositoryRoot), "stop", "local-https-edge"],
+            { cwd: composeDirectory, env: edgeEnvironment(paths) },
+          );
+          edgeCompatibility = { checkedAt: Date.now(), compatible: false };
+          return "stopped";
+        },
+      });
     },
   };
 }
 
-async function runPlatformLifecycle(command, repositoryRoot, paths) {
-  const lifecycle = createPlatformLifecycle({
+async function runConsoleLifecycle(command, repositoryRoot, paths, target) {
+  const lifecycle = createFrontendLifecycle({
+    target,
     repositoryRoot,
-    system: createPlatformSystem(repositoryRoot, paths),
+    system: createConsoleSystem(repositoryRoot, paths, target),
   });
   const result = await lifecycle.run(command);
-  console.log(`PLATFORM: ${result.state}`);
+  console.log(`${target.toUpperCase()}: ${result.state}`);
   if (command === "start" && result.state === "RUNNING") {
-    console.log("READY: https://platform.saasforge.test");
+    console.log(`READY: https://${frontendTarget(target).host}`);
   }
   process.exitCode = result.exitCode;
 }
 
 function usage() {
   console.error(
-    "用法：bash scripts/local-https-development.sh <start|status|stop> platform\n" +
+    "用法：bash scripts/local-https-development.sh <start|status|stop> platform|tenant\n" +
       "      bash scripts/local-https-development.sh <setup|hosts|trust-ca|doctor>",
   );
 }
@@ -1043,7 +1078,7 @@ export function localHttpsDevelopmentCommand(arguments_) {
   if (
     arguments_.length === 2 &&
     ["start", "status", "stop"].includes(arguments_[0]) &&
-    arguments_[1] === "platform"
+    Object.hasOwn(frontendTargets, arguments_[1])
   ) {
     return { command: arguments_[0], target: arguments_[1] };
   }
@@ -1087,7 +1122,12 @@ async function main(arguments_) {
       case "start":
       case "status":
       case "stop":
-        await runPlatformLifecycle(command, repositoryRoot, paths);
+        await runConsoleLifecycle(
+          command,
+          repositoryRoot,
+          paths,
+          request.target,
+        );
         break;
       default:
         throw new Error("不支持的命令。");

@@ -1,7 +1,10 @@
-# 仅用于 macOS Docker Desktop 上的 Platform Console 日常开发；不替代生产或 Fresh Compose 验收入口。
+# 仅用于 macOS Docker Desktop 上的 Platform/Tenant Console 日常开发；不替代生产或 Fresh Compose 验收入口。
 services:
   local-https-edge:
     image: node:24.14.1-alpine
+    # Node 不会热加载挂载脚本；拓扑标签参与 Compose 哈希，避免复用旧双 Host 进程。
+    labels:
+      io.saasforge.local-https.topology: platform-tenant-api
     user: node
     group_add:
       - "${SF_LOCAL_HTTPS_HOST_GID:?SF_LOCAL_HTTPS_HOST_GID is required}"

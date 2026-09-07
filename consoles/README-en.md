@@ -57,25 +57,31 @@ pnpm --filter @saas-forge/design-system run dev:showcase
 > [!IMPORTANT]
 > Development servers serve only the frontend; they do not start Gateway, IAM, or databases. Their `/runtime-config.json` supplies the fixed API Origin `https://api.saasforge.test`. Real authentication also requires trusted HTTPS, correct DNS resolution, Gateway security configuration, and provisioned accounts. Default HTTP localhost pages are not a substitute for controlled browser Origins. See the [Compose deployment guide](../deploy/compose/README-en.md) for environment setup.
 
-### Controlled HTTPS Platform development entrypoint
+### Controlled HTTPS Console development entrypoint
 
-For daily Platform Console work on macOS Docker Desktop, run the following from the repository root:
+On macOS Docker Desktop, run setup once from the repository root, then choose a Console explicitly:
 
 ```bash
 bash scripts/local-development.sh setup
 bash scripts/local-development.sh doctor
 bash scripts/local-development.sh frontend start platform
-bash scripts/local-development.sh frontend status platform
+bash scripts/local-development.sh frontend start tenant
+bash scripts/local-development.sh frontend status tenant
+bash scripts/local-development.sh frontend stop tenant
 bash scripts/local-development.sh frontend stop platform
 ```
 
-`setup` only creates or reuses Git-ignored local CA and server material for `platform.saasforge.test` and `api.saasforge.test`. Hosts and Keychain trust changes describe their impact separately and require explicit interactive authorization; daily `frontend` commands never perform them implicitly. Every `frontend` command requires both an operation and the `platform` target. The obsolete no-argument form exits nonzero with safe usage.
+`setup` reuses a valid local CA and reissues the leaf only when a controlled Host is missing, expiry is within 24 hours, or chain/key validation fails. The certificate covers `platform.saasforge.test`, `console.saasforge.test`, and `api.saasforge.test`. Existing two-Host installations must rerun setup. Hosts and Keychain changes still require separate explicit interactive authorization; existing configuration is skipped idempotently, and noninteractive system changes are refused.
 
-`start` uses the fixed Node `24.14.1` and pnpm `11.22.0`, binds Platform Vite only to `127.0.0.1:5173` with a strict port, and exposes `https://platform.saasforge.test` through the shared Docker TLS Edge. Its read-only preflight checks certificates, hosts, CA trust, the toolchain, existing dependencies, and ports. It does not install dependencies, generate the API client, modify system configuration, or start backend services. A healthy compatible Edge is reused.
+Every `frontend` invocation requires `start|status|stop` and `platform|tenant`. Platform Vite binds to `127.0.0.1:5173` and Tenant to `127.0.0.1:5174`, with strict ports, their respective controlled Hosts, and HMR over each HTTPS Origin's WSS port 443. Edge reaches both loopback Vite servers through `host.docker.internal`, forwards API traffic to the current Gateway, and preserves browser security headers. Unknown Hosts are rejected. Do not widen Vite listeners to all interfaces to work around Docker Desktop connectivity failures.
 
-Platform keeps a separate 0600 managed PID and append-only log in the Git-ignored directory. `status` reports `RUNNING`, `STOPPED`, `STARTING`, `STALE`, `UNMANAGED`, or `UNREADY`. `stop` sends `SIGTERM` only to a current-repository Platform process whose identity matches, then stops an unused Edge without deleting its container, backend services, or volumes. A matching legacy `vite.pid` is adopted while its old log is retained; unknown PIDs and unknown port-5173 listeners are never signalled.
+Start uses Node `24.14.1`, pnpm `11.22.0`, and existing dependencies, reusing a healthy compatible Edge. Daily start/stop never generates certificates, changes hosts/trust, installs dependencies, generates the API client, starts backend services, or resets accounts. An incompatible Edge occupying 443 blocks start; stop both Consoles before upgrading an old Edge and restarting.
 
-This entrypoint covers only Platform and API: the Edge forwards Platform HTTP and HMR WebSocket traffic to host Vite and API traffic to the Compose Gateway, while preserving Origin, Cookie, Fetch Metadata, and Authorization. Tenant Console remains outside this Issue's daily development scope; prepare accounts, Gateway, and Compose services separately.
+Each Console has its own `platform-vite.pid|log` or `tenant-vite.pid|log` under the Git-ignored `deploy/compose/.secrets/local-https-development/` directory. Both PID files and append-only logs use mode 0600. Status is `RUNNING`, `STOPPED`, `STARTING`, `STALE`, `UNMANAGED`, or `UNREADY`. RUNNING requires matching PID, process group, start time, repository, package identity, loopback listener, and formal HTTPS readiness. Stop sends SIGTERM only to a matching target. Edge is retained while another Console is active or has an unknown identity; stopping the last Console only stops the Edge container without deleting containers, backend services, or volumes. Only Platform adopts a matching legacy `vite.pid`, retaining its old log. Stale records are cleaned only after confirming the original process no longer exists.
+
+The package-level `pnpm --filter @saas-forge/tenant-console-shell run dev` command remains available for foreground debugging. If it occupies 5174, managed lifecycle reports UNMANAGED and refuses to terminate it. Foreground HTTP debugging is not controlled HTTPS acceptance.
+
+This slice serves ordinary Tenant Shell routes only. **Tenant Password Setup special Gateway paths are not included, and this is not complete Tenant authentication acceptance.** Prepare accounts, Gateway, and backend services separately.
 
 ## Workspace structure
 

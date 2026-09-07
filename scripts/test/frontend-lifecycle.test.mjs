@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createPlatformLifecycle } from "../frontend-lifecycle.mjs";
+import { createFrontendLifecycle } from "../frontend-lifecycle.mjs";
 
 const repositoryRoot = "/workspace/saas-forge";
 const managedPid = 4100;
@@ -84,7 +84,11 @@ test("reports every Platform lifecycle state through the public status interface
   ];
 
   for (const [expected, system] of cases) {
-    const lifecycle = createPlatformLifecycle({ repositoryRoot, system });
+    const lifecycle = createFrontendLifecycle({
+      target: "platform",
+      repositoryRoot,
+      system,
+    });
     assert.equal((await lifecycle.run("status")).state, expected);
   }
 });
@@ -102,7 +106,7 @@ test("starts a stopped Platform with a restricted managed PID and append-only lo
     inspectListener: async () => listener,
     isHttpsReady: async () => edgeReady,
     preflight: async () => undefined,
-    spawnPlatform: async (options) => {
+    spawnConsole: async (options) => {
       spawnOptions = options;
       process = managedProcess();
       listener = {
@@ -122,7 +126,11 @@ test("starts a stopped Platform with a restricted managed PID and append-only lo
     },
     wait: async () => undefined,
   };
-  const lifecycle = createPlatformLifecycle({ repositoryRoot, system });
+  const lifecycle = createFrontendLifecycle({
+    target: "platform",
+    repositoryRoot,
+    system,
+  });
 
   const result = await lifecycle.run("start");
 
@@ -136,7 +144,11 @@ test("classifies a reused PID as unmanaged even when command and directory match
     pidFile: managedPidFile(),
     process: managedProcess({ startedAt: "process-start-b" }),
   });
-  const lifecycle = createPlatformLifecycle({ repositoryRoot, system });
+  const lifecycle = createFrontendLifecycle({
+    target: "platform",
+    repositoryRoot,
+    system,
+  });
 
   assert.equal((await lifecycle.run("status")).state, "UNMANAGED");
 });
@@ -158,7 +170,7 @@ test("keeps start idempotent and never mutates an unmanaged Platform", async () 
     preflight: async () => {
       preflights += 1;
     },
-    spawnPlatform: async () => {
+    spawnConsole: async () => {
       mutations += 1;
     },
     writePidFile: async () => {
@@ -168,7 +180,8 @@ test("keeps start idempotent and never mutates an unmanaged Platform", async () 
       mutations += 1;
     },
   };
-  const running = createPlatformLifecycle({
+  const running = createFrontendLifecycle({
+    target: "platform",
     repositoryRoot,
     system: runningSystem,
   });
@@ -191,11 +204,12 @@ test("keeps start idempotent and never mutates an unmanaged Platform", async () 
     preflight: async () => {
       mutations += 1;
     },
-    spawnPlatform: async () => {
+    spawnConsole: async () => {
       mutations += 1;
     },
   };
-  const unmanaged = createPlatformLifecycle({
+  const unmanaged = createFrontendLifecycle({
+    target: "platform",
     repositoryRoot,
     system: unmanagedSystem,
   });
@@ -227,7 +241,7 @@ test("stops only the identity-verified Platform process and then stops the unuse
       return listener;
     },
     isHttpsReady: async () => edgeReady,
-    terminatePlatform: async (record, requestedSignal) => {
+    terminateConsole: async (record, requestedSignal) => {
       signal = { record, requestedSignal };
       terminating = true;
     },
@@ -240,7 +254,11 @@ test("stops only the identity-verified Platform process and then stops the unuse
     },
     wait: async () => undefined,
   };
-  const lifecycle = createPlatformLifecycle({ repositoryRoot, system });
+  const lifecycle = createFrontendLifecycle({
+    target: "platform",
+    repositoryRoot,
+    system,
+  });
 
   const result = await lifecycle.run("stop");
 
@@ -284,7 +302,11 @@ test("adopts a matching legacy Platform PID and preserves its log", async () => 
     },
     wait: async () => undefined,
   };
-  const lifecycle = createPlatformLifecycle({ repositoryRoot, system });
+  const lifecycle = createFrontendLifecycle({
+    target: "platform",
+    repositoryRoot,
+    system,
+  });
 
   const result = await lifecycle.run("start");
 
@@ -311,7 +333,11 @@ test("observes a matching legacy PID without mutating it during status", async (
       legacyPidFile = undefined;
     },
   };
-  const lifecycle = createPlatformLifecycle({ repositoryRoot, system });
+  const lifecycle = createFrontendLifecycle({
+    target: "platform",
+    repositoryRoot,
+    system,
+  });
 
   assert.equal((await lifecycle.run("status")).state, "RUNNING");
   assert.equal(legacyPidFile, `${managedPid}\n`);
@@ -331,7 +357,7 @@ test("rolls back only resources created by a failed Platform start", async () =>
     inspectListener: async () => listener,
     isHttpsReady: async () => false,
     preflight: async () => undefined,
-    spawnPlatform: async () => {
+    spawnConsole: async () => {
       process = managedProcess();
       listener = {
         address: "127.0.0.1",
@@ -347,7 +373,7 @@ test("rolls back only resources created by a failed Platform start", async () =>
       edgeRunning = true;
       return "started";
     },
-    terminatePlatform: async () => {
+    terminateConsole: async () => {
       process = undefined;
       listener = undefined;
     },
@@ -362,7 +388,11 @@ test("rolls back only resources created by a failed Platform start", async () =>
       now += milliseconds;
     },
   };
-  const lifecycle = createPlatformLifecycle({ repositoryRoot, system });
+  const lifecycle = createFrontendLifecycle({
+    target: "platform",
+    repositoryRoot,
+    system,
+  });
 
   await assert.rejects(() => lifecycle.run("start"), /30 秒/u);
 
@@ -385,7 +415,7 @@ test("preserves a pre-existing Edge when Platform readiness fails", async () => 
     inspectListener: async () => listener,
     isHttpsReady: async () => false,
     preflight: async () => undefined,
-    spawnPlatform: async () => {
+    spawnConsole: async () => {
       process = managedProcess();
       listener = {
         address: "127.0.0.1",
@@ -398,7 +428,7 @@ test("preserves a pre-existing Edge when Platform readiness fails", async () => 
       pidFile = value;
     },
     ensureEdge: async () => "reused",
-    terminatePlatform: async () => {
+    terminateConsole: async () => {
       process = undefined;
       listener = undefined;
     },
@@ -413,7 +443,11 @@ test("preserves a pre-existing Edge when Platform readiness fails", async () => 
       now += milliseconds;
     },
   };
-  const lifecycle = createPlatformLifecycle({ repositoryRoot, system });
+  const lifecycle = createFrontendLifecycle({
+    target: "platform",
+    repositoryRoot,
+    system,
+  });
 
   await assert.rejects(() => lifecycle.run("start"), /30 秒/u);
 
@@ -431,7 +465,8 @@ test("cleans a stale legacy PID but blocks one that points to an unknown process
     },
     stopEdgeIfUnused: async () => "already-stopped",
   };
-  const staleLifecycle = createPlatformLifecycle({
+  const staleLifecycle = createFrontendLifecycle({
+    target: "platform",
     repositoryRoot,
     system: staleSystem,
   });
@@ -450,11 +485,12 @@ test("cleans a stale legacy PID but blocks one that points to an unknown process
     writePidFile: async () => {
       mutations += 1;
     },
-    terminatePlatform: async () => {
+    terminateConsole: async () => {
       mutations += 1;
     },
   };
-  const unknownLifecycle = createPlatformLifecycle({
+  const unknownLifecycle = createFrontendLifecycle({
+    target: "platform",
     repositoryRoot,
     system: unknownSystem,
   });
@@ -472,7 +508,8 @@ test("keeps stop idempotent and never signals an unmanaged process", async () =>
       return "already-stopped";
     },
   };
-  const stopped = createPlatformLifecycle({
+  const stopped = createFrontendLifecycle({
+    target: "platform",
     repositoryRoot,
     system: stoppedSystem,
   });
@@ -490,14 +527,194 @@ test("keeps stop idempotent and never signals an unmanaged process", async () =>
         cwd: "/workspace/another-repository/consoles",
       }),
     }),
-    terminatePlatform: async () => {
+    terminateConsole: async () => {
       signals += 1;
     },
   };
-  const unmanaged = createPlatformLifecycle({
+  const unmanaged = createFrontendLifecycle({
+    target: "platform",
     repositoryRoot,
     system: unmanagedSystem,
   });
   await assert.rejects(() => unmanaged.run("stop"), /UNMANAGED/u);
   assert.equal(signals, 0);
+});
+
+test("Tenant validates all states and rejects Platform, reused and foreign PIDs", async () => {
+  const tenantProcess = managedProcess({
+    command: "pnpm --filter @saas-forge/tenant-console-shell run dev",
+  });
+  const listener = {
+    address: "127.0.0.1",
+    port: 5174,
+    processGroupId: managedPid,
+  };
+  const cases = [
+    ["STOPPED", {}],
+    ["STALE", { pidFile: managedPidFile() }],
+    ["UNMANAGED", { listener }],
+    ["STARTING", { pidFile: managedPidFile(50_000), process: tenantProcess }],
+    [
+      "UNREADY",
+      { pidFile: managedPidFile(), process: tenantProcess, listener },
+    ],
+    [
+      "RUNNING",
+      {
+        pidFile: managedPidFile(),
+        process: tenantProcess,
+        listener,
+        httpsReady: true,
+      },
+    ],
+    ...[
+      managedProcess(),
+      { ...tenantProcess, startedAt: "reused" },
+      { ...tenantProcess, cwd: "/another/repository/consoles" },
+      {
+        ...tenantProcess,
+        command:
+          "pnpm --filter @saas-forge/tenant-console-shell-unrelated run dev",
+      },
+    ].map((process) => [
+      "UNMANAGED",
+      { pidFile: managedPidFile(), process, listener, httpsReady: true },
+    ]),
+  ];
+  for (const [expected, options] of cases) {
+    const system = adapter(options);
+    system.readLegacyPidFile = () => {
+      throw new Error("Tenant must not access legacy Platform PID");
+    };
+    system.isHttpsReady = async (host) => {
+      assert.equal(host, "console.saasforge.test");
+      return options.httpsReady ?? false;
+    };
+    const lifecycle = createFrontendLifecycle({
+      repositoryRoot,
+      system,
+      target: "tenant",
+    });
+    assert.equal((await lifecycle.run("status")).state, expected);
+    if (expected === "UNMANAGED") {
+      system.terminateConsole = () => {
+        throw new Error("must not signal unknown process");
+      };
+      await assert.rejects(() => lifecycle.run("start"), /UNMANAGED/u);
+      await assert.rejects(() => lifecycle.run("stop"), /UNMANAGED/u);
+    }
+  }
+});
+
+test("two Consoles reuse Edge, stop independently and preserve Platform after Tenant failure", async () => {
+  const { stopUnusedEdge, frontendTargets } =
+    await import("../frontend-lifecycle.mjs");
+  const consoles = {};
+  const records = {};
+  let edge = false;
+  let edgeStarts = 0;
+  let edgeStops = 0;
+  let tenantFails = false;
+  let now = 60_000;
+  for (const [target, configuration] of Object.entries(frontendTargets)) {
+    const state = (records[target] = {});
+    const system = {
+      now: () => now,
+      readPidFile: async () => state.pidFile,
+      inspectProcess: async () => state.process,
+      inspectListener: async () =>
+        state.process && {
+          address: "127.0.0.1",
+          port: configuration.port,
+          processGroupId: state.process.pid,
+        },
+      isHttpsReady: async () => edge && !(target === "tenant" && tenantFails),
+      preflight: async () => {},
+      spawnConsole: async (options) => {
+        assert.deepEqual(options, { logMode: 0o600, append: true });
+        state.process = managedProcess({
+          pid: configuration.port,
+          processGroupId: configuration.port,
+          command: "pnpm --filter " + configuration.package + " run dev",
+        });
+        return {
+          pid: configuration.port,
+          processStartedAt: state.process.startedAt,
+        };
+      },
+      writePidFile: async (value, options) => {
+        assert.equal(options.mode, 0o600);
+        state.pidFile = value;
+      },
+      removePidFile: async () => {
+        state.pidFile = undefined;
+      },
+      ensureEdge: async () => {
+        if (edge) return "reused";
+        edge = true;
+        edgeStarts++;
+        return "started";
+      },
+      terminateConsole: async (record, signal) => {
+        assert.equal(record.pid, configuration.port);
+        assert.equal(signal, "SIGTERM");
+        state.process = undefined;
+      },
+      stopEdgeIfUnused: () =>
+        stopUnusedEdge({
+          observe: (name) => consoles[name].run("status"),
+          stop: async () => {
+            if (!edge) return "already-stopped";
+            edge = false;
+            edgeStops++;
+            return "stopped";
+          },
+        }),
+      wait: async (duration) => {
+        now += duration;
+      },
+    };
+    consoles[target] = createFrontendLifecycle({
+      repositoryRoot,
+      system,
+      target,
+    });
+  }
+  await consoles.platform.run("start");
+  const platformPid = records.platform.pidFile;
+  await consoles.tenant.run("start");
+  await consoles.tenant.run("start");
+  assert.equal(edgeStarts, 1);
+  await consoles.tenant.run("stop");
+  await consoles.tenant.run("stop");
+  assert.equal(edgeStops, 0);
+  assert.equal((await consoles.platform.run("status")).state, "RUNNING");
+  tenantFails = true;
+  await assert.rejects(() => consoles.tenant.run("start"), /30 秒/u);
+  assert.equal(records.platform.pidFile, platformPid);
+  assert.equal(edgeStops, 0);
+  tenantFails = false;
+  await consoles.tenant.run("start");
+  await consoles.platform.run("stop");
+  assert.equal((await consoles.tenant.run("status")).state, "RUNNING");
+  assert.equal(edgeStops, 0);
+  await consoles.tenant.run("stop");
+  assert.equal(edgeStops, 1);
+});
+
+test("shared Edge is retained for unknown, starting and unready peers", async () => {
+  const { stopUnusedEdge } = await import("../frontend-lifecycle.mjs");
+  for (const state of ["UNMANAGED", "STARTING", "UNREADY", "RUNNING"]) {
+    assert.equal(
+      await stopUnusedEdge({
+        observe: async (target) => ({
+          state: target === "platform" ? "STOPPED" : state,
+        }),
+        stop: async () => {
+          throw new Error("must retain Edge");
+        },
+      }),
+      "retained",
+    );
+  }
 });
