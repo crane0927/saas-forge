@@ -568,11 +568,15 @@ function doctorDocker() {
   return { ok: true, code: "DOCKER", message: "Docker Desktop 可用。" };
 }
 
-function doctorToolchain(repositoryRoot) {
+export function doctorToolchain(repositoryRoot, execute = run) {
   const consoleRoot = path.join(repositoryRoot, "consoles");
   const command = viteDevelopmentCommand(consoleRoot);
-  const environment = { ...process.env, COREPACK_ENABLE_NETWORK: "0" };
-  const node = run(
+  const environment = {
+    ...process.env,
+    COREPACK_ENABLE_NETWORK: "0",
+    PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE: "false",
+  };
+  const node = execute(
     "mise",
     ["exec", `node@${expectedNodeVersion}`, "--", "node", "--version"],
     {
@@ -581,7 +585,7 @@ function doctorToolchain(repositoryRoot) {
       env: environment,
     },
   );
-  const pnpm = run(
+  const pnpm = execute(
     "mise",
     [
       "exec",
@@ -597,17 +601,38 @@ function doctorToolchain(repositoryRoot) {
       env: environment,
     },
   );
-  const dependencies = run(
+  const dependencies = execute(
     "test",
     ["-d", path.join(consoleRoot, "node_modules")],
     { allowFailure: true },
+  );
+  const vite = execute(
+    "mise",
+    [
+      "exec",
+      `node@${expectedNodeVersion}`,
+      "--",
+      "corepack",
+      "pnpm",
+      "--filter",
+      "@saas-forge/platform-console",
+      "exec",
+      "vite",
+      "--version",
+    ],
+    {
+      allowFailure: true,
+      cwd: command.cwd,
+      env: environment,
+    },
   );
   if (
     node.status !== 0 ||
     node.stdout.trim() !== `v${expectedNodeVersion}` ||
     pnpm.status !== 0 ||
     pnpm.stdout.trim() !== expectedPnpmVersion ||
-    dependencies.status !== 0
+    dependencies.status !== 0 ||
+    vite.status !== 0
   ) {
     return {
       ok: false,

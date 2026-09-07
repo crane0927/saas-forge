@@ -9,6 +9,7 @@ import test from 'node:test';
 import {
   certificateCoversExpectedHosts,
   developmentHttpsPaths,
+  doctorToolchain,
   ensureCertificateMaterial,
   hasExpectedHosts,
   viteDevelopmentCommand,
@@ -163,6 +164,40 @@ test('recognizes the idempotent local hosts entry and fixes Vite to the Edge-fac
     '5173',
   ]);
   assert.equal(command.args.includes('install'), false);
+});
+
+test('pins the Vite dependency layout and rejects an incompatible installed workspace', async () => {
+  const workspaceConfiguration = await readFile(
+    new URL('../pnpm-workspace.yaml', import.meta.url),
+    'utf8',
+  );
+  assert.match(workspaceConfiguration, /^enableGlobalVirtualStore: false$/mu);
+
+  const calls = [];
+  const result = doctorToolchain('/workspace', (command, args, options) => {
+    calls.push({ command, args, options });
+    if (command === 'test') return { status: 0, stdout: '' };
+    if (args.includes('vite')) return { status: 1, stdout: '' };
+    if (args.at(-1) === '--version' && args.includes('node')) {
+      return { status: 0, stdout: 'v24.14.1\n' };
+    }
+    if (args.at(-1) === '--version' && args.includes('pnpm')) {
+      return { status: 0, stdout: '11.22.0\n' };
+    }
+    return { status: 1, stdout: '' };
+  });
+
+  assert.equal(result.code, 'TOOLCHAIN_INVALID');
+  assert.equal(
+    calls.some(
+      ({ args, options }) =>
+        args.includes('exec') &&
+        args.includes('vite') &&
+        args.at(-1) === '--version' &&
+        options.env.PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE === 'false',
+    ),
+    true,
+  );
 });
 
 function listen(server) {

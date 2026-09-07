@@ -9,6 +9,7 @@ packages:
   - tenant-console-shell
 
 verifyDepsBeforeRun: error
+enableGlobalVirtualStore: false
 
 catalog:
   '@eslint/js': 10.0.1
