@@ -34,6 +34,11 @@ for (const line of stripVTControlCharacters(log).split('\n')) {
           line.trim(),
         );
       if (inventory) console.info(`DIAG: ${inventory[0]}`);
+      const remote =
+        /^brand-remote inherited=(?:true|false) providers=\d{1,2} images=\d{1,2} faviconUnchanged=(?:true|false) context=\d{1,2} imageRequests=\d{1,2} fetchRequests=\d{1,2} otherRequests=\d{1,2}$/.exec(
+          line.trim(),
+        );
+      if (remote) console.info(`DIAG: ${remote[0]}`);
     }
     if (
       field === 'code' &&
@@ -48,7 +53,7 @@ for (const line of stripVTControlCharacters(log).split('\n')) {
       (field === 'stack' && indent > diagnosticIndent)
     ) {
       const source =
-        /\b(consoles\/integration-test\/(?:console-authentication\.test|console-client-acceptance|console-problem-acceptance|session-tabs\.test|console-default-realm\.test)\.mjs:\d+:\d+)\b/.exec(
+        /\b(consoles\/integration-test\/(?:console-authentication\.test|console-client-acceptance|console-problem-acceptance|brand-remote-acceptance|brand-concurrency-acceptance|session-tabs\.test|console-default-realm\.test)\.mjs:\d+:\d+)\b/.exec(
           line,
         );
       if (source) console.info(`AT: ${source[1]}`);

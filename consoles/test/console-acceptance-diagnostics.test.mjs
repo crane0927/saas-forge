@@ -24,6 +24,8 @@ not ok 2 - PRIVATE_TEST_TITLE
     auth-cookie operation=refresh status=401 action=clear attributes=true
     auth-cookie-inventory platform=2 tenant=1 other=0 partitioned=1
     auth-cookie-inventory platform=PRIVATE_COOKIE tenant=1 other=0 partitioned=1
+    brand-remote inherited=true providers=1 images=0 faviconUnchanged=true context=0 imageRequests=0 fetchRequests=0 otherRequests=1
+    brand-remote inherited=PRIVATE_PROFILE providers=1 images=0 faviconUnchanged=true context=0 imageRequests=0 fetchRequests=0 otherRequests=1
     auth-cookie operation=PRIVATE_OPERATION status=200 action=set attributes=true
     PRIVATE_ERROR_BODY
   code: 'ERR_ASSERTION'
@@ -39,6 +41,7 @@ not ok 2 - PRIVATE_TEST_TITLE
   stack: |-
     PRIVATE_STACK_VALUE
     TestContext.<anonymous> (file:///runner/consoles/integration-test/console-client-acceptance.mjs:81:8)
+    verifyBrandRemoteInheritance (file:///runner/consoles/integration-test/brand-remote-acceptance.mjs:55:8)
   ...
 # tests 16
 # pass 15
@@ -59,8 +62,10 @@ not ok 2 - PRIVATE_TEST_TITLE
       'DIAG: auth-cookie operation=login status=200 action=set attributes=true',
       'DIAG: auth-cookie operation=refresh status=401 action=clear attributes=true',
       'DIAG: auth-cookie-inventory platform=2 tenant=1 other=0 partitioned=1',
+      'DIAG: brand-remote inherited=true providers=1 images=0 faviconUnchanged=true context=0 imageRequests=0 fetchRequests=0 otherRequests=1',
       'CODE: ERR_ASSERTION',
       'AT: consoles/integration-test/console-client-acceptance.mjs:81:8',
+      'AT: consoles/integration-test/brand-remote-acceptance.mjs:55:8',
       '# tests 16',
       '# pass 15',
       '# fail 1',
