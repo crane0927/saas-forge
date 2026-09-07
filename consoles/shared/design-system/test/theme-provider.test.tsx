@@ -4,8 +4,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   contrastRatio,
   DesignSystemProvider,
+  platformBrandProfile,
+  platformBrandTokenSet,
+  platformConsoleTitle,
   resolveTenantBrandProfile,
   semanticTokens,
+  tenantConsolePlatformTitle,
   type TenantBrandProfile,
 } from '../src';
 
@@ -31,6 +35,33 @@ function providerRoot(content: string): HTMLElement {
 }
 
 describe('Design System 主题与品牌', () => {
+  it('发布完整且不可变的 Platform Brand Profile 与精确 Console 标题', () => {
+    expect(platformBrandProfile.displayName).toBe('SaaS Forge');
+    expect(platformBrandProfile.logoUrl).toContain('platform-logo.svg');
+    expect(platformBrandProfile.faviconUrl).toContain('platform-favicon.svg');
+    expect(platformBrandProfile.primaryColor).toBe('#2563EB');
+    expect(platformBrandProfile.accentColor).toBe('#C026D3');
+    expect(Object.isFrozen(platformBrandProfile)).toBe(true);
+    expect(platformConsoleTitle).toBe('SaaS Forge Platform Console');
+    expect(tenantConsolePlatformTitle).toBe('SaaS Forge Tenant Console');
+  });
+
+  it('Platform Brand Token Set 在浅色和深色主题保持可读', () => {
+    for (const [scheme, surface] of [
+      [platformBrandTokenSet.light, semanticTokens.color.light.surface],
+      [platformBrandTokenSet.dark, semanticTokens.color.dark.surface],
+    ] as const) {
+      expect(contrastRatio(scheme.primary.color, surface)).toBeGreaterThanOrEqual(3);
+      expect(contrastRatio(scheme.primary.color, scheme.primary.foreground)).toBeGreaterThanOrEqual(
+        4.5,
+      );
+      expect(contrastRatio(scheme.accent.color, surface)).toBeGreaterThanOrEqual(3);
+      expect(contrastRatio(scheme.accent.color, scheme.accent.foreground)).toBeGreaterThanOrEqual(
+        4.5,
+      );
+    }
+  });
+
   it('默认跟随操作系统主题并使用唯一平台主色 Token', () => {
     vi.spyOn(window, 'matchMedia').mockImplementation(
       (query) =>
@@ -56,6 +87,9 @@ describe('Design System 主题与品牌', () => {
     expect(root.dataset.colorScheme).toBe('dark');
     expect(root.style.getPropertyValue('--sf-color-primary')).toBe(
       semanticTokens.color.platformPrimary,
+    );
+    expect(root.style.getPropertyValue('--sf-color-accent')).toBe(
+      semanticTokens.color.platformAccent,
     );
     expect(root.getAttribute('lang')).toBe('zh-CN');
   });
@@ -100,7 +134,7 @@ describe('Design System 主题与品牌', () => {
       semanticTokens.color.platformPrimary,
     );
     expect(root.style.getPropertyValue('--sf-color-accent')).toBe(
-      semanticTokens.color.platformPrimary,
+      semanticTokens.color.platformAccent,
     );
     await waitFor(() => {
       expect(rejected).toHaveBeenCalledOnce();

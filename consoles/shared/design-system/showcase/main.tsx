@@ -16,6 +16,8 @@ import {
   PageLayout,
   PageTitle,
   PasswordField,
+  platformBrandProfile,
+  platformConsoleTitle,
   PersistentError,
   RecoverableDangerDialog,
   RefreshingContent,
@@ -26,6 +28,7 @@ import {
   StandardDialog,
   SuccessFeedback,
   TextField,
+  tenantConsolePlatformTitle,
   UnsavedChangesDialog,
   useFormProblemFocus,
   useUnsavedChangesGuard,
@@ -622,6 +625,66 @@ export function ThemeLocaleMatrix() {
   );
 }
 
+export function PlatformBrandMatrix() {
+  const variants: readonly {
+    scheme: DesignSystemColorScheme;
+    locale: DesignSystemLocale;
+    console: 'platform' | 'tenant';
+  }[] = [
+    { scheme: 'light', locale: 'zh-CN', console: 'platform' },
+    { scheme: 'dark', locale: 'en-US', console: 'platform' },
+    { scheme: 'light', locale: 'en-US', console: 'tenant' },
+    { scheme: 'dark', locale: 'zh-CN', console: 'tenant' },
+  ];
+
+  return (
+    <div className="sf-showcase-platform-brand-matrix" data-testid="platform-brand-matrix">
+      {variants.map(({ scheme, locale, console }) => {
+        const english = locale === 'en-US';
+        const title = console === 'platform' ? platformConsoleTitle : tenantConsolePlatformTitle;
+        return (
+          <div className="sf-showcase-platform-brand-sample" key={`${scheme}-${locale}-${console}`}>
+            <DesignSystemProvider forcedColorScheme={scheme} locale={locale}>
+              <article aria-label={`${locale} ${scheme} ${console} platform brand`}>
+                <p className="sf-showcase-theme-label">
+                  {locale} · {scheme} · {console}
+                </p>
+                <div className="sf-showcase-brand-identity">
+                  <img src={platformBrandProfile.logoUrl} alt="" />
+                  <div>
+                    <strong>{platformBrandProfile.displayName}</strong>
+                    <span>{title}</span>
+                  </div>
+                </div>
+                <p>
+                  {console === 'tenant'
+                    ? english
+                      ? 'Stable state without an authoritative Tenant Context'
+                      : '尚未取得权威 Tenant Context 的稳定状态'
+                    : english
+                      ? 'Platform identity is available before authentication and during recovery.'
+                      : '平台身份在未认证与恢复期间保持完整。'}
+                </p>
+                <div
+                  className="sf-showcase-brand-tokens"
+                  aria-label={english ? 'Brand colors' : '品牌颜色'}
+                >
+                  <span style={{ background: platformBrandProfile.primaryColor }} />
+                  <code>{platformBrandProfile.primaryColor}</code>
+                  <span style={{ background: platformBrandProfile.accentColor }} />
+                  <code>{platformBrandProfile.accentColor}</code>
+                  <img src={platformBrandProfile.faviconUrl} alt="" />
+                  <small>favicon</small>
+                </div>
+              </article>
+            </DesignSystemProvider>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 const contentExamples = [
   ['成员目录', '查看成员身份、状态与最近活动。'],
   ['访问策略', '集中检查角色与权限分配。'],
@@ -815,6 +878,16 @@ export function DesignSystemShowcase() {
             auxiliary={<div className="sf-showcase-split-auxiliary">辅助说明内容</div>}
             auxiliaryLabel="当前页面辅助说明"
           />
+        </section>
+
+        <section className="sf-showcase-section" aria-labelledby="platform-brand-title">
+          <div className="sf-showcase-section-heading">
+            <div>
+              <h2 id="platform-brand-title">Platform Brand Profile</h2>
+              <p>同一份完整平台品牌覆盖两个 Console 的未认证、恢复与无 Context 稳定状态。</p>
+            </div>
+          </div>
+          <PlatformBrandMatrix />
         </section>
 
         <section className="sf-showcase-section" aria-labelledby="theme-matrix-title">

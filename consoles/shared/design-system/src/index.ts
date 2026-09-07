@@ -109,6 +109,14 @@ export {
   type TenantBrandProfile,
   type TenantBrandResolution,
 } from './brand-theme';
+export {
+  platformBrandProfile,
+  platformBrandTokenSet,
+  platformConsoleTitle,
+  tenantConsolePlatformTitle,
+  type PlatformBrandProfile,
+  type PlatformBrandTokenSet,
+} from './platform-brand';
 export { RouteFocusAnnouncement, type RouteFocusAnnouncementProps } from './route-accessibility';
 export {
   DesignSystemProvider,

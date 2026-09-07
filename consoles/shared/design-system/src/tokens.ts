@@ -1,6 +1,7 @@
 export const semanticTokens = {
   color: {
     platformPrimary: '#2563EB',
+    platformAccent: '#C026D3',
     light: {
       surface: '#FFFFFF',
       surfaceElevated: '#F8FAFC',

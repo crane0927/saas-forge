@@ -23,6 +23,14 @@ if (versions.size !== 1) {
   throw new Error('三个消费者没有解析到完全相同的 Design System 版本。');
 }
 
+const designSystemDirectory = path.join(consoleRoot, 'shared/design-system/dist');
+const designSystemAssets = await filesRecursively(designSystemDirectory);
+for (const assetName of ['platform-logo', 'platform-favicon']) {
+  if (!designSystemAssets.includes(path.join(designSystemDirectory, `${assetName}.svg`))) {
+    throw new Error(`Design System 构建产物缺少版本化平台品牌素材：${assetName}`);
+  }
+}
+
 const rows = [];
 const styleHashes = new Set();
 for (const artifact of consumerArtifacts) {
@@ -51,8 +59,8 @@ if (styleHashes.size !== 1) {
 }
 
 const designSystemFiles = [
-  path.join(consoleRoot, 'shared/design-system/dist/index.js'),
-  path.join(consoleRoot, 'shared/design-system/dist/index.css'),
+  path.join(designSystemDirectory, 'index.js'),
+  path.join(designSystemDirectory, 'index.css'),
 ];
 rows.unshift(await artifactSizeRow('Design System 正式包', designSystemFiles));
 
@@ -63,6 +71,7 @@ for (const row of rows) {
 }
 console.log('三个消费者均只有一个、且内容完全相同的全局 CSS 入口。');
 console.log('三个消费者首屏均未包含未使用的表格、危险确认或筛选空态实现。');
+console.log('Design System 已发布版本化 Platform Logo 与 favicon。');
 
 async function artifactSizeRow(name, files) {
   const bundleFiles = files.filter((file) => file.endsWith('.js') || file.endsWith('.css'));

@@ -20,6 +20,7 @@ import { formatDate, formatInstant, formatMoney, formatNumber } from '@saas-forg
 import {
   DesignSystemShowcase,
   LayoutShowcase,
+  PlatformBrandMatrix,
   SplitLayoutShowcase,
   ThemeLocaleMatrix,
 } from '../showcase/main';
@@ -81,6 +82,58 @@ async function tabToNextControl() {
 }
 
 describe('Design System 真实浏览器展示矩阵', () => {
+  it.skipIf(import.meta.env.SF_VISUAL_SNAPSHOTS === 'false')(
+    '固定完整平台品牌的宽屏与窄屏视觉状态',
+    async () => {
+      render(
+        <DesignSystemProvider>
+          <PlatformBrandMatrix />
+        </DesignSystemProvider>,
+      );
+      const matrix = page.getByTestId('platform-brand-matrix');
+      const images = [...matrix.element().querySelectorAll('img')];
+      await Promise.all(images.map((image) => image.decode()));
+
+      await page.viewport(1440, 1000);
+      await expect(matrix).toMatchScreenshot('platform-brand-matrix-1440');
+
+      await page.viewport(390, 1600);
+      await expect(matrix).toMatchScreenshot('platform-brand-matrix-390');
+      expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
+    },
+  );
+
+  it('Platform 与无 Context Tenant 夹具共享完整平台身份和同站素材', async () => {
+    render(
+      <DesignSystemProvider>
+        <PlatformBrandMatrix />
+      </DesignSystemProvider>,
+    );
+
+    const matrix = page.getByTestId('platform-brand-matrix').element();
+    const samples = [...matrix.querySelectorAll<HTMLElement>('article')];
+    expect(samples).toHaveLength(4);
+    expect(
+      samples.filter((sample) => sample.textContent.includes('SaaS Forge Platform Console')),
+    ).toHaveLength(2);
+    expect(
+      samples.filter((sample) => sample.textContent.includes('SaaS Forge Tenant Console')),
+    ).toHaveLength(2);
+
+    const images = [...matrix.querySelectorAll<HTMLImageElement>('img')];
+    await Promise.all(images.map((image) => image.decode()));
+    for (const image of images) {
+      expect(image.complete).toBe(true);
+      expect(image.naturalWidth).toBeGreaterThan(0);
+      expect(new URL(image.currentSrc).origin).toBe(window.location.origin);
+      expect(image.getAttribute('alt')).toBe('');
+    }
+
+    expect(matrix.textContent).toContain('#2563EB');
+    expect(matrix.textContent).toContain('#C026D3');
+    expect(matrix.querySelectorAll('[data-brand="platform"]')).toHaveLength(4);
+  });
+
   it.skipIf(import.meta.env.SF_VISUAL_SNAPSHOTS === 'false')(
     '固定关键稳定状态的五个验收视口',
     async () => {

@@ -13,6 +13,7 @@ import {
 } from 'react';
 
 import { resolveTenantBrandProfile, type TenantBrandProfile } from './brand-theme';
+import { platformBrandTokenSet } from './platform-brand';
 import { semanticTokens } from './tokens';
 
 export type DesignSystemLocale = SupportedLocale;
@@ -90,10 +91,11 @@ export function DesignSystemProvider({
   const acceptedBrand = brandResolution?.accepted === true ? brandResolution : undefined;
   const palette = semanticTokens.color[colorScheme];
   const brandTheme = acceptedBrand?.[colorScheme];
-  const primary = brandTheme?.primary.color ?? semanticTokens.color.platformPrimary;
-  const primaryForeground = brandTheme?.primary.foreground ?? '#FFFFFF';
-  const accent = brandTheme?.accent.color ?? primary;
-  const accentForeground = brandTheme?.accent.foreground ?? primaryForeground;
+  const platformTheme = platformBrandTokenSet[colorScheme];
+  const primary = brandTheme?.primary.color ?? platformTheme.primary.color;
+  const primaryForeground = brandTheme?.primary.foreground ?? platformTheme.primary.foreground;
+  const accent = brandTheme?.accent.color ?? platformTheme.accent.color;
+  const accentForeground = brandTheme?.accent.foreground ?? platformTheme.accent.foreground;
 
   useEffect(() => {
     if (brandResolution?.accepted === false) {

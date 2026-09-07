@@ -33,7 +33,7 @@
 ## 4. 主题与品牌
 
 - 同时提供浅色与深色主题，默认跟随操作系统设置；MVP 不增加手动主题开关。
-- Platform Brand Profile 是显示名称、Logo、favicon、主色和强调色组成的完整平台默认品牌，MVP 由 Design System 内的版本化构建期常量提供，不扩展当前只承载 API Origin 的 Runtime Config。平台第一版默认主色为 `#2563EB`；正式 Logo 与 favicon 实现前必须另行确认视觉稿，不得使用验收夹具代替。
+- Platform Brand Profile 是显示名称、Logo、favicon、主色和强调色组成的完整平台默认品牌，MVP 由 Design System 内的版本化构建期常量提供，不扩展当前只承载 API Origin 的 Runtime Config。平台第一版显示名称为 `SaaS Forge`，主色为 `#2563EB`，强调色为 `#C026D3`；正式 Logo 与 favicon 使用用户为 Issue #142 确认的 `Connected Core` 方案，不得使用验收夹具代替。
 - Brand Token Set 是从某个有效 Brand Profile 派生的受控运行时视觉值，包含浅色与深色主题所需的主色、强调色及可读前景色。Console 与 Remote 不得直接写入颜色值或改写该 Token Set；平台品牌后续只能经集中替换并重新通过浅色、深色、对比度和视觉快照后发布。
 - Tenant Brand Profile 只改变显示名称、Logo、favicon、主色和强调色。已发布 v1 契约中 Logo/favicon 保持可选以避免破坏兼容，但第 4 阶段的新写入只能产生五字段完整 Profile；运行时读取到任一字段缺失或无效时拒绝整份 Tenant Profile，不部分应用。
 - Design System 是唯一品牌解析边界：它在提交 Tenant 品牌前校验完整结构、显示名称、颜色及受控同站素材引用，并确认 Logo 与 favicon 成功加载、可解码且 MIME 受允许。不接受任意外部 HTTPS URL；具体受控路径前缀、文件类型、大小与失效占位策略由第 4 阶段素材写入契约冻结。
