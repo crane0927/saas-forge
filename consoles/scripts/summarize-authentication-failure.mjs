@@ -29,6 +29,11 @@ for (const line of stripVTControlCharacters(log).split('\n')) {
           line.trim(),
         );
       if (cookie) console.info(`DIAG: ${cookie[0]}`);
+      const inventory =
+        /^auth-cookie-inventory platform=\d{1,2} tenant=\d{1,2} other=\d{1,2} partitioned=\d{1,2}$/.exec(
+          line.trim(),
+        );
+      if (inventory) console.info(`DIAG: ${inventory[0]}`);
     }
     if (
       field === 'code' &&

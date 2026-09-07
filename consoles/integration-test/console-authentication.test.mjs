@@ -235,10 +235,19 @@ test('Platform and Tenant sessions survive independent recovery and logout after
   const cookieNames = (await context.cookies()).filter((cookie) =>
     cookie.name.endsWith('_refresh'),
   );
-  assert.deepEqual(cookieNames.map((cookie) => cookie.name).sort(), [
-    '__Host-sf_platform_refresh',
-    '__Host-sf_tenant_refresh',
-  ]);
+  const cookieInventory = {
+    platform: cookieNames.filter((cookie) => cookie.name === '__Host-sf_platform_refresh').length,
+    tenant: cookieNames.filter((cookie) => cookie.name === '__Host-sf_tenant_refresh').length,
+    other: cookieNames.filter(
+      (cookie) => !['__Host-sf_platform_refresh', '__Host-sf_tenant_refresh'].includes(cookie.name),
+    ).length,
+    partitioned: cookieNames.filter((cookie) => Boolean(cookie.partitionKey)).length,
+  };
+  assert.deepEqual(
+    cookieNames.map((cookie) => cookie.name).sort(),
+    ['__Host-sf_platform_refresh', '__Host-sf_tenant_refresh'],
+    `auth-cookie-inventory platform=${cookieInventory.platform} tenant=${cookieInventory.tenant} other=${cookieInventory.other} partitioned=${cookieInventory.partitioned}`,
+  );
   for (const cookie of cookieNames) {
     assert.equal(cookie.httpOnly, true);
     assert.equal(cookie.secure, true);
