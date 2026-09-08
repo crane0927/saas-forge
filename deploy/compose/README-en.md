@@ -93,7 +93,11 @@ Each Console has its own `platform-vite.pid|log` or `tenant-vite.pid|log` under 
 
 The package-level `pnpm --filter @saas-forge/tenant-console-shell run dev` command remains available for foreground debugging. If it occupies 5174, managed lifecycle reports UNMANAGED and refuses to terminate it. Foreground HTTP debugging is not controlled HTTPS acceptance.
 
-This slice serves ordinary Tenant Shell routes only. **Tenant Password Setup special Gateway paths are not included, and this is not complete Tenant authentication acceptance.** Prepare accounts, Gateway, and backend services separately.
+On the Tenant Origin, `/password-setup`, `/password-setup/app.js`, `/password-setup/styles.css`, and `/api/v1/auth/password-setups` route exactly to the active Gateway, preserving query strings and browser request headers. Gateway controls page and asset content types, cache headers, and API error responses. Other Tenant paths and HMR continue to reach Tenant Vite.
+
+These paths share the active target file with the API Host. After `bash scripts/local-development.sh replace gateway`, they follow the local Gateway; after `restore gateway`, they return to the container without changing the browser URL or restarting Edge. A missing or invalid target file or an unreachable target returns 502, with no fallback to Vite or another Gateway; unknown Hosts return 421. When first upgrading these routes, stop both Consoles and start them again as described above to load the new Edge script.
+
+Prepare accounts, Gateway, and backend services separately. This routing capability does not constitute complete Tenant authentication acceptance.
 
 `doctor` continues through every category even after a failure. It uses share-safe classifications such as `CERTIFICATE_MISSING`, `CERTIFICATE_EXPIRED`, `CERTIFICATE_UNTRUSTED`, `PORT_CONFLICT`, `MIGRATION_FAILED`, `NACOS_UNAVAILABLE`, `SECRET_MISSING`, `INFRASTRUCTURE_UNAVAILABLE`, and `DUPLICATE_INSTANCE`, followed by a recovery action. It never renders passwords, Tokens, Cookies, Client Secrets, JWT private keys, or raw environment-variable values.
 

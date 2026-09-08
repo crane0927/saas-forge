@@ -81,7 +81,11 @@ bash scripts/local-development.sh frontend stop platform
 
 包级 `pnpm --filter @saas-forge/tenant-console-shell run dev` 仍可前台调试；占用 5174 时，统一生命周期报告 UNMANAGED 并拒绝终止它。前台 HTTP 调试不能替代受控 HTTPS 验收。
 
-此切片仅提供 Tenant Shell 普通路由，**尚不包含 Tenant Password Setup 特殊 Gateway 路径，也不构成完整 Tenant 认证验收**。账户、Gateway 与后端仍需另行准备。
+Tenant Origin 下的 `/password-setup`、`/password-setup/app.js`、`/password-setup/styles.css` 和 `/api/v1/auth/password-setups` 精确转发到当前活动 Gateway，查询参数与浏览器请求头原样保留；页面和资源的内容类型、缓存头及 API 错误响应由 Gateway 决定。其他 Tenant 路径和 HMR 继续进入 Tenant Vite。
+
+这些路径与 API Host 共用活动目标文件；`bash scripts/local-development.sh replace gateway` 后跟随本地 Gateway，`restore gateway` 后回到容器，无需修改浏览器 URL 或重启 Edge。目标文件缺失、非法或目标不可达时返回 502，不回退到 Vite 或其他 Gateway；未知 Host 返回 421。首次升级路由时，按前述步骤停止两个 Console 后重新启动，以加载新的 Edge 脚本。
+
+账户、Gateway 与后端仍需另行准备。上述路由能力不等同于完整 Tenant 认证验收。
 
 ## 目录与职责
 

@@ -8,6 +8,12 @@ const vitePort = Number.parseInt(
   10,
 );
 const apiTargetFile = process.env.SF_LOCAL_HTTPS_API_TARGET_FILE;
+const passwordSetupPaths = new Set([
+  "/password-setup",
+  "/password-setup/app.js",
+  "/password-setup/styles.css",
+  "/api/v1/auth/password-setups",
+]);
 
 export function targetForHost(host) {
   if (host === "platform.saasforge.test")
@@ -80,14 +86,23 @@ function unavailable(response) {
   response.end(JSON.stringify({ status: 502, code: "UPSTREAM_UNAVAILABLE" }));
 }
 
-async function resolveTarget(host, targets, configuredApiTargetFile) {
+async function resolveTarget(host, path, targets, configuredApiTargetFile) {
+  if (targetForHost(host) === undefined) return undefined;
+  // 只匹配正式路径；查询参数透传，其他 Tenant 页面及 HMR 仍由 Vite 提供。
+  if (
+    host === "console.saasforge.test" &&
+    passwordSetupPaths.has(path.split("?")[0])
+  ) {
+    host = "api.saasforge.test";
+  }
   const target = targets[host];
   if (host !== "api.saasforge.test" || !configuredApiTargetFile) return target;
   let value;
   try {
     value = await readFile(configuredApiTargetFile, "utf8");
   } catch {
-    return target;
+    // 已配置的活动目标不可判定时不得猜测容器目标，避免替换期间误投请求。
+    return undefined;
   }
   return parseApiTarget(value);
 }
@@ -95,11 +110,16 @@ async function resolveTarget(host, targets, configuredApiTargetFile) {
 async function proxy(incoming, outgoing, targets, configuredApiTargetFile) {
   const target = await resolveTarget(
     incoming.headers.host,
+    incoming.url,
     targets,
     configuredApiTargetFile,
   );
   if (target === undefined) {
-    outgoing.writeHead(421).end();
+    if (targetForHost(incoming.headers.host) === undefined) {
+      outgoing.writeHead(421).end();
+    } else {
+      unavailable(outgoing);
+    }
     return;
   }
   const upstream = request(
@@ -134,11 +154,18 @@ async function proxyUpgrade(
 ) {
   const target = await resolveTarget(
     incoming.headers.host,
+    incoming.url,
     targets,
     configuredApiTargetFile,
   );
   if (target === undefined) {
-    socket.end("HTTP/1.1 421 Misdirected Request\r\nConnection: close\r\n\r\n");
+    const status =
+      targetForHost(incoming.headers.host) === undefined
+        ? "421 Misdirected Request"
+        : "502 Bad Gateway";
+    socket.end(
+      `HTTP/1.1 ${status}\r\nConnection: close\r\nCache-Control: no-store\r\n\r\n`,
+    );
     return;
   }
   const upstream = request({

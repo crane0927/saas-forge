@@ -2,9 +2,10 @@
 services:
   local-https-edge:
     image: node:24.14.1-alpine
-    # Node 不会热加载挂载脚本；拓扑标签参与 Compose 哈希，避免复用旧双 Host 进程。
+    # Node 不会热加载挂载脚本；标签参与 Compose 哈希，避免复用尚未加载新路由的进程。
     labels:
       io.saasforge.local-https.topology: platform-tenant-api
+      io.saasforge.local-https.routing: tenant-password-setup-v1
     user: node
     group_add:
       - "${SF_LOCAL_HTTPS_HOST_GID:?SF_LOCAL_HTTPS_HOST_GID is required}"
