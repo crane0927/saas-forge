@@ -37,11 +37,11 @@ export interface AuthenticatedAuthenticationState {
 }
 
 export interface TenantBrandProfileSnapshot {
-  readonly displayName: string;
+  readonly displayName?: string;
   readonly logoUrl?: string;
   readonly faviconUrl?: string;
-  readonly primaryColor: string;
-  readonly accentColor: string;
+  readonly primaryColor?: string;
+  readonly accentColor?: string;
 }
 
 export interface TenantAuthenticationContext extends MembershipCandidate {
@@ -1446,9 +1446,6 @@ function parseTenantAuthenticationContext(input: unknown): TenantAuthenticationC
     return undefined;
   }
   const brandProfile = parseTenantBrandProfile(value.brandProfile);
-  if (value.brandProfile !== undefined && brandProfile === undefined) {
-    return undefined;
-  }
   return {
     ...currentMembership,
     accessibleMemberships: value.accessibleMemberships,
@@ -1456,33 +1453,24 @@ function parseTenantAuthenticationContext(input: unknown): TenantAuthenticationC
   };
 }
 
+/** 品牌不是授权依据：保留不完整快照，由 Design System 整份拒绝；不影响已校验的 Context。 */
 function parseTenantBrandProfile(input: unknown): TenantBrandProfileSnapshot | undefined {
-  if (input === undefined) {
-    return undefined;
-  }
-  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
-    return undefined;
-  }
+  if (input === undefined) return undefined;
+  // 空快照保留“存在但无效”的语义，解析器仍能报告 PROFILE_INVALID，而不是当作无品牌。
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) return {};
   const value = input as Record<string, unknown>;
-  const requiredKeys = ['displayName', 'primaryColor', 'accentColor'];
-  const allowedKeys = [...requiredKeys, 'logoUrl', 'faviconUrl'];
+  const allowedKeys = ['displayName', 'logoUrl', 'faviconUrl', 'primaryColor', 'accentColor'];
   if (
-    !requiredKeys.every((key) => key in value) ||
     !Object.keys(value).every((key) => allowedKeys.includes(key)) ||
-    typeof value.displayName !== 'string' ||
-    typeof value.primaryColor !== 'string' ||
-    typeof value.accentColor !== 'string' ||
-    (value.logoUrl !== undefined && typeof value.logoUrl !== 'string') ||
-    (value.faviconUrl !== undefined && typeof value.faviconUrl !== 'string')
-  ) {
-    return undefined;
-  }
+    Object.values(value).some((field) => field !== undefined && typeof field !== 'string')
+  )
+    return {};
   return {
-    displayName: value.displayName,
-    primaryColor: value.primaryColor,
-    accentColor: value.accentColor,
-    ...(value.logoUrl === undefined ? {} : { logoUrl: value.logoUrl }),
-    ...(value.faviconUrl === undefined ? {} : { faviconUrl: value.faviconUrl }),
+    ...(typeof value.displayName === 'string' ? { displayName: value.displayName } : {}),
+    ...(typeof value.logoUrl === 'string' ? { logoUrl: value.logoUrl } : {}),
+    ...(typeof value.faviconUrl === 'string' ? { faviconUrl: value.faviconUrl } : {}),
+    ...(typeof value.primaryColor === 'string' ? { primaryColor: value.primaryColor } : {}),
+    ...(typeof value.accentColor === 'string' ? { accentColor: value.accentColor } : {}),
   };
 }
 

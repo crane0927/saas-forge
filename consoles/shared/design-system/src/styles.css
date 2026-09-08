@@ -53,6 +53,16 @@ body {
   inline-size: min(12rem, calc(100vw - (var(--sf-space-md) * 2)));
 }
 
+@media (max-width: 48rem) {
+  .sf-console-locale-control {
+    position: relative;
+    inset: auto;
+    margin-inline-start: auto;
+    padding: var(--sf-space-md);
+    inline-size: min(14rem, 100%);
+  }
+}
+
 .sf-bootstrap-panel {
   display: grid;
   inline-size: min(100%, 34rem);

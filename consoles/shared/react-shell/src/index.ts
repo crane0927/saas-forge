@@ -18,9 +18,6 @@ export {
   BrandApplicationLoading,
   BrandApplicationProvider,
   BrandConfigurationFailure,
-  brandApplicationTitle,
-  useBrandApplication,
-  type BrandApplicationContextValue,
   type BrandApplicationProviderProps,
   type ConsoleBrandSurface,
 } from './brand-application';

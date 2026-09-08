@@ -8,6 +8,54 @@ import {
 } from '../src';
 
 describe('createAuthenticationRuntime', () => {
+  it.each(['displayName', 'logoUrl', 'faviconUrl', 'primaryColor', 'accentColor'] as const)(
+    'keeps an authoritative Tenant context when brand field %s is missing',
+    async (missingField) => {
+      const membership = {
+        membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6071',
+        tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6072',
+        tenantDisplayName: 'Current Tenant',
+      };
+      const profile: Record<string, string> = {
+        displayName: 'Current Brand',
+        logoUrl: '/brands/logo.svg',
+        faviconUrl: '/brands/icon.svg',
+        primaryColor: '#155EEF',
+        accentColor: '#7A5AF8',
+      };
+      const incomplete = Object.fromEntries(
+        Object.entries(profile).filter(([key]) => key !== missingField),
+      );
+      const runtime = createRuntime({
+        realm: {},
+        intent: 'TENANT',
+        fetch: () =>
+          Promise.resolve(
+            Response.json({
+              contextState: 'ACCESS_TOKEN_ISSUED',
+              accessToken: 'memory-only-token',
+              tokenType: 'Bearer',
+              expiresIn: 120,
+              tenantContext: {
+                ...membership,
+                accessibleMemberships: [membership],
+                brandProfile: incomplete,
+              },
+            }),
+          ),
+      });
+      const result = await runtime.login({ email: 'user@example.test', password: 'secret' });
+      expect(result.ok).toBe(true);
+      expect(runtime.getState()).toMatchObject({
+        status: 'authenticated',
+        tenantContext: {
+          ...membership,
+          brandProfile: incomplete,
+        },
+      });
+    },
+  );
+
   it('creates an anonymous runtime for the host-fixed intent', () => {
     const runtime = createRuntime({
       realm: {},

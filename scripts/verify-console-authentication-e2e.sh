@@ -31,6 +31,10 @@ docker info --format '{{.ServerVersion}}' >/dev/null
 }
 [[ "${1:-}" == '--preflight' ]] && exit 0
 
+# 浏览器证据独立于临时 Compose 目录保留，项目清理不会删除截图。
+export SF_BRAND_EVIDENCE_DIRECTORY="${SF_BRAND_EVIDENCE_DIRECTORY:-$(mktemp -d "${TMPDIR:-/tmp}/sf-brand-evidence.XXXXXX")}"
+printf 'EVIDENCE: %s\n' "$SF_BRAND_EVIDENCE_DIRECTORY"
+
 readonly project_name="saas-forge-console-$(date +%s)-$$-$(openssl rand -hex 3)"
 readonly work_directory="$(mktemp -d)"
 readonly secret_directory="$work_directory/secrets"
@@ -77,7 +81,8 @@ stage() {
       node "$repository_root/consoles/scripts/summarize-authentication-failure.mjs" "$work_directory/$name.log"
     fi
     if [[ "$name" == product-* || "$name" == compose-start || "$name" == tls-ready ]]; then
-      compose ps --format json >"$diagnostic_directory/compose-status.json" 2>&1 || true
+      compose ps --all --format json >"$diagnostic_directory/compose-status.json" 2>&1 || true
+      node "$repository_root/consoles/scripts/summarize-compose-status.mjs" "$diagnostic_directory/compose-status.json"
       compose logs --no-color nacos-init >"$diagnostic_directory/nacos-init.log" 2>&1 || true
       compose logs --no-color console-tls >"$diagnostic_directory/tls.log" 2>&1 || true
       compose logs --no-color gateway iam-service entitlement-service >"$diagnostic_directory/services.log" 2>&1 || true

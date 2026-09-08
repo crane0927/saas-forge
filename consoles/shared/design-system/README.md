@@ -2,10 +2,9 @@
 
 SaaS Forge 浏览器界面的唯一公共 Design System 包。当前公共根入口提供：
 
-- `DesignSystemProvider`：安装唯一 Ant Design Theme Provider，默认跟随系统浅色/深色主题，并应用受控 Locale 与 Tenant 品牌；
+- `DesignSystemProvider`：安装唯一 Ant Design Theme Provider，默认跟随系统浅色/深色主题，并应用受控 Locale 与完整 Resolved Brand Profile；
 - `semanticTokens`：唯一平台主色、浅色/深色表面、固定状态色、系统字体与 `4px` 级间距；
 - `resolveBrandProfile`：异步生成唯一且不可变的完整 Resolved Brand Profile；Tenant 结构、颜色或素材失败时返回完整 Platform 品牌与稳定原因码；
-- `resolveTenantBrandProfile`：同时解析浅色与深色品牌颜色和前景色，任一输入不合法时原子拒绝；
 - `RouteFocusAnnouncement`：路由切换后聚焦新页面主标题并通知读屏软件；
 - `ApplicationLoading`：应用首次启动和部署配置加载状态；
 - `ConfigurationFailure`：持续配置失败状态与显式重试操作。
@@ -24,6 +23,8 @@ SaaS Forge 浏览器界面的唯一公共 Design System 包。当前公共根入
 - `ServerTable`：提供服务端分页、单列排序、当前页逐行选择、固定操作列与危险菜单边界。
 
 消费者只能从 `@saas-forge/design-system` 根入口导入，不得导入 `antd`、本包内部文件或额外全局样式。缺少公共能力时先扩展本包，再升级消费者；不复制等价组件作为临时实现。
+
+旧 `tenantBrand` / `onTenantBrandRejected` Provider 参数与颜色解析入口已移除。Console 只能整份转交解析结果给共享 React Shell；Remote 只继承已提交的 Brand Token，不读取 Profile、独立安装 Provider 或渲染品牌素材。工作区边界门禁自动发现 Console 与 Remote 并检查这些限制。
 
 Tenant Logo 与 favicon 仅接受无查询、无片段的 `/brands/` 根相对引用。解析器并行加载两项素材，限制同站凭据并禁止重定向；Logo 允许 `image/png`、`image/svg+xml`、`image/webp`，favicon 允许 `image/png`、`image/svg+xml`、`image/x-icon`、`image/vnd.microsoft.icon`。两项图片都解码成功后才接受整份 Tenant Profile。调用方可通过 `AbortSignal` 或页面当前性检查丢弃取消、卸载或迟到结果；拒绝回调只接收稳定原因码。
 

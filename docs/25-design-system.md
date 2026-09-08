@@ -1,6 +1,6 @@
 # Design System 规范
 
-**状态：规则与底层组件选型已确认；正式共享包、系统浅色/深色主题、受控 Tenant 品牌颜色解析、两个 Console 的启动状态与路由焦点接入，共享页面状态、浮层、表单、服务端表格、公共响应式布局，以及代表性 Remote 消费与浏览器边界已实现。五项完整 Profile 解析与 React Shell 原子应用缝尚未实现；两个 Console 的真实业务页面仍按对应 Issue 交付。**
+**状态：规则与底层组件选型已确认；正式共享包、系统浅色/深色主题、受控 Tenant 品牌颜色解析、两个 Console 的启动状态与路由焦点接入，共享页面状态、浮层、表单、服务端表格、公共响应式布局，以及代表性 Remote 消费与浏览器边界已实现。五项完整 Profile 解析、素材预加载与 React Shell 原子应用已实现并通过[聚合浏览器验收](acceptance/issue-147-brand-runtime.md)；两个 Console 的真实业务页面仍按对应 Issue 交付。**
 
 本规范定义 Platform Console、Tenant Console Shell 与官方业务 Remote 共用的视觉、组件、反馈、键盘和焦点语义。架构边界见 [ADR 0037](adr/0037-browser-surfaces-use-one-shared-design-system.md)，Tenant 品牌所有权见 [ADR 0036](adr/0036-tenant-access-owns-controlled-tenant-brand-profiles.md)，品牌解析与运行时应用见 [ADR 0042](adr/0042-browser-surfaces-atomically-apply-one-resolved-brand.md)，共享布局的 Remote 消费证据见 [共享响应式布局消费与浏览器验证记录](27-shared-responsive-layout-consumption-verification.md)。本规范本身不替代对应实现与浏览器证据。
 

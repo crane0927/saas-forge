@@ -7,6 +7,46 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
+test('reports Compose status without exposing commands, unknown values or parse errors', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'sf-compose-diagnostics-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const log = join(directory, 'compose.json');
+  const script = fileURLToPath(new URL('../scripts/summarize-compose-status.mjs', import.meta.url));
+  const entries = [
+    { Service: 'nacos-init', State: 'exited', Health: '', ExitCode: 1, Command: 'PRIVATE_SECRET' },
+    { Service: 'gateway', State: 'running', Health: 'unhealthy', ExitCode: 0 },
+    { Service: 'PRIVATE_SERVICE', State: 'running', Health: 'healthy', ExitCode: 0 },
+    {
+      Service: 'iam-service',
+      State: 'PRIVATE_STATE',
+      Health: 'PRIVATE_HEALTH',
+      ExitCode: 'PRIVATE',
+    },
+    null,
+  ];
+  for (const source of [
+    JSON.stringify(entries),
+    entries.map((entry) => JSON.stringify(entry)).join('\n'),
+  ]) {
+    await writeFile(log, source);
+    const { stdout, stderr } = await promisify(execFile)(process.execPath, [script, log]);
+    assert.equal(stderr, '');
+    assert.equal(
+      stdout,
+      [
+        'COMPOSE: service=nacos-init state=exited health=none exit=1',
+        'COMPOSE: service=gateway state=running health=unhealthy exit=0',
+        'COMPOSE: service=iam-service state=unknown health=none exit=unknown',
+        '',
+      ].join('\n'),
+    );
+  }
+  await writeFile(log, 'PRIVATE_PARSE_ERROR');
+  const { stdout, stderr } = await promisify(execFile)(process.execPath, [script, log]);
+  assert.equal(stdout, 'COMPOSE: status unavailable\n');
+  assert.equal(stderr, '');
+});
+
 test('reports failing acceptance source locations without exposing TAP diagnostic values', async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'sf-acceptance-diagnostics-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
@@ -22,6 +62,10 @@ not ok 2 - PRIVATE_TEST_TITLE
     initial-password-change status=401 cookieStored=true cookieObserved=false requestMatches=true problem=PASSWORD_CHANGE_SESSION_INVALID
     auth-cookie operation=login status=200 action=set attributes=true
     auth-cookie operation=refresh status=401 action=clear attributes=true
+    auth-cookie-inventory platform=2 tenant=1 other=0 partitioned=1
+    auth-cookie-inventory platform=PRIVATE_COOKIE tenant=1 other=0 partitioned=1
+    brand-remote inherited=true providers=1 images=0 faviconUnchanged=true context=0 imageRequests=0 fetchRequests=0 otherRequests=1
+    brand-remote inherited=PRIVATE_PROFILE providers=1 images=0 faviconUnchanged=true context=0 imageRequests=0 fetchRequests=0 otherRequests=1
     auth-cookie operation=PRIVATE_OPERATION status=200 action=set attributes=true
     PRIVATE_ERROR_BODY
   code: 'ERR_ASSERTION'
@@ -30,12 +74,14 @@ not ok 2 - PRIVATE_TEST_TITLE
     not ok 9999 - PRIVATE_RESPONSE_TITLE
     initial-password-change status=401 cookieStored=false cookieObserved=false requestMatches=false problem=OTHER
     auth-cookie operation=login status=200 action=none attributes=false
+    auth-cookie-inventory platform=9 tenant=9 other=9 partitioned=9
     code: 'ERR_ASSERTION'
     at /runner/consoles/integration-test/console-authentication.test.mjs:9999:8
   expected: 'PRIVATE_PASSWORD'
   stack: |-
     PRIVATE_STACK_VALUE
     TestContext.<anonymous> (file:///runner/consoles/integration-test/console-client-acceptance.mjs:81:8)
+    verifyBrandRemoteInheritance (file:///runner/consoles/integration-test/brand-remote-acceptance.mjs:55:8)
   ...
 # tests 16
 # pass 15
@@ -55,8 +101,11 @@ not ok 2 - PRIVATE_TEST_TITLE
       'DIAG: initial-password-change status=401 cookieStored=true cookieObserved=false requestMatches=true problem=PASSWORD_CHANGE_SESSION_INVALID',
       'DIAG: auth-cookie operation=login status=200 action=set attributes=true',
       'DIAG: auth-cookie operation=refresh status=401 action=clear attributes=true',
+      'DIAG: auth-cookie-inventory platform=2 tenant=1 other=0 partitioned=1',
+      'DIAG: brand-remote inherited=true providers=1 images=0 faviconUnchanged=true context=0 imageRequests=0 fetchRequests=0 otherRequests=1',
       'CODE: ERR_ASSERTION',
       'AT: consoles/integration-test/console-client-acceptance.mjs:81:8',
+      'AT: consoles/integration-test/brand-remote-acceptance.mjs:55:8',
       '# tests 16',
       '# pass 15',
       '# fail 1',
