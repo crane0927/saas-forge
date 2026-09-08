@@ -6,8 +6,12 @@ import {
   type RuntimeConfig,
   type RuntimeConfigBootstrap,
 } from '@saas-forge/app-runtime';
-import { ApplicationLoading, ConfigurationFailure } from '@saas-forge/design-system';
-import { AuthenticationShell, useConsoleLocale } from '@saas-forge/react-shell';
+import {
+  AuthenticationShell,
+  BrandApplicationLoading,
+  BrandConfigurationFailure,
+  useConsoleLocale,
+} from '@saas-forge/react-shell';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { BrowserRouter } from 'react-router';
 
@@ -73,15 +77,14 @@ function BootstrapSurface({
 
   if (state.status === 'failed') {
     return (
-      <ConfigurationFailure
-        applicationName="Platform Console"
+      <BrandConfigurationFailure
         errorCode={state.error.code}
         onRetry={() => void bootstrap.retry()}
       />
     );
   }
 
-  return <ApplicationLoading applicationName="Platform Console" />;
+  return <BrandApplicationLoading />;
 }
 
 function PlatformAuthenticationPath({
@@ -102,8 +105,7 @@ function PlatformAuthenticationPath({
   );
   if (!runtimeResult.ok) {
     return (
-      <ConfigurationFailure
-        applicationName="Platform Console"
+      <BrandConfigurationFailure
         errorCode={runtimeResult.error.code}
         onRetry={() => {
           window.location.reload();
@@ -113,7 +115,6 @@ function PlatformAuthenticationPath({
   }
   return (
     <AuthenticationShell
-      applicationName="Platform Console"
       runtime={runtimeResult.runtime}
       defaultPath="/"
       routes={createPlatformAuthenticationRoutes(locale)}

@@ -94,7 +94,7 @@ export const platformResolvedBrandProfile: ResolvedBrandProfile = freezeResolved
  * 解析完整 Tenant 品牌；失败时返回同一个不可变 Platform 品牌，调用方不得拼接原始 Profile。
  */
 export async function resolveBrandProfile(
-  tenantProfile: TenantBrandProfile | undefined,
+  tenantProfile: Partial<TenantBrandProfile> | undefined,
   options: ResolveBrandProfileOptions = {},
 ): Promise<BrandResolution> {
   if (tenantProfile === undefined) {
@@ -140,7 +140,9 @@ export async function resolveBrandProfile(
   };
 }
 
-function normalizeCompleteProfile(profile: TenantBrandProfile): CompleteBrandProfile | undefined {
+function normalizeCompleteProfile(
+  profile: Partial<TenantBrandProfile>,
+): CompleteBrandProfile | undefined {
   if (
     typeof profile.displayName !== 'string' ||
     typeof profile.logoUrl !== 'string' ||

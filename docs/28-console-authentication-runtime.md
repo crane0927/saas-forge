@@ -1,6 +1,6 @@
 # Console 认证 Runtime 与浏览器会话规格
 
-**状态：认证 Runtime、双 Browser Session Slot、两个 Console 认证 Shell、Tenant Context Switch 与多标签页协调已有实现与验收记录；五项品牌统一解析、素材预加载与 React Shell 原子应用缝尚未实现。本文是规格而不是当前构建通过证据。**
+**状态：认证 Runtime、双 Browser Session Slot、两个 Console 认证 Shell、Tenant Context Switch 与多标签页协调已有实现与验收记录；五项品牌统一解析、素材预加载与 React Shell 原子应用已实现，证据见 [Issue #147 验收记录](acceptance/issue-147-brand-runtime.md)。本文是规格而不是当前构建通过证据。**
 
 本规格定义 Platform Console 与 Tenant Console Shell 共用的认证状态机、HTTP Client、Problem Details 映射、路由守卫、全局导航、错误边界和浏览器验收语义。浏览器会话决策见 [ADR 0038](adr/0038-browser-sessions-use-intent-bound-slots.md)，共享前端边界见 [ADR 0039](adr/0039-consoles-share-one-authentication-runtime.md)，品牌解析与原子应用见 [ADR 0042](adr/0042-browser-surfaces-atomically-apply-one-resolved-brand.md)，视觉与交互继续遵守 [Design System 规范](25-design-system.md)。
 
@@ -172,7 +172,7 @@ Tenant Context Switch 是单一不可回滚的客户端转换：
 
 当前仓库中，Tenant Context Switch 与 Password Setup 已有显式浏览器来源校验调用，但登录、刷新和登出尚无直接实现证据证明其完整执行 JSON、CSRF 值、精确 Origin 和 Fetch Metadata 拒绝。共享 Client 发送正确请求不能弥补服务端缺口；Gateway/IAM 安全切片必须在两个 Console 真实浏览器验收前完成并提供正向与每一拒绝分支的测试。
 
-品牌链路已有 Tenant Brand Profile 传输、Context 与品牌快照的单次 Runtime 发布、Design System 颜色解析和 Context Switch 浏览器证据，但尚未形成五项统一的应用缝：Tenant Console 仍可在解析器外直接使用原始显示名称与 favicon，Logo 无生产消费位，当前素材检查还允许任意 HTTPS URL 且不验证加载/MIME，同一 Session 代次内的并发 Context 读取也无独立读取代次。因此本规格中新增的 Resolved Brand Profile、素材预加载、Shell 统一消费、安全原因码与迟到读取防护均是待实现边界，不是完成证据。
+品牌链路已形成五项统一应用：Runtime 只发布权威 Context 与品牌快照，Design System 唯一解析并预加载受控素材，共享 React Shell 整份应用名称、Logo、favicon、标题与主题；同一 Session 内的 Context 读取使用独立代次丢弃迟到结果。旧消费入口与直接字段读取受到构建门禁约束，无效品牌整份回退且保留合法 Context。实现与五浏览器 Fresh Compose 证据见 [Issue #147 验收记录](acceptance/issue-147-brand-runtime.md)；品牌写入 API 与动态 Remote 加载不属于此次验收范围。
 
 ## 11. 验收矩阵
 

@@ -1,6 +1,6 @@
 import { createRuntimeConfigBootstrap, type RuntimeConfigResult } from '@saas-forge/app-runtime';
-import { DesignSystemProvider } from '@saas-forge/design-system';
-import { ConsoleLocaleProvider } from '@saas-forge/react-shell';
+import { platformResolvedBrandProfile } from '@saas-forge/design-system';
+import { BrandApplicationProvider, ConsoleLocaleProvider } from '@saas-forge/react-shell';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -27,17 +27,24 @@ describe('PlatformConsoleApp', () => {
     const realm = {};
     const view = render(
       <ConsoleLocaleProvider initialLocale="zh-CN">
-        <DesignSystemProvider>
+        <BrandApplicationProvider resolvedBrand={platformResolvedBrandProfile} surface="platform">
           <PlatformConsoleApp
             bootstrap={bootstrap}
             authenticationFetch={authenticationFetch}
             realm={realm}
           />
-        </DesignSystemProvider>
+        </BrandApplicationProvider>
       </ConsoleLocaleProvider>,
     );
 
-    expect(screen.getByRole('heading', { name: '正在启动 Platform Console' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '正在启动 SaaS Forge' })).toBeTruthy();
+    expect(screen.getByRole('img', { name: 'SaaS Forge Logo' }).getAttribute('src')).toBe(
+      platformResolvedBrandProfile.profile.logoUrl,
+    );
+    expect(document.title).toBe('SaaS Forge Platform Console');
+    expect(document.querySelector('link[rel~="icon"]')?.getAttribute('href')).toBe(
+      platformResolvedBrandProfile.profile.faviconUrl,
+    );
     fireEvent.change(await screen.findByLabelText(/^邮箱/), {
       target: { value: 'admin@example.test' },
     });
@@ -54,13 +61,13 @@ describe('PlatformConsoleApp', () => {
 
     view.rerender(
       <ConsoleLocaleProvider initialLocale="zh-CN">
-        <DesignSystemProvider>
+        <BrandApplicationProvider resolvedBrand={platformResolvedBrandProfile} surface="platform">
           <PlatformConsoleApp
             bootstrap={bootstrap}
             authenticationFetch={authenticationFetch}
             realm={realm}
           />
-        </DesignSystemProvider>
+        </BrandApplicationProvider>
       </ConsoleLocaleProvider>,
     );
 
@@ -76,27 +83,29 @@ describe('PlatformConsoleApp', () => {
 
     render(
       <ConsoleLocaleProvider initialLocale="en-US">
-        <DesignSystemProvider locale="en-US">
+        <BrandApplicationProvider
+          resolvedBrand={platformResolvedBrandProfile}
+          surface="platform"
+          locale="en-US"
+        >
           <PlatformConsoleApp
             bootstrap={createRuntimeConfigBootstrap(loader)}
             authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
             realm={{}}
           />
-        </DesignSystemProvider>
+        </BrandApplicationProvider>
       </ConsoleLocaleProvider>,
     );
 
     expect(
-      await screen.findByRole('heading', { name: 'Platform Console configuration is unavailable' }),
+      await screen.findByRole('heading', { name: 'SaaS Forge configuration is unavailable' }),
     ).toBeTruthy();
     expect(screen.getByText('CONFIG_UNAVAILABLE')).toBeTruthy();
     expect(loader).toHaveBeenCalledOnce();
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
 
-    expect(
-      await screen.findByRole('heading', { name: 'Sign in to Platform Console' }),
-    ).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Sign in to SaaS Forge' })).toBeTruthy();
     expect(loader).toHaveBeenCalledTimes(2);
   });
 });

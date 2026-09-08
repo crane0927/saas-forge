@@ -7,8 +7,13 @@ import { page, userEvent } from 'vitest/browser';
 import { DesignSystemConsumerRemote } from '../business-remotes/design-system-consumer-fixture/src/remote';
 import { PlatformConsoleApp } from '../platform-console/src/app';
 import { createRuntimeConfigBootstrap, type RuntimeConfigResult } from '../shared/app-runtime/src';
-import { DesignSystemProvider } from '../shared/design-system/src';
 import {
+  DesignSystemProvider,
+  platformResolvedBrandProfile,
+  tenantConsolePlatformTitle,
+} from '../shared/design-system/src';
+import {
+  BrandApplicationProvider,
   ConsoleLocaleProvider,
   ConsoleLocaleSelector,
   useConsoleLocale,
@@ -22,6 +27,7 @@ let renderedRoot: Root | undefined;
 let renderedContainer: HTMLDivElement | undefined;
 
 afterEach(() => {
+  vi.restoreAllMocks();
   renderedRoot?.unmount();
   renderedContainer?.remove();
   renderedRoot = undefined;
@@ -49,13 +55,13 @@ function readyBootstrap() {
   );
 }
 
-function TenantConsoleTestRoot({ children, tenantBrand }: TenantConsoleRootProps) {
+function TenantConsoleTestRoot({ children, resolvedBrand }: TenantConsoleRootProps) {
   const { locale } = useConsoleLocale();
   return (
-    <DesignSystemProvider locale={locale} tenantBrand={tenantBrand}>
+    <BrandApplicationProvider resolvedBrand={resolvedBrand} surface="tenant" locale={locale}>
       <ConsoleLocaleSelector />
       {children}
-    </DesignSystemProvider>
+    </BrandApplicationProvider>
   );
 }
 
@@ -66,14 +72,18 @@ function PlatformConsoleLocaleHost({
 }) {
   const { locale } = useConsoleLocale();
   return (
-    <DesignSystemProvider locale={locale}>
+    <BrandApplicationProvider
+      resolvedBrand={platformResolvedBrandProfile}
+      surface="platform"
+      locale={locale}
+    >
       <ConsoleLocaleSelector />
       <PlatformConsoleApp
         bootstrap={bootstrap}
         authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
         realm={{}}
       />
-    </DesignSystemProvider>
+    </BrandApplicationProvider>
   );
 }
 
@@ -111,6 +121,66 @@ async function waitForLayout() {
 }
 
 describe('三个 Design System 消费者的真实浏览器契约', () => {
+  it('Platform Console 从匿名到已认证始终提交同一完整平台品牌', async () => {
+    const consoleError = vi.spyOn(console, 'error');
+    const consoleWarning = vi.spyOn(console, 'warn');
+    const authenticationFetch = vi
+      .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'platform-token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      );
+
+    render(
+      <ConsoleLocaleProvider initialLocale="zh-CN">
+        <BrandApplicationProvider resolvedBrand={platformResolvedBrandProfile} surface="platform">
+          <PlatformConsoleApp
+            bootstrap={readyBootstrap()}
+            authenticationFetch={authenticationFetch}
+            realm={{}}
+          />
+        </BrandApplicationProvider>
+      </ConsoleLocaleProvider>,
+    );
+
+    const loginTitle = page.getByRole('heading', { name: '登录 SaaS Forge' });
+    await expect.element(loginTitle).toBeInTheDocument();
+    const loginLogo = page.getByRole('img', { name: 'SaaS Forge Logo' });
+    await expect.element(loginLogo).toBeVisible();
+    const loginLogoElement = loginLogo.element() as HTMLImageElement;
+    expect(loginLogoElement.complete).toBe(true);
+    expect(loginLogoElement.naturalWidth).toBeGreaterThan(0);
+    expect(document.title).toBe('SaaS Forge Platform Console');
+    expect(document.querySelector('link[rel~="icon"]')?.getAttribute('href')).toBe(
+      platformResolvedBrandProfile.profile.faviconUrl,
+    );
+    const provider = document.querySelector<HTMLElement>('.sf-design-system-root');
+    expect(provider?.dataset.brand).toBe('platform');
+    expect(provider?.style.getPropertyValue('--sf-color-primary')).toBe(
+      platformResolvedBrandProfile.tokenSet.light.primary.color,
+    );
+    expect(provider?.style.getPropertyValue('--sf-color-accent')).toBe(
+      platformResolvedBrandProfile.tokenSet.light.accent.color,
+    );
+
+    await page.getByLabelText(/^邮箱/).fill('admin@example.test');
+    await page.getByLabelText(/^密码/).fill('secret');
+    await page.getByRole('button', { name: '登录' }).click();
+
+    await expect.element(page.getByRole('heading', { name: 'Platform 总览' })).toBeInTheDocument();
+    expect(page.getByRole('img', { name: 'SaaS Forge Logo' }).element()).not.toBe(loginLogoElement);
+    expect(document.querySelectorAll('.sf-application-logo')).toHaveLength(1);
+    expect(document.title).toBe('SaaS Forge Platform Console');
+    expect(document.querySelector('vite-error-overlay')).toBeNull();
+    expect(consoleError).not.toHaveBeenCalled();
+    expect(consoleWarning).not.toHaveBeenCalled();
+  });
+
   it('语言选择器在配置失败页面即时切换、保留焦点且不发业务请求', async () => {
     const loader = vi
       .fn<() => Promise<RuntimeConfigResult>>()
@@ -122,7 +192,7 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
     );
 
     await expect
-      .element(page.getByRole('heading', { name: 'Platform Console configuration is unavailable' }))
+      .element(page.getByRole('heading', { name: 'SaaS Forge configuration is unavailable' }))
       .toBeInTheDocument();
     await page.viewport(320, 800);
     await waitForLayout();
@@ -131,7 +201,7 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
     await userEvent.keyboard('{Enter}{ArrowUp}{Enter}');
 
     await expect
-      .element(page.getByRole('heading', { name: 'Platform Console 配置不可用' }))
+      .element(page.getByRole('heading', { name: 'SaaS Forge 配置不可用' }))
       .toBeInTheDocument();
     await expect.element(selector).toHaveFocus();
     expect(document.documentElement.lang).toBe('zh-CN');
@@ -147,7 +217,7 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
         bootstrap={readyBootstrap()}
         authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
       />,
-      '登录 Platform Console',
+      '登录 SaaS Forge',
       true,
     ],
     [
@@ -158,7 +228,7 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
         authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
         realm={{}}
       />,
-      '登录 Tenant Console',
+      '登录 SaaS Forge',
       false,
     ],
   ])(
@@ -166,7 +236,16 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
     async (_name, app, titleName, needsProvider) => {
       render(
         <ConsoleLocaleProvider initialLocale="zh-CN">
-          {needsProvider ? <DesignSystemProvider>{app}</DesignSystemProvider> : app}
+          {needsProvider ? (
+            <BrandApplicationProvider
+              resolvedBrand={platformResolvedBrandProfile}
+              surface="platform"
+            >
+              {app}
+            </BrandApplicationProvider>
+          ) : (
+            app
+          )}
         </ConsoleLocaleProvider>,
       );
 
@@ -315,6 +394,7 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
   });
 
   it('Tenant 切换在真实浏览器中隔离旧页面并原子提交新品牌', async () => {
+    performance.clearResourceTimings();
     const currentMembership = {
       membershipId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6070',
       tenantId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6072',
@@ -341,6 +421,7 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
           [currentMembership, targetMembership],
           {
             displayName: 'Current Brand',
+            logoUrl: '/brands/current-logo.svg',
             faviconUrl: '/brands/current-favicon.svg',
             primaryColor: '#7C3AED',
             accentColor: '#C026D3',
@@ -352,6 +433,7 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
       .mockResolvedValueOnce(
         tenantAccessToken('target-token', targetMembership, [currentMembership, targetMembership], {
           displayName: 'Target Brand',
+          logoUrl: '/brands/target-logo.svg',
           faviconUrl: '/brands/target-favicon.svg',
           primaryColor: '#155EEF',
           accentColor: '#7A5AF8',
@@ -370,7 +452,13 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
     );
 
     await expect.element(page.getByText('Current Brand')).toBeInTheDocument();
-    await page.getByRole('button', { name: '切换 Tenant' }).click();
+    await expect
+      .element(page.getByRole('img', { name: 'Current Brand Logo' }))
+      .toHaveAttribute('src', '/brands/current-logo.svg');
+    expect(document.title).toBe('Current Brand · SaaS Forge Tenant Console');
+    expect(icon.getAttribute('href')).toBe('/brands/current-favicon.svg');
+    page.getByRole('button', { name: '切换 Tenant' }).element().focus();
+    await userEvent.keyboard('{Enter}');
     await page.getByRole('button', { name: '切换到 Target Tenant' }).click();
     await expect
       .element(page.getByRole('heading', { name: 'Tenant 切换已提交' }))
@@ -378,6 +466,11 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
     expect(document.querySelector('nav')).toBeNull();
     expect(document.querySelector('#tenant-workspace-title')).toBeNull();
     await expect.element(page.getByText('错误代码：REFRESH_LEASE_BUSY')).toBeInTheDocument();
+    expect(document.title).toBe(tenantConsolePlatformTitle);
+    expect(icon.getAttribute('href')).toBe(platformResolvedBrandProfile.profile.faviconUrl);
+    expect(document.querySelector<HTMLElement>('.sf-design-system-root')?.dataset.brand).toBe(
+      'platform',
+    );
 
     const requestCountBeforeLocaleChange = authenticationFetch.mock.calls.length;
     const selector = page.getByRole('combobox', { name: 'Language / 语言' });
@@ -398,6 +491,25 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
     expect(icon.getAttribute('href')).toBe('/brands/target-favicon.svg');
     expect(document.querySelector<HTMLElement>('.sf-design-system-root')?.dataset.brand).toBe(
       'tenant',
+    );
+    expect(document.querySelector<HTMLElement>('.sf-design-system-root')?.style.cssText).toContain(
+      '--sf-color-primary: #155EEF',
+    );
+    await expect
+      .element(page.getByRole('img', { name: 'Target Brand Logo' }))
+      .toHaveAttribute('src', '/brands/target-logo.svg');
+    expect(document.title).toBe('Target Brand · SaaS Forge Tenant Console');
+    const assetRequests = performance
+      .getEntriesByType('resource')
+      .map((entry) => new URL(entry.name).pathname)
+      .filter((path) => path.startsWith('/brands/'));
+    expect(assetRequests).toEqual(
+      expect.arrayContaining([
+        '/brands/current-logo.svg',
+        '/brands/current-favicon.svg',
+        '/brands/target-logo.svg',
+        '/brands/target-favicon.svg',
+      ]),
     );
     if (existingIcon === null) icon.remove();
   });
@@ -567,6 +679,30 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
   });
 
   it.skipIf(import.meta.env.SF_VISUAL_SNAPSHOTS === 'false')(
+    '固定 Platform Console 完整品牌的桌面与窄屏证据',
+    async () => {
+      render(
+        <ConsoleLocaleProvider initialLocale="zh-CN">
+          <BrandApplicationProvider resolvedBrand={platformResolvedBrandProfile} surface="platform">
+            <PlatformConsoleApp
+              bootstrap={readyBootstrap()}
+              authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
+              realm={{}}
+            />
+          </BrandApplicationProvider>
+        </ConsoleLocaleProvider>,
+      );
+      await expect.element(page.getByRole('heading', { name: '登录 SaaS Forge' })).toBeVisible();
+
+      await page.viewport(1280, 900);
+      await expect(page.getByRole('main')).toMatchScreenshot('platform-brand-login-1280');
+      await page.viewport(390, 900);
+      await expect(page.getByRole('main')).toMatchScreenshot('platform-brand-login-390');
+      expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
+    },
+  );
+
+  it.skipIf(import.meta.env.SF_VISUAL_SNAPSHOTS === 'false')(
     '固定 Remote 的桌面与窄屏消费证据',
     async () => {
       render(
@@ -613,6 +749,7 @@ function tenantAccessToken(
   }[],
   brandProfile: {
     readonly displayName: string;
+    readonly logoUrl: string;
     readonly faviconUrl: string;
     readonly primaryColor: string;
     readonly accentColor: string;

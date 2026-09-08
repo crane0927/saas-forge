@@ -14,3 +14,10 @@ export {
   type ConsoleLocaleContextValue,
   type ConsoleLocaleProviderProps,
 } from './console-locale';
+export {
+  BrandApplicationLoading,
+  BrandApplicationProvider,
+  BrandConfigurationFailure,
+  type BrandApplicationProviderProps,
+  type ConsoleBrandSurface,
+} from './brand-application';

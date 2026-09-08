@@ -4,16 +4,10 @@ import enUS from 'antd/locale/en_US';
 import zhCN from 'antd/locale/zh_CN';
 import type { SupportedLocale } from '@saas-forge/i18n';
 import { createContext, useContext } from 'react';
-import {
-  useEffect,
-  useMemo,
-  useSyncExternalStore,
-  type CSSProperties,
-  type ReactNode,
-} from 'react';
+import { useMemo, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 
-import { resolveTenantBrandProfile, type TenantBrandProfile } from './brand-theme';
 import { platformBrandTokenSet } from './platform-brand';
+import type { ResolvedBrandProfile } from './resolved-brand';
 import { semanticTokens } from './tokens';
 
 export type DesignSystemLocale = SupportedLocale;
@@ -22,8 +16,7 @@ export type DesignSystemColorScheme = 'light' | 'dark';
 export interface DesignSystemProviderProps {
   readonly children: ReactNode;
   readonly locale?: DesignSystemLocale;
-  readonly tenantBrand?: TenantBrandProfile;
-  readonly onTenantBrandRejected?: (reason: string) => void;
+  readonly resolvedBrand?: ResolvedBrandProfile;
   /** 仅供私有展示册与自动测试固定渲染；产品界面不得将其连接为手动主题开关。 */
   readonly forcedColorScheme?: DesignSystemColorScheme;
 }
@@ -74,8 +67,7 @@ function readSystemColorScheme(): DesignSystemColorScheme {
 export function DesignSystemProvider({
   children,
   locale = 'zh-CN',
-  tenantBrand,
-  onTenantBrandRejected,
+  resolvedBrand,
   forcedColorScheme,
 }: DesignSystemProviderProps) {
   const systemColorScheme = useSyncExternalStore<DesignSystemColorScheme>(
@@ -84,24 +76,13 @@ export function DesignSystemProvider({
     () => 'light' as const,
   );
   const colorScheme = forcedColorScheme ?? systemColorScheme;
-  const brandResolution = useMemo(
-    () => (tenantBrand === undefined ? undefined : resolveTenantBrandProfile(tenantBrand)),
-    [tenantBrand],
-  );
-  const acceptedBrand = brandResolution?.accepted === true ? brandResolution : undefined;
   const palette = semanticTokens.color[colorScheme];
-  const brandTheme = acceptedBrand?.[colorScheme];
+  const brandTheme = resolvedBrand?.tokenSet[colorScheme];
   const platformTheme = platformBrandTokenSet[colorScheme];
   const primary = brandTheme?.primary.color ?? platformTheme.primary.color;
   const primaryForeground = brandTheme?.primary.foreground ?? platformTheme.primary.foreground;
   const accent = brandTheme?.accent.color ?? platformTheme.accent.color;
   const accentForeground = brandTheme?.accent.foreground ?? platformTheme.accent.foreground;
-
-  useEffect(() => {
-    if (brandResolution?.accepted === false) {
-      onTenantBrandRejected?.(brandResolution.reason);
-    }
-  }, [brandResolution, onTenantBrandRejected]);
 
   const theme = useMemo<ThemeConfig>(
     () => ({
@@ -158,7 +139,7 @@ export function DesignSystemProvider({
           style={rootStyle}
           lang={locale}
           data-color-scheme={colorScheme}
-          data-brand={acceptedBrand === undefined ? 'platform' : 'tenant'}
+          data-brand={resolvedBrand?.source ?? 'platform'}
         >
           {children}
         </div>

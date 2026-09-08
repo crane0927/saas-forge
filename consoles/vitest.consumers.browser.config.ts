@@ -6,6 +6,7 @@ const browserName = process.env.SF_BROWSER ?? 'chromium';
 const browserChannel = process.env.SF_BROWSER_CHANNEL;
 
 export default defineConfig({
+  publicDir: 'browser-test/public',
   define: {
     'import.meta.env.SF_MACOS_WEBKIT': JSON.stringify(
       browserName === 'webkit' && process.platform === 'darwin',

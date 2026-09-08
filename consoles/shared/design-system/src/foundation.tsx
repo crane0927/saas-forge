@@ -53,6 +53,8 @@ export interface ApplicationShellNavigationItem {
 
 export interface ApplicationShellProps {
   readonly applicationName: string;
+  readonly applicationLogoUrl?: string;
+  readonly applicationLogoAlt?: string;
   readonly navigationLabel?: string;
   readonly navigationItems: readonly ApplicationShellNavigationItem[];
   readonly onNavigate: (href: string) => void;
@@ -226,6 +228,8 @@ export function PageLayout({ title, children, width = 'standard' }: PageLayoutPr
 
 export function ApplicationShell({
   applicationName,
+  applicationLogoUrl,
+  applicationLogoAlt,
   navigationLabel,
   navigationItems,
   onNavigate,
@@ -236,7 +240,11 @@ export function ApplicationShell({
   return (
     <div className="sf-application-shell">
       <header className="sf-application-header">
-        <strong className="sf-application-name">{applicationName}</strong>
+        <ApplicationIdentity
+          applicationName={applicationName}
+          logoUrl={applicationLogoUrl}
+          logoAlt={applicationLogoAlt}
+        />
         <nav
           aria-label={
             navigationLabel ?? translate.translate('applicationNavigation', { applicationName })
@@ -264,6 +272,25 @@ export function ApplicationShell({
       </header>
       <main className="sf-application-content">{children}</main>
     </div>
+  );
+}
+
+export function ApplicationIdentity({
+  applicationName,
+  logoUrl,
+  logoAlt,
+}: {
+  readonly applicationName: string;
+  readonly logoUrl?: string;
+  readonly logoAlt?: string;
+}) {
+  return (
+    <span className="sf-application-identity">
+      {logoUrl === undefined ? null : (
+        <img className="sf-application-logo" src={logoUrl} alt={logoAlt ?? ''} />
+      )}
+      <strong className="sf-application-name">{applicationName}</strong>
+    </span>
   );
 }
 

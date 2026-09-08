@@ -53,6 +53,16 @@ body {
   inline-size: min(12rem, calc(100vw - (var(--sf-space-md) * 2)));
 }
 
+@media (max-width: 48rem) {
+  .sf-console-locale-control {
+    position: relative;
+    inset: auto;
+    margin-inline-start: auto;
+    padding: var(--sf-space-md);
+    inline-size: min(14rem, 100%);
+  }
+}
+
 .sf-bootstrap-panel {
   display: grid;
   inline-size: min(100%, 34rem);
@@ -132,6 +142,19 @@ body {
 
 .sf-application-name {
   white-space: nowrap;
+}
+
+.sf-application-identity {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sf-space-sm);
+}
+
+.sf-application-logo {
+  inline-size: auto;
+  block-size: 2rem;
+  flex: none;
+  object-fit: contain;
 }
 
 .sf-application-navigation {

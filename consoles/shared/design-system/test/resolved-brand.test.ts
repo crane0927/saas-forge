@@ -1,10 +1,10 @@
+import type { TenantBrandProfile } from '../src/brand-theme';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
   platformResolvedBrandProfile,
   resolveBrandProfile,
   type BrandAssetPreloader,
-  type TenantBrandProfile,
 } from '../src';
 
 const completeProfile: TenantBrandProfile = {
@@ -22,6 +22,27 @@ const successfulPreloader: BrandAssetPreloader = ({ kind }) =>
   });
 
 describe('Resolved Brand Profile', () => {
+  it.each(['displayName', 'logoUrl', 'faviconUrl', 'primaryColor', 'accentColor'] as const)(
+    '缺少 %s 时返回完整平台品牌与稳定原因码',
+    async (missingField) => {
+      const profile = { ...completeProfile };
+      const incomplete = Object.fromEntries(
+        Object.entries(profile).filter(([key]) => key !== missingField),
+      );
+      const rejected = vi.fn();
+      const preloadAsset = vi.fn(successfulPreloader);
+      expect(await resolveBrandProfile(incomplete, { preloadAsset, onRejected: rejected })).toEqual(
+        {
+          accepted: false,
+          reason: 'PROFILE_INVALID',
+          resolvedBrand: platformResolvedBrandProfile,
+        },
+      );
+      expect(rejected).toHaveBeenCalledExactlyOnceWith('PROFILE_INVALID');
+      expect(preloadAsset).not.toHaveBeenCalled();
+    },
+  );
+
   it('从公共入口返回规范化且深度不可变的完整 Tenant 品牌', async () => {
     const result = await resolveBrandProfile(completeProfile, {
       preloadAsset: successfulPreloader,

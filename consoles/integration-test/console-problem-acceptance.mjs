@@ -33,7 +33,8 @@ export async function verifyRequestProblemSurfaces(browser) {
         (await coldRecovery).postDataJSON().sessionSlot,
         host === 'platform' ? 'PLATFORM' : 'TENANT',
       );
-      await page.getByRole('heading', { name: `登录 ${application}`, exact: true }).waitFor();
+      await page.getByRole('heading', { name: '登录 SaaS Forge', exact: true }).waitFor();
+      assert.equal(await page.title(), `SaaS Forge ${application}`);
       let refreshes = 0;
       page.on('request', (request) => {
         if (new URL(request.url()).pathname === '/api/v1/auth/refresh') refreshes += 1;
@@ -83,7 +84,7 @@ export async function verifyRequestProblemSurfaces(browser) {
         assert.equal((await page.locator('body').innerText()).includes(marker), false);
         assert.equal((await page.getByLabel(/^密码/).inputValue()).length, 0);
         assert.equal(
-          await page.getByRole('heading', { name: `登录 ${application}`, exact: true }).count(),
+          await page.getByRole('heading', { name: '登录 SaaS Forge', exact: true }).count(),
           1,
         );
         assert.equal(

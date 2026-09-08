@@ -5,6 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import {
+  brandBoundaryViolations,
   designSystemDependencyReport,
   findBoundaryViolations,
   forbiddenDeclarationReason,
@@ -12,6 +13,99 @@ import {
   forbiddenSelectorReason,
   providerUsageCount,
 } from '../scripts/check-design-system-boundaries.mjs';
+
+test('rejects raw/resolved profile consumption, aliases, assets and token writes', () => {
+  const invalidSources = [
+    "import { resolveTenantBrandProfile as resolve } from '@saas-forge/design-system';",
+    "import { useBrandApplication as read } from '@saas-forge/react-shell';",
+    "import * as DS from '@saas-forge/design-system'; DS.platformBrandProfile;",
+    "import { resolveBrandProfile } from '../../shared/design-system/src/resolved-brand';",
+    'const name = state.tenantContext.brandProfile.displayName;',
+    "const profile = state.tenantContext['brandProfile']; profile['displayName'];",
+    'const profile = resolvedBrand; const { logoUrl } = profile;',
+    'const name = resolvedBrand.profile.displayName;',
+    'const name = result.resolvedBrand.profile.displayName;',
+    'const { brandProfile: profile } = context; profile.displayName;',
+    'const { brandProfile: { displayName } } = context;',
+    '<img src="/brands/tenant-logo.svg" />;',
+    '<ApplicationShell applicationLogoUrl={url} />;',
+    '<link rel="icon" href={url} />;',
+    "document.title = 'tenant';",
+    "const style = { '--sf-color-primary': '#123456' };",
+    "root.style.setProperty('--sf-color-accent-foreground', '#ffffff');",
+    "import { BrandApplicationProvider as Theme } from '@saas-forge/react-shell'; <Theme />;",
+  ];
+  for (const source of invalidSources) {
+    assert.notDeepEqual(brandBoundaryViolations(source, 'src/app.tsx'), [], source);
+  }
+});
+
+test('permits whole-profile forwarding and computed token reads, not Remote resolution', () => {
+  assert.deepEqual(
+    brandBoundaryViolations(
+      `
+    import { resolveBrandProfile } from '@saas-forge/design-system';
+    const brandProfile = context?.brandProfile;
+    resolveBrandProfile(brandProfile).then(result => apply(result.resolvedBrand));
+    const primary = getComputedStyle(root).getPropertyValue('--sf-color-primary');
+  `,
+      'src/app.tsx',
+    ),
+    [],
+  );
+  for (const source of [
+    "import { resolveBrandProfile as resolve } from '@saas-forge/design-system';",
+    "import { platformResolvedBrandProfile } from '@saas-forge/design-system';",
+    'const profile = runtime.getState().tenantContext.brandProfile;',
+    'const profile = props.resolvedBrand;',
+  ]) {
+    assert.notDeepEqual(
+      brandBoundaryViolations(source, 'src/remote.tsx', { remote: true }),
+      [],
+      source,
+    );
+  }
+});
+
+test('automatically rejects brand and CSS violations in a newly added Console and Remote', async (context) => {
+  const workspaceRoot = await createBoundaryWorkspace();
+  context.after(() => rm(workspaceRoot, { recursive: true, force: true }));
+  for (const packageRoot of ['operations-console', 'business-remotes/brand-remote']) {
+    await writePackage(
+      workspaceRoot,
+      packageRoot,
+      {
+        name: packageRoot,
+        dependencies: { '@saas-forge/design-system': 'workspace:*' },
+      },
+      {
+        'src/main.tsx': '<BrandApplicationProvider><App /></BrandApplicationProvider>',
+        'src/brand.tsx': 'const name = context.brandProfile.displayName;',
+        'src/page.module.css': '.page { --sf-color-primary: #123456; }',
+        'index.html': '<link rel="icon" href="/independent-brand.svg" />',
+      },
+    );
+  }
+  const violations = await findBoundaryViolations(workspaceRoot);
+  for (const packageRoot of ['operations-console', 'business-remotes/brand-remote']) {
+    assert.ok(
+      violations.some(
+        (value) => value.includes(`${packageRoot}/index.html`) && value.includes('不得独立安装'),
+      ),
+    );
+    assert.ok(
+      violations.some(
+        (value) => value.includes(`${packageRoot}/src/brand.tsx`) && value.includes('不得直接读取'),
+      ),
+    );
+    assert.ok(
+      violations.some(
+        (value) =>
+          value.includes(`${packageRoot}/src/page.module.css`) && value.includes('不得重写'),
+      ),
+    );
+  }
+});
 
 test('rejects direct Ant Design imports from a Console', () => {
   assert.match(forbiddenImportReason('antd'), /design-system/);
@@ -48,6 +142,12 @@ test('rejects duplicate public components and detects repeated Theme Providers',
       </DesignSystemProvider>
     `),
     2,
+  );
+  assert.equal(
+    providerUsageCount(`
+      <BrandApplicationProvider><App /></BrandApplicationProvider>
+    `),
+    1,
   );
 });
 
@@ -192,7 +292,7 @@ async function createBoundaryWorkspace() {
       name: '@saas-forge/platform-console',
       dependencies: { '@saas-forge/design-system': 'workspace:*' },
     },
-    { 'src/main.tsx': '<DesignSystemProvider><App /></DesignSystemProvider>\n' },
+    { 'src/main.tsx': '<BrandApplicationProvider><App /></BrandApplicationProvider>\n' },
   );
   await writePackage(
     workspaceRoot,
@@ -201,7 +301,7 @@ async function createBoundaryWorkspace() {
       name: '@saas-forge/tenant-console-shell',
       dependencies: { '@saas-forge/design-system': 'workspace:*' },
     },
-    { 'src/main.tsx': '<DesignSystemProvider><App /></DesignSystemProvider>\n' },
+    { 'src/main.tsx': '<BrandApplicationProvider><App /></BrandApplicationProvider>\n' },
   );
   await writePackage(
     workspaceRoot,

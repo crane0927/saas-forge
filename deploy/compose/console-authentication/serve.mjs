@@ -122,9 +122,18 @@ async function serve(incoming, outgoing) {
   }
   // 仅供隔离验收品牌夹具使用；素材仍通过相同的受信 TLS 静态入口读取。
   const brandAssets = {
-    "/acceptance-brands/blue.svg": "#155EEF",
-    "/acceptance-brands/violet.svg": "#7C3AED",
+    "/brands/acceptance-blue.svg": "#155EEF",
+    "/brands/acceptance-violet.svg": "#7C3AED",
   };
+  // 仅在隔离验收静态服务中提供确定的素材故障，业务 API 仍来自真实 Gateway 与服务。
+  if (["/brands/acceptance-wrong-mime.svg", "/brands/acceptance-decode.svg"].includes(pathname)) {
+    outgoing.writeHead(200, {
+      "Content-Type": pathname.includes("wrong-mime") ? "text/html" : types[".svg"],
+      "Cache-Control": "no-store",
+    });
+    outgoing.end(incoming.method === "HEAD" ? undefined : "not an image");
+    return;
+  }
   if (Object.hasOwn(brandAssets, pathname)) {
     outgoing.writeHead(200, {
       "Content-Type": types[".svg"],
