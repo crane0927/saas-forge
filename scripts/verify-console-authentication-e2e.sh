@@ -81,7 +81,8 @@ stage() {
       node "$repository_root/consoles/scripts/summarize-authentication-failure.mjs" "$work_directory/$name.log"
     fi
     if [[ "$name" == product-* || "$name" == compose-start || "$name" == tls-ready ]]; then
-      compose ps --format json >"$diagnostic_directory/compose-status.json" 2>&1 || true
+      compose ps --all --format json >"$diagnostic_directory/compose-status.json" 2>&1 || true
+      node "$repository_root/consoles/scripts/summarize-compose-status.mjs" "$diagnostic_directory/compose-status.json"
       compose logs --no-color nacos-init >"$diagnostic_directory/nacos-init.log" 2>&1 || true
       compose logs --no-color console-tls >"$diagnostic_directory/tls.log" 2>&1 || true
       compose logs --no-color gateway iam-service entitlement-service >"$diagnostic_directory/services.log" 2>&1 || true

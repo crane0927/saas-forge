@@ -7,6 +7,46 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
+test('reports Compose status without exposing commands, unknown values or parse errors', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'sf-compose-diagnostics-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const log = join(directory, 'compose.json');
+  const script = fileURLToPath(new URL('../scripts/summarize-compose-status.mjs', import.meta.url));
+  const entries = [
+    { Service: 'nacos-init', State: 'exited', Health: '', ExitCode: 1, Command: 'PRIVATE_SECRET' },
+    { Service: 'gateway', State: 'running', Health: 'unhealthy', ExitCode: 0 },
+    { Service: 'PRIVATE_SERVICE', State: 'running', Health: 'healthy', ExitCode: 0 },
+    {
+      Service: 'iam-service',
+      State: 'PRIVATE_STATE',
+      Health: 'PRIVATE_HEALTH',
+      ExitCode: 'PRIVATE',
+    },
+    null,
+  ];
+  for (const source of [
+    JSON.stringify(entries),
+    entries.map((entry) => JSON.stringify(entry)).join('\n'),
+  ]) {
+    await writeFile(log, source);
+    const { stdout, stderr } = await promisify(execFile)(process.execPath, [script, log]);
+    assert.equal(stderr, '');
+    assert.equal(
+      stdout,
+      [
+        'COMPOSE: service=nacos-init state=exited health=none exit=1',
+        'COMPOSE: service=gateway state=running health=unhealthy exit=0',
+        'COMPOSE: service=iam-service state=unknown health=none exit=unknown',
+        '',
+      ].join('\n'),
+    );
+  }
+  await writeFile(log, 'PRIVATE_PARSE_ERROR');
+  const { stdout, stderr } = await promisify(execFile)(process.execPath, [script, log]);
+  assert.equal(stdout, 'COMPOSE: status unavailable\n');
+  assert.equal(stderr, '');
+});
+
 test('reports failing acceptance source locations without exposing TAP diagnostic values', async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'sf-acceptance-diagnostics-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
