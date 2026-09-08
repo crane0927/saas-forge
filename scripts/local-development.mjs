@@ -26,7 +26,7 @@ export function localDevelopmentPlan(arguments_) {
   if (
     command === "frontend" &&
     ["start", "status", "stop"].includes(service) &&
-    ["platform", "tenant"].includes(arguments_[2]) &&
+    ["platform", "tenant", "all"].includes(arguments_[2]) &&
     arguments_.length === 3
   ) {
     return [
@@ -49,11 +49,18 @@ export function localDevelopmentPlan(arguments_) {
     ];
   }
   if (command === "status" && arguments_.length === 1) {
-    return localDevelopmentServices.map((target) => ({
-      script: "local-service-replacement.sh",
-      arguments: ["status", target],
-      continueOnFailure: true,
-    }));
+    return [
+      {
+        script: "local-https-development.sh",
+        arguments: ["status", "all"],
+        continueOnFailure: true,
+      },
+      ...localDevelopmentServices.map((target) => ({
+        script: "local-service-replacement.sh",
+        arguments: ["status", target],
+        continueOnFailure: true,
+      })),
+    ];
   }
   if (command === "doctor" && arguments_.length === 1) {
     return [
@@ -74,7 +81,7 @@ export function localDevelopmentPlan(arguments_) {
 
 function usage() {
   console.error(
-    "用法：bash scripts/local-development.sh frontend <start|status|stop> platform|tenant\n" +
+    "用法：bash scripts/local-development.sh frontend <start|status|stop> platform|tenant|all\n" +
       "      bash scripts/local-development.sh <setup|doctor|status>\n" +
       "      bash scripts/local-development.sh <replace|restore> <gateway|iam-service|tenant-access-service|entitlement-service|audit-service>",
   );

@@ -60,6 +60,7 @@ test("status and doctor cover all five targets even when one check fails", () =>
   assert.deepEqual(
     status.map((step) => step.arguments.at(-1)),
     [
+      "all",
       "gateway",
       "iam-service",
       "tenant-access-service",
@@ -74,7 +75,7 @@ test("status and doctor cover all five targets even when one check fails", () =>
   const exitCode = executeLocalDevelopmentPlan(status, () => ({
     status: calls++ === 0 ? 1 : 0,
   }));
-  assert.equal(calls, 5);
+  assert.equal(calls, 6);
   assert.equal(exitCode, 1);
 });
 
@@ -113,4 +114,21 @@ test("the acceptance matrix covers every target and preserves images and volumes
   assert.match(matrix, /verify-local-development-security-browser\.mjs/u);
   assert.doesNotMatch(matrix, /docker\s+(?:compose\s+)?build/u);
   assert.doesNotMatch(matrix, /down\s+--volumes/u);
+});
+
+test("plans explicit all operations and rejects extra arguments", () => {
+  for (const operation of ["start", "status", "stop"]) {
+    assert.deepEqual(localDevelopmentPlan(["frontend", operation, "all"]), [
+      { script: "local-https-development.sh", arguments: [operation, "all"] },
+    ]);
+    assert.equal(
+      localDevelopmentPlan(["frontend", operation, "all", "extra"]),
+      undefined,
+    );
+  }
+  assert.deepEqual(localDevelopmentPlan(["status"])[0], {
+    script: "local-https-development.sh",
+    arguments: ["status", "all"],
+    continueOnFailure: true,
+  });
 });

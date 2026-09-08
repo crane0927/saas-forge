@@ -69,13 +69,21 @@ bash scripts/local-development.sh frontend start tenant
 bash scripts/local-development.sh frontend status tenant
 bash scripts/local-development.sh frontend stop tenant
 bash scripts/local-development.sh frontend stop platform
+bash scripts/local-development.sh frontend start all
+bash scripts/local-development.sh frontend status all
+bash scripts/local-development.sh status
+bash scripts/local-development.sh frontend stop all
 ```
 
 `setup` 复用有效的本地 CA；服务器证书缺少受控 Host、将在 24 小时内失效或无法通过链/私钥校验时才重签 leaf。证书覆盖 `platform.saasforge.test`、`console.saasforge.test`、`api.saasforge.test`。旧双 Host 安装需重新执行 setup；hosts 和 Keychain 变更仍分别要求交互式明确授权，已配置时幂等跳过，非交互环境拒绝系统变更。
 
-`frontend` 必须提供 `start|status|stop` 和 `platform|tenant`。Platform Vite 固定监听 `127.0.0.1:5173`，Tenant 固定监听 `127.0.0.1:5174`，均启用 strict port，分别只接受对应受控 Host，HMR 使用对应 HTTPS Origin 的 WSS 443。Edge 通过 `host.docker.internal` 访问两个回环 Vite，将 API 转发到当前 Gateway，并保留浏览器安全头。未知 Host 被拒绝；不得为解决 Docker Desktop 连通性问题将 Vite 改为所有网络接口。
+`frontend` 必须提供 `start|status|stop` 和 `platform|tenant|all`。Platform Vite 固定监听 `127.0.0.1:5173`，Tenant 固定监听 `127.0.0.1:5174`，均启用 strict port，分别只接受对应受控 Host，HMR 使用对应 HTTPS Origin 的 WSS 443。Edge 通过 `host.docker.internal` 访问两个回环 Vite，将 API 转发到当前 Gateway，并保留浏览器安全头。未知 Host 被拒绝；不得为解决 Docker Desktop 连通性问题将 Vite 改为所有网络接口。
 
 启动使用 Node `24.14.1`、pnpm `11.22.0` 和既有依赖，复用健康兼容的 Edge。日常启停不生成证书、不修改 hosts/信任、不安装依赖、不生成 API Client，也不启动后端或重置账户。已有不兼容 Edge 占用 443 时会阻止启动；升级旧 Edge 前先停止两个 Console，再重新启动。
+
+`start all` 在启动前捕获两个 Console 与 Edge 状态并预检；两个正式 HTTPS Host 都就绪后才成功。已有健康进程与兼容 Edge 会被复用，重复启动不重启资源；任一步骤失败只回收本次调用新启动的进程与 Edge。`stop all` 先核验两个目标，再停止受管 Vite 和当前项目 Edge；未知 PID、端口归属或 Edge 配置错误会阻塞变更。
+
+`frontend status all` 只读显示两个 Console 的固定端口、HTTPS 就绪结果和共享 Edge；顶层 `status` 先输出这些信息，再执行原有五个后端服务检查。正常 `STOPPED`、可识别的 `STALE` 与短暂 `STARTING` 不使前端聚合失败；`UNREADY`、`UNMANAGED`、Edge `INVALID` 或 `UNAVAILABLE` 返回非零。状态输出不包含凭据或原始环境变量。
 
 两个 Console 各自使用 Git 忽略目录 `deploy/compose/.secrets/local-https-development/` 内的 `platform-vite.pid|log` 和 `tenant-vite.pid|log`，PID 与追加日志权限均为 0600。`status` 报告 `RUNNING`、`STOPPED`、`STARTING`、`STALE`、`UNMANAGED` 或 `UNREADY`；RUNNING 要求 PID、进程组、启动时间、仓库、包身份、回环监听和正式 HTTPS 就绪全部匹配。停止只向身份匹配的目标发送 SIGTERM；另一个 Console 活动或身份不明时保留 Edge，最后一个停止后仅停止 Edge 容器，不删除容器、后端服务或卷。旧 `vite.pid` 只由 Platform 在身份匹配时认领，旧日志保留；陈旧记录仅在确认原进程不存在后清理。
 

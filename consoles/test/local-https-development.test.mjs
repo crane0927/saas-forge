@@ -190,7 +190,7 @@ test('keeps the managed Platform PID and log separate from legacy diagnostics', 
   assert.notEqual(paths.platformLog, paths.legacyViteLog);
 });
 
-test('requires an explicit operation and Platform target for lifecycle commands', () => {
+test('requires an explicit operation and fixed Console target for lifecycle commands', () => {
   for (const operation of ['start', 'status', 'stop']) {
     assert.deepEqual(localHttpsDevelopmentCommand([operation, 'tenant']), {
       command: operation,
@@ -203,7 +203,13 @@ test('requires an explicit operation and Platform target for lifecycle commands'
   }
   assert.equal(localHttpsDevelopmentCommand(['start']), undefined);
   assert.equal(localHttpsDevelopmentCommand(['start', 'platform', 'extra']), undefined);
-  assert.equal(localHttpsDevelopmentCommand(['start', 'all']), undefined);
+  for (const operation of ['start', 'status', 'stop']) {
+    assert.deepEqual(localHttpsDevelopmentCommand([operation, 'all']), {
+      command: operation,
+      target: 'all',
+    });
+    assert.equal(localHttpsDevelopmentCommand([operation, 'all', 'extra']), undefined);
+  }
 });
 
 test('pins the Vite dependency layout and rejects an incompatible installed workspace', async () => {

@@ -81,13 +81,21 @@ bash scripts/local-development.sh frontend start tenant
 bash scripts/local-development.sh frontend status tenant
 bash scripts/local-development.sh frontend stop tenant
 bash scripts/local-development.sh frontend stop platform
+bash scripts/local-development.sh frontend start all
+bash scripts/local-development.sh frontend status all
+bash scripts/local-development.sh status
+bash scripts/local-development.sh frontend stop all
 ```
 
 `setup` reuses a valid local CA and reissues the leaf only when a controlled Host is missing, expiry is within 24 hours, or chain/key validation fails. The certificate covers `platform.saasforge.test`, `console.saasforge.test`, and `api.saasforge.test`. Existing two-Host installations must rerun setup. Hosts and Keychain changes still require separate explicit interactive authorization; existing configuration is skipped idempotently, and noninteractive system changes are refused.
 
-Every `frontend` invocation requires `start|status|stop` and `platform|tenant`. Platform Vite binds to `127.0.0.1:5173` and Tenant to `127.0.0.1:5174`, with strict ports, their respective controlled Hosts, and HMR over each HTTPS Origin's WSS port 443. Edge reaches both loopback Vite servers through `host.docker.internal`, forwards API traffic to the current Gateway, and preserves browser security headers. Unknown Hosts are rejected. Do not widen Vite listeners to all interfaces to work around Docker Desktop connectivity failures.
+Every `frontend` invocation requires `start|status|stop` and `platform|tenant|all`. Platform Vite binds to `127.0.0.1:5173` and Tenant to `127.0.0.1:5174`, with strict ports, their respective controlled Hosts, and HMR over each HTTPS Origin's WSS port 443. Edge reaches both loopback Vite servers through `host.docker.internal`, forwards API traffic to the current Gateway, and preserves browser security headers. Unknown Hosts are rejected. Do not widen Vite listeners to all interfaces to work around Docker Desktop connectivity failures.
 
 Start uses Node `24.14.1`, pnpm `11.22.0`, and existing dependencies, reusing a healthy compatible Edge. Daily start/stop never generates certificates, changes hosts/trust, installs dependencies, generates the API client, starts backend services, or resets accounts. An incompatible Edge occupying 443 blocks start; stop both Consoles before upgrading an old Edge and restarting.
+
+`start all` snapshots both Consoles and Edge and runs preflight before starting resources; it succeeds only after both formal HTTPS Hosts are ready. Healthy processes and a compatible Edge are reused without restart. A failed step rolls back only processes and Edge started by that invocation. `stop all` checks both targets before stopping managed Vite processes and the current project Edge; unknown PIDs, port ownership, or invalid Edge configuration block changes.
+
+`frontend status all` reports both fixed ports, HTTPS readiness, and shared Edge without mutation. Top-level `status` prints these first, then runs the existing five backend checks. Normal `STOPPED`, safely identified `STALE`, and transient `STARTING` states do not fail frontend aggregation. `UNREADY`, `UNMANAGED`, Edge `INVALID`, or `UNAVAILABLE` return nonzero. Status output contains no credentials or raw environment-variable values.
 
 Each Console has its own `platform-vite.pid|log` or `tenant-vite.pid|log` under the Git-ignored `deploy/compose/.secrets/local-https-development/` directory. Both PID files and append-only logs use mode 0600. Status is `RUNNING`, `STOPPED`, `STARTING`, `STALE`, `UNMANAGED`, or `UNREADY`. RUNNING requires matching PID, process group, start time, repository, package identity, loopback listener, and formal HTTPS readiness. Stop sends SIGTERM only to a matching target. Edge is retained while another Console is active or has an unknown identity; stopping the last Console only stops the Edge container without deleting containers, backend services, or volumes. Only Platform adopts a matching legacy `vite.pid`, retaining its old log. Stale records are cleaned only after confirming the original process no longer exists.
 

@@ -318,3 +318,190 @@ export async function stopUnusedEdge({ observe, stop }) {
   }
   return stop();
 }
+
+/** 双 Console 的公共编排入口；状态只读取系统边界，不修改 PID 或共享 Edge。 */
+export function createFrontendOrchestration({ repositoryRoot, systems, edge }) {
+  const targets = Object.keys(frontendTargets);
+  const lifecycles = Object.fromEntries(
+    targets.map((target) => [
+      target,
+      createFrontendLifecycle({
+        repositoryRoot,
+        target,
+        system: systems[target],
+      }),
+    ]),
+  );
+  async function status() {
+    const consoles = {};
+    for (const target of targets) {
+      const { port, host } = frontendTargets[target];
+      consoles[target] = {
+        ...(await lifecycles[target].run("status")),
+        port,
+        host,
+      };
+    }
+    const edgeState = await edge
+      .status()
+      .catch(() => ({ state: "UNAVAILABLE", port: 443, exitCode: 1 }));
+    return {
+      consoles,
+      edge: edgeState,
+      exitCode:
+        edgeState.exitCode ||
+        targets.some((target) => consoles[target].exitCode !== 0)
+          ? 1
+          : 0,
+    };
+  }
+  return {
+    async run(operation) {
+      if (operation === "status") return status();
+      if (operation === "start") {
+        const initial = await status();
+        if (
+          initial.edge.exitCode !== 0 ||
+          targets.some(
+            (target) => initial.consoles[target].state === "UNMANAGED",
+          )
+        ) {
+          throw new Error("Console 或 Edge 身份/配置不安全，拒绝启动 all。");
+        }
+        // 所有目标先通过预检；已有资源不加入本次调用的回收集合。
+        for (const target of targets) {
+          await systems[target].preflight({
+            allowManagedConsole: !["STOPPED", "STALE"].includes(
+              initial.consoles[target].state,
+            ),
+          });
+        }
+        const acquired = [];
+        let acquiredEdge;
+        try {
+          await edge.ensure((identity) => {
+            acquiredEdge = identity;
+          });
+          for (const target of targets) {
+            const system = systems[target];
+            await createFrontendLifecycle({
+              repositoryRoot,
+              target,
+              system: {
+                ...system,
+                spawnConsole: async (options) => {
+                  const record = await system.spawnConsole(options);
+                  acquired.push({ target, record });
+                  return record;
+                },
+                ensureEdge: async () => "reused",
+                stopEdgeIfUnused: async () => "retained",
+              },
+            }).run("start");
+          }
+          const result = await status();
+          if (
+            result.exitCode !== 0 ||
+            targets.some(
+              (target) => result.consoles[target].state !== "RUNNING",
+            )
+          ) {
+            throw new Error("两个 Console 未同时通过正式 HTTPS 入口就绪。");
+          }
+          return result;
+        } catch (error) {
+          const failures = [];
+          for (const { target, record } of acquired.reverse()) {
+            try {
+              await rollbackConsole(
+                repositoryRoot,
+                target,
+                systems[target],
+                record,
+              );
+            } catch (cleanupError) {
+              failures.push(cleanupError);
+            }
+          }
+          if (acquiredEdge !== undefined) {
+            try {
+              await edge.stop(acquiredEdge);
+            } catch (cleanupError) {
+              failures.push(cleanupError);
+            }
+          }
+          if (failures.length > 0) {
+            throw new AggregateError(
+              [error, ...failures],
+              "all 启动失败，部分新资源未能安全回收；请运行 frontend status all 检查。",
+            );
+          }
+          throw error;
+        }
+      }
+      if (operation === "stop") {
+        const initial = await status();
+        if (
+          !["STOPPED", "RUNNING", "UNREADY"].includes(initial.edge.state) ||
+          targets.some(
+            (target) => initial.consoles[target].state === "UNMANAGED",
+          )
+        ) {
+          throw new Error("Console 或 Edge 身份/配置不安全，拒绝停止 all。");
+        }
+        for (const target of targets) {
+          await createFrontendLifecycle({
+            repositoryRoot,
+            target,
+            system: {
+              ...systems[target],
+              stopEdgeIfUnused: async () => "retained",
+            },
+          }).run("stop");
+        }
+        if (initial.edge.state !== "STOPPED")
+          await edge.stop(initial.edge.identity);
+        return status();
+      }
+      throw new Error(`不支持的 Console 编排操作：${operation}`);
+    },
+  };
+}
+
+// PID 文件写入失败时也要回收已创建的进程；必须重新核验创建时的身份与端口归属。
+async function rollbackConsole(repositoryRoot, target, system, record) {
+  const configuration = frontendTarget(target);
+  const current = await system.inspectProcess(record.pid);
+  if (current !== undefined) {
+    const listener = await system.inspectListener(configuration.port);
+    if (
+      !isConsoleProcess(
+        current,
+        `${repositoryRoot}/consoles`,
+        record,
+        configuration,
+      ) ||
+      (listener !== undefined &&
+        (listener.processGroupId !== record.pid ||
+          listener.address !== "127.0.0.1" ||
+          listener.port !== configuration.port))
+    ) {
+      throw new Error(`${configuration.label} 回滚时身份变化，拒绝发送信号。`);
+    }
+    await system.terminateConsole(record, "SIGTERM");
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      if ((await system.inspectProcess(record.pid)) === undefined) break;
+      await system.wait(250);
+    }
+    if ((await system.inspectProcess(record.pid)) !== undefined) {
+      throw new Error(`${configuration.label} 未响应回滚 SIGTERM。`);
+    }
+  }
+  const saved = parseManagedPid(await system.readPidFile());
+  if (
+    saved?.pid === record.pid &&
+    saved.processStartedAt === record.processStartedAt
+  ) {
+    await system.removePidFile();
+  }
+}

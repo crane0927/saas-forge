@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   createFrontendLifecycle,
+  createFrontendOrchestration,
   frontendTarget,
   frontendTargets,
   stopUnusedEdge,
@@ -804,50 +805,135 @@ function isHttpsReady(paths, host) {
   );
 }
 
-function inspectEdge(repositoryRoot, paths) {
+function inspectEdge(repositoryRoot, paths, runCommand = run) {
   const composeDirectory = path.join(repositoryRoot, "deploy", "compose");
   const prefix = edgeComposePrefix(repositoryRoot);
   const env = edgeEnvironment(paths);
-  const containerId = run(
+  const containerId = runCommand(
     "docker",
     [...prefix, "ps", "--all", "--quiet", "local-https-edge"],
     { allowFailure: true, cwd: composeDirectory, env },
   );
-  if (containerId.status !== 0) {
+  if (containerId.status !== 0)
     throw new Error("无法检查共享 HTTPS Edge；请确认 Docker Desktop 可用。");
-  }
   const id = containerId.stdout.trim();
   if (id.length === 0)
     return { exists: false, running: false, compatible: false };
-  const inspection = run("docker", ["inspect", id], { allowFailure: true });
-  if (inspection.status !== 0) {
+  // 只读取身份、端口和健康字段；完整 inspect 会包含原始环境变量与凭据。
+  const format =
+    '{"id":{{json .Id}},"running":{{json .State.Running}},"health":{{with (index .State "Health")}}{{json .Status}}{{else}}null{{end}},"ports":{{json .HostConfig.PortBindings}},"projectDirectory":{{json (index .Config.Labels "com.docker.compose.project.working_dir")}},"service":{{json (index .Config.Labels "com.docker.compose.service")}},"hash":{{json (index .Config.Labels "com.docker.compose.config-hash")}}}';
+  const inspection = runCommand("docker", ["inspect", "--format", format, id], {
+    allowFailure: true,
+  });
+  if (inspection.status !== 0)
     throw new Error("无法读取共享 HTTPS Edge 容器身份。");
-  }
   let container;
   try {
-    [container] = JSON.parse(inspection.stdout);
+    container = JSON.parse(inspection.stdout);
   } catch {
     throw new Error("共享 HTTPS Edge 容器状态不可解析。");
   }
-  const expectedHash = run(
+  const expectedHash = runCommand(
     "docker",
     [...prefix, "config", "--hash", "local-https-edge"],
     { allowFailure: true, cwd: composeDirectory, env },
   );
   const hash = expectedHash.stdout.trim().split(/\s+/u).at(-1);
-  const publishedPort = container?.NetworkSettings?.Ports?.["8443/tcp"] ?? [];
-  const health = container?.State?.Health?.Status;
+  const managed =
+    container.projectDirectory === composeDirectory &&
+    container.service === "local-https-edge";
+  const configurationMatches =
+    managed &&
+    expectedHash.status === 0 &&
+    container.hash === hash &&
+    container.ports?.["8443/tcp"]?.some(
+      (binding) => binding.HostIp === "127.0.0.1" && binding.HostPort === "443",
+    ) === true;
+  const healthy = container.health == null || container.health === "healthy";
   return {
     exists: true,
-    running: container?.State?.Running === true,
-    compatible:
-      expectedHash.status === 0 &&
-      container?.Config?.Labels?.["com.docker.compose.config-hash"] === hash &&
-      publishedPort.some(
-        (binding) =>
-          binding.HostIp === "127.0.0.1" && binding.HostPort === "443",
-      ) &&
-      (health === undefined || health === "healthy"),
+    identity: container.id,
+    running: container.running === true,
+    managed,
+    configurationMatches,
+    healthy,
+    compatible: configurationMatches && healthy,
+  };
+}
+
+/** Edge 的公共生命周期只管理当前 Compose 项目；停止时必须携带先前捕获的容器身份。 */
+export function createHttpsEdgeLifecycle({
+  repositoryRoot,
+  paths,
+  runCommand = run,
+  listener = inspectListener,
+}) {
+  return {
+    async ensure(acquired) {
+      const initial = await this.status();
+      if (initial.state === "RUNNING") return "reused";
+      if (initial.state !== "STOPPED")
+        throw new Error("共享 Edge 身份、配置或就绪状态异常，拒绝启动。");
+      const edge = inspectEdge(repositoryRoot, paths, runCommand);
+      try {
+        runCommand(
+          "docker",
+          edge.exists
+            ? [
+                ...edgeComposePrefix(repositoryRoot),
+                "start",
+                "local-https-edge",
+              ]
+            : edgeStartArguments(repositoryRoot),
+          {
+            cwd: path.join(repositoryRoot, "deploy", "compose"),
+            env: edgeEnvironment(paths),
+          },
+        );
+      } finally {
+        // Docker 可能在创建或启动成功后返回失败，仍需登记本次获得的资源供回滚。
+        const current = inspectEdge(repositoryRoot, paths, runCommand);
+        if (
+          current.exists &&
+          current.managed &&
+          current.configurationMatches &&
+          (!edge.exists || current.identity === edge.identity)
+        )
+          acquired(current.identity);
+      }
+      return "started";
+    },
+    async stop(identity) {
+      const current = inspectEdge(repositoryRoot, paths, runCommand);
+      if (!current.exists) return "already-stopped";
+      if (
+        identity === undefined ||
+        current.identity !== identity ||
+        !current.managed ||
+        !current.configurationMatches
+      ) {
+        throw new Error("共享 Edge 身份或配置在停止前变化，拒绝停止。");
+      }
+      if (!current.running) return "already-stopped";
+      runCommand("docker", ["stop", identity], { cwd: repositoryRoot });
+      return "stopped";
+    },
+    async status() {
+      const edge = inspectEdge(repositoryRoot, paths, runCommand);
+      const listening = listener(443) !== undefined;
+      let state;
+      if ((!edge.exists && listening) || (edge.exists && !edge.managed))
+        state = "UNMANAGED";
+      else if (edge.exists && !edge.configurationMatches) state = "INVALID";
+      else if (!edge.running) state = listening ? "UNMANAGED" : "STOPPED";
+      else state = edge.healthy && listening ? "RUNNING" : "UNREADY";
+      return {
+        state,
+        identity: edge.identity,
+        port: 443,
+        exitCode: state === "RUNNING" || state === "STOPPED" ? 0 : 1,
+      };
+    },
   };
 }
 
@@ -1032,15 +1118,14 @@ function createConsoleSystem(repositoryRoot, paths, target) {
             system: createConsoleSystem(repositoryRoot, paths, name),
           }).run("status"),
         stop: async () => {
-          const edge = inspectEdge(repositoryRoot, paths);
-          if (!edge.exists || !edge.running) return "already-stopped";
-          run(
-            "docker",
-            [...edgeComposePrefix(repositoryRoot), "stop", "local-https-edge"],
-            { cwd: composeDirectory, env: edgeEnvironment(paths) },
-          );
+          const edge = createHttpsEdgeLifecycle({ repositoryRoot, paths });
+          const initial = await edge.status();
+          if (!["STOPPED", "RUNNING", "UNREADY"].includes(initial.state))
+            throw new Error("共享 Edge 身份或配置异常，拒绝停止。");
+          if (initial.state === "STOPPED") return "already-stopped";
+          const result = await edge.stop(initial.identity);
           edgeCompatibility = { checkedAt: Date.now(), compatible: false };
-          return "stopped";
+          return result;
         },
       });
     },
@@ -1048,6 +1133,29 @@ function createConsoleSystem(repositoryRoot, paths, target) {
 }
 
 async function runConsoleLifecycle(command, repositoryRoot, paths, target) {
+  if (target === "all") {
+    const systems = Object.fromEntries(
+      Object.keys(frontendTargets).map((name) => [
+        name,
+        createConsoleSystem(repositoryRoot, paths, name),
+      ]),
+    );
+    const result = await createFrontendOrchestration({
+      repositoryRoot,
+      systems,
+      edge: createHttpsEdgeLifecycle({ repositoryRoot, paths }),
+    }).run(command);
+    for (const [name, consoleState] of Object.entries(result.consoles)) {
+      console.log(
+        `${name.toUpperCase()}: ${consoleState.state} | 127.0.0.1:${consoleState.port} | https://${consoleState.host} | HTTPS ${consoleState.state === "RUNNING" ? "READY" : "NOT_READY"}`,
+      );
+    }
+    console.log(
+      `EDGE: ${result.edge.state} | 127.0.0.1:443 | ${result.edge.state === "RUNNING" ? "READY" : "NOT_READY"}`,
+    );
+    process.exitCode = result.exitCode;
+    return;
+  }
   const lifecycle = createFrontendLifecycle({
     target,
     repositoryRoot,
@@ -1063,7 +1171,7 @@ async function runConsoleLifecycle(command, repositoryRoot, paths, target) {
 
 function usage() {
   console.error(
-    "用法：bash scripts/local-https-development.sh <start|status|stop> platform|tenant\n" +
+    "用法：bash scripts/local-https-development.sh <start|status|stop> platform|tenant|all\n" +
       "      bash scripts/local-https-development.sh <setup|hosts|trust-ca|doctor>",
   );
 }
@@ -1078,7 +1186,7 @@ export function localHttpsDevelopmentCommand(arguments_) {
   if (
     arguments_.length === 2 &&
     ["start", "status", "stop"].includes(arguments_[0]) &&
-    Object.hasOwn(frontendTargets, arguments_[1])
+    (arguments_[1] === "all" || Object.hasOwn(frontendTargets, arguments_[1]))
   ) {
     return { command: arguments_[0], target: arguments_[1] };
   }
