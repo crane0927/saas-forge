@@ -107,6 +107,54 @@ These paths share the active target file with the API Host. After `bash scripts/
 
 Prepare accounts, Gateway, and backend services separately. This routing capability does not constitute complete Tenant authentication acceptance.
 
+#### States and recovery
+
+The old argument-free `bash scripts/local-development.sh frontend` command has been removed and returns a usage error. These nine commands are its complete replacements, run from the repository root:
+
+```bash
+bash scripts/local-development.sh frontend start platform
+bash scripts/local-development.sh frontend status platform
+bash scripts/local-development.sh frontend stop platform
+bash scripts/local-development.sh frontend start tenant
+bash scripts/local-development.sh frontend status tenant
+bash scripts/local-development.sh frontend stop tenant
+bash scripts/local-development.sh frontend start all
+bash scripts/local-development.sh frontend status all
+bash scripts/local-development.sh frontend stop all
+```
+
+| State       | Meaning                                                                             | Recovery action                                                                                                                                                                                    |
+| ----------- | ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RUNNING`   | Managed identity, loopback listener, and formal HTTPS readiness pass                | Develop normally; repeated start reuses resources                                                                                                                                                  |
+| `STOPPED`   | No managed record or listener on the target port                                    | Explicitly start when needed                                                                                                                                                                       |
+| `STARTING`  | Managed process exists but has no listener within the 30-second startup window      | Wait and check status again; avoid concurrent repeated starts                                                                                                                                      |
+| `STALE`     | A record exists, but its original process is gone and the port is unused            | Stop the target to clean safely, then start                                                                                                                                                        |
+| `UNMANAGED` | Untrusted process identity or an unknown port owner                                 | Inspect with `lsof -nP -iTCP:5173 -iTCP:5174 -iTCP:443 -sTCP:LISTEN`; have the original operator end their foreground command, then check status. Never kill by port or simply delete the PID file |
+| `UNREADY`   | Managed process exists, but listener startup timed out or formal HTTPS is not ready | Check its log and run doctor; resolve Edge/certificate/dependency issues, then explicitly stop and start                                                                                           |
+
+Logs are `deploy/compose/.secrets/local-https-development/platform-vite.log` and `tenant-vite.log`. Inspect locally; do not copy potentially sensitive raw logs into reports. For Edge `UNAVAILABLE`, check Docker Desktop and Docker access permissions first. For `INVALID`/`UNMANAGED`, establish project ownership and configuration before acting; never automatically replace an unknown listener. Doctor recovery guidance does not authorize changes to certificate trust or backends during acceptance.
+
+For direct package-level foreground debugging, use separate terminals in `consoles/`:
+
+```bash
+pnpm --filter @saas-forge/platform-console run dev
+pnpm --filter @saas-forge/tenant-console-shell run dev
+```
+
+Package commands do not generate the API Client; workspace `dev:platform`/`dev:tenant` generate it before starting. Neither participates in managed PID lifecycle; end each with Ctrl-C in its original terminal. A rendered HTTP localhost page proves only frontend rendering, not login, Cookie, CSRF, or TLS security acceptance.
+
+#### Dual-Console product-path acceptance and restoration
+
+1. Before acceptance, save `frontend status all`, top-level `status`, the current project's Edge container identity and running state, and backend container start times. Confirm existing trusted certificates, hosts, dependencies, and ready backends. Do not run setup, bootstrap, backend replace/restore, or password resets in this run.
+2. Cover Platform-only, Tenant-only, all, single-target stop, all stop, and repeated operations, reading aggregate status after each step. A single-target stop must retain Edge while the other Console uses it. Frontend stop does not stop backends, delete containers, Secrets, or volumes, or terminate unknown listeners.
+3. In one browser context, open `https://platform.saasforge.test` and `https://console.saasforge.test` with normal certificate verification. Check page identity, meaningful content, error overlays, console/network, and record actual `/api/*` methods, sanitized paths, and status codes for each Console; the API Origin is `https://api.saasforge.test`. Never record passwords, Cookies, Tokens, or sensitive response bodies.
+4. Use existing accounts or sessions to log in/restore both slots. Refresh one while the other remains usable; log out of one and verify that the other remains signed in after refresh, then reverse roles. Missing login prerequisites are blockers, not permission to create accounts or reset credentials.
+5. Open the Password Setup document on the Tenant Origin and verify its script/style resources and an actual form submission reaching the current Gateway. Exercise only a failure path that does not change a password; record a blocker if no safe submission is possible, and do not consume a valid Challenge. An error response proves routing only, not successful password setup.
+6. Temporarily change one visible development marker in each Console, observe its controlled WSS Origin connection and HMR update, and restore the files. Verify host listeners bind only to `127.0.0.1` on 5173/5174, reach both from Edge through `host.docker.internal`, and prove direct access via the host LAN address fails. Stop acceptance if Docker Desktop cannot reach loopback Vite; never fall back to `0.0.0.0`.
+7. On success or failure, restore development markers and the original managed frontend combination. If only Edge was initially running, frontend stop also stops it: verify the original container identity, then start only that Edge container (`docker start <verified-original-Edge-container-ID>`). Do not force-kill unknown or abnormal processes to restore state. Finally, recheck frontend/Edge states and backend identities/start times read-only, recording any unrestored differences.
+
+Report passed, failed, and blocked checks separately. Script tests or earlier Platform evidence are not Tenant real-machine evidence, and acceptance does not rewrite the historical scope of #126/#131.
+
 `doctor` continues through every category even after a failure. It uses share-safe classifications such as `CERTIFICATE_MISSING`, `CERTIFICATE_EXPIRED`, `CERTIFICATE_UNTRUSTED`, `PORT_CONFLICT`, `MIGRATION_FAILED`, `NACOS_UNAVAILABLE`, `SECRET_MISSING`, `INFRASTRUCTURE_UNAVAILABLE`, and `DUPLICATE_INSTANCE`, followed by a recovery action. It never renders passwords, Tokens, Cookies, Client Secrets, JWT private keys, or raw environment-variable values.
 
 ### Local backend-service replacement development

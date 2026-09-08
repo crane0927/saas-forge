@@ -95,6 +95,54 @@ Tenant Origin 下的 `/password-setup`、`/password-setup/app.js`、`/password-s
 
 账户、Gateway 与后端仍需另行准备。上述路由能力不等同于完整 Tenant 认证验收。
 
+#### 状态与恢复
+
+旧的无参数 `bash scripts/local-development.sh frontend` 已移除，会返回用法错误。以下九种命令是完整替代入口，均从仓库根目录执行：
+
+```bash
+bash scripts/local-development.sh frontend start platform
+bash scripts/local-development.sh frontend status platform
+bash scripts/local-development.sh frontend stop platform
+bash scripts/local-development.sh frontend start tenant
+bash scripts/local-development.sh frontend status tenant
+bash scripts/local-development.sh frontend stop tenant
+bash scripts/local-development.sh frontend start all
+bash scripts/local-development.sh frontend status all
+bash scripts/local-development.sh frontend stop all
+```
+
+| 状态        | 含义                                          | 恢复动作                                                                                                                             |
+| ----------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `RUNNING`   | 受管身份、回环监听与正式 HTTPS 就绪均通过     | 正常开发；重复 start 会复用                                                                                                          |
+| `STOPPED`   | 没有受管记录，也没有对应端口监听              | 需要开发时显式 start                                                                                                                 |
+| `STARTING`  | 受管进程已创建，30 秒启动窗口内尚无监听       | 等待后再次 status；不要并行反复启动                                                                                                  |
+| `STALE`     | 有记录，但原进程已不存在，端口也未被占用      | 执行对应目标 stop 安全清理，再 start                                                                                                 |
+| `UNMANAGED` | 记录身份不可信，或端口属于未知进程            | 用 `lsof -nP -iTCP:5173 -iTCP:5174 -iTCP:443 -sTCP:LISTEN` 核对；由原启动者结束其前台命令，再 status。不要按端口杀进程或直接删除 PID |
+| `UNREADY`   | 受管进程存在，但超时未监听或正式 HTTPS 未就绪 | 检查对应日志并运行 doctor；排除 Edge/证书/依赖问题后，显式 stop 再 start                                                             |
+
+日志分别位于 `deploy/compose/.secrets/local-https-development/platform-vite.log` 与 `tenant-vite.log`；本地查看即可，不复制可能含敏感信息的原始日志到报告。Edge `UNAVAILABLE` 应先检查 Docker Desktop 与 Docker 访问权限；`INVALID`/`UNMANAGED` 需先核对项目归属和配置，不能自动替换未知监听者。`doctor` 的修复提示不授权本次验收修改证书信任或后端。
+
+直接包级前台调试可在 `consoles/` 的两个终端分别执行：
+
+```bash
+pnpm --filter @saas-forge/platform-console run dev
+pnpm --filter @saas-forge/tenant-console-shell run dev
+```
+
+包级命令不生成 API Client；工作区 `dev:platform`/`dev:tenant` 则先生成再启动。两者均不属于受管 PID 生命周期，应由原终端 Ctrl-C 结束；HTTP localhost 显示页面只能说明前端可渲染，不能作为登录、Cookie、CSRF 或 TLS 安全验收证据。
+
+#### 双 Console 产品路径验收与恢复
+
+1. 验收前保存 `frontend status all`、顶层 `status`，以及当前项目 Edge 的容器身份、运行状态和后端容器启动时间。确认已有受信证书、hosts、依赖和后端就绪；本轮不运行 setup、bootstrap、replace/restore 后端或任何密码重置。
+2. 依次覆盖 Platform-only、Tenant-only、all、单目标停止、all 停止与重复操作，每步读取聚合状态。单目标停止须保留仍被另一 Console 使用的 Edge；前端 stop 不停止后端、不删除容器、Secret 或数据卷，也不终止未知监听者。
+3. 在同一浏览器上下文中，以正常证书校验打开 `https://platform.saasforge.test` 和 `https://console.saasforge.test`。检查页面身份、关键内容、错误覆盖层、console/network，并分别记录真实 `/api/*` 方法、脱敏路径与状态码；API Origin 为 `https://api.saasforge.test`。禁止记录密码、Cookie、Token 或敏感响应体。
+4. 使用既有账号或会话分别登录/恢复两个槽位；刷新一侧后另一侧仍可使用，登出一侧后另一侧刷新仍保持登录，再交换方向验证。缺少现有登录前提就记录阻塞，不创建账号或重置凭据。
+5. 从 Tenant Origin 打开 Password Setup 文档，检查脚本/样式及表单的真实提交是否到达当前 Gateway。只验证不改变密码的失败路径；缺少可安全提交的前提则记录阻塞，不消费有效 Challenge。错误响应仅证明路由，不代表密码设置成功。
+6. 在两个 Console 各临时修改一个可见开发标记，分别观察其受控 WSS Origin 的连接与 HMR 更新，再还原文件。用宿主监听检查证明 5173/5174 仅绑定 `127.0.0.1`，从 Edge 内经 `host.docker.internal` 访问二者，并检查宿主 LAN 地址直连两端口失败。Docker Desktop 无法访问回环 Vite 时停止验收，不回退到 `0.0.0.0`。
+7. 无论成功或失败，都还原开发标记并恢复最初的受管前端组合；若验收前仅 Edge 运行，前端 stop 会连带停止它，应核对原容器身份后仅启动该 Edge 容器（`docker start <已核对的原 Edge 容器 ID>`）。未知或异常状态不能通过强杀恢复。最后只读复核前端/Edge 状态和后端身份、启动时间，记录无法恢复的差异。
+
+验收报告逐项区分通过、失败和缺少前提，不把脚本测试或以前的 Platform 证据写成 Tenant 实机证据，也不改写 #126/#131 的历史范围。
+
 ## 目录与职责
 
 | 目录                                                                                                            | 职责                                                                    |
