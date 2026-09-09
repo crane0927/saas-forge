@@ -132,6 +132,12 @@ flowchart TD
 - [x] 按 [Console 国际化基线](29-console-internationalization.md)建立 `zh-CN` 与 `en-US` 国际化基线：浏览器语言决定初始 Locale，用户切换只保存为非敏感本地 UI 偏好，Shell 向 Remote 传递当前 Locale；构建门禁保证双语翻译键一致。
 - [x] 建立由 Design System 版本化构建期常量提供的完整 Platform Brand Profile，以及“Runtime 只发布权威 Context 快照、Design System 唯一解析、共享 React Shell 唯一应用”的品牌运行时缝。未取得权威 Tenant Context、Context 读取中、切换已提交但新 Context 未恢复，或 Tenant Brand Profile 任一字段结构、颜色、受控素材引用及加载结果无效时，均完整使用平台品牌；只有一个不可变 Resolved Brand Profile 可以同时驱动显示名称、Logo、favicon、标签页标题和浅色/深色 Brand Token Set。完整链路已实现，并通过五浏览器 Fresh Compose 聚合验收，证据见 [Issue #147 验收记录](acceptance/issue-147-brand-runtime.md)；详见 [Design System 规范](25-design-system.md#4-主题与品牌)、[Console 认证 Runtime 与浏览器会话规格](28-console-authentication-runtime.md#54-tenant-context-switch) 与 [ADR 0042](adr/0042-browser-surfaces-atomically-apply-one-resolved-brand.md)。
 - [ ] 在开发与端到端环境建立 `platform.saasforge.test`、`console.saasforge.test`、`api.saasforge.test` 与 `remote.saasforge.test` 的本地受信 TLS、精确 Origin、Cookie、CSRF、CORS 和 Remote 静态资源拓扑，不得以不同 `localhost` 端口作为阶段浏览器验收替代。
+  - 本项完成边界为四域名受信 HTTPS 与浏览器安全、静态资源交付：通过真实浏览器验证 API Cookie、CSRF、CORS，以及 Tenant Console 从 Remote 版本化路径无凭据加载真实静态资源，并验证不允许的 Origin 无法通过 CORS 读取。Manifest 审核启用、Shell 加载业务 Remote 与 Project/Task 闭环由第 3 阶段验收；本项静态资源证据不能替代这些验收。
+  - 静态资源验收通过不加入产品导航的验收专用入口，实际加载版本化路径下的最小 ES Module、CSS 和图片，验证模块执行、样式生效、图片解码、无凭据请求及 CORS 拒绝路径。
+  - 开发与 E2E 共用同一浏览器拓扑契约、安全策略和 Remote 静态制品，允许域名后的运行方式不同：开发保留 Console 的 Vite/HMR，Remote 提供构建制品；E2E 使用构建制品、独立 Compose 项目的全新数据卷和隔离浏览器上下文。`localhost` 与容器端口只作为内部代理或服务通信地址，不能作为阶段浏览器验收入口；E2E 清理仅作用于本次验收项目。
+  - 浏览器门禁沿用本地 Chromium、WebKit、Chrome，CI 再包含 Firefox、Microsoft Edge；各浏览器均启用正常 TLS 校验，覆盖四域资源加载与安全拒绝路径。
+  - Remote 同一版本路径的静态资源内容固定，内容变更使用新版本路径；本项验证两个版本可分别访问，缺失资源返回真实 `404`，不得回退为 Console HTML。完整升级与回退治理仍由后续阶段验收。
+  - Remote 是无凭据静态资源源，仅允许 Tenant Console 通过 CORS 读取；不将静态文件定义为需要登录才能下载的私有资源。API 的 CSRF 拒绝必须在服务端阻止操作，不能仅以浏览器无法读取响应作为拒绝证据。
 - [ ] 建立共享组件测试、无障碍检查、关键稳定状态视觉快照和 Playwright 基础设施；组件与交互状态机覆盖中英文，浏览器测试可从全新 Compose 数据卷执行。
 
 **完成标准：** API、数据库、Redis 与日志基础规范已版本化；最小契约可生成骨架；Compose 能启动基础组件；CI 能构建全仓库并执行契约、迁移和 RLS 测试夹具；两个最终产品 Console 可在受控 TLS/Origin 拓扑启动，共享 Design System、认证/HTTP/错误、布局、双语和 Playwright 基线均有直接验证。当前后端基线已完成，但新增 Console 与浏览器基线未完成，因此本阶段仍为部分完成。
