@@ -3,7 +3,11 @@ import test from 'node:test';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { edgeProbeRecords, isAnonymousRefreshError } from './browser-api-security.mjs';
+import {
+  edgeProbeRecords,
+  isAnonymousRefreshError,
+  opaqueProbeFrame,
+} from './browser-api-security.mjs';
 import { chromium, firefox, webkit } from 'playwright';
 import { verifyStaticRemoteRendering } from './static-remote-acceptance.mjs';
 import { staticRemoteEvidence } from './static-remote-evidence.mjs';
@@ -246,10 +250,11 @@ test(
     for (const [originName, url] of [
       ['platform', `https://platform.${rootDomain}/`],
       ['api', `https://api.${rootDomain}/.well-known/jwks.json`],
-      ['null', 'data:text/html,<!doctype html><title>Opaque Origin probe</title>'],
+      ['null', `https://remote.${rootDomain}/static-acceptance/v1/remote.js`],
     ]) {
       const page = await context.newPage();
       await page.goto(url);
+      const surface = originName === 'null' ? await opaqueProbeFrame(page) : page;
       page.on('console', (message) => {
         if (message.type() !== 'error') return;
         const text = message.text();
@@ -286,7 +291,7 @@ test(
         else policyEvidence.unexpectedErrors.push('unexpected-console-error');
       });
       const probe = randomUUID();
-      const rejected = await page.evaluate(
+      const rejected = await surface.evaluate(
         async ({ rootDomain, probe }) => {
           try {
             await fetch(

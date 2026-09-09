@@ -7,6 +7,18 @@ const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saasforge.test';
 const api = `https://api.${rootDomain}`;
 const names = ['__Host-sf_platform_refresh', '__Host-sf_tenant_refresh'];
 
+/** 由受信页面创建真正的 opaque Origin，避免 data: 顶层页先被本地网络边界拦截。 */
+export async function opaqueProbeFrame(page) {
+  await page.setContent(
+    '<!doctype html><iframe sandbox="allow-scripts" srcdoc="<!doctype html><title>Opaque Origin probe</title>"></iframe>',
+  );
+  const frame = page.frames().find((candidate) => candidate.parentFrame() === page.mainFrame());
+  assert.ok(frame, 'opaque probe requires a real sandboxed frame');
+  await frame.waitForLoadState('domcontentloaded');
+  assert.equal(await frame.evaluate(() => globalThis.origin), 'null');
+  return frame;
+}
+
 /** 匿名页面启动时的正常恢复失败，由各验收入口共用精确分类。 */
 export function isAnonymousRefreshError(message) {
   return (
@@ -236,7 +248,7 @@ export async function verifyApiSecurity({
     for (const url of [
       `https://remote.${rootDomain}/static-acceptance/v1/remote.js`,
       `http://localhost:${server.address().port}/`,
-      'data:text/html,<title>Opaque probe</title>',
+      `https://remote.${rootDomain}/static-acceptance/v1/remote.js`,
     ]) {
       const page = await context.newPage();
       extraPages.push(page);
@@ -244,6 +256,7 @@ export async function verifyApiSecurity({
       await page.goto(url);
     }
     const [remote, illegal, opaque] = extraPages;
+    const opaqueFrame = await opaqueProbeFrame(opaque);
     const cases = [
       ['platform-missing-csrf', platform, 'PLATFORM', null, 'application/json', 'cors'],
       ['platform-invalid-csrf', platform, 'PLATFORM', 'invalid', 'application/json', 'cors'],
@@ -271,7 +284,7 @@ export async function verifyApiSecurity({
         );
         const probe = randomUUID();
         onProbe(page, { url: `${api}/api/v1/auth/${operation}?sessionProbe=${probe}`, name });
-        const read = await page.evaluate(
+        const read = await (page === opaque ? opaqueFrame : page).evaluate(
           async ({ api, operation, probe, slot, csrf, contentType, mode, name }) => {
             try {
               const response = await fetch(
@@ -308,7 +321,8 @@ export async function verifyApiSecurity({
         );
         onProbe(page, null);
         const expectedMethod = name.endsWith('preflight') ? 'OPTIONS' : 'POST';
-        if (context.browser().browserType().name() !== 'chromium') {
+        // opaque iframe 可成为独立 CDP target；其拒绝仍须由真实 Edge 关联证据证明。
+        if (context.browser().browserType().name() !== 'chromium' || page === opaque) {
           const deadline = Date.now() + 10_000;
           let observed = [];
           while (

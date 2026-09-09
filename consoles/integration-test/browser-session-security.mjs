@@ -141,7 +141,7 @@ export async function verifyBrowserSessions({
         probe &&
         message.location().url === '' &&
         (message.text() ===
-          `Origin ${new URL(page.url()).origin} is not allowed by Access-Control-Allow-Origin. Status code: 403` ||
+          `Origin ${probe.name.startsWith('null') ? 'null' : new URL(page.url()).origin} is not allowed by Access-Control-Allow-Origin. Status code: 403` ||
           (probe.name.includes('unlisted-header') &&
             message.text() ===
               'Request header field X-Unlisted-Probe is not allowed by Access-Control-Allow-Headers.') ||
