@@ -6,6 +6,15 @@ import { execFileSync } from 'node:child_process';
 const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saasforge.test';
 const api = `https://api.${rootDomain}`;
 const names = ['__Host-sf_platform_refresh', '__Host-sf_tenant_refresh'];
+
+/** 匿名页面启动时的正常恢复失败，由各验收入口共用精确分类。 */
+export function isAnonymousRefreshError(message) {
+  return (
+    message.location().url === `${api}/api/v1/auth/refresh` &&
+    /^Failed to load resource: the server responded with a status of 401/.test(message.text())
+  );
+}
+
 const list = (value) =>
   (value ?? '')
     .toLowerCase()
@@ -196,7 +205,14 @@ async function waitForRecord(records, predicate) {
 }
 
 /** 攻击请求只用于负向；成功恢复始终委托真实 Console 页面，绝不注入浏览器禁止的头。 */
-export async function verifyApiSecurity({ context, platform, tenant, records, recoverBoth }) {
+export async function verifyApiSecurity({
+  context,
+  platform,
+  tenant,
+  records,
+  recoverBoth,
+  onProbe = () => {},
+}) {
   const probes = [];
   const server = createServer((_request, response) =>
     response
@@ -244,6 +260,7 @@ export async function verifyApiSecurity({ context, platform, tenant, records, re
           'negative probes require both live sessions',
         );
         const probe = randomUUID();
+        onProbe(page, { url: `${api}/api/v1/auth/${operation}?sessionProbe=${probe}`, name });
         const read = await page.evaluate(
           async ({ api, operation, probe, slot, csrf, contentType, mode, name }) => {
             try {
@@ -279,6 +296,7 @@ export async function verifyApiSecurity({ context, platform, tenant, records, re
           },
           { api, operation, probe, slot, csrf, contentType, mode, name },
         );
+        onProbe(page, null);
         const expectedMethod = name.endsWith('preflight') ? 'OPTIONS' : 'POST';
         if (context.browser().browserType().name() !== 'chromium') {
           const deadline = Date.now() + 10_000;

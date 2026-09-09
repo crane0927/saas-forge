@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { verifyStaticRemoteRendering } from './static-remote-acceptance.mjs';
-import { observeBrowserSecurity, assertBrowserSecurityRecords } from './browser-api-security.mjs';
+import {
+  observeBrowserSecurity,
+  assertBrowserSecurityRecords,
+  isAnonymousRefreshError,
+} from './browser-api-security.mjs';
 
 const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saasforge.test';
 const api = `https://api.${rootDomain}`;
@@ -94,6 +98,7 @@ export async function verifyBrowserSessions({
   const platform = await context.newPage();
   const tenant = await context.newPage();
   const observers = [];
+  const activeProbes = new Map();
   for (const page of [platform, tenant]) {
     observers.push(await observeBrowserSecurity(context, page, evidence.requests));
     page.setDefaultTimeout(15_000);
@@ -104,6 +109,17 @@ export async function verifyBrowserSessions({
       });
     });
     page.on('pageerror', (error) => {
+      const probe = activeProbes.get(page);
+      // WebKit 将已被 fetch 的 catch 处理的 CORS 拒绝也报告为 pageerror。
+      // 仅接受当前实际探针的精确浏览器消息，不忽略产品脚本异常。
+      if (
+        probe &&
+        error.name === 'Fetch API cannot load https' &&
+        error.message === `${probe.url.slice('https:/'.length)} due to access control checks.`
+      ) {
+        evidence.expectedErrors.push('security-probe-webkit-pageerror');
+        return;
+      }
       evidence.errors.push('pageerror');
       // 只保留错误类别和受控域内源码位置，不保留可能含业务数据的异常原文。
       evidence.pageErrors.push({
@@ -120,6 +136,21 @@ export async function verifyBrowserSessions({
     });
     page.on('console', (message) => {
       if (message.type() !== 'error') return;
+      const probe = activeProbes.get(page);
+      if (
+        probe &&
+        message.location().url === '' &&
+        (message.text() ===
+          `Origin ${new URL(page.url()).origin} is not allowed by Access-Control-Allow-Origin. Status code: 403` ||
+          (probe.name.includes('unlisted-header') &&
+            message.text() ===
+              'Request header field X-Unlisted-Probe is not allowed by Access-Control-Allow-Headers.') ||
+          (probe.name.includes('unlisted-method') &&
+            message.text() === 'Preflight response is not successful. Status code: 403'))
+      ) {
+        evidence.expectedErrors.push('security-probe-webkit-console-error');
+        return;
+      }
       if (
         evidence.stage === 'security-probes' &&
         (message.text().includes('sessionProbe=') ||
@@ -131,11 +162,7 @@ export async function verifyBrowserSessions({
         evidence.expectedErrors.push('security-probe-console-error');
         return;
       }
-      if (
-        message.location().url === `${api}/api/v1/auth/refresh` &&
-        /Failed to load resource: the server responded with a status of 401/.test(message.text())
-      )
-        evidence.expectedErrors.push('anonymous-refresh-401');
+      if (isAnonymousRefreshError(message)) evidence.expectedErrors.push('anonymous-refresh-401');
       else evidence.errors.push('unexpected-console-error');
     });
     page.on('response', (response) => {
@@ -181,6 +208,10 @@ export async function verifyBrowserSessions({
         platform,
         tenant,
         records: evidence.requests,
+        onProbe: (page, probe) => {
+          if (probe) activeProbes.set(page, probe);
+          else activeProbes.delete(page);
+        },
         recoverBoth: async () => {
           await recover(platform, 'Platform overview');
           await recover(tenant, 'Tenant workspace');

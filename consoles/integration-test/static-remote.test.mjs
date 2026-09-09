@@ -3,7 +3,7 @@ import test from 'node:test';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { edgeProbeRecords } from './browser-api-security.mjs';
+import { edgeProbeRecords, isAnonymousRefreshError } from './browser-api-security.mjs';
 import { chromium, firefox, webkit } from 'playwright';
 import { verifyStaticRemoteRendering } from './static-remote-acceptance.mjs';
 import { staticRemoteEvidence } from './static-remote-evidence.mjs';
@@ -261,10 +261,7 @@ test(
         const webkitRefusal =
           text ===
           `Origin ${sourceOrigin} is not allowed by Access-Control-Allow-Origin. Status code: 200`;
-        const anonymousRecovery =
-          location === `https://api.${rootDomain}/api/v1/auth/refresh` &&
-          /^Failed to load resource: the server responded with a status of 401/.test(text);
-        if (anonymousRecovery) {
+        if (isAnonymousRefreshError(message)) {
           policyEvidence.consoleErrors.push({
             origin: originName,
             category: 'anonymous-refresh-401',
