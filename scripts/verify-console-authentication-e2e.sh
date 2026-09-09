@@ -96,7 +96,7 @@ stage() {
     local diagnostic_directory
     diagnostic_directory="$(mktemp -d "${TMPDIR:-/tmp}/sf-console-e2e-diagnostics.XXXXXX")"
     cp "$work_directory/$name.log" "$diagnostic_directory/$name.log"
-    if [[ "$name" == product-* || "$name" == console-browser-* ]]; then
+    if [[ "$name" == product-* || "$name" == console-browser-* || "$name" == maven-verify ]]; then
       node "$repository_root/consoles/scripts/summarize-authentication-failure.mjs" "$work_directory/$name.log"
     fi
     if [[ "$name" == product-* || "$name" == compose-start || "$name" == tls-ready ]]; then

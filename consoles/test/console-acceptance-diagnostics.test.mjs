@@ -7,6 +7,31 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
+test('reports Maven failure module and fixed error codes without raw diagnostics', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'sf-maven-diagnostics-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const log = join(directory, 'maven.log');
+  await writeFile(
+    log,
+    [
+      '[INFO] saas-forge-openapi-contracts ................ FAILURE [ 12.345 s]',
+      '[INFO] PRIVATE_MODULE ................ FAILURE [ 1.000 s]',
+      '[ERROR] PRIVATE_MESSAGE MojoFailureException PRIVATE_PASSWORD',
+      'not ok 18 - PRIVATE_TEST_TITLE',
+      '[ERROR] Tests run: 20, Failures: 1, Errors: 0, Skipped: 0, PRIVATE_BODY',
+    ].join('\n'),
+  );
+  const script = fileURLToPath(
+    new URL('../scripts/summarize-authentication-failure.mjs', import.meta.url),
+  );
+  const { stdout, stderr } = await promisify(execFile)(process.execPath, [script, log]);
+  assert.equal(stderr, '');
+  assert.equal(
+    stdout,
+    'MAVEN: failed module=saas-forge-openapi-contracts\nCODE: MojoFailureException\nFAIL: test 18\nMAVEN: tests=20 failures=1 errors=0 skipped=0\n',
+  );
+});
+
 test('reports Compose status without exposing commands, unknown values or parse errors', async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'sf-compose-diagnostics-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
