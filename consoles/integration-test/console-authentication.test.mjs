@@ -12,6 +12,8 @@ import { verifyBrandRemoteInheritance } from './brand-remote-acceptance.mjs';
 import { verifyLatestBrandRead } from './brand-concurrency-acceptance.mjs';
 import { verifyStaticRemoteRendering } from './static-remote-acceptance.mjs';
 import { staticRemoteEvidence } from './static-remote-evidence.mjs';
+import { assertOtherSessionUnchanged, verifyBrowserSessions } from './browser-session-security.mjs';
+import { verifyApiSecurity } from './browser-api-security.mjs';
 
 const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saasforge.test';
 
@@ -404,6 +406,28 @@ test('Platform and Tenant sessions survive independent recovery and logout after
   // Node 侧正式 API 只用于准备 Tenant；浏览器认证断言仍由生产页面发起请求。
   // 使用同一 Identity 验证两个槽位，避免把不同账号误当成槽位隔离。
   const firstTenant = await prepareTenant(platformLogin.accessToken, email);
+  if ((process.env.SF_BROWSER ?? 'chromium') === 'chromium') {
+    await t.test(
+      'four-domain authenticated CSRF refusals preserve both browser sessions',
+      async () => {
+        const securityContext = await browser.newContext({ ignoreHTTPSErrors: false });
+        try {
+          await verifyBrowserSessions({
+            context: securityContext,
+            email,
+            password,
+            directory: path.join(
+              process.env.SF_BRAND_EVIDENCE_DIRECTORY,
+              `session-security-${process.env.SF_BROWSER_CHANNEL || 'chromium'}`,
+            ),
+            verifyAuthenticated: verifyApiSecurity,
+          });
+        } finally {
+          await securityContext.close();
+        }
+      },
+    );
+  }
   await tenant.goto(`https://console.${rootDomain}/`);
   const tenantLogin = await login(tenant, email, password, 'en-US');
   assert.equal(tenantLogin.contextState, 'ACCESS_TOKEN_ISSUED');
@@ -433,17 +457,22 @@ test('Platform and Tenant sessions survive independent recovery and logout after
     assert.equal(cookie.secure, true);
     assert.equal(cookie.domain, `api.${rootDomain}`);
     assert.equal(cookie.path, '/');
+    assert.equal(cookie.sameSite, 'Strict');
   }
 
-  await recover(platform, 'Platform 总览');
-  await recover(tenant, 'Tenant workspace');
-  await logout(platform, 'Platform Console');
+  await assertOtherSessionUnchanged(context, 'PLATFORM', () => recover(platform, 'Platform 总览'));
+  await assertOtherSessionUnchanged(context, 'TENANT', () => recover(tenant, 'Tenant workspace'));
+  await assertOtherSessionUnchanged(context, 'PLATFORM', () =>
+    logout(platform, 'Platform Console'),
+  );
   await recover(tenant, 'Tenant workspace');
   await platform.reload();
   await platform.getByRole('heading', { name: '登录 SaaS Forge', exact: true }).waitFor();
   const platformRelogin = await login(platform, email, password);
   await platform.getByRole('heading', { name: 'Platform 总览', exact: true }).waitFor();
-  await logout(tenant, 'Tenant Console', 'en-US');
+  await assertOtherSessionUnchanged(context, 'TENANT', () =>
+    logout(tenant, 'Tenant Console', 'en-US'),
+  );
   await recover(platform, 'Platform 总览');
   await tenant.reload();
   await tenant.getByRole('heading', { name: 'Sign in to SaaS Forge', exact: true }).waitFor();

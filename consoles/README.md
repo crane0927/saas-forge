@@ -202,6 +202,8 @@ pnpm run test:browser:compatibility
 
 真实 Console 认证使用独立的 [`verify-console-authentication-e2e.sh`](../scripts/verify-console-authentication-e2e.sh)，涉及全新 Compose 环境、受信 TLS 与真实服务请求，不属于 `pnpm run verify`。执行前请阅读 [产品验收说明与环境前提](../docs/acceptance/issue-115-console-authentication.md)；该文档中的历史结果不代表当前环境已验证通过。
 
+开发四域的双槽位隔离与已认证安全拒绝可执行 `pnpm run verify:local:session-security`；凭据文件、32 个攻击探针及脱敏证据边界见 [Issue #158 验收说明](../docs/acceptance/issue-158-browser-session-security.md)。
+
 ## 构建与部署
 
 运行 `pnpm run build` 后，分别发布两个独立静态制品：
