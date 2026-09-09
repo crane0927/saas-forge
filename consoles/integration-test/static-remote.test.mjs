@@ -255,6 +255,15 @@ test(
         const text = message.text();
         const location = message.location().url;
         const sourceOrigin = originName === 'null' ? 'null' : new URL(url).origin;
+        // API JSON 页仅提供负向探针 Origin；Chrome 的隐式图标请求应保持真实 404。
+        if (
+          originName === 'api' &&
+          location === `https://api.${rootDomain}/favicon.ico` &&
+          text === 'Failed to load resource: the server responded with a status of 404 (Not Found)'
+        ) {
+          policyEvidence.consoleErrors.push({ origin: originName, category: 'api-favicon-404' });
+          return;
+        }
         const webkitRefusal =
           text ===
           `Origin ${sourceOrigin} is not allowed by Access-Control-Allow-Origin. Status code: 200`;

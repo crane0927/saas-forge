@@ -37,9 +37,19 @@ async function observePortableSecurity(page, records) {
       return;
     const h = await request.allHeaders();
     const r = await response.allHeaders();
-    const cookieHeaders = (await response.headersArray()).filter(
-      (item) => item.name.toLowerCase() === 'set-cookie',
-    );
+    const cookieHeaders = [];
+    for (const header of await response.headersArray()) {
+      if (header.name.toLowerCase() !== 'set-cookie') continue;
+      const previous = cookieHeaders.at(-1);
+      // WebKit 的公开头数组会在 Expires 的逗号处拆开；只重连 HTTP 日期片段。
+      if (
+        previous &&
+        /;\s*Expires=(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)$/i.test(previous.value) &&
+        /^\d{2} [A-Za-z]{3} \d{4} \d{2}:\d{2}:\d{2} GMT(?:;|$)/.test(header.value)
+      )
+        previous.value += `, ${header.value}`;
+      else cookieHeaders.push({ ...header });
+    }
     records.push({
       host: url.hostname,
       path: url.pathname,
