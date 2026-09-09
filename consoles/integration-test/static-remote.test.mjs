@@ -127,9 +127,6 @@ test('Tenant Console executes fourth-domain static Remote through trusted TLS wi
       );
     });
   }
-  const defaultIcon = await context.request.get(`https://console.${rootDomain}/favicon.ico`);
-  assert.equal(defaultIcon.status(), 204, 'default favicon probe has no independent brand');
-  assert.equal((await defaultIcon.body()).length, 0);
   rendering = await verifyStaticRemoteRendering(page);
   assert.deepEqual(errors, []);
   await Promise.all(pending);

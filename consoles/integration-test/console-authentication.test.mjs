@@ -57,6 +57,10 @@ test('production Consoles expose independent login paths through trusted TLS', a
     }
   });
   const context = await browser.newContext({ ignoreHTTPSErrors: false });
+  // 空 favicon 响应属于生产静态服务器约定；开发 Vite 的资源行为不属于此断言。
+  const defaultIcon = await context.request.get(`https://console.${rootDomain}/favicon.ico`);
+  assert.equal(defaultIcon.status(), 204, 'default favicon probe has no independent brand');
+  assert.equal((await defaultIcon.body()).length, 0);
   await setConsoleLocalePreference(context, 'zh-CN');
   const platform = await context.newPage();
   const tenant = await context.newPage();
