@@ -1,3 +1,4 @@
+import { observeSecurityProbe } from "./browser-security-evidence.mjs";
 import { request } from "node:http";
 import { createServer } from "node:https";
 import { readFile } from "node:fs/promises";
@@ -136,6 +137,7 @@ async function proxy(incoming, outgoing, targets, configuredApiTargetFile) {
       headers: copyOriginalHeaders(incoming.rawHeaders),
     },
     (response) => {
+      observeSecurityProbe(incoming, response, "saasforge.test");
       outgoing.writeHead(
         response.statusCode ?? 502,
         copyOriginalHeaders(response.rawHeaders),

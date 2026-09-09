@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 
 const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saasforge.test';
 const api = `https://api.${rootDomain}`;
@@ -13,8 +14,106 @@ const list = (value) =>
     .filter(Boolean)
     .sort();
 
+/** WebKit/Firefox 的可读响应使用公开网络 API；CORS 隐藏响应由关联的真实 Edge 日志补齐。 */
+async function observePortableSecurity(page, records) {
+  const pending = new Set();
+  const observe = async (response) => {
+    const request = response.request();
+    const url = new URL(request.url());
+    if (
+      !['api', 'platform', 'console', 'remote'].some(
+        (host) => url.hostname === `${host}.${rootDomain}`,
+      )
+    )
+      return;
+    const h = await request.allHeaders();
+    const r = await response.allHeaders();
+    const cookieHeaders = (await response.headersArray()).filter(
+      (item) => item.name.toLowerCase() === 'set-cookie',
+    );
+    records.push({
+      host: url.hostname,
+      path: url.pathname,
+      method: request.method(),
+      probe: url.searchParams.get('sessionProbe'),
+      origin: h.origin ?? null,
+      fetchSite: h['sec-fetch-site'] ?? null,
+      refreshCookies: names.filter((name) =>
+        (h.cookie ?? '').split(';').some((part) => part.trim().startsWith(`${name}=`)),
+      ),
+      authorization: Boolean(h.authorization),
+      status: response.status(),
+      allowOrigin: r['access-control-allow-origin'] ?? null,
+      allowCredentials: r['access-control-allow-credentials'] ?? null,
+      allowMethods: list(r['access-control-allow-methods']),
+      allowHeaders: list(r['access-control-allow-headers']),
+      requestedHeaders: list(h['access-control-request-headers']),
+      exposeHeaders: list(r['access-control-expose-headers']),
+      maxAge: r['access-control-max-age'] ?? null,
+      vary: list(r.vary),
+      cookies: cookieHeaders
+        .filter(({ value }) => names.some((name) => value.startsWith(`${name}=`)))
+        .map(({ value }) => ({
+          name: value.slice(0, value.indexOf('=')),
+          secure: /;\s*Secure(?:;|$)/i.test(value),
+          httpOnly: /;\s*HttpOnly(?:;|$)/i.test(value),
+          strict: /;\s*SameSite=Strict(?:;|$)/i.test(value),
+          rootPath: /;\s*Path=\/(?:;|$)/i.test(value),
+          hostOnly: !/;\s*Domain=/i.test(value),
+          clear: /;\s*Max-Age=0(?:;|$)/i.test(value),
+        })),
+    });
+  };
+  const errors = [];
+  const listener = (response) => {
+    const task = observe(response).catch(() => errors.push('network observation failed'));
+    pending.add(task);
+    void task.finally(() => pending.delete(task));
+  };
+  page.on('response', listener);
+  return {
+    flush: async () => {
+      await Promise.all(pending);
+      assert.deepEqual(errors, []);
+    },
+    detach: async () => {
+      page.off('response', listener);
+      await Promise.all(pending);
+      assert.deepEqual(errors, []);
+    },
+  };
+}
+
+export function edgeProbeRecords(probe, event = 'acceptance-session-security') {
+  const container = process.env.SF_SECURITY_EDGE_CONTAINER;
+  assert.ok(
+    container,
+    'BLOCKED: SF_SECURITY_EDGE_CONTAINER is required for direct CORS refusal evidence',
+  );
+  let logs;
+  try {
+    logs = execFileSync('docker', ['logs', container], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      maxBuffer: 16 * 1024 * 1024,
+    });
+  } catch {
+    assert.fail('BLOCKED: cannot read the acceptance TLS Edge evidence');
+  }
+  return logs.split('\n').flatMap((line) => {
+    try {
+      const value = JSON.parse(line);
+      return value.event === event && value.probe === probe ? [value] : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
 /** Chromium ExtraInfo 是 CORS 隐藏响应时的直接网络证据；只保留允许的非敏感字段。 */
 export async function observeBrowserSecurity(context, page, records) {
+  if (context.browser().browserType().name() !== 'chromium')
+    return observePortableSecurity(page, records);
   const cdp = await context.newCDPSession(page);
   const requests = new Map();
   const record = (id) => {
@@ -181,6 +280,19 @@ export async function verifyApiSecurity({ context, platform, tenant, records, re
           { api, operation, probe, slot, csrf, contentType, mode, name },
         );
         const expectedMethod = name.endsWith('preflight') ? 'OPTIONS' : 'POST';
+        if (context.browser().browserType().name() !== 'chromium') {
+          const deadline = Date.now() + 10_000;
+          let observed = [];
+          while (
+            !observed.some((value) => value.method === expectedMethod) &&
+            Date.now() < deadline
+          ) {
+            observed = edgeProbeRecords(probe);
+            if (!observed.some((value) => value.method === expectedMethod))
+              await new Promise((resolve) => setTimeout(resolve, 100));
+          }
+          records.push(...observed.map((value) => ({ ...value, source: 'tls-edge' })));
+        }
         const response = await waitForRecord(
           records,
           (value) => value.probe === probe && value.method === expectedMethod,
@@ -256,6 +368,7 @@ export function assertBrowserSecurityRecords(records) {
   }
   for (const record of records) {
     if (!record.host || record.status === undefined) continue;
+    if (record.source === 'tls-edge') continue;
     assert.ok(
       Array.isArray(record.refreshCookies),
       'completed responses need direct request-header evidence',

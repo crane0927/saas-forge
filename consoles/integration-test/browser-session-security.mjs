@@ -83,9 +83,11 @@ export async function verifyBrowserSessions({
     stage: 'login',
     actions: [],
     errors: [],
+    pageErrors: [],
     expectedErrors: [],
     responses: [],
     requests: [],
+    hmr: [],
   };
   await mkdir(directory, { recursive: true, mode: 0o700 });
   await context.addInitScript(() => globalThis.localStorage.setItem('sf:ui:locale', 'en-US'));
@@ -95,16 +97,36 @@ export async function verifyBrowserSessions({
   for (const page of [platform, tenant]) {
     observers.push(await observeBrowserSecurity(context, page, evidence.requests));
     page.setDefaultTimeout(15_000);
-    page.on('pageerror', () => evidence.errors.push('pageerror'));
+    page.on('websocket', (socket) => {
+      socket.on('framereceived', ({ payload }) => {
+        if (String(payload) === '{"type":"connected"}' && socket.url().startsWith('wss://'))
+          evidence.hmr.push(new URL(socket.url()).origin);
+      });
+    });
+    page.on('pageerror', (error) => {
+      evidence.errors.push('pageerror');
+      // 只保留错误类别和受控域内源码位置，不保留可能含业务数据的异常原文。
+      evidence.pageErrors.push({
+        name: ['Error', 'TypeError', 'ReferenceError', 'AbortError'].includes(error.name)
+          ? error.name
+          : 'other',
+        frames: [...String(error.stack).matchAll(/https:\/\/([^/\s]+)([^\s?]*)/g)].flatMap(
+          ([, host, pathname]) =>
+            ['platform', 'console'].some((value) => host === `${value}.${rootDomain}`)
+              ? [{ host, path: pathname }]
+              : [],
+        ),
+      });
+    });
     page.on('console', (message) => {
       if (message.type() !== 'error') return;
       if (
         evidence.stage === 'security-probes' &&
-        ((message.text().includes('sessionProbe=') && message.text().includes('CORS policy')) ||
-          (message.location().url.includes('sessionProbe=') &&
-            /Failed to load resource: (?:the server responded with a status of 403|net::ERR_FAILED)/.test(
-              message.text(),
-            )))
+        (message.text().includes('sessionProbe=') ||
+          message.location().url.includes('sessionProbe=')) &&
+        /CORS|cross-origin request blocked|access control|access-control|Failed to load resource.*(?:403|ERR_FAILED)/i.test(
+          message.text(),
+        )
       ) {
         evidence.expectedErrors.push('security-probe-console-error');
         return;
@@ -198,9 +220,14 @@ export async function verifyBrowserSessions({
     evidence.actions.push('tenant-logout-platform-still-valid');
     assert.deepEqual(evidence.errors, []);
     await logout(platform);
+    for (const observer of observers) await observer.flush?.();
     assertBrowserSecurityRecords(evidence.requests);
     if (mode === 'development') {
-      for (const host of ['platform', 'console'])
+      for (const host of ['platform', 'console']) {
+        assert.ok(
+          evidence.hmr.includes(`wss://${host}.${rootDomain}`),
+          'development HMR must connect through trusted TLS',
+        );
         assert.ok(
           evidence.requests.some(
             (record) =>
@@ -210,6 +237,7 @@ export async function verifyBrowserSessions({
           ),
           'development acceptance must use the real Vite Console',
         );
+      }
     }
     evidence.status = 'passed';
     evidence.stage = 'complete';

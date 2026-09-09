@@ -15,6 +15,7 @@ jobs:
     timeout-minutes: 60
     env:
       SF_ACCEPTANCE_TARGET: ci
+      SF_BRAND_EVIDENCE_DIRECTORY: ${{ github.workspace }}/.scratch/issue-159-ci
       # Linux libsoup 对未知顶级域的基础域判断不同；仅在 CI 对照使用保留示例域。
       SF_ACCEPTANCE_ROOT_DOMAIN: saasforge.example.com
       # Chromium 的视觉基线目前是 macOS；Linux CI 的核心认证行为仍须全部执行。
@@ -46,7 +47,7 @@ jobs:
           base_domain.argtypes = [ctypes.c_char_p, ctypes.c_void_p]
           base_domain.restype = ctypes.c_char_p
           for root in ['saasforge.test', os.environ['SF_ACCEPTANCE_ROOT_DOMAIN']]:
-              domains = [base_domain(f'{host}.{root}'.encode(), None) for host in ['platform', 'console', 'api']]
+              domains = [base_domain(f'{host}.{root}'.encode(), None) for host in ['platform', 'console', 'api', 'remote']]
               shared = domains[0] is not None and len(set(domains)) == 1
               print(f'DOMAIN: root={root} sharedBase={str(shared).lower()}')
           PY
@@ -71,7 +72,7 @@ jobs:
           basicConstraints=critical,CA:FALSE
           keyUsage=critical,digitalSignature,keyEncipherment
           extendedKeyUsage=serverAuth
-          subjectAltName=DNS:platform.saasforge.example.com,DNS:console.saasforge.example.com,DNS:api.saasforge.example.com
+          subjectAltName=DNS:platform.saasforge.example.com,DNS:console.saasforge.example.com,DNS:api.saasforge.example.com,DNS:remote.saasforge.example.com
           EOF
           openssl x509 -req -in "$tls_directory/server.csr" \
             -CA "$tls_directory/root-ca.pem" -CAkey "$tls_directory/root-ca.key" \
@@ -93,7 +94,7 @@ jobs:
           # Playwright 指定 alternatePath，必须显式传入企业证书策略文件。
           node -e 'require("node:fs").writeFileSync(process.argv[1], JSON.stringify({policies:{Certificates:{Install:[process.argv[2]]}}}))' \
             "$tls_directory/firefox-policies.json" "$tls_directory/root-ca.pem"
-          printf '\n127.0.0.1 platform.saasforge.example.com console.saasforge.example.com api.saasforge.example.com\n' | sudo tee -a /etc/hosts >/dev/null
+          printf '\n127.0.0.1 platform.saasforge.example.com console.saasforge.example.com api.saasforge.example.com remote.saasforge.example.com\n' | sudo tee -a /etc/hosts >/dev/null
           {
             printf 'SF_ACCEPTANCE_TLS_CERT=%s\n' "$tls_directory/server.pem"
             printf 'SF_ACCEPTANCE_TLS_KEY=%s\n' "$tls_directory/server.key"
@@ -102,6 +103,16 @@ jobs:
           } >> "$GITHUB_ENV"
       - name: Verify actual Console product paths through fresh services
         run: bash scripts/verify-console-authentication-e2e.sh
+      - name: Preserve sanitized browser and gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: four-domain-browser-evidence-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            .scratch/issue-159-ci/acceptance-run.json
+            .scratch/issue-159-ci/static-remote-*.json
+            .scratch/issue-159-ci/session-security-*/browser-sessions.json
       - name: Remove ephemeral certificate material
         if: always()
         run: rm -rf -- "$RUNNER_TEMP/console-authentication-tls"

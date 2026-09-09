@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile, mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { chromium } from 'playwright';
+import { chromium, webkit } from 'playwright';
 import { verifyBrowserSessions } from './browser-session-security.mjs';
 import { verifyApiSecurity } from './browser-api-security.mjs';
 
@@ -17,7 +17,11 @@ test('development four-domain browser sessions remain isolated', async (t) => {
   const directory =
     process.env.SF_SESSION_EVIDENCE_DIRECTORY ??
     (await mkdtemp(path.join(tmpdir(), 'sf-session-evidence-')));
-  const browser = await chromium.launch();
+  const engine = process.env.SF_BROWSER ?? 'chromium';
+  assert.ok(['chromium', 'webkit'].includes(engine));
+  const browser = await { chromium, webkit }[engine].launch({
+    channel: process.env.SF_BROWSER_CHANNEL || undefined,
+  });
   t.after(() => browser.close());
   const context = await browser.newContext({ ignoreHTTPSErrors: false });
   console.info(`EVIDENCE: ${directory}`);

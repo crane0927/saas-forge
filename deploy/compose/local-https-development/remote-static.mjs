@@ -1,3 +1,4 @@
+import { observeRemoteProbe } from "./browser-security-evidence.mjs";
 import { readFile } from "node:fs/promises";
 
 const artifactRoot = process.env.SF_REMOTE_STATIC_DIRECTORY
@@ -15,6 +16,7 @@ const contentTypes = {
 
 /** 仅交付已构建的验收静态制品；CORS 读取许可不是下载鉴权。E2E 可复用同一处理器与目录。 */
 export async function serveRemoteStatic(incoming, outgoing) {
+  observeRemoteProbe(incoming, outgoing, rootDomain);
   outgoing.setHeader("Vary", "Origin");
   outgoing.setHeader("X-Content-Type-Options", "nosniff");
   const allowedTenantOrigin = `https://console.${rootDomain}`;
