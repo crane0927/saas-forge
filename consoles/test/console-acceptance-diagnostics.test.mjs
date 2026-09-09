@@ -7,6 +7,31 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
+test('reports only controlled TLS hosts and fixed network observations', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'sf-tls-diagnostics-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const log = join(directory, 'tls.log');
+  await writeFile(
+    log,
+    JSON.stringify({
+      'platform.saasforge.example.com': 200,
+      'console.saasforge.example.com': 'ERR_CONNECTION_RESET',
+      'api.saasforge.example.com': 'PRIVATE_PASSWORD',
+      'remote.saasforge.example.com': 404,
+      PRIVATE_HOST: 'PRIVATE_BODY',
+    }),
+  );
+  const script = fileURLToPath(
+    new URL('../scripts/summarize-authentication-failure.mjs', import.meta.url),
+  );
+  const { stdout, stderr } = await promisify(execFile)(process.execPath, [script, log]);
+  assert.equal(stderr, '');
+  assert.equal(
+    stdout,
+    'TLS: host=platform.saasforge.example.com result=200\nTLS: host=console.saasforge.example.com result=ERR_CONNECTION_RESET\nTLS: host=api.saasforge.example.com result=UNAVAILABLE\nTLS: host=remote.saasforge.example.com result=404\n',
+  );
+});
+
 test('reports Maven failure module and fixed error codes without raw diagnostics', async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'sf-maven-diagnostics-'));
   t.after(() => rm(directory, { recursive: true, force: true }));

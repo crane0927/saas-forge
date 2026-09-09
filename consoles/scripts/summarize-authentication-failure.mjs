@@ -6,6 +6,34 @@ const log = await readFile(process.argv[2], 'utf8');
 let diagnosticIndent;
 let field;
 for (const line of stripVTControlCharacters(log).split('\n')) {
+  if (/^\{"(?:platform|console|api|remote)\./.test(line)) {
+    try {
+      const observations = JSON.parse(line);
+      for (const [hostname, value] of Object.entries(observations)) {
+        if (!/^(?:platform|console|api|remote)\.saasforge\.(?:test|example\.com)$/.test(hostname))
+          continue;
+        const allowed = Number.isInteger(value) && value >= 100 && value <= 599;
+        const networkCodes = [
+          'ERR_CONNECTION_CLOSED',
+          'ERR_CONNECTION_RESET',
+          'ERR_CONNECTION_REFUSED',
+          'ERR_TIMED_OUT',
+          'ERR_NAME_NOT_RESOLVED',
+          'ERR_CERT_AUTHORITY_INVALID',
+          'ERR_CERT_COMMON_NAME_INVALID',
+          'ERR_CERT_DATE_INVALID',
+          'BROWSER_NAVIGATION_TIMEOUT',
+          'BROWSER_NAVIGATION_UNAVAILABLE',
+          'NO_RESPONSE',
+        ];
+        console.info(
+          `TLS: host=${hostname} result=${allowed || networkCodes.includes(value) ? value : 'UNAVAILABLE'}`,
+        );
+      }
+    } catch {
+      // 非结构化日志不进入公开摘要。
+    }
+  }
   const indent = /^\s*/.exec(line)[0].length;
   if (diagnosticIndent === undefined && line.trim() === '---') {
     diagnosticIndent = indent;
