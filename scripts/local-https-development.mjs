@@ -28,12 +28,13 @@ const expectedPnpmVersion = "11.22.0";
 const certificateValiditySeconds = 24 * 60 * 60;
 const certificateAuthorityName = "SaaS Forge Local Development CA";
 const hostsEntry =
-  "127.0.0.1 platform.saasforge.test console.saasforge.test api.saasforge.test # SaaS Forge local HTTPS";
+  "127.0.0.1 platform.saasforge.test console.saasforge.test api.saasforge.test remote.saasforge.test # SaaS Forge local HTTPS";
 
 export const developmentHosts = Object.freeze([
   "platform.saasforge.test",
   "console.saasforge.test",
   "api.saasforge.test",
+  "remote.saasforge.test",
 ]);
 
 export function developmentHttpsPaths(repositoryRoot) {
@@ -343,7 +344,7 @@ export async function installHosts({
     return;
   }
   await authorize(
-    "此操作将向 /etc/hosts 添加三个仅指向 127.0.0.1 的本地域名。输入 HOSTS 以明确授权： ",
+    "此操作将向 /etc/hosts 添加四个仅指向 127.0.0.1 的本地域名。输入 HOSTS 以明确授权： ",
     "HOSTS",
   );
   await appendHosts(`${hostsEntry}\n`);
@@ -468,7 +469,7 @@ async function doctorCertificate(paths) {
     return {
       ok: false,
       code: "CERTIFICATE_HOST_MISMATCH",
-      message: "服务器证书未覆盖固定 Platform/Tenant/API Host。",
+      message: "服务器证书未覆盖固定 Platform/Tenant/API/Remote Host。",
       recovery: "bash scripts/local-development.sh setup",
     };
   }
@@ -496,14 +497,14 @@ async function doctorHosts() {
     return {
       ok: false,
       code: "HOSTS_MISSING",
-      message: "Platform、Tenant 或 API Host 未在 /etc/hosts 指向 127.0.0.1。",
+      message: "Platform、Tenant、API 或 Remote Host 未在 /etc/hosts 指向 127.0.0.1。",
       recovery: "bash scripts/local-https-development.sh hosts",
     };
   }
   return {
     ok: true,
     code: "HOSTS",
-    message: "三个本地域名均由 /etc/hosts 指向 127.0.0.1。",
+    message: "四个本地域名均由 /etc/hosts 指向 127.0.0.1。",
   };
 }
 

@@ -24,7 +24,7 @@ import {
   targetForHost,
 } from '../../deploy/compose/local-https-development/edge.mjs';
 
-test('creates one reusable local certificate for the Platform, Tenant and API development hosts', async (t) => {
+test('creates one reusable local certificate for all four development hosts', async (t) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'sf-local-https-'));
   const paths = developmentHttpsPaths(directory);
   t.after(() => rm(directory, { recursive: true, force: true }));
@@ -32,12 +32,17 @@ test('creates one reusable local certificate for the Platform, Tenant and API de
   assert.equal(await ensureCertificateMaterial(paths), 'created');
   assert.equal(await certificateCoversExpectedHosts(paths.serverCertificate), true);
   const firstCertificate = await readFile(paths.serverCertificate, 'utf8');
+  const { X509Certificate } = await import('node:crypto');
+  assert.equal(
+    new X509Certificate(firstCertificate).checkHost('remote.saasforge.test'),
+    'remote.saasforge.test',
+  );
 
   assert.equal(await ensureCertificateMaterial(paths), 'reused');
   assert.equal(await readFile(paths.serverCertificate, 'utf8'), firstCertificate);
 });
 
-test('accepts only the three fixed local hostnames and preserves browser security headers verbatim', () => {
+test('keeps the three existing proxy targets and preserves browser security headers verbatim', () => {
   assert.deepEqual(targetForHost('platform.saasforge.test'), {
     hostname: 'host.docker.internal',
     port: 5173,
@@ -160,7 +165,7 @@ for (const host of ['platform.saasforge.test', 'console.saasforge.test']) {
 test('recognizes the idempotent local hosts entry and fixes Vite to the Edge-facing port', () => {
   assert.equal(
     hasExpectedHosts(
-      '127.0.0.1 platform.saasforge.test console.saasforge.test api.saasforge.test # SaaS Forge local HTTPS\n',
+      '127.0.0.1 platform.saasforge.test console.saasforge.test api.saasforge.test remote.saasforge.test # SaaS Forge local HTTPS\n',
     ),
     true,
   );
@@ -307,7 +312,7 @@ function hmrUpgrade(port, certificateAuthority, host) {
   });
 }
 
-test('upgrades a two-Host leaf with the existing CA and then remains idempotent', async (t) => {
+test('upgrades a three-Host leaf with the existing CA and then remains idempotent', async (t) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'sf-local-https-upgrade-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const paths = developmentHttpsPaths(directory);
@@ -316,7 +321,7 @@ test('upgrades a two-Host leaf with the existing CA and then remains idempotent'
   const authorityKey = await readFile(paths.certificateAuthorityKey);
   await writeFile(
     paths.serverExtensions,
-    'subjectAltName=DNS:platform.saasforge.test,DNS:api.saasforge.test\n',
+    'subjectAltName=DNS:platform.saasforge.test,DNS:console.saasforge.test,DNS:api.saasforge.test\n',
   );
   const result = spawnSync('openssl', [
     'x509',
@@ -346,10 +351,11 @@ test('upgrades a two-Host leaf with the existing CA and then remains idempotent'
     'platform.saasforge.test',
     'console.saasforge.test',
     'api.saasforge.test',
+    'remote.saasforge.test',
   ]);
 });
 
-test('Tenant uses a separate command, PID and log and requires all three hosts', () => {
+test('Tenant uses a separate command, PID and log and requires all four hosts', () => {
   const command = viteDevelopmentCommand('/workspace/consoles', 'tenant');
   assert.ok(command.args.includes('@saas-forge/tenant-console-shell'));
   assert.deepEqual(command.args.slice(-5), [
@@ -367,7 +373,7 @@ test('Tenant uses a separate command, PID and log and requires all three hosts',
   assert.equal(hasExpectedHosts('127.0.0.1 platform.saasforge.test api.saasforge.test\n'), false);
   assert.equal(
     hasExpectedHosts(
-      '127.0.0.1 platform.saasforge.test api.saasforge.test\n127.0.0.1 console.saasforge.test\n',
+      '127.0.0.1 platform.saasforge.test api.saasforge.test\n127.0.0.1 console.saasforge.test remote.saasforge.test\n',
     ),
     true,
   );
@@ -437,7 +443,7 @@ test('hosts upgrade requires explicit consent, is idempotent and refuses noninte
     readHosts: async () => content,
     authorize: async (question, expected) => {
       assert.equal(expected, 'HOSTS');
-      assert.ok(question.includes('三个'));
+      assert.ok(question.includes('四个'));
       authorized = true;
     },
     appendHosts: async (entry) => {

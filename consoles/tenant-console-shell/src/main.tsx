@@ -6,6 +6,8 @@ import {
   resolveInitialConsoleLocale,
   useConsoleLocale,
 } from '@saas-forge/react-shell';
+import { platformResolvedBrandProfile } from '@saas-forge/design-system';
+import { lazy, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { TenantConsoleShellApp, type TenantConsoleRootProps } from './app';
@@ -21,6 +23,11 @@ function TenantConsoleRoot({ children, resolvedBrand }: TenantConsoleRootProps) 
     </BrandApplicationProvider>
   );
 }
+
+const StaticRemoteAcceptance =
+  import.meta.env.DEV || import.meta.env.MODE === 'static-acceptance'
+    ? lazy(() => import('./static-remote-acceptance'))
+    : null;
 
 const rootElement = document.querySelector('#root');
 if (rootElement === null) {
@@ -39,5 +46,14 @@ createRoot(rootElement, {
 );
 
 function TenantConsoleEntry() {
+  if (StaticRemoteAcceptance !== null && location.pathname === '/acceptance/static-remote') {
+    return (
+      <TenantConsoleRoot resolvedBrand={platformResolvedBrandProfile}>
+        <Suspense fallback={<p role="status">Loading acceptance entry</p>}>
+          <StaticRemoteAcceptance />
+        </Suspense>
+      </TenantConsoleRoot>
+    );
+  }
   return <TenantConsoleShellApp root={TenantConsoleRoot} />;
 }

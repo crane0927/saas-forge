@@ -63,6 +63,7 @@ On macOS Docker Desktop, run setup once from the repository root, then choose a 
 
 ```bash
 bash scripts/local-development.sh setup
+pnpm --dir consoles run build:static-remote
 bash scripts/local-development.sh doctor
 bash scripts/local-development.sh frontend start platform
 bash scripts/local-development.sh frontend start tenant
@@ -75,7 +76,7 @@ bash scripts/local-development.sh status
 bash scripts/local-development.sh frontend stop all
 ```
 
-`setup` reuses a valid local CA and reissues the leaf only when a controlled Host is missing, expiry is within 24 hours, or chain/key validation fails. The certificate covers `platform.saasforge.test`, `console.saasforge.test`, and `api.saasforge.test`. Existing two-Host installations must rerun setup. Hosts and Keychain changes still require separate explicit interactive authorization; existing configuration is skipped idempotently, and noninteractive system changes are refused.
+`setup` reuses a valid local CA and reissues the leaf only when a controlled Host is missing, expiry is within 24 hours, or chain/key validation fails. The certificate covers `platform.saasforge.test`, `console.saasforge.test`, `api.saasforge.test`, and `remote.saasforge.test`. Existing two-/three-Host installations must rerun setup. Hosts and Keychain changes still require separate explicit interactive authorization; existing configuration is skipped idempotently, and noninteractive system changes are refused.
 
 Every `frontend` invocation requires `start|status|stop` and `platform|tenant|all`. Platform Vite binds to `127.0.0.1:5173` and Tenant to `127.0.0.1:5174`, with strict ports, their respective controlled Hosts, and HMR over each HTTPS Origin's WSS port 443. Edge reaches both loopback Vite servers through `host.docker.internal`, forwards API traffic to the current Gateway, and preserves browser security headers. Unknown Hosts are rejected. Do not widen Vite listeners to all interfaces to work around Docker Desktop connectivity failures.
 
@@ -94,6 +95,10 @@ On the Tenant Origin, `/password-setup`, `/password-setup/app.js`, `/password-se
 These paths share the active target file with the API Host. After `bash scripts/local-development.sh replace gateway`, they follow the local Gateway; after `restore gateway`, they return to the container without changing the browser URL or restarting Edge. A missing or invalid target file or an unreachable target returns 502, with no fallback to Vite or another Gateway; unknown Hosts return 421. When first upgrading these routes, stop both Consoles and start them again as described above to load the new Edge script.
 
 Prepare accounts, Gateway, and backend services separately. This routing capability does not constitute complete Tenant authentication acceptance.
+
+#### Fourth-domain static resource acceptance
+
+The development Tenant entry `https://console.saasforge.test/acceptance/static-remote` loads two built Remote versions without joining product navigation. Run `pnpm --dir consoles run verify:local:static-remote` to verify module execution, CSS, images, credential-free CORS, and Vite WSS connections in normally trusted Chromium. Sanitized evidence goes to `.scratch/issue-156/`. See the [fourth-domain development guide](../docs/local-static-remote-development.md) for setup, controlled Edge upgrades, frozen versions, and E2E reuse boundaries. This does not accept a Manifest, business Remote, or parent specification #155 as a whole.
 
 #### States and recovery
 

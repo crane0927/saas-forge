@@ -1,6 +1,7 @@
 import { request } from "node:http";
 import { createServer } from "node:https";
 import { readFile } from "node:fs/promises";
+import { serveRemoteStatic } from "./remote-static.mjs";
 
 const viteHost = process.env.SF_LOCAL_HTTPS_VITE_HOST ?? "host.docker.internal";
 const vitePort = Number.parseInt(
@@ -108,6 +109,10 @@ async function resolveTarget(host, path, targets, configuredApiTargetFile) {
 }
 
 async function proxy(incoming, outgoing, targets, configuredApiTargetFile) {
+  if (incoming.headers.host === "remote.saasforge.test") {
+    await serveRemoteStatic(incoming, outgoing);
+    return;
+  }
   const target = await resolveTarget(
     incoming.headers.host,
     incoming.url,

@@ -63,6 +63,7 @@ pnpm --filter @saas-forge/design-system run dev:showcase
 
 ```bash
 bash scripts/local-development.sh setup
+pnpm --dir consoles run build:static-remote
 bash scripts/local-development.sh doctor
 bash scripts/local-development.sh frontend start platform
 bash scripts/local-development.sh frontend start tenant
@@ -75,7 +76,7 @@ bash scripts/local-development.sh status
 bash scripts/local-development.sh frontend stop all
 ```
 
-`setup` 复用有效的本地 CA；服务器证书缺少受控 Host、将在 24 小时内失效或无法通过链/私钥校验时才重签 leaf。证书覆盖 `platform.saasforge.test`、`console.saasforge.test`、`api.saasforge.test`。旧双 Host 安装需重新执行 setup；hosts 和 Keychain 变更仍分别要求交互式明确授权，已配置时幂等跳过，非交互环境拒绝系统变更。
+`setup` 复用有效的本地 CA；服务器证书缺少受控 Host、将在 24 小时内失效或无法通过链/私钥校验时才重签 leaf。证书覆盖 `platform.saasforge.test`、`console.saasforge.test`、`api.saasforge.test`、`remote.saasforge.test`。旧双/三 Host 安装需重新执行 setup；hosts 和 Keychain 变更仍分别要求交互式明确授权，已配置时幂等跳过，非交互环境拒绝系统变更。
 
 `frontend` 必须提供 `start|status|stop` 和 `platform|tenant|all`。Platform Vite 固定监听 `127.0.0.1:5173`，Tenant 固定监听 `127.0.0.1:5174`，均启用 strict port，分别只接受对应受控 Host，HMR 使用对应 HTTPS Origin 的 WSS 443。Edge 通过 `host.docker.internal` 访问两个回环 Vite，将 API 转发到当前 Gateway，并保留浏览器安全头。未知 Host 被拒绝；不得为解决 Docker Desktop 连通性问题将 Vite 改为所有网络接口。
 
@@ -94,6 +95,10 @@ Tenant Origin 下的 `/password-setup`、`/password-setup/app.js`、`/password-s
 这些路径与 API Host 共用活动目标文件；`bash scripts/local-development.sh replace gateway` 后跟随本地 Gateway，`restore gateway` 后回到容器，无需修改浏览器 URL 或重启 Edge。目标文件缺失、非法或目标不可达时返回 502，不回退到 Vite 或其他 Gateway；未知 Host 返回 421。首次升级路由时，按前述步骤停止两个 Console 后重新启动，以加载新的 Edge 脚本。
 
 账户、Gateway 与后端仍需另行准备。上述路由能力不等同于完整 Tenant 认证验收。
+
+#### 第四域静态资源验收
+
+开发 Tenant 的 `https://console.saasforge.test/acceptance/static-remote` 从 Remote 加载构建后的两个版本，不加入产品导航。执行 `pnpm --dir consoles run verify:local:static-remote`，在正常受信 Chromium 中验证模块执行、CSS、图片、无凭据 CORS 和 Vite WSS 连接；脱敏证据写入 `.scratch/issue-156/`。准备、旧 Edge 受控升级、版本冻结及 E2E 复用边界见[第四域开发验收说明](../docs/local-static-remote-development.md)。这不是 Manifest、业务 Remote 或父规格 #155 的整体验收。
 
 #### 状态与恢复
 

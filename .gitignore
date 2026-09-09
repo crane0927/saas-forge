@@ -33,6 +33,7 @@ dist/
 coverage/
 playwright-report/
 test-results/
+.scratch/issue-156/
 consoles/shared/api-client/.generated/
 
 # 本地覆盖配置
