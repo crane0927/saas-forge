@@ -1,3 +1,4 @@
+import { observeSecurityProbe } from "./browser-security-evidence.mjs";
 import { createReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { createServer as httpServer, request } from "node:http";
@@ -87,6 +88,7 @@ function proxy(incoming, outgoing) {
       headers: { ...incoming.headers, connection: "close" },
     },
     (response) => {
+      observeSecurityProbe(incoming, response, rootDomain);
       // CORS 拒绝可隐藏浏览器响应；只记录探针对应的拒绝状态和允许头是否存在。
       if (observedProbe) {
         console.info(

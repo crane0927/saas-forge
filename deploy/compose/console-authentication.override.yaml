@@ -78,6 +78,7 @@ services:
     volumes:
       - ./console-authentication/serve.mjs:/app/serve.mjs:ro
       - ./local-https-development/remote-static.mjs:/app/remote-static.mjs:ro
+      - ./local-https-development/browser-security-evidence.mjs:/app/browser-security-evidence.mjs:ro
       - ../../consoles/platform-console/dist:/app/dist:ro
       - ../../consoles/integration-test/dist:/app/acceptance:ro
   tenant-console:
@@ -91,12 +92,13 @@ services:
     volumes:
       - ./console-authentication/serve.mjs:/app/serve.mjs:ro
       - ./local-https-development/remote-static.mjs:/app/remote-static.mjs:ro
+      - ./local-https-development/browser-security-evidence.mjs:/app/browser-security-evidence.mjs:ro
       # 同一真实 Tenant App 与认证 Shell，仅在验收构建追加静态 Remote 消费路由。
       - ../../consoles/integration-test/dist/tenant-console:/app/dist:ro
   console-tls:
     image: node:24.14.1-alpine
-    user: node
-    group_add: ["${E2E_HOST_GID:?E2E_HOST_GID is required}"]
+    # 与两个 Console 一致，以构建者身份读取 umask 077 生成的只读 Remote 制品。
+    user: "${E2E_HOST_UID:?E2E_HOST_UID is required}:${E2E_HOST_GID:?E2E_HOST_GID is required}"
     read_only: true
     command: ["node", "/app/serve.mjs"]
     environment:
@@ -160,6 +162,7 @@ services:
     volumes:
       - ./console-authentication/serve.mjs:/app/serve.mjs:ro
       - ./local-https-development/remote-static.mjs:/app/remote-static.mjs:ro
+      - ./local-https-development/browser-security-evidence.mjs:/app/browser-security-evidence.mjs:ro
       - type: bind
         source: ../../consoles/dist/static-remote-acceptance
         target: /app/remote-artifacts

@@ -28,6 +28,7 @@ services:
     volumes:
       - ./local-https-development/edge.mjs:/app/edge.mjs:ro
       - ./local-https-development/remote-static.mjs:/app/remote-static.mjs:ro
+      - ./local-https-development/browser-security-evidence.mjs:/app/browser-security-evidence.mjs:ro
       - type: bind
         source: ../../consoles/dist/static-remote-acceptance
         target: /app/remote-artifacts

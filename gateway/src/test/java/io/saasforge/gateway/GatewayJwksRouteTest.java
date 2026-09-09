@@ -276,6 +276,22 @@ class GatewayJwksRouteTest {
     }
 
     @Test
+    void rejectedCorsPreflightRemainsABrowserRejectionInsteadOfAnUpstreamFailure()
+            throws IOException, InterruptedException {
+        HttpResponse<String> response = send(HttpRequest.newBuilder(gatewayUri("/api/v1/auth/refresh"))
+                .header("Origin", "https://remote.saasforge.test")
+                .header("Access-Control-Request-Method", "POST")
+                .header("Access-Control-Request-Headers", "content-type,idempotency-key,x-sf-csrf")
+                .method("OPTIONS", HttpRequest.BodyPublishers.noBody())
+                .build());
+
+        assertEquals(403, response.statusCode());
+        assertTrue(response.body().contains("\"code\":\"BROWSER_REQUEST_REJECTED\""));
+        assertTrue(response.headers().firstValue("Access-Control-Allow-Origin").isEmpty());
+        assertTrue(response.headers().firstValue("Access-Control-Allow-Credentials").isEmpty());
+    }
+
+    @Test
     void passwordSetupRequiresControlledOriginAndCsrfAndAllowsExactPreflight()
             throws IOException, InterruptedException {
         HttpRequest.Builder base = HttpRequest.newBuilder(gatewayUri("/api/v1/auth/password-setups"))

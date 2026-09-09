@@ -11,9 +11,15 @@ readonly acceptance_target="${SF_ACCEPTANCE_TARGET:-local}"
   exit 2
 }
 
-if [[ "${1:-}" != "" && "${1:-}" != "--preflight" && "${1:-}" != "--product" ]] || [[ "$#" -gt 1 ]]; then
-  echo '用法：bash scripts/verify-console-authentication-e2e.sh [--preflight|--product]' >&2
+if [[ "${1:-}" != "" && "${1:-}" != "--preflight" && "${1:-}" != "--product" && "${1:-}" != "--development" ]] || [[ "$#" -gt 1 ]]; then
+  echo '用法：bash scripts/verify-console-authentication-e2e.sh [--preflight|--product|--development]' >&2
   exit 2
+fi
+# Node 与浏览器均使用系统信任；不忽略证书错误。
+export NODE_USE_SYSTEM_CA=1
+if [[ "${1:-}" == '--development' ]]; then
+  export SF_SECURITY_EDGE_CONTAINER="${SF_SECURITY_EDGE_CONTAINER:-$(docker ps --quiet --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME:-compose}" --filter "label=com.docker.compose.service=local-https-edge" || true)}"
+  exec node "$repository_root/consoles/scripts/verify-development-browser-matrix.mjs"
 fi
 for required_command in node pnpm docker openssl ruby; do
   command -v "$required_command" >/dev/null || {
@@ -22,20 +28,29 @@ for required_command in node pnpm docker openssl ruby; do
   }
 done
 export PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE=false
-# Fixture API 使用 Node fetch；与浏览器一样信任系统已安装的本地 CA，仍校验证书。
-export NODE_USE_SYSTEM_CA=1
 export SF_ACCEPTANCE_ROOT_DOMAIN="${SF_ACCEPTANCE_ROOT_DOMAIN:-saasforge.test}"
-(cd "$repository_root/consoles" && node scripts/check-console-authentication-environment.mjs)
+export SF_BRAND_EVIDENCE_DIRECTORY="${SF_BRAND_EVIDENCE_DIRECTORY:-$(mktemp -d "${TMPDIR:-/tmp}/sf-brand-evidence.XXXXXX")}"
+export SF_ACCEPTANCE_SCOPE="${1:---full}"
+record_result() { node "$repository_root/consoles/scripts/record-authentication-acceptance.mjs" "$@"; }
+printf 'EVIDENCE: %s\n' "$SF_BRAND_EVIDENCE_DIRECTORY"
+record_result preflight running
+trap 'record_result complete blocked' EXIT
+if ! (cd "$repository_root/consoles" && node scripts/check-console-authentication-environment.mjs); then
+  record_result preflight blocked
+  record_result complete blocked
+  exit 1
+fi
+record_result preflight passed
 docker info --format '{{.ServerVersion}}' >/dev/null
 [[ "$(cd "$repository_root/consoles" && pnpm --version)" == '11.22.0' ]] || {
   echo 'BLOCKED: 需要 pnpm 11.22.0' >&2
   exit 1
 }
-[[ "${1:-}" == '--preflight' ]] && exit 0
-
-# 浏览器证据独立于临时 Compose 目录保留，项目清理不会删除截图。
-export SF_BRAND_EVIDENCE_DIRECTORY="${SF_BRAND_EVIDENCE_DIRECTORY:-$(mktemp -d "${TMPDIR:-/tmp}/sf-brand-evidence.XXXXXX")}"
-printf 'EVIDENCE: %s\n' "$SF_BRAND_EVIDENCE_DIRECTORY"
+if [[ "${1:-}" == '--preflight' ]]; then
+  record_result complete passed
+  trap - EXIT
+  exit 0
+fi
 
 readonly project_name="saas-forge-console-$(date +%s)-$$-$(openssl rand -hex 3)"
 readonly work_directory="$(mktemp -d)"
@@ -64,6 +79,7 @@ cleanup() {
     docker image rm "$project_name/$service:acceptance" >/dev/null 2>&1 || true
   done
   rm -rf "$work_directory"
+  if [[ "$exit_code" == 0 ]]; then record_result complete passed; else record_result complete failed; fi
   exit "$exit_code"
 }
 trap cleanup EXIT
@@ -73,13 +89,14 @@ trap 'exit 143' TERM
 stage() {
   local name="$1"
   shift
+  record_result "$name" running
   printf 'RUN: %s\n' "$name"
   if ! "$@" >"$work_directory/$name.log" 2>&1; then
     # 原始服务/构建日志可能携带凭据，不能直接输出到终端或公开验收记录。
     local diagnostic_directory
     diagnostic_directory="$(mktemp -d "${TMPDIR:-/tmp}/sf-console-e2e-diagnostics.XXXXXX")"
     cp "$work_directory/$name.log" "$diagnostic_directory/$name.log"
-    if [[ "$name" == product-* || "$name" == console-browser-* ]]; then
+    if [[ "$name" == product-* || "$name" == console-browser-* || "$name" == maven-verify || "$name" == tls-ready ]]; then
       node "$repository_root/consoles/scripts/summarize-authentication-failure.mjs" "$work_directory/$name.log"
     fi
     if [[ "$name" == product-* || "$name" == compose-start || "$name" == tls-ready ]]; then
@@ -98,8 +115,10 @@ stage() {
     fi
     printf 'FAIL: %s；受限诊断日志：%s/%s.log（不得直接上传原始日志）\n' \
       "$name" "$diagnostic_directory" "$name" >&2
+    record_result "$name" failed
     return 1
   fi
+  record_result "$name" passed
   printf 'PASS: %s\n' "$name"
   if [[ "$name" == product-* ]]; then
     # 仅输出 TAP 统计；原始诊断继续保存在受限目录，不能把凭据带入 CI 日志。
@@ -215,6 +234,7 @@ start_fresh_environment() {
   stage service-bootstrap compose --profile service-client-bootstrap run --rm iam-reserved-service-client-bootstrap
   stage compose-start compose up --detach --wait --wait-timeout 240 console-tls
   # 容器内健康不能证明宿主 443 转发及 TLS 已就绪；实际入口必须通过正常证书验证。
+  export SF_SECURITY_EDGE_CONTAINER="$(compose ps --quiet console-tls)"
   stage tls-ready node --input-type=module - <<'JS'
 import { chromium } from './consoles/node_modules/playwright/index.mjs';
 

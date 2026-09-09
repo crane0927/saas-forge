@@ -6,6 +6,34 @@ const log = await readFile(process.argv[2], 'utf8');
 let diagnosticIndent;
 let field;
 for (const line of stripVTControlCharacters(log).split('\n')) {
+  if (/^\{"(?:platform|console|api|remote)\./.test(line)) {
+    try {
+      const observations = JSON.parse(line);
+      for (const [hostname, value] of Object.entries(observations)) {
+        if (!/^(?:platform|console|api|remote)\.saasforge\.(?:test|example\.com)$/.test(hostname))
+          continue;
+        const allowed = Number.isInteger(value) && value >= 100 && value <= 599;
+        const networkCodes = [
+          'ERR_CONNECTION_CLOSED',
+          'ERR_CONNECTION_RESET',
+          'ERR_CONNECTION_REFUSED',
+          'ERR_TIMED_OUT',
+          'ERR_NAME_NOT_RESOLVED',
+          'ERR_CERT_AUTHORITY_INVALID',
+          'ERR_CERT_COMMON_NAME_INVALID',
+          'ERR_CERT_DATE_INVALID',
+          'BROWSER_NAVIGATION_TIMEOUT',
+          'BROWSER_NAVIGATION_UNAVAILABLE',
+          'NO_RESPONSE',
+        ];
+        console.info(
+          `TLS: host=${hostname} result=${allowed || networkCodes.includes(value) ? value : 'UNAVAILABLE'}`,
+        );
+      }
+    } catch {
+      // 非结构化日志不进入公开摘要。
+    }
+  }
   const indent = /^\s*/.exec(line)[0].length;
   if (diagnosticIndent === undefined && line.trim() === '---') {
     diagnosticIndent = indent;
@@ -61,9 +89,21 @@ for (const line of stripVTControlCharacters(log).split('\n')) {
     continue;
   }
   // Vitest 和 Node spec reporter 不使用 TAP 字段；仅保留固定错误码及已知测试文件位置。
+  // Maven 原始错误可含请求正文；只保留仓库模块白名单与数字统计。
+  const mavenModule =
+    /^\[INFO\] (saas-forge(?:-(?:openapi-contracts|protobuf-contracts|http-route-catalog|quality-gates|contracts|sdk|java|starters|bom|spring-boot-starter|sdk-(?:core|auth|tenant|permission|feature|quota|audit)))?|gateway|iam-service|tenant-access-service|entitlement-service|audit-service) \.{2,} FAILURE\b/.exec(
+      line,
+    );
+  if (mavenModule) console.info(`MAVEN: failed module=${mavenModule[1]}`);
+  const mavenTests =
+    /^\[ERROR\] Tests run: (\d+), Failures: (\d+), Errors: (\d+), Skipped: (\d+)\b/.exec(line);
+  if (mavenTests)
+    console.info(
+      `MAVEN: tests=${mavenTests[1]} failures=${mavenTests[2]} errors=${mavenTests[3]} skipped=${mavenTests[4]}`,
+    );
   if (/^\s*[✖×] /.test(line)) console.info('FAIL: compatibility test');
   const compatibilityCode =
-    /\b(AssertionError|TimeoutError|ERR_ASSERTION|ERR_MODULE_NOT_FOUND|ERR_PNPM_VERIFY_DEPS_BEFORE_RUN|ERR_PNPM_NO_SCRIPT|ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL|ERR_PNPM_UNSUPPORTED_ENGINE|ECONNREFUSED|EADDRINUSE|ENOSPC|EACCES|ETIMEDOUT)\b/.exec(
+    /\b(MojoFailureException|MojoExecutionException|OutOfMemoryError|AssertionError|TimeoutError|ERR_ASSERTION|ERR_MODULE_NOT_FOUND|ERR_PNPM_VERIFY_DEPS_BEFORE_RUN|ERR_PNPM_NO_SCRIPT|ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL|ERR_PNPM_UNSUPPORTED_ENGINE|ECONNREFUSED|EADDRINUSE|ENOSPC|EACCES|ETIMEDOUT)\b/.exec(
       line,
     );
   if (compatibilityCode) console.info(`CODE: ${compatibilityCode[1]}`);

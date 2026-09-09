@@ -10,7 +10,9 @@ import { verifyClientRecovery } from './console-client-acceptance.mjs';
 import { verifyRequestProblemSurfaces } from './console-problem-acceptance.mjs';
 import { verifyBrandRemoteInheritance } from './brand-remote-acceptance.mjs';
 import { verifyLatestBrandRead } from './brand-concurrency-acceptance.mjs';
-import { verifyStaticRemoteRendering } from './static-remote-acceptance.mjs';
+import './static-remote.test.mjs';
+import { assertOtherSessionUnchanged, verifyBrowserSessions } from './browser-session-security.mjs';
+import { verifyApiSecurity } from './browser-api-security.mjs';
 
 const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saasforge.test';
 
@@ -55,6 +57,10 @@ test('production Consoles expose independent login paths through trusted TLS', a
     }
   });
   const context = await browser.newContext({ ignoreHTTPSErrors: false });
+  // 空 favicon 响应属于生产静态服务器约定；开发 Vite 的资源行为不属于此断言。
+  const defaultIcon = await context.request.get(`https://console.${rootDomain}/favicon.ico`);
+  assert.equal(defaultIcon.status(), 204, 'default favicon probe has no independent brand');
+  assert.equal((await defaultIcon.body()).length, 0);
   await setConsoleLocalePreference(context, 'zh-CN');
   const platform = await context.newPage();
   const tenant = await context.newPage();
@@ -84,157 +90,6 @@ test('production Consoles expose independent login paths through trusted TLS', a
     assert.equal(await page.getByLabel(/^密码/).getAttribute('type'), 'password');
   }
   assert.deepEqual(errors, []);
-});
-
-test('Tenant Console executes fourth-domain static Remote through trusted TLS without credentials', async (t) => {
-  const browser = await { chromium, firefox, webkit }[process.env.SF_BROWSER ?? 'chromium'].launch({
-    channel: process.env.SF_BROWSER_CHANNEL || undefined,
-  });
-  t.after(() => browser.close());
-  const context = await browser.newContext({ ignoreHTTPSErrors: false });
-  await context.addCookies([
-    {
-      name: 'sf_static_probe',
-      value: 'non-secret',
-      domain: `remote.${rootDomain}`,
-      path: '/',
-      secure: true,
-      sameSite: 'Strict',
-    },
-  ]);
-  const page = await context.newPage();
-  const remoteRecords = [];
-  const cdp =
-    (process.env.SF_BROWSER ?? 'chromium') === 'chromium'
-      ? await context.newCDPSession(page)
-      : null;
-  await cdp?.send('Network.enable');
-  const byRequest = new Map();
-  const remoteRequestIds = new Set();
-  const record = (requestId) => {
-    if (!byRequest.has(requestId)) {
-      const value = {};
-      byRequest.set(requestId, value);
-    }
-    return byRequest.get(requestId);
-  };
-  cdp?.on('Network.requestWillBeSent', ({ requestId, request }) => {
-    const url = new URL(request.url);
-    if (url.hostname === `remote.${rootDomain}`) {
-      if (!remoteRequestIds.has(requestId)) remoteRecords.push(record(requestId));
-      remoteRequestIds.add(requestId);
-      Object.assign(record(requestId), { path: url.pathname, method: request.method });
-    }
-  });
-  cdp?.on('Network.requestWillBeSentExtraInfo', ({ requestId, headers }) => {
-    // ExtraInfo 可能先于 requestWillBeSent 到达；先按 ID 保存，再筛选 Remote 请求。
-    const names = Object.keys(headers).map((name) => name.toLowerCase());
-    record(requestId).credentials = names.filter((name) =>
-      ['cookie', 'authorization', 'x-sf-csrf'].includes(name),
-    );
-  });
-  cdp?.on('Network.responseReceivedExtraInfo', ({ requestId, statusCode, headers }) => {
-    const normalized = Object.fromEntries(
-      Object.entries(headers).map(([name, value]) => [name.toLowerCase(), value]),
-    );
-    Object.assign(record(requestId), {
-      status: statusCode,
-      allowOrigin: normalized['access-control-allow-origin'] ?? null,
-      allowCredentials: normalized['access-control-allow-credentials'] ?? null,
-      contentType: normalized['content-type'] ?? null,
-    });
-  });
-  const errors = [];
-  page.on('pageerror', () => errors.push('pageerror'));
-  page.on('console', (message) => {
-    if (message.type() === 'error') errors.push('console-error');
-  });
-
-  const defaultIcon = await context.request.get(`https://console.${rootDomain}/favicon.ico`);
-  assert.equal(defaultIcon.status(), 204, 'default favicon probe has no independent brand');
-  assert.equal((await defaultIcon.body()).length, 0);
-  await verifyStaticRemoteRendering(page);
-  assert.deepEqual(errors, []);
-  if (cdp === null) return;
-  const evidenceDeadline = Date.now() + 10_000;
-  while (
-    remoteRecords.some((item) => item.credentials === undefined || item.status === undefined) &&
-    Date.now() < evidenceDeadline
-  ) {
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  assert.ok(remoteRecords.length >= 6);
-  assert.ok(remoteRecords.every((item) => item.credentials?.length === 0));
-  assert.ok(remoteRecords.every((item) => item.allowCredentials === null));
-  for (const version of ['v1', 'v2']) {
-    for (const file of ['remote.js', 'styles.css', 'image.svg']) {
-      assert.ok(
-        remoteRecords.some(
-          (item) =>
-            item.path === `/static-acceptance/${version}/${file}` &&
-            item.status === 200 &&
-            item.allowOrigin === `https://console.${rootDomain}`,
-        ),
-      );
-    }
-  }
-});
-
-test('Remote static CORS permits only Tenant origin and preserves version isolation', async (t) => {
-  const browser = await { chromium, firefox, webkit }[process.env.SF_BROWSER ?? 'chromium'].launch({
-    channel: process.env.SF_BROWSER_CHANNEL || undefined,
-  });
-  t.after(() => browser.close());
-  const context = await browser.newContext({ ignoreHTTPSErrors: false });
-  const tenant = await context.newPage();
-  await tenant.goto(`https://console.${rootDomain}/`);
-  const accepted = await tenant.evaluate(async (rootDomain) => {
-    const versions = [];
-    for (const version of ['v1', 'v2']) {
-      const url = `https://remote.${rootDomain}/static-acceptance/${version}/remote.js`;
-      const first = await fetch(url, { credentials: 'omit', cache: 'no-store' });
-      const second = await fetch(url, { credentials: 'omit', cache: 'no-store' });
-      versions.push({
-        status: first.status,
-        stable: (await first.text()) === (await second.text()),
-      });
-    }
-    const missing = await fetch(`https://remote.${rootDomain}/static-acceptance/v1/missing.js`, {
-      credentials: 'omit',
-    });
-    return {
-      versions,
-      missing: { status: missing.status, html: /<!doctype|<html/i.test(await missing.text()) },
-    };
-  }, rootDomain);
-  assert.deepEqual(accepted, {
-    versions: [
-      { status: 200, stable: true },
-      { status: 200, stable: true },
-    ],
-    missing: { status: 404, html: false },
-  });
-
-  for (const [originName, url] of [
-    ['platform', `https://platform.${rootDomain}/`],
-    ['api', `https://api.${rootDomain}/.well-known/jwks.json`],
-    ['null', 'data:text/html,<!doctype html><title>Opaque Origin probe</title>'],
-  ]) {
-    const page = await context.newPage();
-    await page.goto(url);
-    const rejected = await page.evaluate(async (rootDomain) => {
-      try {
-        await fetch(`https://remote.${rootDomain}/static-acceptance/v1/remote.js`, {
-          credentials: 'omit',
-          cache: 'no-store',
-        });
-        return false;
-      } catch {
-        return true;
-      }
-    }, rootDomain);
-    assert.equal(rejected, true, `${originName} origin should be rejected by CORS`);
-  }
 });
 
 test('Platform and Tenant sessions survive independent recovery and logout after initial password change', async (t) => {
@@ -376,6 +231,28 @@ test('Platform and Tenant sessions survive independent recovery and logout after
   // Node 侧正式 API 只用于准备 Tenant；浏览器认证断言仍由生产页面发起请求。
   // 使用同一 Identity 验证两个槽位，避免把不同账号误当成槽位隔离。
   const firstTenant = await prepareTenant(platformLogin.accessToken, email);
+  {
+    await t.test(
+      'four-domain authenticated CSRF refusals preserve both browser sessions',
+      async () => {
+        const securityContext = await browser.newContext({ ignoreHTTPSErrors: false });
+        try {
+          await verifyBrowserSessions({
+            context: securityContext,
+            email,
+            password,
+            directory: path.join(
+              process.env.SF_BRAND_EVIDENCE_DIRECTORY,
+              `session-security-${process.env.SF_BROWSER_CHANNEL || process.env.SF_BROWSER || 'chromium'}`,
+            ),
+            verifyAuthenticated: verifyApiSecurity,
+          });
+        } finally {
+          await securityContext.close();
+        }
+      },
+    );
+  }
   await tenant.goto(`https://console.${rootDomain}/`);
   const tenantLogin = await login(tenant, email, password, 'en-US');
   assert.equal(tenantLogin.contextState, 'ACCESS_TOKEN_ISSUED');
@@ -405,17 +282,22 @@ test('Platform and Tenant sessions survive independent recovery and logout after
     assert.equal(cookie.secure, true);
     assert.equal(cookie.domain, `api.${rootDomain}`);
     assert.equal(cookie.path, '/');
+    assert.equal(cookie.sameSite, 'Strict');
   }
 
-  await recover(platform, 'Platform 总览');
-  await recover(tenant, 'Tenant workspace');
-  await logout(platform, 'Platform Console');
+  await assertOtherSessionUnchanged(context, 'PLATFORM', () => recover(platform, 'Platform 总览'));
+  await assertOtherSessionUnchanged(context, 'TENANT', () => recover(tenant, 'Tenant workspace'));
+  await assertOtherSessionUnchanged(context, 'PLATFORM', () =>
+    logout(platform, 'Platform Console'),
+  );
   await recover(tenant, 'Tenant workspace');
   await platform.reload();
   await platform.getByRole('heading', { name: '登录 SaaS Forge', exact: true }).waitFor();
   const platformRelogin = await login(platform, email, password);
   await platform.getByRole('heading', { name: 'Platform 总览', exact: true }).waitFor();
-  await logout(tenant, 'Tenant Console', 'en-US');
+  await assertOtherSessionUnchanged(context, 'TENANT', () =>
+    logout(tenant, 'Tenant Console', 'en-US'),
+  );
   await recover(platform, 'Platform 总览');
   await tenant.reload();
   await tenant.getByRole('heading', { name: 'Sign in to SaaS Forge', exact: true }).waitFor();

@@ -1,3 +1,4 @@
+import { observeSecurityProbe } from "./browser-security-evidence.mjs";
 import { request } from "node:http";
 import { createServer } from "node:https";
 import { readFile } from "node:fs/promises";
@@ -109,6 +110,18 @@ async function resolveTarget(host, path, targets, configuredApiTargetFile) {
 }
 
 async function proxy(incoming, outgoing, targets, configuredApiTargetFile) {
+  if (
+    ["platform.saasforge.test", "console.saasforge.test"].includes(
+      incoming.headers.host,
+    ) &&
+    ["GET", "HEAD"].includes(incoming.method) &&
+    new URL(incoming.url, "https://console.saasforge.test").pathname ===
+      "/favicon.ico"
+  ) {
+    // 与生产静态服务器一致：Shell 安装品牌前的默认图标探测返回空响应。
+    outgoing.writeHead(204, { "Cache-Control": "no-store" }).end();
+    return;
+  }
   if (incoming.headers.host === "remote.saasforge.test") {
     await serveRemoteStatic(incoming, outgoing);
     return;
@@ -136,6 +149,7 @@ async function proxy(incoming, outgoing, targets, configuredApiTargetFile) {
       headers: copyOriginalHeaders(incoming.rawHeaders),
     },
     (response) => {
+      observeSecurityProbe(incoming, response, "saasforge.test");
       outgoing.writeHead(
         response.statusCode ?? 502,
         copyOriginalHeaders(response.rawHeaders),

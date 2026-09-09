@@ -4,11 +4,17 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { createEdgeServer } from '../../deploy/compose/local-https-development/edge.mjs';
 import {
   developmentHttpsPaths,
   ensureCertificateMaterial,
 } from '../../scripts/local-https-development.mjs';
+
+// 此夹具的证书与请求固定使用开发域，不能继承产品 CI 的对照根域。
+const acceptanceRootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN;
+process.env.SF_ACCEPTANCE_ROOT_DOMAIN = 'saasforge.test';
+const { createEdgeServer } = await import('../../deploy/compose/local-https-development/edge.mjs');
+if (acceptanceRootDomain === undefined) delete process.env.SF_ACCEPTANCE_ROOT_DOMAIN;
+else process.env.SF_ACCEPTANCE_ROOT_DOMAIN = acceptanceRootDomain;
 
 async function fixture(t) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'sf-remote-edge-'));

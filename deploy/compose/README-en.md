@@ -223,6 +223,8 @@ bash scripts/verify-console-authentication-e2e.sh
 
 The certificate must cover `platform.saasforge.test`, `console.saasforge.test`, `api.saasforge.test`, and `remote.saasforge.test`; replace the example absolute paths with actual files. Preflight checks the environment, not successful login, four-domain resource loading, or CORS rejection. The full script creates an isolated random project and fresh volumes, then drives browsers against built Consoles, the real API, and the same `consoles/dist/static-remote-acceptance/` Remote artifacts through four trusted HTTPS Origins. Chromium additionally retains sanitized evidence for Remote requests/responses, credential-free loading, CSS application, and image decoding. It then removes only its project, volumes, and temporary Secrets, retaining no accounts or environment for later manual login. Only the output of the current run establishes its result; it does not replace development-mode `verify:local:static-remote` Vite/HMR evidence and does not claim a browser matrix or parent specification #155 as complete.
 
+The `EVIDENCE:` directory retains `static-remote-chromium.json` (using the corresponding channel name for Chrome/Edge), with sanitized network, rendering, and console observations and the Remote subtest's passed/failed status. Compose cleanup preserves this file. A passed subtest does not mean the entire run passed. Set `SF_BRAND_EVIDENCE_DIRECTORY` to choose the retained directory.
+
 ## Fresh-volume Tenant lifecycle acceptance
 
 Run the one-shot acceptance script from the repository root. Every run creates an isolated Compose project, random host ports, temporary Secrets, and fresh PostgreSQL, Redis, and Kafka volumes; it does not read or modify `deploy/compose/.env` or development-stack data:

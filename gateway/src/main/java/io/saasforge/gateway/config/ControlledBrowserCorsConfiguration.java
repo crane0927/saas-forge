@@ -6,7 +6,9 @@ import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.DefaultCorsProcessor;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
 
@@ -15,7 +17,8 @@ class ControlledBrowserCorsConfiguration {
 
     @Bean
     FilterRegistrationBean<CorsFilter> controlledBrowserCors(
-            @Value("${browser.rootDomain}") String rootDomain) {
+            @Value("${browser.rootDomain}") String rootDomain,
+            GatewayProblemDetailsWriter problemDetailsWriter) {
         CorsConfiguration cors = new CorsConfiguration();
         cors.setAllowedOrigins(List.of(
                 "https://platform." + rootDomain,
@@ -29,7 +32,19 @@ class ControlledBrowserCorsConfiguration {
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/api/**", cors);
-        FilterRegistrationBean<CorsFilter> registration = new FilterRegistrationBean<>(new CorsFilter(source));
+        CorsFilter filter = new CorsFilter(source);
+        DefaultCorsProcessor processor = new DefaultCorsProcessor();
+        filter.setCorsProcessor((configuration, request, response) -> {
+            boolean accepted = processor.processRequest(configuration, request, response);
+            if (!accepted) {
+                // 外层错误规范化 Filter 已缓存响应；将框架纯文本拒绝标为 Gateway Problem，避免误报上游 502。
+                response.resetBuffer();
+                problemDetailsWriter.write(request, response, HttpStatus.FORBIDDEN, "BROWSER_REQUEST_REJECTED",
+                        "The browser Origin, method or request headers are not allowed.");
+            }
+            return accepted;
+        });
+        FilterRegistrationBean<CorsFilter> registration = new FilterRegistrationBean<>(filter);
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 3);
         return registration;
     }
