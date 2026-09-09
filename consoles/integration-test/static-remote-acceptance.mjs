@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saasforge.test';
 
 export async function verifyStaticRemoteRendering(page) {
+  const rendering = [];
   await page.goto(`https://console.${rootDomain}/acceptance/static-remote`);
   await page.getByRole('heading', { name: 'Static Remote acceptance', exact: true }).waitFor();
   for (const [version, border, width, height] of [
@@ -16,17 +17,17 @@ export async function verifyStaticRemoteRendering(page) {
       .filter({ hasText: `${version} ready` })
       .waitFor();
     const output = page.getByText(`Remote ${version} executed`, { exact: true });
-    assert.equal(
-      await output.evaluate((element) => globalThis.getComputedStyle(element).borderTopWidth),
-      border,
+    const borderTopWidth = await output.evaluate(
+      (element) => globalThis.getComputedStyle(element).borderTopWidth,
     );
+    assert.equal(borderTopWidth, border);
     const image = page.getByRole('img', { name: `Remote ${version} sample` });
-    assert.deepEqual(
-      await image.evaluate(async (element) => {
-        await element.decode();
-        return [element.naturalWidth, element.naturalHeight];
-      }),
-      [width, height],
-    );
+    const imageDimensions = await image.evaluate(async (element) => {
+      await element.decode();
+      return [element.naturalWidth, element.naturalHeight];
+    });
+    assert.deepEqual(imageDimensions, [width, height]);
+    rendering.push({ version, moduleExecuted: true, borderTopWidth, imageDimensions });
   }
+  return rendering;
 }

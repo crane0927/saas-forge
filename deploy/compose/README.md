@@ -223,6 +223,8 @@ bash scripts/verify-console-authentication-e2e.sh
 
 证书必须覆盖 `platform.saasforge.test`、`console.saasforge.test`、`api.saasforge.test` 与 `remote.saasforge.test` 四个本地域名；示例绝对路径须替换为实际文件。预检仅检查环境，不证明登录、四域资源加载或 CORS 拒绝成功。完整脚本创建独立随机项目和全新数据卷，使用构建后的 Console、真实 API、同一份 `consoles/dist/static-remote-acceptance/` Remote 静态制品，经四个受信 HTTPS Origin 操作浏览器；Chromium 用例额外保留 Remote 请求/响应、无凭据加载、CSS 和图片解码证据。结束时只清理本次项目、数据卷和临时 Secret，不保留供后续手动登录的账号或环境。其结果以本次运行输出为准，不能替代开发模式 `verify:local:static-remote` 的 Vite/HMR 证据，也不宣称跨浏览器矩阵或父规格 #155 整体完成。
 
+`EVIDENCE:` 目录中的 `static-remote-chromium.json`（Chrome/Edge 使用对应渠道名）保留 Remote 子测试的脱敏网络、呈现和控制台证据，成功与失败运行均记录状态，Compose 清理不会删除。该 JSON 的通过不代表整轮验收通过；可用 `SF_BRAND_EVIDENCE_DIRECTORY` 指定保留目录。
+
 ## Tenant 生命周期全新卷验收
 
 仓库根目录提供一次性验收脚本。它为每次运行生成独立 Compose 项目、随机宿主机端口、临时 Secret 与全新 PostgreSQL、Redis、Kafka 数据卷，不读取或修改 `deploy/compose/.env` 和开发栈数据：

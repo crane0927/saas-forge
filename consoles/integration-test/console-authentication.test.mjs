@@ -1,7 +1,7 @@
 /* global document */
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdir, readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -11,6 +11,7 @@ import { verifyRequestProblemSurfaces } from './console-problem-acceptance.mjs';
 import { verifyBrandRemoteInheritance } from './brand-remote-acceptance.mjs';
 import { verifyLatestBrandRead } from './brand-concurrency-acceptance.mjs';
 import { verifyStaticRemoteRendering } from './static-remote-acceptance.mjs';
+import { staticRemoteEvidence } from './static-remote-evidence.mjs';
 
 const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saasforge.test';
 
@@ -150,10 +151,36 @@ test('Tenant Console executes fourth-domain static Remote through trusted TLS wi
     if (message.type() === 'error') errors.push('console-error');
   });
 
+  let passed = false;
+  let rendering = [];
+  if (cdp !== null) {
+    const directory = process.env.SF_BRAND_EVIDENCE_DIRECTORY;
+    assert.ok(directory, 'static Remote acceptance requires a persistent evidence directory');
+    const channel = process.env.SF_BROWSER_CHANNEL || 'chromium';
+    assert.ok(['chromium', 'chrome', 'msedge'].includes(channel));
+    t.after(async () => {
+      await mkdir(directory, { recursive: true, mode: 0o700 });
+      await writeFile(
+        path.join(directory, `static-remote-${channel}.json`),
+        `${JSON.stringify(
+          staticRemoteEvidence({
+            passed,
+            records: remoteRecords,
+            errors,
+            rendering,
+            tenantOrigin: `https://console.${rootDomain}`,
+          }),
+          null,
+          2,
+        )}\n`,
+        { mode: 0o600 },
+      );
+    });
+  }
   const defaultIcon = await context.request.get(`https://console.${rootDomain}/favicon.ico`);
   assert.equal(defaultIcon.status(), 204, 'default favicon probe has no independent brand');
   assert.equal((await defaultIcon.body()).length, 0);
-  await verifyStaticRemoteRendering(page);
+  rendering = await verifyStaticRemoteRendering(page);
   assert.deepEqual(errors, []);
   if (cdp === null) return;
   const evidenceDeadline = Date.now() + 10_000;
@@ -178,6 +205,7 @@ test('Tenant Console executes fourth-domain static Remote through trusted TLS wi
       );
     }
   }
+  passed = true;
 });
 
 test('Remote static CORS permits only Tenant origin and preserves version isolation', async (t) => {
