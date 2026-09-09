@@ -44,4 +44,6 @@ pnpm --dir consoles run verify:local:session-security
 
 2026-09-09 的本地验证使用受信四域、Vite Console、真实开发后端及修复后的本机 Gateway，32 个探针和完整会话流程通过。此次未运行 Fresh Compose 全量验收或 Firefox/WebKit/Chrome/Edge 矩阵，不代表 #155 的聚合验收。
 
+同日关闭前复核补齐真实刷新请求的 `sessionSlot` 与 Console Origin 配对断言，解决原有契约静态检查对仅观察刷新 URL 的误判，未修改或豁免门禁。`./mvnw -pl gateway -am verify` 全部通过，包含 Gateway 39 项测试及 4 项集成测试；开发 Chromium 的 32 个探针再次通过，复核证据位于 `.scratch/issue-158/review-fixed/browser-sessions.json`。
+
 现有 `console-authentication.test.mjs` 在创建首个 Tenant 后，以独立浏览器上下文复用同一安全流程；Chromium/Chrome/Edge 使用 CDP 记录直接响应，证据写入现有 `EVIDENCE:` 目录下 `session-security-<channel>/`。原有跨浏览器认证流程同时增加“另一槽位 Cookie 不变”和 SameSite 断言；Firefox/WebKit 不调用 Chromium 专属采集器。既有 Fresh Compose 与浏览器矩阵启动命令保持不变。

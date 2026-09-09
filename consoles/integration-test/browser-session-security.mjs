@@ -49,7 +49,13 @@ async function login(page, email, password) {
 async function recover(page, title) {
   const pending = page.waitForResponse(authResponse('refresh'));
   await page.reload();
-  assert.equal((await pending).status(), 200, 'real session refresh');
+  const response = await pending;
+  assert.equal(response.status(), 200, 'real session refresh');
+  assert.equal(
+    response.request().postDataJSON().sessionSlot,
+    new URL(page.url()).origin === `https://platform.${rootDomain}` ? 'PLATFORM' : 'TENANT',
+    'the real refresh request must select the Console Origin session slot',
+  );
   await page.getByRole('heading', { name: title, exact: true }).waitFor();
 }
 
