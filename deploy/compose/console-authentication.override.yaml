@@ -97,8 +97,8 @@ services:
       - ../../consoles/integration-test/dist/tenant-console:/app/dist:ro
   console-tls:
     image: node:24.14.1-alpine
-    user: node
-    group_add: ["${E2E_HOST_GID:?E2E_HOST_GID is required}"]
+    # 与两个 Console 一致，以构建者身份读取 umask 077 生成的只读 Remote 制品。
+    user: "${E2E_HOST_UID:?E2E_HOST_UID is required}:${E2E_HOST_GID:?E2E_HOST_GID is required}"
     read_only: true
     command: ["node", "/app/serve.mjs"]
     environment:
