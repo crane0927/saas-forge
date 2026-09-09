@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 
 /** 真实 Tenant 入口断言，开发与后续 Fresh Compose 可复用；不代替认证验收。 */
+const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saasforge.test';
+
 export async function verifyStaticRemoteRendering(page) {
-  await page.goto('https://console.saasforge.test/acceptance/static-remote');
+  await page.goto(`https://console.${rootDomain}/acceptance/static-remote`);
   await page.getByRole('heading', { name: 'Static Remote acceptance', exact: true }).waitFor();
   for (const [version, border, width, height] of [
     ['v1', '7px', 24, 16],

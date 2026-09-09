@@ -22,6 +22,8 @@ for required_command in node pnpm docker openssl ruby; do
   }
 done
 export PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE=false
+# Fixture API 使用 Node fetch；与浏览器一样信任系统已安装的本地 CA，仍校验证书。
+export NODE_USE_SYSTEM_CA=1
 export SF_ACCEPTANCE_ROOT_DOMAIN="${SF_ACCEPTANCE_ROOT_DOMAIN:-saasforge.test}"
 (cd "$repository_root/consoles" && node scripts/check-console-authentication-environment.mjs)
 docker info --format '{{.ServerVersion}}' >/dev/null
@@ -85,7 +87,7 @@ stage() {
       node "$repository_root/consoles/scripts/summarize-compose-status.mjs" "$diagnostic_directory/compose-status.json"
       compose logs --no-color nacos-init >"$diagnostic_directory/nacos-init.log" 2>&1 || true
       compose logs --no-color console-tls >"$diagnostic_directory/tls.log" 2>&1 || true
-      compose logs --no-color gateway iam-service entitlement-service >"$diagnostic_directory/services.log" 2>&1 || true
+      compose logs --no-color gateway iam-service tenant-access-service entitlement-service audit-service >"$diagnostic_directory/services.log" 2>&1 || true
       local console_tls_container
       console_tls_container="$(compose ps --quiet console-tls 2>/dev/null || true)"
       if [[ -n "$console_tls_container" ]]; then
@@ -188,6 +190,13 @@ else
       exit 1
     }
   done
+  [[ -f "$repository_root/consoles/dist/static-remote-acceptance/v1/remote.js" ]] || {
+    echo 'BLOCKED: 缺少 Remote 静态构建，请先执行完整验收入口' >&2
+    exit 1
+  }
+fi
+if [[ "${1:-}" != '--product' ]]; then
+  stage static-remote-build node "$repository_root/consoles/scripts/build-static-remote-acceptance.mjs"
 fi
 stage acceptance-client-build node "$repository_root/consoles/scripts/build-authentication-acceptance-client.mjs"
 for service in gateway iam-service tenant-access-service entitlement-service audit-service; do
@@ -207,39 +216,59 @@ start_fresh_environment() {
   stage compose-start compose up --detach --wait --wait-timeout 240 console-tls
   # 容器内健康不能证明宿主 443 转发及 TLS 已就绪；实际入口必须通过正常证书验证。
   stage tls-ready node --input-type=module - <<'JS'
+import { chromium } from './consoles/node_modules/playwright/index.mjs';
+
 const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN;
 const urls = [
   `https://platform.${rootDomain}/`,
   `https://console.${rootDomain}/`,
   `https://api.${rootDomain}/.well-known/jwks.json`,
+  `https://remote.${rootDomain}/static-acceptance/v1/remote.js`,
 ];
-// Compose health 与宿主端口转发异步收敛；仍要求三入口在正常证书校验下均返回 200。
+// Compose health 与宿主端口转发异步收敛；仍要求四入口在浏览器正常证书校验下均返回 200。
 const deadline = Date.now() + 180_000;
-let ready = false;
 const observations = new Map();
-while (!ready && Date.now() < deadline) {
-  ready = (await Promise.all(urls.map(async url => {
-    try {
-      const response = await fetch(url, {
-        headers: {accept: url.includes('/.well-known/') ? 'application/json' : 'text/html'},
-        signal: AbortSignal.timeout(3_000),
-      });
-      await response.arrayBuffer();
-      observations.set(new URL(url).hostname, response.status);
-      return response.status === 200;
-    } catch (error) {
-      const code = error?.cause?.code;
-      observations.set(new URL(url).hostname, /^[A-Z_]+$/.test(code ?? '') ? code : 'NETWORK_UNAVAILABLE');
-      return false;
-    }
-  }))).every(Boolean);
-  if (!ready) await new Promise(resolve => setTimeout(resolve, 500));
+const browser = await chromium.launch({ headless: true });
+try {
+  const context = await browser.newContext({ ignoreHTTPSErrors: false });
+  let ready = false;
+  while (!ready && Date.now() < deadline) {
+    ready = (
+      await Promise.all(
+        urls.map(async (url) => {
+          const page = await context.newPage();
+          try {
+            const response = await page.goto(url, {
+              waitUntil: 'domcontentloaded',
+              timeout: 5_000,
+            });
+            const status = response?.status() ?? 'NO_RESPONSE';
+            observations.set(new URL(url).hostname, status);
+            return status === 200;
+          } catch (error) {
+            // 仅保留 Chromium 网络错误码或固定分类，避免原始异常携带页面数据。
+            const code = error?.message?.match(/\bnet::(ERR_[A-Z0-9_]+)\b/)?.[1];
+            const category = error?.name === 'TimeoutError'
+              ? 'BROWSER_NAVIGATION_TIMEOUT'
+              : 'BROWSER_NAVIGATION_UNAVAILABLE';
+            observations.set(new URL(url).hostname, code ?? category);
+            return false;
+          } finally {
+            await page.close().catch(() => undefined);
+          }
+        }),
+      )
+    ).every(Boolean);
+    if (!ready) await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  if (!ready) {
+    console.info(JSON.stringify(Object.fromEntries(observations)));
+    throw new Error('host HTTPS entrypoints did not become ready');
+  }
+  console.info('All four host HTTPS entrypoints returned 200 with browser certificate verification');
+} finally {
+  await browser.close();
 }
-if (!ready) {
-  console.info(JSON.stringify(Object.fromEntries(observations)));
-  throw new Error('host HTTPS entrypoints did not become ready');
-}
-console.info('All three host HTTPS entrypoints returned 200 with certificate verification');
 JS
 }
 

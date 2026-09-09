@@ -10,6 +10,7 @@ import { verifyClientRecovery } from './console-client-acceptance.mjs';
 import { verifyRequestProblemSurfaces } from './console-problem-acceptance.mjs';
 import { verifyBrandRemoteInheritance } from './brand-remote-acceptance.mjs';
 import { verifyLatestBrandRead } from './brand-concurrency-acceptance.mjs';
+import { verifyStaticRemoteRendering } from './static-remote-acceptance.mjs';
 
 const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saasforge.test';
 
@@ -83,6 +84,157 @@ test('production Consoles expose independent login paths through trusted TLS', a
     assert.equal(await page.getByLabel(/^密码/).getAttribute('type'), 'password');
   }
   assert.deepEqual(errors, []);
+});
+
+test('Tenant Console executes fourth-domain static Remote through trusted TLS without credentials', async (t) => {
+  const browser = await { chromium, firefox, webkit }[process.env.SF_BROWSER ?? 'chromium'].launch({
+    channel: process.env.SF_BROWSER_CHANNEL || undefined,
+  });
+  t.after(() => browser.close());
+  const context = await browser.newContext({ ignoreHTTPSErrors: false });
+  await context.addCookies([
+    {
+      name: 'sf_static_probe',
+      value: 'non-secret',
+      domain: `remote.${rootDomain}`,
+      path: '/',
+      secure: true,
+      sameSite: 'Strict',
+    },
+  ]);
+  const page = await context.newPage();
+  const remoteRecords = [];
+  const cdp =
+    (process.env.SF_BROWSER ?? 'chromium') === 'chromium'
+      ? await context.newCDPSession(page)
+      : null;
+  await cdp?.send('Network.enable');
+  const byRequest = new Map();
+  const remoteRequestIds = new Set();
+  const record = (requestId) => {
+    if (!byRequest.has(requestId)) {
+      const value = {};
+      byRequest.set(requestId, value);
+    }
+    return byRequest.get(requestId);
+  };
+  cdp?.on('Network.requestWillBeSent', ({ requestId, request }) => {
+    const url = new URL(request.url);
+    if (url.hostname === `remote.${rootDomain}`) {
+      if (!remoteRequestIds.has(requestId)) remoteRecords.push(record(requestId));
+      remoteRequestIds.add(requestId);
+      Object.assign(record(requestId), { path: url.pathname, method: request.method });
+    }
+  });
+  cdp?.on('Network.requestWillBeSentExtraInfo', ({ requestId, headers }) => {
+    // ExtraInfo 可能先于 requestWillBeSent 到达；先按 ID 保存，再筛选 Remote 请求。
+    const names = Object.keys(headers).map((name) => name.toLowerCase());
+    record(requestId).credentials = names.filter((name) =>
+      ['cookie', 'authorization', 'x-sf-csrf'].includes(name),
+    );
+  });
+  cdp?.on('Network.responseReceivedExtraInfo', ({ requestId, statusCode, headers }) => {
+    const normalized = Object.fromEntries(
+      Object.entries(headers).map(([name, value]) => [name.toLowerCase(), value]),
+    );
+    Object.assign(record(requestId), {
+      status: statusCode,
+      allowOrigin: normalized['access-control-allow-origin'] ?? null,
+      allowCredentials: normalized['access-control-allow-credentials'] ?? null,
+      contentType: normalized['content-type'] ?? null,
+    });
+  });
+  const errors = [];
+  page.on('pageerror', () => errors.push('pageerror'));
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push('console-error');
+  });
+
+  const defaultIcon = await context.request.get(`https://console.${rootDomain}/favicon.ico`);
+  assert.equal(defaultIcon.status(), 204, 'default favicon probe has no independent brand');
+  assert.equal((await defaultIcon.body()).length, 0);
+  await verifyStaticRemoteRendering(page);
+  assert.deepEqual(errors, []);
+  if (cdp === null) return;
+  const evidenceDeadline = Date.now() + 10_000;
+  while (
+    remoteRecords.some((item) => item.credentials === undefined || item.status === undefined) &&
+    Date.now() < evidenceDeadline
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  assert.ok(remoteRecords.length >= 6);
+  assert.ok(remoteRecords.every((item) => item.credentials?.length === 0));
+  assert.ok(remoteRecords.every((item) => item.allowCredentials === null));
+  for (const version of ['v1', 'v2']) {
+    for (const file of ['remote.js', 'styles.css', 'image.svg']) {
+      assert.ok(
+        remoteRecords.some(
+          (item) =>
+            item.path === `/static-acceptance/${version}/${file}` &&
+            item.status === 200 &&
+            item.allowOrigin === `https://console.${rootDomain}`,
+        ),
+      );
+    }
+  }
+});
+
+test('Remote static CORS permits only Tenant origin and preserves version isolation', async (t) => {
+  const browser = await { chromium, firefox, webkit }[process.env.SF_BROWSER ?? 'chromium'].launch({
+    channel: process.env.SF_BROWSER_CHANNEL || undefined,
+  });
+  t.after(() => browser.close());
+  const context = await browser.newContext({ ignoreHTTPSErrors: false });
+  const tenant = await context.newPage();
+  await tenant.goto(`https://console.${rootDomain}/`);
+  const accepted = await tenant.evaluate(async (rootDomain) => {
+    const versions = [];
+    for (const version of ['v1', 'v2']) {
+      const url = `https://remote.${rootDomain}/static-acceptance/${version}/remote.js`;
+      const first = await fetch(url, { credentials: 'omit', cache: 'no-store' });
+      const second = await fetch(url, { credentials: 'omit', cache: 'no-store' });
+      versions.push({
+        status: first.status,
+        stable: (await first.text()) === (await second.text()),
+      });
+    }
+    const missing = await fetch(`https://remote.${rootDomain}/static-acceptance/v1/missing.js`, {
+      credentials: 'omit',
+    });
+    return {
+      versions,
+      missing: { status: missing.status, html: /<!doctype|<html/i.test(await missing.text()) },
+    };
+  }, rootDomain);
+  assert.deepEqual(accepted, {
+    versions: [
+      { status: 200, stable: true },
+      { status: 200, stable: true },
+    ],
+    missing: { status: 404, html: false },
+  });
+
+  for (const [originName, url] of [
+    ['platform', `https://platform.${rootDomain}/`],
+    ['api', `https://api.${rootDomain}/.well-known/jwks.json`],
+    ['null', 'data:text/html,<!doctype html><title>Opaque Origin probe</title>'],
+  ]) {
+    const page = await context.newPage();
+    await page.goto(url);
+    const rejected = await page.evaluate(async (rootDomain) => {
+      try {
+        await fetch(`https://remote.${rootDomain}/static-acceptance/v1/remote.js`, {
+          credentials: 'omit',
+          cache: 'no-store',
+        });
+        return false;
+      } catch {
+        return true;
+      }
+    }, rootDomain);
+    assert.equal(rejected, true, `${originName} origin should be rejected by CORS`);
+  }
 });
 
 test('Platform and Tenant sessions survive independent recovery and logout after initial password change', async (t) => {
@@ -688,7 +840,11 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         );
         assert.equal(await logo.getAttribute('src'), `/brands/acceptance-${asset}.svg`);
         assert.equal(
-          await logo.evaluate((image) => image.complete && image.naturalWidth > 0),
+          await logo.evaluate(async (image) => {
+            // 元素可见早于图片加载；解码失败仍应使验收失败。
+            await image.decode();
+            return image.complete && image.naturalWidth > 0;
+          }),
           true,
         );
         for (const scheme of ['light', 'dark']) {
@@ -1530,6 +1686,7 @@ async function selectConsoleLocale(page, name) {
   const selector = page.getByRole('combobox', { name: 'Language / 语言' });
   await selector.focus();
   await selector.press('Enter');
+  await page.locator('#console-locale[aria-expanded="true"]').waitFor();
   assert.equal(
     await selector.getAttribute('aria-expanded'),
     'true',
@@ -1562,6 +1719,8 @@ async function selectConsoleLocale(page, name) {
     name === 'English' ? 'en-US' : 'zh-CN',
     'locale selection persists',
   );
+  // 偏好写入早于弹层关闭；等待关闭后再返回，避免下一次 Enter 反而关闭旧弹层。
+  await page.locator('#console-locale[aria-expanded="false"]').waitFor();
 }
 
 async function setConsoleLocalePreference(context, locale) {

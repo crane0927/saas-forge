@@ -53,7 +53,7 @@ for (const line of stripVTControlCharacters(log).split('\n')) {
       (field === 'stack' && indent > diagnosticIndent)
     ) {
       const source =
-        /\b(consoles\/integration-test\/(?:console-authentication\.test|console-client-acceptance|console-problem-acceptance|brand-remote-acceptance|brand-concurrency-acceptance|session-tabs\.test|console-default-realm\.test)\.mjs:\d+:\d+)\b/.exec(
+        /\b(consoles\/integration-test\/(?:console-authentication\.test|console-client-acceptance|console-problem-acceptance|brand-remote-acceptance|brand-concurrency-acceptance|static-remote-acceptance|session-tabs\.test|console-default-realm\.test)\.mjs:\d+:\d+)\b/.exec(
           line,
         );
       if (source) console.info(`AT: ${source[1]}`);

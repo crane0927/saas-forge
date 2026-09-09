@@ -221,7 +221,7 @@ bash scripts/verify-console-authentication-e2e.sh --preflight
 bash scripts/verify-console-authentication-e2e.sh
 ```
 
-证书必须覆盖三个本地域名；示例绝对路径须替换为实际文件。预检仅检查环境，不证明登录成功。完整脚本创建独立项目和全新数据卷，自动准备测试账号并操作浏览器，结束时清理本次项目、数据卷和临时 Secret，不保留供后续手动登录的账号或环境。其结果以本次运行输出为准。
+证书必须覆盖 `platform.saasforge.test`、`console.saasforge.test`、`api.saasforge.test` 与 `remote.saasforge.test` 四个本地域名；示例绝对路径须替换为实际文件。预检仅检查环境，不证明登录、四域资源加载或 CORS 拒绝成功。完整脚本创建独立随机项目和全新数据卷，使用构建后的 Console、真实 API、同一份 `consoles/dist/static-remote-acceptance/` Remote 静态制品，经四个受信 HTTPS Origin 操作浏览器；Chromium 用例额外保留 Remote 请求/响应、无凭据加载、CSS 和图片解码证据。结束时只清理本次项目、数据卷和临时 Secret，不保留供后续手动登录的账号或环境。其结果以本次运行输出为准，不能替代开发模式 `verify:local:static-remote` 的 Vite/HMR 证据，也不宣称跨浏览器矩阵或父规格 #155 整体完成。
 
 ## Tenant 生命周期全新卷验收
 

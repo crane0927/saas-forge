@@ -4,13 +4,18 @@ import { createServer as httpServer, request } from "node:http";
 import { createServer as httpsServer } from "node:https";
 import { extname, resolve } from "node:path";
 
+const { serveRemoteStatic } = await import(
+  process.env.SF_REMOTE_STATIC_MODULE ??
+    "../local-https-development/remote-static.mjs"
+);
+
 const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? "saasforge.test";
 // 对照实验仅允许已批准的两个根域；不能把验收代理开放给任意 Host。
 if (!["saasforge.test", "saasforge.example.com"].includes(rootDomain)) {
   throw new Error("unsupported acceptance root domain");
 }
 
-// 仅供 Fresh Compose 验收：生产构建只读挂载，外部入口只接受三个正式受控 Host。
+// 仅供 Fresh Compose 验收：生产构建只读挂载，外部入口只接受四个正式受控 Host。
 const targets = {
   [`platform.${rootDomain}`]: "platform-console",
   [`console.${rootDomain}`]: "tenant-console",
@@ -37,6 +42,12 @@ function unavailable(response) {
 }
 
 function proxy(incoming, outgoing) {
+  if (incoming.headers.host === `remote.${rootDomain}`) {
+    void serveRemoteStatic(incoming, outgoing).catch(() =>
+      unavailable(outgoing),
+    );
+    return;
+  }
   const url = new URL(incoming.url, `https://api.${rootDomain}`);
   const probe = url.searchParams.get("acceptanceProbe");
   // 浏览器工具不保证暴露 opaque 响应的原始安全头；只记录显式探针的枚举元数据。
@@ -47,12 +58,17 @@ function proxy(incoming, outgoing) {
     url.pathname === "/api/v1/auth/logout" &&
     /^[0-9a-f-]{36}$/.test(probe ?? "");
   if (observedProbe) {
-    console.info(JSON.stringify({
-      event: "acceptance-browser-metadata",
-      probe,
-      origin: incoming.headers.origin === "null" ? "opaque" : "other",
-      fetchSite: incoming.headers["sec-fetch-site"] === "cross-site" ? "cross-site" : "other",
-    }));
+    console.info(
+      JSON.stringify({
+        event: "acceptance-browser-metadata",
+        probe,
+        origin: incoming.headers.origin === "null" ? "opaque" : "other",
+        fetchSite:
+          incoming.headers["sec-fetch-site"] === "cross-site"
+            ? "cross-site"
+            : "other",
+      }),
+    );
   }
   const target =
     Object.hasOwn(targets, incoming.headers.host) &&
@@ -73,12 +89,17 @@ function proxy(incoming, outgoing) {
     (response) => {
       // CORS 拒绝可隐藏浏览器响应；只记录探针对应的拒绝状态和允许头是否存在。
       if (observedProbe) {
-        console.info(JSON.stringify({
-          event: "acceptance-browser-response",
-          probe,
-          status: response.statusCode === 403 ? 403 : "other",
-          allowOrigin: Object.hasOwn(response.headers, "access-control-allow-origin"),
-        }));
+        console.info(
+          JSON.stringify({
+            event: "acceptance-browser-response",
+            probe,
+            status: response.statusCode === 403 ? 403 : "other",
+            allowOrigin: Object.hasOwn(
+              response.headers,
+              "access-control-allow-origin",
+            ),
+          }),
+        );
       }
       outgoing.writeHead(response.statusCode, response.headers);
       response.on("error", () => outgoing.destroy());
@@ -107,16 +128,30 @@ async function serve(incoming, outgoing) {
   }
   outgoing.setHeader("X-Content-Type-Options", "nosniff");
   outgoing.setHeader("Referrer-Policy", "no-referrer");
+  // Chrome 可能在共享 Shell 安装品牌图标前探测默认路径；此处不提供独立品牌素材。
+  if (pathname === "/favicon.ico") {
+    outgoing.writeHead(204, { "Cache-Control": "no-store" }).end();
+    return;
+  }
   // 公开 Client 的真实 HTTP 验收入口，与两个 Console 生产包独立挂载。
   if (pathname === "/acceptance-client.html") {
-    outgoing.writeHead(200, { "Content-Type": types[".html"], "Cache-Control": "no-store" });
-    outgoing.end(incoming.method === "HEAD" ? undefined :
-      '<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>公开 Client 验收</title><body><main>公开 Client HTTP 验收</main></body></html>');
+    outgoing.writeHead(200, {
+      "Content-Type": types[".html"],
+      "Cache-Control": "no-store",
+    });
+    outgoing.end(
+      incoming.method === "HEAD"
+        ? undefined
+        : '<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>公开 Client 验收</title><body><main>公开 Client HTTP 验收</main></body></html>',
+    );
     return;
   }
   if (pathname === "/acceptance-runtime.js") {
     const source = await readFile("/app/acceptance/runtime.js");
-    outgoing.writeHead(200, { "Content-Type": types[".js"], "Cache-Control": "no-store" });
+    outgoing.writeHead(200, {
+      "Content-Type": types[".js"],
+      "Cache-Control": "no-store",
+    });
     outgoing.end(incoming.method === "HEAD" ? undefined : source);
     return;
   }
@@ -126,9 +161,16 @@ async function serve(incoming, outgoing) {
     "/brands/acceptance-violet.svg": "#7C3AED",
   };
   // 仅在隔离验收静态服务中提供确定的素材故障，业务 API 仍来自真实 Gateway 与服务。
-  if (["/brands/acceptance-wrong-mime.svg", "/brands/acceptance-decode.svg"].includes(pathname)) {
+  if (
+    [
+      "/brands/acceptance-wrong-mime.svg",
+      "/brands/acceptance-decode.svg",
+    ].includes(pathname)
+  ) {
     outgoing.writeHead(200, {
-      "Content-Type": pathname.includes("wrong-mime") ? "text/html" : types[".svg"],
+      "Content-Type": pathname.includes("wrong-mime")
+        ? "text/html"
+        : types[".svg"],
       "Cache-Control": "no-store",
     });
     outgoing.end(incoming.method === "HEAD" ? undefined : "not an image");
@@ -139,8 +181,11 @@ async function serve(incoming, outgoing) {
       "Content-Type": types[".svg"],
       "Cache-Control": "no-store",
     });
-    outgoing.end(incoming.method === "HEAD" ? undefined :
-      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="${brandAssets[pathname]}"/></svg>`);
+    outgoing.end(
+      incoming.method === "HEAD"
+        ? undefined
+        : `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="${brandAssets[pathname]}"/></svg>`,
+    );
     return;
   }
   if (pathname === "/runtime-config.json") {

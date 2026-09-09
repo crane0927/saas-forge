@@ -24,6 +24,9 @@ const tenantRoutes = fileURLToPath(
 const remote = fileURLToPath(
   new URL('../business-remotes/design-system-consumer-fixture/src/remote.tsx', import.meta.url),
 );
+const staticRemoteAcceptance = fileURLToPath(
+  new URL('../tenant-console-shell/src/static-remote-acceptance.tsx', import.meta.url),
+);
 const acceptanceRoutes = '\0acceptance-tenant-routes';
 const acceptanceApp = '\0acceptance-tenant-app';
 const acceptanceRuntime = '\0acceptance-tenant-runtime';
@@ -35,6 +38,7 @@ const tenantMain = fileURLToPath(new URL('../tenant-console-shell/src/main.tsx',
 await build({
   configFile: fileURLToPath(new URL('../tenant-console-shell/vite.config.ts', import.meta.url)),
   root: tenantRoot,
+  mode: 'static-acceptance',
   plugins: [
     {
       name: 'acceptance-brand-remote-route',
@@ -71,10 +75,14 @@ await build({
         import { createElement } from 'react';
         import { createTenantAuthenticationRoutes as baseRoutes } from ${JSON.stringify(tenantRoutes)};
         import { DesignSystemConsumerRemote } from ${JSON.stringify(remote)};
+        import StaticRemoteAcceptance from ${JSON.stringify(staticRemoteAcceptance)};
         export function createTenantAuthenticationRoutes(locale) {
           return [...baseRoutes(locale), {
             path: '/acceptance/brand-remote', label: 'Remote acceptance',
             element: createElement('div', { 'data-testid': 'brand-remote' }, createElement(DesignSystemConsumerRemote, { locale })),
+          }, {
+            path: '/acceptance/static-remote', label: 'Static Remote acceptance',
+            element: createElement(StaticRemoteAcceptance),
           }];
         }
       `;

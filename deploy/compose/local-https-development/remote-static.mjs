@@ -6,6 +6,7 @@ const artifactRoot = process.env.SF_REMOTE_STATIC_DIRECTORY
       "../../../consoles/dist/static-remote-acceptance/",
       import.meta.url,
     );
+const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? "saasforge.test";
 const contentTypes = {
   "remote.js": "text/javascript; charset=utf-8",
   "styles.css": "text/css; charset=utf-8",
@@ -16,11 +17,9 @@ const contentTypes = {
 export async function serveRemoteStatic(incoming, outgoing) {
   outgoing.setHeader("Vary", "Origin");
   outgoing.setHeader("X-Content-Type-Options", "nosniff");
-  if (incoming.headers.origin === "https://console.saasforge.test") {
-    outgoing.setHeader(
-      "Access-Control-Allow-Origin",
-      "https://console.saasforge.test",
-    );
+  const allowedTenantOrigin = `https://console.${rootDomain}`;
+  if (incoming.headers.origin === allowedTenantOrigin) {
+    outgoing.setHeader("Access-Control-Allow-Origin", allowedTenantOrigin);
   }
   if (!["GET", "HEAD"].includes(incoming.method)) {
     outgoing

@@ -69,7 +69,7 @@ Chromium 使用系统正常信任与真实域名，不启动替代 Console 或�
 
 - 共用 `build:static-remote` 生成的同一目录，不为 E2E 复制一套资源。
 - `deploy/compose/local-https-development/remote-static.mjs` 的 HTTP handler 可由 E2E TLS Edge 在精确 Remote Host 下调用；用 `SF_REMOTE_STATIC_DIRECTORY` 指向同一只读制品目录。
-- Tenant E2E 构建可显式使用 `pnpm --dir consoles --filter @saas-forge/tenant-console-shell exec vite build --mode static-acceptance`；仍需原有运行配置替换与 Fresh Compose 编排。
-- `consoles/integration-test/static-remote-acceptance.mjs` 的呈现断言可复用，但开发 WSS 检查不能用于静态 E2E Console。
+- Fresh Compose 验收由 `scripts/verify-console-authentication-e2e.sh` 追加静态 Remote 验证：使用验收 Tenant 构建中的 `/acceptance/static-remote` 路由、同一 HTTP handler 和同一只读制品目录。
+- `consoles/integration-test/static-remote-acceptance.mjs` 的呈现断言可复用，但开发 WSS 检查只属于开发证据，不能用于静态 E2E Console。
 
-本 Issue 不改动 Fresh Compose 编排，也不声称本地其他浏览器、CI 五浏览器、父规格 #155 或 MVP 四域条目整体完成；这些需要各自环境的直接证据。
+本说明中的开发证据不声称本地其他浏览器、CI 五浏览器、父规格 #155 或 MVP 四域条目整体完成；这些需要各自环境的直接证据。

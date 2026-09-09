@@ -221,7 +221,7 @@ bash scripts/verify-console-authentication-e2e.sh --preflight
 bash scripts/verify-console-authentication-e2e.sh
 ```
 
-The certificate must cover all three local hosts; replace the example absolute paths with actual files. Preflight checks the environment, not successful login. The full script creates an isolated project and fresh volumes, prepares test accounts, and drives browsers. It then removes its project, volumes, and temporary Secrets, retaining no accounts or environment for later manual login. Only the output of the current run establishes its result.
+The certificate must cover `platform.saasforge.test`, `console.saasforge.test`, `api.saasforge.test`, and `remote.saasforge.test`; replace the example absolute paths with actual files. Preflight checks the environment, not successful login, four-domain resource loading, or CORS rejection. The full script creates an isolated random project and fresh volumes, then drives browsers against built Consoles, the real API, and the same `consoles/dist/static-remote-acceptance/` Remote artifacts through four trusted HTTPS Origins. Chromium additionally retains sanitized evidence for Remote requests/responses, credential-free loading, CSS application, and image decoding. It then removes only its project, volumes, and temporary Secrets, retaining no accounts or environment for later manual login. Only the output of the current run establishes its result; it does not replace development-mode `verify:local:static-remote` Vite/HMR evidence and does not claim a browser matrix or parent specification #155 as complete.
 
 ## Fresh-volume Tenant lifecycle acceptance
 

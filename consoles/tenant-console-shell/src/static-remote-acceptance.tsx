@@ -14,7 +14,8 @@ export default function StaticRemoteAcceptance() {
     const { version } = selection;
     const target = container.current;
     let active = true;
-    const base = `https://remote.saasforge.test/static-acceptance/${version}/`;
+    const remoteHost = window.location.hostname.replace(/^console\./u, 'remote.');
+    const base = `https://${remoteHost}/static-acceptance/${version}/`;
     const stylesheet = document.createElement('link');
     stylesheet.rel = 'stylesheet';
     stylesheet.crossOrigin = 'anonymous';

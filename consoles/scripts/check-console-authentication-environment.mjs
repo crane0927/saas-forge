@@ -19,7 +19,7 @@ function blocked(message) {
   problems.push(message);
   console.error(`BLOCKED: ${message}`);
 }
-const hosts = ['platform', 'console', 'api'].map((name) => `${name}.${rootDomain}`);
+const hosts = ['platform', 'console', 'api', 'remote'].map((name) => `${name}.${rootDomain}`);
 if (process.version !== 'v24.14.1') blocked('需要 Node 24.14.1');
 
 const certFile = process.env.SF_ACCEPTANCE_TLS_CERT;
