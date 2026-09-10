@@ -4,8 +4,6 @@ spring:
   jackson:
     deserialization:
       fail-on-unknown-properties: true
-  config:
-    import: nacos:iam-service.yaml?group=SAAS_FORGE&refreshEnabled=false
   cloud:
     nacos:
       username: ${NACOS_IAM_USERNAME:?NACOS_IAM_USERNAME is required}
@@ -58,3 +56,10 @@ saasforge:
 mybatis:
   mapper-locations: classpath*:mapper/**/*Mapper.xml
   type-handlers-package: io.saasforge.iam.infrastructure.persistence.type
+
+---
+spring:
+  config:
+    activate:
+      on-profile: "!local"
+    import: nacos:iam-service.yaml?group=SAAS_FORGE&refreshEnabled=false

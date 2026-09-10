@@ -120,10 +120,12 @@ curl --silent --show-error --request POST \
   --data-urlencode 'role=config-publisher-dev' \
   "$api/v3/auth/role" >/dev/null || true
 
-# IAM 只读取自己的配置并注册自己的稳定服务名；配置发布由独立发布身份负责。
+# IAM 读取自己的配置、注册并发现自身实例，以便原生进程按服务身份获取 Service Access Token。
+# 不授予配置发布或其他服务的发现权限。
 for permission in \
   "dev:SAAS_FORGE:config/iam-service.yaml:r" \
-  "dev:DEFAULT_GROUP:naming/iam-service:w"; do
+  "dev:DEFAULT_GROUP:naming/iam-service:w" \
+  "dev:DEFAULT_GROUP:naming/iam-service:r"; do
   resource="${permission%:*}"
   action="${permission##*:}"
   curl --silent --show-error --request POST \

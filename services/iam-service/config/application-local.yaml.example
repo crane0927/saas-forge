@@ -1,0 +1,87 @@
+# 复制为同目录 application-local.yaml，IDE 工作目录选 services/iam-service，激活 local。
+# 仅供开发；密码通过环境变量或外部 configtree 注入，私钥和 Client 凭据只引用受限文件。
+# 策略初始值来自 deploy/nacos/dev/iam-service.yaml；不修改测试/生产资源。
+saasforge:
+  environment: dev
+  iam:
+    configuration-revision: local
+    service-client-id-file: ${SAASFORGE_SERVICE_CLIENT_ID_FILE}
+    service-client-secret-file: ${SAASFORGE_SERVICE_CLIENT_SECRET_FILE}
+    outbox:
+      publish-delay: PT1S
+      lease-duration: PT30S
+    tenant-context-switch:
+      recovery-delay: PT1S
+      lease-duration: PT30S
+      initial-backoff: PT1S
+      maximum-backoff: PT1M
+      maximum-attempts: 10
+    session-revocation:
+      worker-delay: PT1S
+      batch-size: 1
+      lease-duration: PT30S
+      retry-delay: PT1S
+      maximum-attempts: 10
+
+security:
+  jwt:
+    issuer: ${IAM_JWT_ISSUER:?IAM_JWT_ISSUER is required}
+    access-token-ttl: PT15M
+    service-access-token-ttl: PT5M
+    signing:
+      adapter: pem-jca
+      pem:
+        key-version-ref: ${IAM_JWT_PEM_KEY_VERSION_REF:?IAM_JWT_PEM_KEY_VERSION_REF is required}
+        private-key-location: ${IAM_JWT_PEM_PRIVATE_KEY_LOCATION:?IAM_JWT_PEM_PRIVATE_KEY_LOCATION is required}
+  login-protection:
+    failure-window: PT15M
+    maximum-failures: 5
+    lock-duration: PT15M
+  revocation-index:
+    recovery-delay: PT5S
+
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,nacosRegistrationReadiness
+
+spring:
+  cloud:
+    nacos:
+      config:
+        enabled: false
+        import-check:
+          enabled: false
+      discovery:
+        enabled: true
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+        namespace: ${NACOS_NAMESPACE:dev}
+        ip: ${IAM_REGISTER_IP:127.0.0.1}
+        port: ${IAM_HTTP_PORT:8081}
+  datasource:
+    url: ${IAM_DATASOURCE_URL:jdbc:postgresql://127.0.0.1:5432/iam_db}
+    username: ${IAM_DATASOURCE_USERNAME:iam_app}
+    password: ${IAM_APP_PASSWORD}
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:127.0.0.1:29092}
+  grpc:
+    server:
+      port: ${IAM_GRPC_PORT:9091}
+
+server:
+  address: ${IAM_BIND_ADDRESS:127.0.0.1}
+  port: ${IAM_HTTP_PORT:8081}
+
+browser:
+  rootDomain: ${BROWSER_ROOT_DOMAIN:saasforge.test}
