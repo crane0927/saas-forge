@@ -21,8 +21,18 @@
 - Entitlement 发布 JAR 已检查，不含个人 local 配置或模板。
 - 本机日志：`/tmp/issue165-focused.log`、`/tmp/issue165-verify.log`。临时数据库/Redis 故障测试日志不等同于测试失败，以 Maven 退出码及 JUnit 报告为准。
 
-## 尚未执行的现场验收
+## 现场验收进度（2026-09-10）
 
-尚未完成本切片的 Entitlement IDEA Run/Debug/重启、真实 Console Tenant 初始化、Quota 副作用、真实 Nacos 端口变更和无健康实例演练。需要已准备的开发环境、平台测试身份及开发者配合 IDEA 生命周期操作。
+开发者在 IDEA 启动 Entitlement 后，`http://127.0.0.1:8083/actuator/health/readiness` 返回 `{"status":"UP"}`。使用各工作负载身份读取真实 dev Nacos，得到以下健康注册：
+
+| 查询身份 | 目标 | 注册 IP | HTTP | grpc.port |
+| --- | --- | --- | --- | --- |
+| Entitlement | IAM | 127.0.0.1 | 8081 | 9091 |
+| Entitlement | Tenant Access | 127.0.0.1 | 8082 | 9092 |
+| Tenant Access | Entitlement | 127.0.0.1 | 8083 | 9093 |
+
+此前本地 `.env` 提供的 Entitlement 凭据登录失败，且 Tenant Access 读取 Entitlement 返回 403。经开发者明确授权，复用已停止开发容器的工作负载凭据到 Git 忽略的受限 configtree，并仅补齐 Entitlement → IAM、Entitlement → Tenant Access、Tenant Access → Entitlement 三项 dev naming 读取权限；随后登录及发现查询均成功。未重置数据、重建身份或启停容器。
+
+以上仅证明启动、健康与注册发现，不代表业务联调通过。仍待完成 IDEA 重启、真实 Tenant 初始化及 Quota 副作用、真实 Nacos 端口变更和无健康实例演练。
 
 仓库完整 CI、Fresh Compose 和多浏览器矩阵未执行。Issue #165 尚不能据此声明全部验收通过或关闭。
