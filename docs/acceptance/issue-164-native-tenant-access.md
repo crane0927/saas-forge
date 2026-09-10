@@ -32,17 +32,21 @@ mvn -q -pl gateway,services/iam-service,services/tenant-access-service -am verif
 
 ## 真实环境记录
 
-尚未完成本次真实 IDE 与浏览器联调。开发者已停止 Tenant Access 容器并提供受限浏览器凭据文件；本任务已准备被 Git 忽略的 Tenant Access 个人配置/configtree，并为 IAM 个人配置补充 gRPC 注册元数据。
+2026-09-10，本机 Gateway、IAM、Tenant Access 已通过 IDEA 原生 Debug 运行，使用 `local` profile。开发者已停止冲突的 Tenant Access 容器；个人配置及 configtree 被 Git 忽略，凭据文件权限为 600。
 
-只读检查确认：IAM 当前工作负载读取 Tenant Access 实例返回 403；仓库 `.env` 与运行环境凭据不一致。自动审批最初拒绝从停止容器复制准确凭据；开发者随后明确授权，已将指定停止容器中的必要凭据写入 600 权限的 configtree，并补齐仅 dev 范围的双向 naming 读取权限。两个工作负载的实例读取复查均为 HTTP 200/code 0，目前实例列表为空。没有重跑初始化、启动后台应用或重置开发数据。浏览器当前停留在既有 Tenant 登录失败页面（`TENANT_ACCESS_UNAVAILABLE`），不能据此宣称新实现的行为。
+开发者明确授权后，已从指定停止容器复制必要工作负载凭据，并仅为 dev 补齐 IAM ↔ Tenant Access 的 naming 读取权限。没有重跑初始化或重置开发数据。两个工作负载的实例读取均返回 HTTP 200/code 0：
 
-IDE UI 自动化返回 `noWindowsAvailable`，已请开发者同步 Maven 并原生 Debug 三个主类。
+| 服务 | 注册 IP | HTTP | grpc.port |
+| --- | --- | --- | --- |
+| IAM | 127.0.0.1 | 8081 | 9091 |
+| Tenant Access | 127.0.0.1 | 8082 | 9092 |
 
-待补齐：
+通过真实 Chrome `https://console.saasforge.test/` 使用既有合法身份登录，进入“Tenant 工作台”；再次刷新页面后会话恢复成功。请求沿既有 Console/Gateway 入口执行，没有直接注入 Cookie、Origin 或 Bearer Token。普通登录/刷新覆盖 IAM 到 Tenant Access 的 Accessible Membership 查询；该查询不要求 Membership Validation 的服务 Token，不能单凭登录/刷新推断反向 JWKS 已调用。受保护双向路径仍待补验。
 
-1. Tenant Access IDE Run/Debug、断点及修改后重启。
-2. IAM 与 Tenant Access 在 Nacos 中注册可达 IP、正确 HTTP 端口和 `grpc.port`，并有双向最小读取权限。
-3. 已有合法 Membership 经真实 Tenant Console/Gateway 登录、刷新、Membership 校验，以及反向 JWKS 请求；记录 IAM 内部服务 Token 签发证据。
-4. 被调用实例地址/端口变化，调用方配置不动仍成功；无健康实例与发现失败时明确拒绝。
+将 Tenant Access 个人配置的 HTTP/gRPC 端口临时改为 8182/9192，经开发者在 IDEA 重启后，Nacos 返回新端口及健康状态；IAM 与 Gateway 配置未改，真实 Tenant Console 刷新仍恢复到工作台。
 
-完整 CI、Fresh Compose、多浏览器矩阵尚未执行。Issue #164 保持未完成状态，不能凭配置或自动化测试关闭。
+在 IDEA 停止 Tenant Access 后，IAM 的发现查询返回成功但实例列表为空；刷新真实 Tenant Console 显示“暂时无法恢复会话”，恢复代码 `TENANT_ACCESS_UNAVAILABLE`，未进入工作台。发现服务异常及旧端点仍存活时不回退的情况由真实临时 HTTP/gRPC 服务自动化测试覆盖，未中断共享 Nacos 来制造现场故障。
+
+个人配置已恢复原端口 8082/9092，经开发者再次 IDEA Debug 后，浏览器刷新成功恢复工作台。
+
+完整 CI、Fresh Compose、多浏览器矩阵尚未执行。Issue #164 在剩余现场验收完成前保持未完成状态。
