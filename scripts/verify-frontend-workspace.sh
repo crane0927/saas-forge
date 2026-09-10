@@ -6,6 +6,15 @@ console_root="$repository_root/consoles"
 expected_node="24.14.1"
 expected_pnpm="11.22.0"
 
+package=""
+if [[ $# -ne 0 ]]; then
+  if [[ $# -ne 2 || "$1" != "--package" || ! "$2" =~ ^@saas-forge/[a-z0-9-]+$ ]]; then
+    echo "用法：bash scripts/verify-frontend-workspace.sh [--package @saas-forge/<name>]" >&2
+    exit 2
+  fi
+  package="$2"
+fi
+
 if ! command -v node >/dev/null 2>&1; then
   echo "Frontend verification requires Node $expected_node; install it before running Maven verify." >&2
   exit 1
@@ -34,4 +43,11 @@ if [[ ! -d "$console_root/node_modules" ]]; then
   exit 1
 fi
 
-(cd "$console_root" && pnpm run verify:workspace)
+if [[ -n "$package" ]]; then
+  echo "SCOPE: $package 的 verify；共享模块变更须另行覆盖消费者，见 docs/local-verification.md。"
+  echo "NOT_RUN: 前端全工作区、兼容性矩阵、后端与 fresh 环境。"
+  # 精确包名和 fail-if-no-match 防止拼错名称被误报为通过；不容许跳过缺失的 verify。
+  (cd "$console_root" && pnpm --fail-if-no-match --filter "$package" run verify)
+else
+  (cd "$console_root" && pnpm run verify:workspace)
+fi
