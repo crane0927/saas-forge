@@ -51,3 +51,13 @@ IDE 自动化曾遇到 `noWindowsAvailable`、`cannotClickOffscreenElement` 和�
 本次仅重跑与资源位置和打包直接相关的检查；前述 439 项完整模块验证属于布局调整前的记录。实际 IDE 和认证验收仍待完成。
 
 追加审查发现模板测试可能同时加载 classpath 的个人配置，已改为仅从隔离临时目录加载主配置与模板，两个配置测试再次通过，避免依赖开发者凭据目录。
+
+## 2026-09-10 追加实际验证
+
+- 重新执行两个模块的 `LocalConfigurationTest` 与 `LocalIamDiscoveryTest`，Maven 退出码 0；日志 `/tmp/issue-163-final-focused.log`。
+- 在 IntelliJ IDEA 点击 IAM Debug，观察到主类使用 `--spring.profiles.active=local` 和模块 `target/classes` 启动；随后 Nacos 返回 `iam-service` 健康实例 `127.0.0.1:8081`。尚未命中断点，不能据此判定完整 IDE 验收通过。
+- Gateway 健康实例仍为空；其 IDE 控制台显示之前进程已退出。再次尝试启动时，IDE 自动化接口连续返回 `noWindowsAvailable`，未成功启动 Gateway。
+- 使用系统证书校验请求：Platform HTTPS 页面返回 200，Gateway JWKS HTTPS 返回 502。没有把页面可达作为登录刷新成功的证据。
+- IAM 应用身份查询自身实例仍返回 Nacos 403；现有环境的只读发现授权尚未执行。
+
+因此本次仍未完成真实登录刷新、双服务断点、修改后重启、真实端口切换和无健康实例认证失败验收，Issue #163 不满足关闭条件。
