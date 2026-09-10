@@ -93,3 +93,13 @@ Provider 经 Spring 事务代理使用 `NOT_SUPPORTED`，挂起调用方事务�
 | 安全边界、聚焦检查、完整 IDE 与链路说明和证据 | 自动化和说明已具备，现场证据仍待上述项目补齐 |
 
 Tenant Console 的 `TENANT_ACCESS_UNAVAILABLE` 属于 #164 的 IAM → Tenant Access 原生 gRPC 联调范围，不作为本 Issue 关闭阻塞。#163 暂保持 OPEN，未将部分完成标记为全部验收通过。
+
+## 最终验收确认
+
+开发者随后明确确认上述三项现场验收均已完成：
+
+1. Gateway 与 IAM 均命中过断点，并在修改后重启。
+2. IAM 改端口后，未修改 Gateway 下游配置，登录与刷新仍成功。
+3. 停止 IAM、无健康实例后，请求明确失败。
+
+上述三项为开发者现场确认；Platform 页面刷新恢复、健康注册和 HTTPS JWKS 为本任务直接观察；68 项认证相关测试与 19 项脚本回归为自动化证据。基于这些证据，前述待验收项已补齐，Issue #163 的全部验收条件满足，可关闭。Tenant Console 的 #164 联调问题保持独立；本结论不表示完整 CI、Fresh Compose 或多浏览器矩阵已执行。
