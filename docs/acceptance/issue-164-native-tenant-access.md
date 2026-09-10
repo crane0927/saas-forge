@@ -18,7 +18,7 @@
 - `bash scripts/validate-nacos-config.sh`、初始化及 ACL 脚本语法检查、`git diff --check` 通过。未修改 `deploy/nacos/<environment>/` 的运行配置资源。
 
 - 发现模块目前 11 项测试通过（失败/错误/跳过均为 0）；其中慢发现测试先在 1 秒断言超时，修复为发现与 RPC 共用剩余预算后通过。
-- Standards 初审发现 1 项超时缺口，已修复并复核，当前 0 项未解决；Spec 审查未发现代码缺陷，但真实验收证据尚缺。审查不能替代现场验证。
+- Standards 初审发现 1 项超时缺口，已修复并复核，当前 0 项未解决；Spec 初审指出普通登录不能证明受保护双向调用，已按下文补验；最终复核通过，0 项未解决。审查不能替代现场验证。
 
 完整相关模块验证通过：
 
@@ -41,7 +41,7 @@ mvn -q -pl gateway,services/iam-service,services/tenant-access-service -am verif
 | IAM | 127.0.0.1 | 8081 | 9091 |
 | Tenant Access | 127.0.0.1 | 8082 | 9092 |
 
-通过真实 Chrome `https://console.saasforge.test/` 使用既有合法身份登录，进入“Tenant 工作台”；再次刷新页面后会话恢复成功。请求沿既有 Console/Gateway 入口执行，没有直接注入 Cookie、Origin 或 Bearer Token。普通登录/刷新覆盖 IAM 到 Tenant Access 的 Accessible Membership 查询；该查询不要求 Membership Validation 的服务 Token，不能单凭登录/刷新推断反向 JWKS 已调用。受保护双向路径仍待补验。
+通过真实 Chrome `https://console.saasforge.test/` 使用既有合法身份登录，进入“Tenant 工作台”；再次刷新页面后会话恢复成功。请求沿既有 Console/Gateway 入口执行，没有直接注入 Cookie、Origin 或 Bearer Token。普通登录/刷新覆盖 IAM 到 Tenant Access 的 Accessible Membership 查询；该查询不要求 Membership Validation 的服务 Token，不能单凭登录/刷新推断反向 JWKS 已调用。受保护双向路径另行通过下述正式 Runtime 操作验证。
 
 将 Tenant Access 个人配置的 HTTP/gRPC 端口临时改为 8182/9192，经开发者在 IDEA 重启后，Nacos 返回新端口及健康状态；IAM 与 Gateway 配置未改，真实 Tenant Console 刷新仍恢复到工作台。
 
@@ -49,4 +49,12 @@ mvn -q -pl gateway,services/iam-service,services/tenant-access-service -am verif
 
 个人配置已恢复原端口 8082/9092，经开发者再次 IDEA Debug 后，浏览器刷新成功恢复工作台。
 
-完整 CI、Fresh Compose、多浏览器矩阵尚未执行。Issue #164 在剩余现场验收完成前保持未完成状态。
+通过 Chrome 开发者控制台复用页面已有的共享 Authentication Runtime，调用正式 `switchTenantContext` operation，目标为新生成的不存在 Membership UUIDv7。没有自行注入 Cookie、Origin、Fetch Metadata 或 Bearer Token。
+
+实际 `POST /api/v1/auth/tenant-switches` 返回 HTTP 403，Runtime 返回 `ACCESS_CONTEXT_UNAVAILABLE`，状态仍为 authenticated，当前 Membership 未改变；随后刷新真实页面仍恢复 Tenant 工作台。
+
+此结果结合实现路径提供受保护双向证据：`TenantContextSwitchService` 先验证当前合法 Membership，再验证目标；IAM 的 Membership Validation gRPC 客户端获取并发送保留服务 Token，Tenant Access 拦截器强制验证该 Token，JWKS 解析器经发现访问 IAM。目标拒绝且原会话可恢复说明当前 Membership 校验通过。这里的调用顺序依据代码，浏览器观测为上述 HTTP/Runtime 结果，不声称采集了逐跳网络抓包。
+
+请求会创建幂等切换工作流并记录目标拒绝，不会创建 Tenant、Identity 或 Membership，也未切换当前租户。未验证成功切换到第二租户或 Tenant Access 的全部反向 IAM gRPC 业务操作；这些不计入本切片完成声明。
+
+Issue #164 所需原生启动、真实必要双向链路、端口变化与聚焦拒绝验证已完成。完整 CI、Fresh Compose、多浏览器矩阵未执行。
