@@ -3,6 +3,15 @@ import test from "node:test";
 import * as httpsDevelopment from "../local-https-development.mjs";
 
 const repositoryRoot = "/workspace/saas-forge";
+test("HTTPS Edge exposes standalone commands without selecting a Console", () => {
+  for (const command of ["start", "status", "stop"]) {
+    assert.deepEqual(
+      httpsDevelopment.localHttpsDevelopmentCommand([command, "edge"]),
+      { command, target: "edge" },
+    );
+  }
+});
+
 function fixture({
   exists = true,
   running = true,

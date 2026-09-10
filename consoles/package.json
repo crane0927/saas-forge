@@ -8,9 +8,9 @@
   },
   "scripts": {
     "validate:i18n": "node scripts/validate-i18n-resources.mjs",
-    "generate:api": "../mvnw -f ../pom.xml --batch-mode --no-transfer-progress -pl contracts/openapi -am generate-sources",
-    "dev:platform": "pnpm run generate:api && pnpm --filter @saas-forge/platform-console run dev",
-    "dev:tenant": "pnpm run generate:api && pnpm --filter @saas-forge/tenant-console-shell run dev",
+    "generate:api": "node scripts/check-api-client.mjs --generate",
+    "dev:platform": "pnpm --filter @saas-forge/platform-console run dev",
+    "dev:tenant": "pnpm --filter @saas-forge/tenant-console-shell run dev",
     "typecheck": "pnpm --recursive --if-present run typecheck",
     "test:boundaries": "pnpm run build:static-remote && node --test test/*.test.mjs",
     "build:static-remote": "node scripts/build-static-remote-acceptance.mjs",
