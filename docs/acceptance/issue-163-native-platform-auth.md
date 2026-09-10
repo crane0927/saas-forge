@@ -75,3 +75,21 @@ Provider 经 Spring 事务代理使用 `NOT_SUPPORTED`，挂起调用方事务�
 最终运行 `mvn -q -pl services/iam-service -am -Dtest=ReservedIamServiceAccessTokenProviderTest,ClientCredentialsTokenServiceTest,JwtSigningServiceTest,GrpcMembershipValidationTest,AuthenticationHttpIT -Dsurefire.failIfNoSpecifiedTests=false test`，68 项通过（认证集成 52、Provider 3、Client Credentials 4、签名 5、gRPC 4），失败/错误/跳过均为 0。日志 `/tmp/iam-internal-verification.log`。首次回归新增用例的执行顺序落在既有 Redis 停机测试之后，且一项 Scope 测试数据违反 Client 创建约束；修正测试顺序及数据后重跑通过，未将首次失败计为通过。
 
 `sh -n deploy/compose/nacos-init.sh`、`git diff --check` 与 19 项本地服务脚本测试通过。本次没有运行完整 CI 或重启用户的 IDE 应用，仍不宣称 Issue #163 的真实浏览器及 IDE 验收全部完成。
+
+## 最新关闭条件核对
+
+开发者确认 IAM 已在代码调整后重启，且 Platform 登录正常。只读检查确认 Gateway `127.0.0.1:8080` 与 IAM `127.0.0.1:8081` 均健康注册，受信 HTTPS JWKS 返回 200。在开发者重新登录后，通过 Chrome 刷新 `https://platform.saasforge.test/`，页面经过启动阶段重新显示 Platform 总览、认证会话说明和退出登录按钮，未跳回登录页。本次确认 Platform 登录与刷新恢复通过，替代此前旧会话未恢复的待验证状态。
+
+按照 GitHub Issue #163 当前清单逐项核对：
+
+| 验收项 | 当前状态 |
+| --- | --- |
+| 个人模板、Git 忽略、IDE 加载与敏感值隔离 | 通过 |
+| 依赖和监听/注册地址可配，本地配置与 Nacos 发现分离 | 通过 |
+| 双主类 IDE 调试、断点命中、修改后重启 | 部分完成；双服务已运行，IAM 修改后重启已由开发者确认，双服务断点及 Gateway 修改后重启仍缺证据 |
+| 受信 HTTPS 下 Platform 登录与刷新 | 通过；用户确认登录，Chrome 实际刷新恢复 |
+| IAM 改地址/端口后恢复、无健康实例或发现不可用时失败 | 真实环境证据待补齐，不能以自动化替代 |
+| 迁移/服务身份独立准备，不提供迁移权限、不重置或接管 | 通过 |
+| 安全边界、聚焦检查、完整 IDE 与链路说明和证据 | 自动化和说明已具备，现场证据仍待上述项目补齐 |
+
+Tenant Console 的 `TENANT_ACCESS_UNAVAILABLE` 属于 #164 的 IAM → Tenant Access 原生 gRPC 联调范围，不作为本 Issue 关闭阻塞。#163 暂保持 OPEN，未将部分完成标记为全部验收通过。
