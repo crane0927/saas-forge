@@ -120,11 +120,11 @@ curl --silent --show-error --request POST \
   --data-urlencode 'role=config-publisher-dev' \
   "$api/v3/auth/role" >/dev/null || true
 
-# IAM 仅读取自己的配置并注册自身实例。
-# 不授予配置发布或其他服务的发现权限。
+# IAM 注册自身，并为原生 Membership 调用读取 Tenant Access 实例；不授予其配置读取或发布权限。
 for permission in \
   "dev:SAAS_FORGE:config/iam-service.yaml:r" \
-  "dev:DEFAULT_GROUP:naming/iam-service:w"; do
+  "dev:DEFAULT_GROUP:naming/iam-service:w" \
+  "dev:DEFAULT_GROUP:naming/tenant-access-service:r"; do
   resource="${permission%:*}"
   action="${permission##*:}"
   curl --silent --show-error --request POST \
@@ -135,12 +135,12 @@ for permission in \
     "$api/v3/auth/permission" >/dev/null || true
 done
 
-# Tenant Access 和 Entitlement 分别只读取自己的配置、注册自己的稳定服务名，
-# 并且只为本机替换生命周期读取自己的健康实例。
+# Tenant Access 读取 IAM 实例以获取服务令牌、JWKS 并执行 gRPC；其他权限保持应用隔离。
 for permission in \
   "dev:SAAS_FORGE:config/tenant-access-service.yaml:r" \
   "dev:DEFAULT_GROUP:naming/tenant-access-service:w" \
-  "dev:DEFAULT_GROUP:naming/tenant-access-service:r"; do
+  "dev:DEFAULT_GROUP:naming/tenant-access-service:r" \
+  "dev:DEFAULT_GROUP:naming/iam-service:r"; do
   resource="${permission%:*}"
   action="${permission##*:}"
   curl --silent --show-error --request POST \

@@ -16,12 +16,14 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.grpc.client.GrpcChannelFactory;
+import io.grpc.Channel;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.web.client.RestClient;
 
 @Configuration
 public class PlatformAuthorizationConfiguration {
     @Bean
+    @org.springframework.context.annotation.Profile("!local")
     RestClient tenantAccessIamRestClient(
             @Value("${saasforge.tenant-access.iam-http-base-url}") String baseUrl) {
         return RestClient.create(baseUrl);
@@ -42,7 +44,7 @@ public class PlatformAuthorizationConfiguration {
             RestClient tenantAccessIamRestClient,
             IamServiceAccessTokenProvider serviceTokens,
             StringRedisTemplate redis,
-            GrpcChannelFactory channels,
+            @Qualifier("iamServiceChannel") Channel iamChannel,
             Clock clock,
             @Value("${security.jwt.issuer}") String issuer,
             @Value("${saasforge.environment:dev}") String environment) {
@@ -52,7 +54,7 @@ public class PlatformAuthorizationConfiguration {
         UserAccessTokenVerifier userTokens = new UserAccessTokenVerifier(
                 keys, revocations, clock, issuer, "saasforge-api", Duration.ofSeconds(30));
         GrpcPlatformRoleChecker roles = new GrpcPlatformRoleChecker(
-                PlatformAuthorizationServiceGrpc.newBlockingStub(channels.createChannel("iam")),
+                PlatformAuthorizationServiceGrpc.newBlockingStub(iamChannel),
                 serviceTokens::token);
         return new SdkPlatformAdminAuthorizer(new PlatformRequestAuthorizer(userTokens, roles));
     }

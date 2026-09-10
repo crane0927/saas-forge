@@ -9,14 +9,12 @@ import io.saasforge.tenantaccess.infrastructure.security.IamServiceAccessTokenPr
 import java.time.Clock;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.grpc.client.GrpcChannelFactory;
 import org.springframework.web.client.RestClient;
 
 class PlatformAuthorizationConfigurationTest {
     @Test
     void wiresPlatformAuthorizationAdapters() {
-        GrpcChannelFactory channels = mock(GrpcChannelFactory.class);
-        when(channels.createChannel("iam")).thenReturn(mock(ManagedChannel.class));
+        ManagedChannel channel = mock(ManagedChannel.class);
         PlatformAuthorizationConfiguration configuration =
                 new PlatformAuthorizationConfiguration();
 
@@ -24,7 +22,7 @@ class PlatformAuthorizationConfigurationTest {
                 RestClient.create("http://iam"),
                 mock(IamServiceAccessTokenProvider.class),
                 mock(StringRedisTemplate.class),
-                channels,
+                channel,
                 Clock.systemUTC(),
                 "https://iam.saasforge.test",
                 "test"));

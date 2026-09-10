@@ -1,0 +1,71 @@
+# 复制为同目录 application-local.yaml，IDE 激活 local；凭据仅通过环境变量或受限文件注入。
+# 非敏感策略来自 deploy/nacos/dev/tenant-access-service.yaml；初始化迁移独立执行。
+saasforge:
+  tenant-access:
+    configuration-revision: local
+    outbox:
+      publish-delay: PT1S
+      lease-duration: PT30S
+    initialization:
+      recovery-delay: PT1S
+      lease-duration: PT30S
+      initial-backoff: PT1S
+      maximum-backoff: PT1M
+      maximum-attempts: 10
+    password-setup:
+      recovery-delay: PT1S
+
+security:
+  jwt:
+    issuer: ${IAM_JWT_ISSUER:?IAM_JWT_ISSUER is required}
+
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,nacosRegistrationReadiness
+
+spring:
+  cloud:
+    nacos:
+      config:
+        enabled: false
+        import-check:
+          enabled: false
+      discovery:
+        enabled: true
+        metadata:
+          grpc.port: ${spring.grpc.server.port}
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+        namespace: ${NACOS_NAMESPACE:dev}
+        ip: ${TENANT_ACCESS_REGISTER_IP:127.0.0.1}
+        port: ${TENANT_ACCESS_HTTP_PORT:8082}
+  datasource:
+    url: ${TENANT_ACCESS_DATASOURCE_URL:jdbc:postgresql://127.0.0.1:5432/tenant_access_db}
+    username: ${TENANT_ACCESS_DATASOURCE_USERNAME:tenant_access_app}
+    password: ${TENANT_ACCESS_APP_PASSWORD}
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:127.0.0.1:29092}
+  grpc:
+    server:
+      port: ${TENANT_ACCESS_GRPC_PORT:9092}
+    client:
+      channels:
+        iam:
+          default-deadline: PT3S
+        entitlement:
+          default-deadline: PT3S
+
+server:
+  address: ${TENANT_ACCESS_BIND_ADDRESS:127.0.0.1}
+  port: ${TENANT_ACCESS_HTTP_PORT:8082}

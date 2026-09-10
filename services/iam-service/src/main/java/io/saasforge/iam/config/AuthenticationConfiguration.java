@@ -86,7 +86,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.grpc.client.GrpcChannelFactory;
+import io.grpc.Channel;
+import org.springframework.beans.factory.annotation.Qualifier;
 import tools.jackson.databind.ObjectMapper;
 
 @Configuration(proxyBeanMethods = false)
@@ -422,10 +423,9 @@ public class AuthenticationConfiguration {
     @Bean
     @ConditionalOnMissingBean(AccessibleMemberships.class)
     AccessibleMemberships accessibleMemberships(
-            GrpcChannelFactory channels,
-            @Value("${saasforge.iam.tenant-access-grpc-target:tenant-access}") String target) {
+            @Qualifier("tenantAccessMembershipChannel") Channel membershipChannel) {
         return new GrpcAccessibleMemberships(
-                AccessibleMembershipQueryServiceGrpc.newBlockingStub(channels.createChannel(target)));
+                AccessibleMembershipQueryServiceGrpc.newBlockingStub(membershipChannel));
     }
 
     @Bean

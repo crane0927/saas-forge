@@ -1,6 +1,6 @@
 # Gateway 与 IAM 原生本地开发
 
-适用于 Issue #163 的 Platform 登录与刷新切片，遵循 ADR 0043、0044。应用由 IDE 直接 Run/Debug 主类；环境初始化、迁移、服务身份及 HTTPS Edge 独立准备。Tenant 会话所需的双向 gRPC 发现属于后续 Issue #164，本切片不宣称已完成。
+适用于 Issue #163 的 Platform 登录与刷新切片，遵循 ADR 0043、0044。应用由 IDE 直接 Run/Debug 主类；环境初始化、迁移、服务身份及 HTTPS Edge 独立准备。Tenant 会话所需的双向 gRPC 发现见 [Issue #164 联调说明](native-tenant-access-development.md)，本文件的 Platform 切片不代替该验收。
 
 ## 个人配置
 

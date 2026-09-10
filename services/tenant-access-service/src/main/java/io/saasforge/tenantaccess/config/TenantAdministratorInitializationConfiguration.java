@@ -25,15 +25,17 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.grpc.client.GrpcChannelFactory;
+import io.grpc.Channel;
+import org.springframework.beans.factory.annotation.Qualifier;
 import tools.jackson.databind.ObjectMapper;
 
 @Configuration
 public class TenantAdministratorInitializationConfiguration {
     @Bean
     IdentityProvisioningGateway identityProvisioningGateway(
-            GrpcChannelFactory channels, IamServiceAccessTokenProvider tokens) {
+            @Qualifier("iamServiceChannel") Channel iamChannel, IamServiceAccessTokenProvider tokens) {
         return new GrpcIdentityProvisioningGateway(
-                IdentityProvisioningServiceGrpc.newBlockingStub(channels.createChannel("iam")),
+                IdentityProvisioningServiceGrpc.newBlockingStub(iamChannel),
                 tokens::identityWriteToken);
     }
 
@@ -47,9 +49,9 @@ public class TenantAdministratorInitializationConfiguration {
 
     @Bean
     PasswordSetupDeliveryGateway passwordSetupDeliveryGateway(
-            GrpcChannelFactory channels, IamServiceAccessTokenProvider tokens) {
+            @Qualifier("iamServiceChannel") Channel iamChannel, IamServiceAccessTokenProvider tokens) {
         return new GrpcPasswordSetupDeliveryGateway(
-                PasswordSetupServiceGrpc.newBlockingStub(channels.createChannel("iam")),
+                PasswordSetupServiceGrpc.newBlockingStub(iamChannel),
                 tokens::passwordSetupWriteToken);
     }
 

@@ -97,6 +97,20 @@ assert_config_access_denied() {
   fi
 }
 
+assert_collaborator_discovery_readable() {
+  local application="$1" token="$2" service="$3" status
+  status="$(request_status "$token" --get \
+    --data-urlencode "serviceName=$service" \
+    --data-urlencode 'groupName=DEFAULT_GROUP' \
+    --data-urlencode "namespaceId=$NACOS_NAMESPACE" \
+    --data-urlencode 'healthyOnly=true' \
+    "$nacos_api/v3/client/ns/instance/list")"
+  if [[ "$status" != "200" ]] || ! grep -Eq '"code"[[:space:]]*:[[:space:]]*0' "$response_file"; then
+    echo "$application 工作负载无法发现 $service，HTTP $status" >&2
+    exit 1
+  fi
+}
+
 verify_workload() {
   local application="$1"
   local username="$2"
@@ -106,6 +120,10 @@ verify_workload() {
   token="$(login "$username" "$password")"
   assert_own_config_readable "$application" "$token"
   assert_config_access_denied "$application" "$token" "$other_application"
+  case "$application" in
+    iam-service) assert_collaborator_discovery_readable "$application" "$token" tenant-access-service ;;
+    tenant-access-service) assert_collaborator_discovery_readable "$application" "$token" iam-service ;;
+  esac
   echo "已验证 $application 的 Nacos 最小权限"
 }
 
