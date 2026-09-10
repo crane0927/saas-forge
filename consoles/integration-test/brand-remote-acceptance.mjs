@@ -4,6 +4,17 @@ import assert from 'node:assert/strict';
 export async function verifyBrandRemoteInheritance(page) {
   const favicon = page.locator('head link[rel~="icon"]');
   const inheritedFavicon = await favicon.evaluate((icon) => icon.href);
+  if (page.context().browser().browserType().name() === 'firefox') {
+    // Firefox 延迟加载 Shell favicon，Playwright 将其归为 image；Resource Timing
+    // 则以 other 标记浏览器发起的 favicon。先等该资源完成，避免把它计入 Remote 请求。
+    await page.waitForFunction(
+      (url) =>
+        globalThis.performance
+          .getEntriesByName(url, 'resource')
+          .some((entry) => entry.initiatorType === 'other' && entry.responseEnd > 0),
+      inheritedFavicon,
+    );
+  }
   const brandRequests = [];
   const observe = (request) => {
     const pathname = new URL(request.url()).pathname;
