@@ -1,4 +1,4 @@
-# 复制为同目录 application-local.yaml，IDE 工作目录选 gateway，激活 local。
+# 复制为同目录 application-local.yaml，IDE 激活 local；通过 classpath 加载，与工作目录无关。
 # 密码通过 IDE 环境变量或外部 configtree 注入；此文件不保存敏感材料。
 server:
   address: ${GATEWAY_BIND_ADDRESS:127.0.0.1}

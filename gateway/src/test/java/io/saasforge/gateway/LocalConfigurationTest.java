@@ -16,14 +16,14 @@ class LocalConfigurationTest {
 
     @Test
     void loadsPersonalConfigurationWithoutConfigCenterAndKeepsDiscovery() throws Exception {
-        Files.copy(Path.of("config/application-local.yaml.example"), directory.resolve("application-local.yaml"));
+        Files.copy(Path.of("src/main/resources/application.yaml"), directory.resolve("application.yaml"));
+        Files.copy(Path.of("src/main/resources/application-local.yaml.example"), directory.resolve("application-local.yaml"));
         new ApplicationContextRunner()
                 .withInitializer(new ConfigDataApplicationContextInitializer())
                 .withUserConfiguration(RequiredNacosConfiguration.class)
                 .withPropertyValues(
                         "spring.profiles.active=local",
-                        "spring.config.location=classpath:/application.yaml",
-                        "spring.config.additional-location=" + directory.toUri(),
+                        "spring.config.location=" + directory.toUri(),
                         "NACOS_SERVER_ADDR=127.0.0.1:1",
                         "NACOS_GATEWAY_USERNAME=test",
                         "NACOS_GATEWAY_PASSWORD=test",

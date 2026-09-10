@@ -7,11 +7,11 @@
 首次在仓库根目录复制模板；已有个人配置时不要覆盖：
 
 ```bash
-cp gateway/config/application-local.yaml.example gateway/config/application-local.yaml
-cp services/iam-service/config/application-local.yaml.example services/iam-service/config/application-local.yaml
+cp gateway/src/main/resources/application-local.yaml.example gateway/src/main/resources/application-local.yaml
+cp services/iam-service/src/main/resources/application-local.yaml.example services/iam-service/src/main/resources/application-local.yaml
 ```
 
-两个 `application-local.yaml` 已被根 `.gitignore` 忽略，`.example` 可以提交。模板只包含非敏感配置和凭据引用；不要把真实密码、Client Secret 或 PEM 内容写进去。`local` 是仅供本地开发的显式 profile：它取消默认 Nacos 配置导入，由个人文件提供运行策略和 `configuration-revision: local`；Nacos 服务发现仍启用。未选择 `local` 的测试、部署入口保持原有 Nacos 配置加载行为。
+两个 `application-local.yaml` 已被根 `.gitignore` 忽略，`.example` 可以提交。IDE 编译时会把个人文件复制到 classpath，选择 `local` 即可加载，无需指定工作目录或额外配置路径。两个模块的 Maven JAR 打包配置排除个人文件及模板，Spring Boot 可执行 JAR 同样不携带它们；`target/classes` 是本地编译输出，仍可能含个人配置，不应作为部署制品直接分发。模板只包含非敏感配置和凭据引用；不要把真实密码、Client Secret 或 PEM 内容写进去。`local` 是仅供本地开发的显式 profile：它取消默认 Nacos 配置导入，由个人文件提供运行策略和 `configuration-revision: local`；Nacos 服务发现仍启用。未选择 `local` 的测试、部署入口保持原有 Nacos 配置加载行为。
 
 在 IDE 环境变量中分别配置以下值，或使用权限受限的外部 Spring `configtree` 目录。该目录中每个文件名是对应属性名，例如 `NACOS_IAM_PASSWORD`；个人 YAML 可在现有 `spring` 下加入 `config.import: configtree:/absolute/path/to/iam-secrets/`。目录建议权限 700、文件 600，按应用隔离，只提供常驻应用需要的值，不导入整份 Compose 管理员环境。
 
@@ -36,12 +36,12 @@ cp services/iam-service/config/application-local.yaml.example services/iam-servi
 
 Maven 项目使用根 POM 支持的 JDK 17 或 21。首次导入并同步 Maven，使生成的契约源码和模块依赖进入 IDE 类路径；日常修改由 IDE 编译，不执行 `package`、JAR 启动或脚本生成参数。
 
-| 配置 | Main class | 模块 classpath | Working directory | Active profiles |
-| --- | --- | --- | --- | --- |
-| Gateway | `io.saasforge.gateway.GatewayApplication` | `gateway` | 仓库绝对路径下的 `gateway` | `local` |
-| IAM | `io.saasforge.iam.IamServiceApplication` | `iam-service` | 仓库绝对路径下的 `services/iam-service` | `local` |
+| 配置 | Main class | 模块 classpath | Active profiles |
+| --- | --- | --- | --- |
+| Gateway | `io.saasforge.gateway.GatewayApplication` | `gateway` | `local` |
+| IAM | `io.saasforge.iam.IamServiceApplication` | `iam-service` | `local` |
 
-普通 Java Application 运行配置没有 Active profiles 栏时，只需填程序参数 `--spring.profiles.active=local`。IDE 启动前动作保留普通 Build，不添加 Maven package、Compose 或托管脚本。工作目录指向模块，Spring 才能自动加载其 `config/application-local.yaml`；不方便改变目录时，可显式设置 `--spring.config.additional-location=file:/absolute/path/to/module/config/`。
+普通 Java Application 运行配置没有 Active profiles 栏时，只需填程序参数 `--spring.profiles.active=local`。IDE 启动前动作保留普通 Build，不添加 Maven package、Compose 或托管脚本。主 `application.yaml` 不设置默认 `local`，避免改变测试/部署启动行为。若曾按旧说明设置 `spring.config.additional-location` 指向模块 `config/`，请移除该参数。
 
 先 Debug IAM，再 Debug Gateway。两个主类可同时运行，分别停止和重启；日志留在对应 IDE Console。Gateway 默认 HTTP 8080，IAM 默认 HTTP 8081、gRPC 9091。用 `GATEWAY_HTTP_PORT`、`IAM_HTTP_PORT`、`IAM_GRPC_PORT` 调整监听；`GATEWAY_REGISTER_IP`、`IAM_REGISTER_IP` 决定注册表发布的地址，必须从调用方可达。注册 HTTP 端口随对应 HTTP 监听端口变化。
 

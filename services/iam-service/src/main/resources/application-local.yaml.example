@@ -1,4 +1,4 @@
-# 复制为同目录 application-local.yaml，IDE 工作目录选 services/iam-service，激活 local。
+# 复制为同目录 application-local.yaml，IDE 激活 local；通过 classpath 加载，与工作目录无关。
 # 仅供开发；密码通过环境变量或外部 configtree 注入，私钥和 Client 凭据只引用受限文件。
 # 策略初始值来自 deploy/nacos/dev/iam-service.yaml；不修改测试/生产资源。
 saasforge:

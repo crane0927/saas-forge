@@ -6,7 +6,7 @@ Platform Console → 受信 HTTPS Edge → IDE Gateway → Nacos 发现的 IDE I
 
 ## 实现与聚焦检查
 
-- Gateway 与 IAM 分别提供个人配置模板和模块工作目录加载方式；实际文件被 Git 忽略，敏感值仅从环境或受限凭据目录注入。
+- Gateway 与 IAM 分别提供个人配置模板和classpath 加载方式；实际文件被 Git 忽略，敏感值仅从环境或受限凭据目录注入。
 - `local` profile 使用个人运行配置，取消默认 Nacos 配置中心导入，保留服务发现；非本地模式保留原行为。
 - Gateway 既有路由/JWKS 发现保持不变；IAM 本地 HTTP Client 按 `iam-service` 查询健康实例，无静态地址兜底。
 - 配置加载 TDD：两个模板缺失时分别失败，补齐模板和 profile 配置后分别通过。
@@ -41,3 +41,13 @@ IDE 自动化曾遇到 `noWindowsAvailable`、`cannotClickOffscreenElement` 和�
 仓库 CI 完整流水线、Fresh Compose、多浏览器矩阵未执行。本记录未声明 Issue #163 完整验收通过。
 
 复现说明：[Gateway 与 IAM 原生本地开发](../native-platform-auth-development.md)。本机临时日志位于 `/tmp/issue-163-*.log`，不随源码提交。
+
+## resources 配置布局调整
+
+按开发者确认的方式，将两个模板及被 Git 忽略的个人配置移至各模块 `src/main/resources/`。IDE 只需激活 `local`；主配置不指定默认 local。移除旧 `spring.config.additional-location` 参数后不再依赖模块工作目录。
+
+本次运行 `mvn -q -pl gateway,services/iam-service -am -Dtest=LocalConfigurationTest -Dsurefire.failIfNoSpecifiedTests=false package` 通过两个配置加载测试并完成打包。检查确认两个模块的 `target/classes/application-local.yaml` 均存在，而普通 `.jar.original` 和 Spring Boot `.jar` 中均不含个人配置及模板。JAR 排除发生在打包边界，不阻止 IDE 资源复制。`git check-ignore` 确认新位置的个人配置仍被忽略。
+
+本次仅重跑与资源位置和打包直接相关的检查；前述 439 项完整模块验证属于布局调整前的记录。实际 IDE 和认证验收仍待完成。
+
+追加审查发现模板测试可能同时加载 classpath 的个人配置，已改为仅从隔离临时目录加载主配置与模板，两个配置测试再次通过，避免依赖开发者凭据目录。
