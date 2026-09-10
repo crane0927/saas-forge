@@ -25,6 +25,23 @@
 
 - HttpOnly Cookie、`Origin` 与 `Sec-Fetch-*` 是由浏览器管理的安全边界，不得暴露为 Console 或 Remote 的业务调用参数；消费者只能通过共享类型化 HTTP Client 调用正式 API operation，不得自行注入 Cookie、Origin、Fetch Metadata 或 Bearer Token。
 
+### 本地开发
+
+- 日常开发以原生启动为目标：前端在应用目录执行 `pnpm run dev`，后端由 IDE 直接 Run/Debug Spring Boot 启动类；不得将后台进程托管、打包 JAR、`replace/restore` 或完整 Compose 编排设为日常应用启停的必经步骤。该规范是开发流程改造的验收目标，不表示现有入口已全部支持。
+- 环境初始化、依赖准备与应用进程生命周期分离；允许首次初始化证书、域名和配置，以及独立启动必要基础设施。支持同时运行多个本机服务，同一服务本机与容器实例的冲突由开发者处理，不新增自动接管、替换或恢复机制。
+- 提供可提交的本地配置模板，实际配置由开发者维护并由 Git 忽略；数据库、Redis、Kafka、Nacos 等依赖地址可自行配置，不强制使用本机容器或共享环境。敏感值仍遵循既有 Secret、环境变量及受限凭据文件规则。
+- 仅本地开发允许使用文件提供非敏感运行配置，替代 Nacos 配置中心；需要跨服务联调时仍统一使用 Nacos 服务发现，不新增通过本地配置指定下游 HTTP/gRPC 实例地址的替代方案。该例外不改变测试、生产的配置发布和服务发现机制。
+- 原生启动不改变 Local Browser Topology：浏览器仍使用受信 HTTPS、受控域名和 Gateway，保持既有 Cookie、CORS、CSRF 与 Browser Session Slot 边界；内部进程监听地址不作为替代浏览器入口。
+- 现有完整环境和验收脚本保留用于集成验收，退出默认本地开发流程；不得只把旧托管脚本包装成 `pnpm run dev` 就视为完成原生启动。
+
+### 验证范围与资源
+
+- 普通改动优先执行受影响模块的检查及必要集成验证，并说明选择依据；不得把完整 Compose、fresh 环境、多浏览器或五服务替换矩阵作为每个 ticket 的默认本机门禁。
+- 认证、跨服务契约、数据库迁移等改动应扩大到对应边界；本文件已有 Flyway、Nacos、国际化等专项验证要求继续有效。具体 Issue/PRD 明确要求的本地或完整验收不得静默省略。
+- 完整验证由 CI 承担，本机保留复现能力；专项任务按其验收标准执行。调整 CI 重复路径时保留必要的浏览器、JDK、安全和 fresh 环境覆盖，不以删掉独有验证降低耗时。
+- 日常必要验证以 5 分钟内反馈为优化目标，优先保证验证期间电脑仍可正常开发；目标冲突时允许延长耗时。避免无依据地并行启动重型验证，未实测不得承诺耗时、资源占用或改善比例。
+- 验证记录区分通过、失败、跳过和未执行；本地相关检查通过不等于完整验收通过，配置文件检查或进程启动成功也不等于联调成功。
+
 ### Console 国际化资源
 
 - Design System 自有消息资源必须按可独立 tree-shake 的组件模块拆分；新增或移动资源目录必须接入 `consoles/scripts/validate-i18n-resources.mjs`，并通过 `pnpm --dir consoles run validate:i18n` 与 `pnpm --dir consoles run build:workspace`。不得因共享翻译入口将未使用组件文案打入 Console 或 Remote 首屏制品。

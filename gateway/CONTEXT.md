@@ -25,5 +25,5 @@ _Avoid_: Remote API request, cross-site browser request
 _Avoid_: Dynamic CORS allowlist, remote API allowlist
 
 **Local Browser Topology**:
-用于开发与端到端测试的受控浏览器 Origin 集合，以 `saasforge.test` 保持与生产相同的主机分离模型。
-_Avoid_: localhost port topology, production root domain
+用于开发与端到端测试的受控浏览器 Origin 集合，以 `saasforge.test` 保持与生产相同的主机分离模型；它描述浏览器可见的安全边界，不规定应用进程的启动方式。
+_Avoid_: localhost port topology, production root domain, full environment orchestration
