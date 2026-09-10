@@ -66,20 +66,47 @@ bash scripts/verify-console-authentication-e2e.sh --development
 | [Verify 34432705163](https://github.com/crane0927/saas-forge/actions/runs/34432705163) | 全部 job success | JDK 17 job 778 秒，其中 Maven 732 秒；JDK 21 job 782 秒，其中 Maven 735 秒 |
 | 同上独立浏览器 | 四渠道 success | Chrome 123、Edge 121、Firefox 86、WebKit 109 秒（job 时间） |
 | 同上专项 | success | Tenant fresh 865 秒；Nacos 248 秒（job 时间） |
-| [认证 34432705190](https://github.com/crane0927/saas-forge/actions/runs/34432705190) | success | job 2106 秒，完整验收脚本 step 2000 秒，未将内嵌 Maven 独立计时 |
+| [认证 34432705190](https://github.com/crane0927/saas-forge/actions/runs/34432705190) | success | job 2106 秒，完整验收脚本 step 2000 秒；日志 RUN/PASS 时间戳确认其中 Maven 727.471 秒，额外 Remote 构建 0.280 秒 |
 
-来源为 GitHub jobs 的 startedAt/completedAt，精度为秒，不含排队；并行 job 耗时不能相加当作墙钟耗时。原始读取存于 `.scratch/issue-168/before-*-run.json`。这两个旧运行只用于调整前基线，不能作为当前修改的通过证据。
+来源为 GitHub jobs 的 startedAt/completedAt，精度为秒，不含排队；并行 job 耗时不能相加当作墙钟耗时。原始读取存于 `.scratch/issue-168/before-*-run.json`，认证阶段时间戳分析见 `before-authentication-stage-times.json`。这两个旧运行只用于调整前基线，不能作为当前修改的通过证据。
 
 当前验证：
 
 - PASS：真实 `--product` 入口隔离文件系统回归，缺少八类前置文件及歧义 JAR 均在环境初始化前失败；与现有 pnpm/Maven 入口回归合计 16/16、0 skipped。红灯与绿灯记录位于 `.scratch/issue-168/`。
 - PASS：修改工作流的 YAML 解析、Bash 语法、`git diff --check`。
 - PASS：本机 `./mvnw --batch-mode --no-transfer-progress verify` 退出 0，26 个 Reactor 模块全部 SUCCESS；Maven 641 tests、0 failures、0 errors、0 skipped，前端全工作区类型检查、lint、格式、单元测试、Chromium 与构建门禁通过。macOS 27.0 arm64、JDK 17.0.12、Node 24.14.1、pnpm 11.22.0，复用已有依赖/构建缓存及 Docker；墙钟 414.56 秒，单命令最大 RSS 1,214,447,616 bytes（不是所有子进程或 Docker VM 总和）。原始记录 `.scratch/issue-168/full-verify.log`；本机时间不能与旧 CI 直接相减宣称加速。
-- NOT_RUN：调整后实际 GitHub CI、远端失败传播、JDK 21/五浏览器/Fresh/Nacos 完整矩阵。本机 CLI 失败证据不等价于 GitHub 调度与 reusable job 的实际失败证据。
+- PASS：源码 `2a1d7ae502e7b267068c4739acba8c34c5f3244b` 的 [Verify 34465680489](https://github.com/crane0927/saas-forge/actions/runs/34465680489) 实际完成，8 个必要 job 全部 success；JDK 17/21、独立四浏览器、五渠道 Fresh 产品及 Nacos/Tenant 专项均执行。
 
-当前未满足 #168 的全部验收，不关闭 Issue，也不改动父 #161 或其他专项 Issue 状态。
+### 调整后真实 CI
+
+| 门禁 | 结果 | job / 关键 step 耗时 |
+| --- | --- | --- |
+| JDK 17 + 五渠道 Fresh 认证 | success | job 2199 秒；完整 Maven 747 秒；产品脚本 1315 秒 |
+| JDK 21 | success | job 771 秒；完整 Maven 714 秒 |
+| 独立 Chrome / Edge / Firefox / WebKit | 全部 success | job 分别 129 / 136 / 133 / 114 秒 |
+| Tenant/Audit Fresh 生命周期 | success | job 888 秒 |
+| Nacos 配置、ACL、恢复 | success | job 257 秒 |
+
+调整前 9 个 job，累计 5218 job-seconds；调整后 8 个 job，累计 4627 job-seconds。完整 Maven 从三次变为两次。最长 job 从 2106 秒变为 2199 秒，**本次观测没有证明整体墙钟提速**。基线与本次之间还包含 #163–#167 等实现，且 runner、缓存与网络存在差异；这些是实际观测值，不是相同源码 A/B 测试，不据此计算或承诺优化比例。
+
+[脱敏 artifact 10148655272](https://github.com/crane0927/saas-forge/actions/runs/34465680489/artifacts/10148655272) 对应同一源码；核对副本为 `.scratch/issue-168/ci-evidence/`。`acceptance-run.json` 的 `commit` 与 CI SHA 一致、`dirty=false`、`target=ci`、`scope=--product`、`status=passed`，五个产品渠道、四个产品环境兼容渠道、镜像、TLS 就绪及 Compose reset 全部 passed；最终 passed 由成功清理后的出口记录。独立 Maven step 的 success 与此 JSON 合并构成本次完整 CI 证据，不改写 scope。
+
+| 产品渠道 | 实际版本 | 安全探针 | 未预期错误 / 页面错误 | Remote 资源与策略 |
+| --- | --- | --- | --- | --- |
+| Chromium | 151.0.7922.34 | 32 | 0 / 0 | passed |
+| Chrome | 153.0.8010.36 | 32 | 0 / 0 | passed |
+| Edge | 152.0.4191.66 | 32 | 0 / 0 | passed |
+| Firefox | 153.0 | 32 | 0 / 0 | passed |
+| WebKit | 26.5 | 32 | 0 / 0 | passed |
+
+失败传播证据来自 CI 中执行的真实入口负向回归：JDK 21 日志记录 16/16、0 failures、0 skipped；覆盖默认前端检查返回 41、指定包失败、真实 Maven 遇到不兼容 Node 返回 1，以及缺少八类制品或歧义 JAR 返回 1 且未开始环境初始化。两个 JDK 的该步骤均 success；结合默认步骤成功前置条件、直接执行脚本、无 `continue-on-error` 与无吞错汇总，保留必要失败到门禁的传播。没有故意破坏顶层 workflow 制造失败，也没有把本机回归冒称 CI 日志。
+
+JDK 17/21 CI 完整 Maven 日志各核对 641 tests、0 failures、0 errors、0 skipped。五个产品渠道的脱敏 TAP 各为 33/33、0 failures、0 cancelled、0 skipped；两个 JDK 中的入口回归各为 16/16。原始 job/step 元数据为 `.scratch/issue-168/after-verify-run.json`，受限原始日志为 `ci-jdk21.log` 与 `ci-jdk17-authentication.log`；只公开上述统计和白名单 artifact。
+
+本切片的 CI 验收证据已齐全；开发四域、IDE 与其他专项证据仍独立记录。本次没有修改 #168、父 #161 或其他 Issue 的状态。此后的验收文档提交不冒称已由上述源码运行重新验证。
+
 
 ## 审查
 
 - Standards：无规范阻断项。原 JAR 选择重复已集中到 `runtime_jar()`；镜像函数显式传播选择失败，避免 `stage` 的条件调用抑制 Bash errexit。修改后九项制品回归重新通过。
-- Spec：静态覆盖映射无缺失或范围扩张；保留一项 P1 验收缺口：调整后真实 CI 与失败传播证据尚未取得，完成前不得关闭 #168。
+- Spec：静态覆盖映射无缺失或范围扩张；原 P1 的实际 CI 与失败传播证据已补齐。规格没有要求另造顶层 workflow 失败；真实 CI 内执行的负向入口回归、必要 job 完整成功状态与五渠道 artifact 共同完成验收。
