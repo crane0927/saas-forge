@@ -1,7 +1,6 @@
 package io.saasforge.tenantaccess.config;
 
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.mockito.Mockito.when;
 
 import io.grpc.ManagedChannel;
 import io.saasforge.tenantaccess.application.administrator.AdministratorPasswordSetupRepository;
@@ -25,22 +24,19 @@ import java.time.Clock;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
-import org.springframework.grpc.client.GrpcChannelFactory;
 import tools.jackson.databind.ObjectMapper;
 
 class TenantAdministratorInitializationConfigurationTest {
     @Test
     void wiresAllInitializationAndRecoveryComponents() {
         var configuration = new TenantAdministratorInitializationConfiguration();
-        GrpcChannelFactory channels = Mockito.mock(GrpcChannelFactory.class);
         ManagedChannel channel = Mockito.mock(ManagedChannel.class);
-        when(channels.createChannel("entitlement")).thenReturn(channel);
         IamServiceAccessTokenProvider tokens = Mockito.mock(IamServiceAccessTokenProvider.class);
 
         assertInstanceOf(GrpcIdentityProvisioningGateway.class,
                 configuration.identityProvisioningGateway(channel, tokens));
         assertInstanceOf(GrpcInitializationQuotaGateway.class,
-                configuration.initializationQuotaGateway(channels, tokens));
+                configuration.initializationQuotaGateway(channel, tokens));
         assertInstanceOf(GrpcPasswordSetupDeliveryGateway.class,
                 configuration.passwordSetupDeliveryGateway(channel, tokens));
 

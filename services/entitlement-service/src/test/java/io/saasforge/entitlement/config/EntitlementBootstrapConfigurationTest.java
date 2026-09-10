@@ -1,7 +1,6 @@
 package io.saasforge.entitlement.config;
 
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.mockito.Mockito.when;
 
 import io.grpc.ManagedChannel;
 import io.saasforge.entitlement.application.bootstrap.EntitlementBootstrapIdempotency;
@@ -17,7 +16,6 @@ import io.saasforge.entitlement.infrastructure.grpc.GrpcTenantEligibilityGateway
 import io.saasforge.entitlement.infrastructure.security.IamServiceAccessTokenProvider;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
-import org.springframework.grpc.client.GrpcChannelFactory;
 import tools.jackson.databind.ObjectMapper;
 
 class EntitlementBootstrapConfigurationTest {
@@ -34,11 +32,9 @@ class EntitlementBootstrapConfigurationTest {
                 Mockito.mock(EntitlementBootstrapIdempotency.class), Mockito.mock(OutboxEventRepository.class),
                 events, ids, clock));
 
-        GrpcChannelFactory channels = Mockito.mock(GrpcChannelFactory.class);
         ManagedChannel channel = Mockito.mock(ManagedChannel.class);
-        when(channels.createChannel("tenant-access")).thenReturn(channel);
         TenantEligibilityGateway eligibility = configuration.tenantEligibilityGateway(
-                channels, Mockito.mock(IamServiceAccessTokenProvider.class));
+                channel, Mockito.mock(IamServiceAccessTokenProvider.class));
         assertInstanceOf(GrpcTenantEligibilityGateway.class, eligibility);
         assertInstanceOf(CreateInitialSubscriptionService.class,
                 configuration.createInitialSubscriptionService(

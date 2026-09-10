@@ -122,7 +122,12 @@ verify_workload() {
   assert_config_access_denied "$application" "$token" "$other_application"
   case "$application" in
     iam-service) assert_collaborator_discovery_readable "$application" "$token" tenant-access-service ;;
-    tenant-access-service) assert_collaborator_discovery_readable "$application" "$token" iam-service ;;
+    tenant-access-service)
+      assert_collaborator_discovery_readable "$application" "$token" iam-service
+      assert_collaborator_discovery_readable "$application" "$token" entitlement-service ;;
+    entitlement-service)
+      assert_collaborator_discovery_readable "$application" "$token" iam-service
+      assert_collaborator_discovery_readable "$application" "$token" tenant-access-service ;;
   esac
   echo "已验证 $application 的 Nacos 最小权限"
 }

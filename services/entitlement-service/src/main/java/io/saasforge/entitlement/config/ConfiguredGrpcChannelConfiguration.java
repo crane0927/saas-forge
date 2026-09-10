@@ -1,4 +1,4 @@
-package io.saasforge.tenantaccess.config;
+package io.saasforge.entitlement.config;
 
 import io.grpc.Channel;
 import org.springframework.context.annotation.Bean;
@@ -16,7 +16,7 @@ public class ConfiguredGrpcChannelConfiguration {
     }
 
     @Bean
-    Channel entitlementServiceChannel(GrpcChannelFactory channels) {
-        return channels.createChannel("entitlement");
+    Channel tenantAccessServiceChannel(GrpcChannelFactory channels) {
+        return channels.createChannel("tenant-access");
     }
 }

@@ -1,4 +1,4 @@
-package io.saasforge.tenantaccess.config;
+package io.saasforge.entitlement.config;
 
 import com.alibaba.cloud.nacos.NacosDiscoveryProperties;
 import com.alibaba.cloud.nacos.NacosServiceManager;
@@ -23,12 +23,12 @@ public class LocalServiceDiscoveryConfiguration {
     }
 
     @Bean
-    DiscoveredGrpcChannel entitlementServiceChannel(NacosServiceEndpoints endpoints) {
-        return new DiscoveredGrpcChannel(endpoints, "entitlement-service");
+    DiscoveredGrpcChannel tenantAccessServiceChannel(NacosServiceEndpoints endpoints) {
+        return new DiscoveredGrpcChannel(endpoints, "tenant-access-service");
     }
 
     @Bean
-    org.springframework.web.client.RestClient tenantAccessIamRestClient(NacosServiceEndpoints endpoints) {
+    org.springframework.web.client.RestClient entitlementIamRestClient(NacosServiceEndpoints endpoints) {
         return endpoints.httpClient("iam-service");
     }
 }

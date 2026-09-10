@@ -135,12 +135,13 @@ for permission in \
     "$api/v3/auth/permission" >/dev/null || true
 done
 
-# Tenant Access 读取 IAM 实例以获取服务令牌、JWKS 并执行 gRPC；其他权限保持应用隔离。
+# Tenant Access 发现 IAM 的认证协作与 Entitlement 的 Quota；其他权限保持应用隔离。
 for permission in \
   "dev:SAAS_FORGE:config/tenant-access-service.yaml:r" \
   "dev:DEFAULT_GROUP:naming/tenant-access-service:w" \
   "dev:DEFAULT_GROUP:naming/tenant-access-service:r" \
-  "dev:DEFAULT_GROUP:naming/iam-service:r"; do
+  "dev:DEFAULT_GROUP:naming/iam-service:r" \
+  "dev:DEFAULT_GROUP:naming/entitlement-service:r"; do
   resource="${permission%:*}"
   action="${permission##*:}"
   curl --silent --show-error --request POST \
@@ -154,7 +155,9 @@ done
 for permission in \
   "dev:SAAS_FORGE:config/entitlement-service.yaml:r" \
   "dev:DEFAULT_GROUP:naming/entitlement-service:w" \
-  "dev:DEFAULT_GROUP:naming/entitlement-service:r"; do
+  "dev:DEFAULT_GROUP:naming/entitlement-service:r" \
+  "dev:DEFAULT_GROUP:naming/iam-service:r" \
+  "dev:DEFAULT_GROUP:naming/tenant-access-service:r"; do
   resource="${permission%:*}"
   action="${permission##*:}"
   curl --silent --show-error --request POST \

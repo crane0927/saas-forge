@@ -1,6 +1,6 @@
 # Tenant Access 与 IAM 原生联调
 
-本说明对应 Issue #164，延续 [Gateway/IAM 原生启动](native-platform-auth-development.md) 和 ADR 0043、0044。使用已有合法 Tenant、Identity 和启用的 Membership；Tenant 初始化所需 Entitlement 链路属于后续切片。
+本说明对应 Issue #164，延续 [Gateway/IAM 原生启动](native-platform-auth-development.md) 和 ADR 0043、0044。使用已有合法 Tenant、Identity 和启用的 Membership；Tenant 初始化所需 Entitlement 链路见 [Issue #165 联调说明](native-entitlement-development.md)。
 
 ## 个人配置与独立准备
 
