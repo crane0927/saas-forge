@@ -3,11 +3,16 @@ name: Verify
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  console-authentication:
+    name: JDK 17 and Console authentication
+    uses: ./.github/workflows/console-authentication-e2e.yml
+
   tenant-lifecycle-e2e:
     name: Tenant lifecycle fresh-volume E2E
     runs-on: ubuntu-latest
@@ -28,7 +33,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        java: ["17", "21"]
+        java: ["21"]
     steps:
       - uses: actions/checkout@v6
         with:
@@ -84,7 +89,7 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
         working-directory: consoles
       - name: Verify scoped verification entry points
-        run: node --test --test-concurrency=1 scripts/test/scoped-frontend-verification.test.mjs scripts/test/backend-verification-profile.test.mjs
+        run: node --test --test-concurrency=1 scripts/test/scoped-frontend-verification.test.mjs scripts/test/backend-verification-profile.test.mjs scripts/test/console-acceptance-prerequisites.test.mjs
       - run: ./mvnw --batch-mode --no-transfer-progress verify
         env:
           SF_VISUAL_SNAPSHOTS: "false"

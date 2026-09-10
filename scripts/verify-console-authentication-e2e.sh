@@ -15,6 +15,36 @@ if [[ "${1:-}" != "" && "${1:-}" != "--preflight" && "${1:-}" != "--product" && 
   echo '用法：bash scripts/verify-console-authentication-e2e.sh [--preflight|--product|--development]' >&2
   exit 2
 fi
+runtime_jar() {
+  local module="$1" candidate
+  local -a jars=()
+  for candidate in "$repository_root/$module/target/"*.jar; do
+    [[ -f "$candidate" && "$candidate" != *-test-fixture.jar ]] && jars+=("$candidate")
+  done
+  [[ "${#jars[@]}" -eq 1 ]] || {
+    echo "BLOCKED: $module 必须恰有一个运行 JAR，请先执行完整 Maven verify 并检查旧制品" >&2
+    return 1
+  }
+  printf '%s\n' "${jars[0]}"
+}
+
+# CI 在同一 job 先执行完整 verify；复用入口必须在环境初始化前拒绝缺失或歧义制品。
+# 此处只验证存在性，实际构建、镜像启动和浏览器门禁仍负责验证制品可用性。
+if [[ "${1:-}" == '--product' ]]; then
+  for application in platform-console tenant-console-shell; do
+    [[ -f "$repository_root/consoles/$application/dist/index.html" ]] || {
+      echo "BLOCKED: 缺少 $application 生产构建，请先执行完整 Maven verify" >&2
+      exit 1
+    }
+  done
+  [[ -f "$repository_root/consoles/dist/static-remote-acceptance/v1/remote.js" ]] || {
+    echo 'BLOCKED: 缺少 Remote 静态构建，请先执行完整 Maven verify' >&2
+    exit 1
+  }
+  for module in gateway services/iam-service services/tenant-access-service services/entitlement-service services/audit-service; do
+    runtime_jar "$module" >/dev/null
+  done
+fi
 # Node 与浏览器均使用系统信任；不忽略证书错误。
 export NODE_USE_SYSTEM_CA=1
 if [[ "${1:-}" == '--development' ]]; then
@@ -172,14 +202,10 @@ write_environment() {
 build_runtime_image() {
   local service="$1" module="$2"
   local image_directory="$work_directory/images/$service"
-  local candidate
-  local -a jars=()
+  local application_jar
+  application_jar="$(runtime_jar "$module")" || return 1
   mkdir -p "$image_directory"
-  for candidate in "$repository_root/$module/target/"*.jar; do
-    [[ -f "$candidate" && "$candidate" != *-test-fixture.jar ]] && jars+=("$candidate")
-  done
-  [[ "${#jars[@]}" -eq 1 ]] || return 1
-  cp "${jars[0]}" "$image_directory/application.jar"
+  cp "$application_jar" "$image_directory/application.jar"
   docker build --pull=false --quiet --tag "$project_name/$service:acceptance" \
     --file "$compose_directory/Dockerfile.prebuilt" "$image_directory" >/dev/null
 }
@@ -203,19 +229,6 @@ if [[ "${1:-}" != '--product' ]]; then
     --batch-mode --no-transfer-progress verify
 else
   echo 'SCOPE: 重跑产品与浏览器门禁，复用已构建的工件；本次没有执行 Maven/workspace 质量门禁。'
-  for application in platform-console tenant-console-shell; do
-    [[ -f "$repository_root/consoles/$application/dist/index.html" ]] || {
-      echo 'BLOCKED: 缺少生产构建，请先执行完整验收入口' >&2
-      exit 1
-    }
-  done
-  [[ -f "$repository_root/consoles/dist/static-remote-acceptance/v1/remote.js" ]] || {
-    echo 'BLOCKED: 缺少 Remote 静态构建，请先执行完整验收入口' >&2
-    exit 1
-  }
-fi
-if [[ "${1:-}" != '--product' ]]; then
-  stage static-remote-build node "$repository_root/consoles/scripts/build-static-remote-acceptance.mjs"
 fi
 stage acceptance-client-build node "$repository_root/consoles/scripts/build-authentication-acceptance-client.mjs"
 for service in gateway iam-service tenant-access-service entitlement-service audit-service; do

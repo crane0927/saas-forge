@@ -1,0 +1,85 @@
+# CI 完整门禁去重（Issue #168）
+
+依据 #161、#167 与 ADR 0044。实现基点为 `d20360927816a71c7c234e4a941fcc462808f29a`，不改变 #155、#159 的验收条件或状态。
+
+## 覆盖映射与去重依据
+
+以下次数按一次 push 或 pull_request 事件计数；不同事件、发布 tag、手动复现不合并。push 与 PR 的比较基点不同，保留其独立触发，避免削弱契约基线保护。
+
+| 必要证据 | 调整前 | 调整后 | 判断 |
+| --- | --- | --- | --- |
+| JDK 17 完整 Reactor、前端 workspace、Chromium、JaCoCo | Verify/JDK 17 一次；认证脚本内再次完整 verify | 认证 reusable job 先完整 verify，再执行 `--product` | 相同 checkout、Temurin 17、Node 24.14.1、pnpm 11.22.0 和锁文件；完整通用构建一次，制品在同 job 消费 |
+| JDK 21 完整 Reactor、前端 workspace、Chromium、JaCoCo | Verify/JDK 21 | 保留 | JDK 兼容性独有覆盖，不跳过测试或前端 |
+| v1 发布基线不可变保护 | JDK 17/21 各执行一次同一 Git diff 检查 | JDK 21 中执行一次 | 同一事件、同一 BASE_SHA/GITHUB_SHA 的纯 Git 检查，不依赖 JDK |
+| 普通浏览器消费者兼容 | Verify 的 Chrome、Edge、Firefox、WebKit 四矩阵 | 原样保留 | 独立环境、独立渠道结果与失败状态 |
+| 受信 TLS 产品与安全 | 认证 workflow：Firefox、WebKit、Chromium、Chrome、Edge | Verify 调用同一 reusable workflow；五渠道原样保留 | 每个渠道仍使用独立 Fresh Compose 卷；Cookie/CORS/CSRF、双槽位、Remote 证据不变 |
+| 产品环境中的消费者兼容 | 认证脚本末尾四渠道 | 原样保留 | 和独立兼容矩阵有不同的 TLS/部署环境变量，不仅因命令相同就删除 |
+| Tenant/Audit 生命周期 Fresh Compose | Verify 独立 job | 原样保留 | 业务、Kafka、数据库、故障恢复独有覆盖 |
+| Nacos 配置、ACL、恢复 | Verify 独立 job | 原样保留 | 不合并到产品浏览器门禁 |
+| 开发四域、原生启动、HMR | 独立开发专项入口与证据 | 原样保留 | Fresh/CI 通过不能代替开发证据，#155/#159 不豁免 |
+| Release verify/deploy | 发布 workflow 的 JDK 17/21 与 deploy 生命周期 | 原样保留 | 发布参数与签名环境不同，不在本次合并范围 |
+| 静态 Remote 构建 | 完整 workspace 已构建，认证脚本又构建一次 | 删除脚本额外构建 | `verify:workspace → build:workspace → build:static-remote` 已构建并检查冻结 SHA-256；workspace 内其他构建仍保留 |
+
+认证 workflow 移除独立 push/PR 触发，改由 Verify `uses` 调用；保留 `workflow_dispatch`。Verify 增加手动触发。没有引入跨 run artifact、缓存命中或额外调度平台作为正确性前提。JDK 17 的通用构建在设置产品对照根域和受信 TLS 前执行，保留原 Verify 的通用夹具环境；产品阶段继续使用已批准的 Linux `saasforge.example.com`，无 TLS、安全策略变更。
+
+每事件完整 Maven verify 从 **3 次降为 2 次**（JDK 17 一次、21 一次）；四渠道独立兼容与五渠道 Fresh 产品均保留。源码调用次数不是实际耗时改善。Ubuntu `latest` 与固定 `24.04` 的 runner 标签、下载和缓存也会影响耗时，不据此保证固定加速比。
+
+## 失败传播与制品边界
+
+JDK 17 构建和 Fresh 产品验收是同一 job 的先后步骤，均使用默认成功前置条件；构建失败时不会启动产品步骤。产品失败仍使 reusable job 和调用者失败。JDK 21、独立四浏览器、Tenant/Audit、Nacos 的失败保持各自失败状态；没有 `continue-on-error` 或把 skipped 变成 success 的最终汇总步骤。
+
+`--product` 在创建凭据、证书副本和 Compose 项目前，检查两个 Console HTML、Remote v1 入口及五服务运行 JAR；缺失或同模块多个候选 JAR 必须失败。此检查只证明文件存在，后续验收 Client 构建、镜像启动、Remote 哈希与真实浏览器测试才证明可用性。不会自动清理旧 JAR。新 CI checkout 的制品全部由本 job 的成功完整 verify 提供；本地使用 `--product` 时，调用者需保证源码和构建对应，不能把旧制品复测说成本次完整验证。
+
+JSON 清单仍保留 `scope=--product`，明确本脚本没有再次执行 Maven。完整 CI 证据必须同时引用该 job 的成功 Maven step、产品 step、清理结果和脱敏 artifact；单独 JSON 不能宣称完整 CI。`always()` 只用于保存白名单证据和清理，上传成功不会覆盖前面失败，缺证据仍按 `if-no-files-found: error` 失败。
+
+检查名称变为 `JDK 17 and Console authentication / JDK 17, Fresh Compose and trusted TLS (five browser channels)`；若仓库保护规则固定了旧 `JDK 17` 或认证 job 名称，维护者需更新相应 required check。本次不修改分支保护配置。
+
+## 本机完整复现
+
+准备 JDK 17/21、Node 24.14.1、pnpm 11.22.0、Docker/Compose 与 Testcontainers 可访问的 daemon；首次在 `consoles` 执行 `pnpm install --frozen-lockfile`，安装所需 Playwright 引擎及 Chrome/Edge 发行渠道。Maven 需要其依赖仓库网络或已准备的缓存。两个 JDK 分别串行执行完整 `./mvnw --batch-mode --no-transfer-progress verify`，不加 `backend-local`。
+
+Fresh 前另行按 [四域验收说明](issue-159-four-domain-matrix.md) 准备四个受控域名、受信证书和所有浏览器的正常 TLS 信任，并释放 443；需要 node、pnpm、docker、openssl、ruby。Linux 五渠道对照使用 CI workflow 内明确列出的 hosts、SAN、CA/NSS/Firefox 策略步骤。实际 TLS 私钥只保存在受限目录。不得以关闭证书校验获得通过。
+
+```bash
+# 完整本机入口自己执行 Maven/workspace，不依赖 CI 或下载制品。
+bash scripts/verify-console-authentication-e2e.sh --preflight
+bash scripts/verify-console-authentication-e2e.sh
+
+# 已在同一源码成功执行完整 Maven verify 后，可复现 CI 的顺序。
+./mvnw --batch-mode --no-transfer-progress verify && \
+  bash scripts/verify-console-authentication-e2e.sh --product
+
+# 其他独有覆盖分别执行；环境准备见对应入口和工作流。
+pnpm --dir consoles run test:browser:compatibility
+bash scripts/verify-tenant-lifecycle-e2e.sh
+bash scripts/verify-console-authentication-e2e.sh --development
+```
+
+本地默认产品渠道为 Chromium/WebKit/Chrome；Linux 五渠道对照需 `SF_ACCEPTANCE_TARGET=ci` 及上述信任准备，不能把默认三渠道报告当作五渠道完成。开发入口另需运行中的 Nacos、服务、HTTPS Edge、两个 Vite Console 和受限账号文件。Nacos 的发布、ACL、恢复需要独立依赖环境和对应受限身份，命令仍以 Verify job 为准；不要向共享环境误执行故障恢复测试。
+
+## 实际记录
+
+调整前同一源码 `f789f6b215ed740176bd226efb308d9ebd31f178`：
+
+| CI 运行 | 状态 | 实际耗时 |
+| --- | --- | --- |
+| [Verify 34432705163](https://github.com/crane0927/saas-forge/actions/runs/34432705163) | 全部 job success | JDK 17 job 778 秒，其中 Maven 732 秒；JDK 21 job 782 秒，其中 Maven 735 秒 |
+| 同上独立浏览器 | 四渠道 success | Chrome 123、Edge 121、Firefox 86、WebKit 109 秒（job 时间） |
+| 同上专项 | success | Tenant fresh 865 秒；Nacos 248 秒（job 时间） |
+| [认证 34432705190](https://github.com/crane0927/saas-forge/actions/runs/34432705190) | success | job 2106 秒，完整验收脚本 step 2000 秒，未将内嵌 Maven 独立计时 |
+
+来源为 GitHub jobs 的 startedAt/completedAt，精度为秒，不含排队；并行 job 耗时不能相加当作墙钟耗时。原始读取存于 `.scratch/issue-168/before-*-run.json`。这两个旧运行只用于调整前基线，不能作为当前修改的通过证据。
+
+当前验证：
+
+- PASS：真实 `--product` 入口隔离文件系统回归，缺少八类前置文件及歧义 JAR 均在环境初始化前失败；与现有 pnpm/Maven 入口回归合计 16/16、0 skipped。红灯与绿灯记录位于 `.scratch/issue-168/`。
+- PASS：修改工作流的 YAML 解析、Bash 语法、`git diff --check`。
+- PASS：本机 `./mvnw --batch-mode --no-transfer-progress verify` 退出 0，26 个 Reactor 模块全部 SUCCESS；Maven 641 tests、0 failures、0 errors、0 skipped，前端全工作区类型检查、lint、格式、单元测试、Chromium 与构建门禁通过。macOS 27.0 arm64、JDK 17.0.12、Node 24.14.1、pnpm 11.22.0，复用已有依赖/构建缓存及 Docker；墙钟 414.56 秒，单命令最大 RSS 1,214,447,616 bytes（不是所有子进程或 Docker VM 总和）。原始记录 `.scratch/issue-168/full-verify.log`；本机时间不能与旧 CI 直接相减宣称加速。
+- NOT_RUN：调整后实际 GitHub CI、远端失败传播、JDK 21/五浏览器/Fresh/Nacos 完整矩阵。本机 CLI 失败证据不等价于 GitHub 调度与 reusable job 的实际失败证据。
+
+当前未满足 #168 的全部验收，不关闭 Issue，也不改动父 #161 或其他专项 Issue 状态。
+
+## 审查
+
+- Standards：无规范阻断项。原 JAR 选择重复已集中到 `runtime_jar()`；镜像函数显式传播选择失败，避免 `stage` 的条件调用抑制 Bash errexit。修改后九项制品回归重新通过。
+- Spec：静态覆盖映射无缺失或范围扩张；保留一项 P1 验收缺口：调整后真实 CI 与失败传播证据尚未取得，完成前不得关闭 #168。

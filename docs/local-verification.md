@@ -77,8 +77,8 @@ bash scripts/verify-console-authentication-e2e.sh
 
 - Maven 完整 Reactor：JDK 17/21、后端单元/集成/契约、数据库/Redis/Kafka、JaCoCo 聚合质量门；OpenAPI 阶段调用前端 `verify:workspace`，含 Chromium。
 - 独立前端 `verify`：正式 Client 生成后执行全工作区校验、测试、Chromium 和构建；与 Maven 有重复，供前端独立复现，日常无需两者都跑。
-- `.github/workflows/verify.yml`：保留 JDK 双版本、Chrome/Edge/Firefox/WebKit、Tenant fresh-volume、Nacos 配置/权限/恢复覆盖。新增 CLI 接缝回归，不在本 Issue 删除原路径；这些清单供后续 CI 去重使用。
-- `.github/workflows/console-authentication-e2e.yml`：保留认证完整环境验收；Nacos 的发布、ACL、恢复入口与环境配置以 Verify workflow 为准。
+- `.github/workflows/verify.yml`：JDK 21、独立 Chrome/Edge/Firefox/WebKit、Tenant fresh-volume、Nacos 配置/权限/恢复及 CLI 接缝回归；调用认证 reusable workflow 提供 JDK 17 与五渠道 Fresh 产品证据。
+- `.github/workflows/console-authentication-e2e.yml`：同一 job 先执行完整 JDK 17 Maven/workspace，再用 `--product` 复用制品执行五渠道 Fresh 产品与四渠道兼容门禁；失败直接传播。保留手动触发和本机默认完整入口，覆盖映射、准备条件与证据边界见 [Issue #168](acceptance/issue-168-ci-verification.md)。Nacos 的发布、ACL、恢复入口与环境配置以 Verify workflow 为准。
 - 五服务本机替换矩阵保留 `bash scripts/verify-local-development-matrix.sh` 及其既有准备要求，作为专项复现，不是普通修改的默认门禁。
 
 ## 结果和实测记录
@@ -97,7 +97,8 @@ bash scripts/verify-console-authentication-e2e.sh
 ```bash
 node --test --test-concurrency=1 \
   scripts/test/scoped-frontend-verification.test.mjs \
-  scripts/test/backend-verification-profile.test.mjs
+  scripts/test/backend-verification-profile.test.mjs \
+  scripts/test/console-acceptance-prerequisites.test.mjs
 ```
 
 使用真实 pnpm 隔离工作区和真实 Maven 执行，验证选择范围、默认全量入口、不兼容工具链和子检查失败传播。测试不以读取命令字符串代替运行结果。

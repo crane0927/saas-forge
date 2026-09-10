@@ -1,8 +1,7 @@
 name: Console authentication product acceptance
 
 on:
-  pull_request:
-  push:
+  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -10,14 +9,10 @@ permissions:
 
 jobs:
   product-authentication:
-    name: Fresh Compose and trusted TLS (five browser channels)
+    name: JDK 17, Fresh Compose and trusted TLS (five browser channels)
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      SF_ACCEPTANCE_TARGET: ci
-      SF_BRAND_EVIDENCE_DIRECTORY: ${{ github.workspace }}/.scratch/issue-159-ci
-      # Linux libsoup 对未知顶级域的基础域判断不同；仅在 CI 对照使用保留示例域。
-      SF_ACCEPTANCE_ROOT_DOMAIN: saasforge.example.com
       # Chromium 的视觉基线目前是 macOS；Linux CI 的核心认证行为仍须全部执行。
       SF_VISUAL_SNAPSHOTS: "false"
     steps:
@@ -37,6 +32,19 @@ jobs:
       - name: Install all required browser engines and release channels
         working-directory: consoles
         run: pnpm exec playwright install --with-deps chromium firefox webkit chrome msedge
+      - name: Verify scoped verification entry points
+        run: node --test --test-concurrency=1 scripts/test/scoped-frontend-verification.test.mjs scripts/test/backend-verification-profile.test.mjs scripts/test/console-acceptance-prerequisites.test.mjs
+      # 同一 checkout 的完整构建只执行一次，随后复用其制品；失败会阻止后续产品验收。
+      - name: Verify JDK 17 and build all acceptance prerequisites
+        run: ./mvnw --batch-mode --no-transfer-progress verify
+      - name: Configure the product acceptance scope
+        run: |
+          {
+            echo 'SF_ACCEPTANCE_TARGET=ci'
+            echo "SF_BRAND_EVIDENCE_DIRECTORY=$GITHUB_WORKSPACE/.scratch/issue-159-ci"
+            # Linux libsoup 的对照域只作用于产品/TLS 阶段，不改变通用构建夹具。
+            echo 'SF_ACCEPTANCE_ROOT_DOMAIN=saasforge.example.com'
+          } >> "$GITHUB_ENV"
       - name: Observe Linux cookie base domains
         run: |
           python3 - <<'PY'
@@ -102,7 +110,7 @@ jobs:
             printf 'PLAYWRIGHT_FIREFOX_POLICIES_JSON=%s\n' "$tls_directory/firefox-policies.json"
           } >> "$GITHUB_ENV"
       - name: Verify actual Console product paths through fresh services
-        run: bash scripts/verify-console-authentication-e2e.sh
+        run: bash scripts/verify-console-authentication-e2e.sh --product
       - name: Preserve sanitized browser and gate evidence
         if: always()
         uses: actions/upload-artifact@v4
