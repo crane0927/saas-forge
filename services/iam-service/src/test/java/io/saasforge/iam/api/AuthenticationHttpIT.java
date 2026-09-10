@@ -153,13 +153,11 @@ import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.web.WebAppConfiguration;
-import org.springframework.test.web.client.MockMvcClientHttpRequestFactory;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
-import org.springframework.web.client.RestClient;
 import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -214,6 +212,7 @@ class AuthenticationHttpIT {
             "iam-service-client-secret", IAM_SERVICE_CLIENT_SECRET);
     private static final RSAKey SIGNING_KEY = signingKey();
     private static final Set<UUID> TENANT_ACCESS_FAILURES = ConcurrentHashMap.newKeySet();
+    private static final AtomicReference<Boolean> SERVICE_SIGNING_TRANSACTION = new AtomicReference<>();
     private static final AtomicBoolean SIGNING_FAILURE = new AtomicBoolean();
     private static final AtomicReference<ConcurrencyGate> MEMBERSHIP_VALIDATION_GATE = new AtomicReference<>();
     private static final AtomicReference<ConcurrencyGate> SIGNING_GATE = new AtomicReference<>();
@@ -344,14 +343,7 @@ class AuthenticationHttpIT {
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
-        SERVICE_TOKENS.set(new ReservedIamServiceAccessTokenProvider(
-                RestClient.builder()
-                        .baseUrl("https://iam.test.saasforge.invalid")
-                        .requestFactory(new MockMvcClientHttpRequestFactory(mockMvc))
-                        .build(),
-                IAM_SERVICE_CLIENT_ID_FILE,
-                IAM_SERVICE_CLIENT_SECRET_FILE,
-                java.time.Clock.systemUTC()));
+        SERVICE_TOKENS.set(webApplicationContext.getBean(ReservedIamServiceAccessTokenProvider.class));
         jdbc = new JdbcTemplate(dataSource);
         Set<String> keys = redis.keys("sf:test:iam-service:login-*:v1:*");
         if (keys != null && !keys.isEmpty()) {
@@ -1944,6 +1936,25 @@ class AuthenticationHttpIT {
         assertEquals(null, jdbc.queryForObject(
                 "SELECT revoked_at FROM iam_refresh_token_families WHERE identity_id = ?",
                 Object.class, differentKeyUser.identity().id()));
+    }
+
+    @Test
+    @Order(0)
+    void internalServiceTokenSigningCommitsBeforeOuterTransactionRollback() {
+        SERVICE_SIGNING_TRANSACTION.set(null);
+        var transactions = new org.springframework.transaction.support.TransactionTemplate(
+                webApplicationContext.getBean(PlatformTransactionManager.class));
+        String token = transactions.execute(status -> {
+            String issued = SERVICE_TOKENS.get().membershipReadToken();
+            assertTrue(org.springframework.transaction.support.TransactionSynchronizationManager
+                    .isActualTransactionActive());
+            status.setRollbackOnly();
+            return issued;
+        });
+        assertNotNull(token);
+        assertEquals(Boolean.FALSE, SERVICE_SIGNING_TRANSACTION.get());
+        assertTrue(jdbc.queryForObject("SELECT max_issued_token_ttl_seconds FROM iam_signing_keys "
+                + "WHERE key_status = 'ACTIVE'", Long.class) >= 300L);
     }
 
     @Test
@@ -3839,6 +3850,14 @@ class AuthenticationHttpIT {
             io.saasforge.iam.config.OAuthClientManagementConfiguration.class})
     static class TestConfiguration {
         @Bean
+        @org.springframework.context.annotation.Scope("prototype")
+        ReservedIamServiceAccessTokenProvider reservedServiceTokens(
+                io.saasforge.iam.application.authentication.ClientCredentialsTokenService tokens) {
+            return new ReservedIamServiceAccessTokenProvider(tokens, IAM_SERVICE_CLIENT_ID_FILE,
+                    IAM_SERVICE_CLIENT_SECRET_FILE, java.time.Clock.systemUTC());
+        }
+
+        @Bean
         static ConversionService conversionService() {
             return ApplicationConversionService.getSharedInstance();
         }
@@ -3925,6 +3944,8 @@ class AuthenticationHttpIT {
         JwtSigningPort jwtSigningPort() {
             return (keyReference, algorithm, signingInput) -> {
                 try {
+                    SERVICE_SIGNING_TRANSACTION.set(org.springframework.transaction.support.TransactionSynchronizationManager
+                            .isActualTransactionActive());
                     if (SIGNING_FAILURE.get()) {
                         throw new IllegalStateException("injected signing failure");
                     }

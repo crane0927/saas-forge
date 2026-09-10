@@ -27,7 +27,6 @@ cp services/iam-service/src/main/resources/application-local.yaml.example servic
 ## 独立准备
 
 - 先由既有受控初始化任务完成 IAM Flyway 迁移、Signing Key、保留 Service Client 和 Platform Admin 的准备。复用现有数据及有效凭据时不重跑重置或替换流程。
-- Nacos 的开发 IAM 角色需拥有自身 `dev:DEFAULT_GROUP:naming/iam-service` 的 `r` 权限，用于发现获取 Service Access Token 的目标；仓库 `deploy/compose/nacos-init.sh` 已声明该权限。已有环境由管理员精确补齐此项即可，不为补权限重跑会更新密码或配置的整套初始化，不给应用注入管理员凭据。
 - 常驻 IAM 默认使用 `iam_app`，只注入应用数据库密码；`spring.flyway.enabled=false` 保持不变。不提供 migrator、数据库管理员、Nacos 发布管理员或 Platform Admin 初始化凭据。
 - 首次环境准备可参考 [Compose 初始化说明](../deploy/compose/README.md)，但不把完整 Compose 或后台 JAR 脚本设为 IDE 启动前任务。数据库、Redis、Kafka、Nacos 可独立存在于本机或可达的开发环境。
 - 先检查同一服务的容器和本机实例。由开发者停止冲突实例并等其从注册表下线；本入口不会接管、替换或恢复其他进程。
@@ -55,7 +54,7 @@ Maven 项目使用根 POM 支持的 JDK 17 或 21。首次导入并同步 Maven�
 {"hostname":"host.docker.internal","port":8080}
 ```
 
-这只配置 HTTPS 入口到 Gateway 的目标。Gateway → IAM 的路由与 JWKS 使用已有 Nacos 发现；本地 IAM 的 Service Access Token HTTP Client 同样按 `iam-service` 身份查找健康实例，不使用 `IAM_HTTP_BASE_URL` 或固定容器地址兜底。
+这只配置 HTTPS 入口到 Gateway 的目标。Gateway → IAM 的路由与 JWKS 使用已有 Nacos 发现；IAM 使用内部 Client Credentials 应用服务获取自身服务令牌，保留 Client 凭据、Scope 与撤销检查，不再通过 HTTP 查找和调用自身，也不需要自身发现读取权限。
 
 使用已有 Platform Admin 的常规密码在真实 Console 登录，刷新页面触发 Platform Session Slot 恢复。确认请求走 HTTPS API Origin、刷新携带 `sessionSlot: PLATFORM`，响应 Cookie 保持 host-only、Secure、HttpOnly、SameSite=Strict。不要在 Console 调用参数中手工注入 Origin、Cookie、Fetch Metadata 或 Bearer Token。
 
@@ -69,10 +68,10 @@ Maven 项目使用根 POM 支持的 JDK 17 或 21。首次导入并同步 Maven�
 
 ```bash
 mvn -pl gateway,services/iam-service -am \
-  -Dtest=LocalConfigurationTest,LocalIamDiscoveryTest,GatewayJwksRouteTest \
+  -Dtest=LocalConfigurationTest,ReservedIamServiceAccessTokenProviderTest,GatewayJwksRouteTest \
   -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
-配置测试经 Spring Config Data 加载实际模板；HTTP 发现测试使用临时真实 HTTP 服务和可控注册表边界，覆盖端口变化、无健康实例、发现失败和非本地模式兼容。它们不能代替 IDE 操作、真实 Nacos、数据库及浏览器联调。相关模块完整测试与集成检查可用 `mvn -pl gateway,services/iam-service -am verify`；仓库完整流水线由 CI 承担。
+配置测试经 Spring Config Data 加载实际模板；内部服务令牌测试覆盖身份、精确 Scope、缓存及失败关闭；Gateway 路由测试继续覆盖发现边界。它们不能代替 IDE 操作、真实 Nacos、数据库及浏览器联调。相关模块完整测试与集成检查可用 `mvn -pl gateway,services/iam-service -am verify`；仓库完整流水线由 CI 承担。
 
 验收记录须分别标明自动检查、IDE 断点/重启、Platform 登录刷新、IAM 端口变化、无健康目标及未执行项，不能用配置加载或进程启动成功代替真实认证成功。

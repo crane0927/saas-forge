@@ -1,37 +1,49 @@
 package io.saasforge.iam.infrastructure.security;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
+import io.saasforge.iam.application.authentication.ClientCredentialsTokenService;
+import io.saasforge.iam.application.authentication.TenantAccessUnavailableException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
-import org.springframework.http.MediaType;
-import org.springframework.web.client.RestClient;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 /** 使用外部只读 Secret 文件取得 IAM 自身保留 Client 的短期 Service Access Token。 */
-public final class ReservedIamServiceAccessTokenProvider {
+public class ReservedIamServiceAccessTokenProvider {
     private static final String MEMBERSHIP_READ_SCOPE = "tenant-access:membership:read";
 
-    private final RestClient iam;
+    private final ClientCredentialsTokenService tokens;
     private final Path clientIdFile;
     private final Path clientSecretFile;
     private final Clock clock;
     private volatile CachedToken membershipReadToken;
 
     public ReservedIamServiceAccessTokenProvider(
-            RestClient iam,
+            ClientCredentialsTokenService tokens,
             Path clientIdFile,
             Path clientSecretFile,
             Clock clock) {
-        this.iam = iam;
+        this.tokens = tokens;
         this.clientIdFile = clientIdFile;
         this.clientSecretFile = clientSecretFile;
         this.clock = clock;
     }
 
+    // 保持原 HTTP 请求的事务隔离：密钥 TTL 元数据必须在签名前独立提交。
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public synchronized String membershipReadToken() {
+        try {
+            return issueOrReuseToken();
+        } catch (RuntimeException exception) {
+            // 服务身份签发失败不是浏览器用户凭据错误，也不能当作成员权限被撤销。
+            throw new TenantAccessUnavailableException(exception);
+        }
+    }
+
+    private String issueOrReuseToken() {
         Instant now = clock.instant();
         if (membershipReadToken != null && membershipReadToken.refreshAfter().isAfter(now)) {
             return membershipReadToken.value();
@@ -42,19 +54,13 @@ public final class ReservedIamServiceAccessTokenProvider {
             throw new IllegalStateException("IAM Service Client ID 必须是规范 UUIDv7");
         }
         String clientSecret = readSecret(clientSecretFile);
-        TokenResponse response = iam.post()
-                .uri("/oauth2/token")
-                .headers(headers -> headers.setBasicAuth(clientId, clientSecret))
-                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .body("grant_type=client_credentials&scope=tenant-access%3Amembership%3Aread")
-                .retrieve()
-                .body(TokenResponse.class);
-        if (response == null || response.accessToken() == null || response.accessToken().isBlank()
-                || response.expiresIn() < 1 || !MEMBERSHIP_READ_SCOPE.equals(response.scope())) {
+        var response = tokens.issue(parsedClientId, clientSecret, "client_credentials", MEMBERSHIP_READ_SCOPE);
+        if (response.value() == null || response.value().isBlank()
+                || response.expiresInSeconds() < 1 || !MEMBERSHIP_READ_SCOPE.equals(response.scope())) {
             throw new IllegalStateException("IAM Service Access Token 响应不合法");
         }
         CachedToken issued = new CachedToken(
-                response.accessToken(), now.plusSeconds(Math.max(1, response.expiresIn() - 30L)));
+                response.value(), now.plusSeconds(Math.max(1, response.expiresInSeconds() - 30L)));
         membershipReadToken = issued;
         return issued.value();
     }
@@ -72,11 +78,5 @@ public final class ReservedIamServiceAccessTokenProvider {
     }
 
     private record CachedToken(String value, Instant refreshAfter) {
-    }
-
-    public record TokenResponse(
-            @JsonProperty("access_token") String accessToken,
-            @JsonProperty("expires_in") int expiresIn,
-            String scope) {
     }
 }

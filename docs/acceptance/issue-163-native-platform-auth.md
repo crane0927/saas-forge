@@ -1,5 +1,7 @@
 # Issue #163：Gateway 与 IAM 原生启动验收
 
+> 当前实现已改为内部签发，下面关于 IAM 自身 HTTP 发现及其权限的记录仅描述此前实现，现已被文末调整说明替代。Gateway → IAM 仍使用 Nacos 发现。
+
 ## 范围
 
 Platform Console → 受信 HTTPS Edge → IDE Gateway → Nacos 发现的 IDE IAM，覆盖 Platform 登录与刷新。Tenant 会话的双向 gRPC 路径属于 Issue #164。
@@ -61,3 +63,15 @@ IDE 自动化曾遇到 `noWindowsAvailable`、`cannotClickOffscreenElement` 和�
 - IAM 应用身份查询自身实例仍返回 Nacos 403；现有环境的只读发现授权尚未执行。
 
 因此本次仍未完成真实登录刷新、双服务断点、修改后重启、真实端口切换和无健康实例认证失败验收，Issue #163 不满足关闭条件。
+
+## IAM 内部服务令牌签发调整
+
+经开发者确认，IAM 获取自身保留 Client 的服务令牌改为调用 `ClientCredentialsTokenService.issue`，适用于所有 profile。保留受限凭据文件、规范 UUIDv7、固定 Membership Read Scope、Client/Secret 有效性、撤销状态和令牌缓存规则；没有直接绕过认证调用签名器。删除自调用 RestClient、静态 IAM HTTP 地址配置及仅为自身发现新增的 Nacos 读取权限声明。现有环境未执行权限扩展，Gateway 的 IAM 发现权限不变。
+
+Provider 经 Spring 事务代理使用 `NOT_SUPPORTED`，挂起调用方事务，使签名前的 Signing Key 最大 TTL 更新按既有 Repository 事务独立提交。内部签发失败在 Provider 边界转换为 `TenantAccessUnavailableException`，避免误报为浏览器用户凭据错误或成员授权丢失。
+
+事务回归先在无挂起时观察到预期失败（签名时仍存在外层事务），再加入事务挂起。认证集成测试现通过内部 Provider 获取服务令牌，随后跨真实受认证 gRPC 边界调用 Tenant Access；公开 OAuth HTTP 端点的原有测试仍保留。此前专门测试 IAM HTTP 自身发现的测试随无效实现删除。
+
+最终运行 `mvn -q -pl services/iam-service -am -Dtest=ReservedIamServiceAccessTokenProviderTest,ClientCredentialsTokenServiceTest,JwtSigningServiceTest,GrpcMembershipValidationTest,AuthenticationHttpIT -Dsurefire.failIfNoSpecifiedTests=false test`，68 项通过（认证集成 52、Provider 3、Client Credentials 4、签名 5、gRPC 4），失败/错误/跳过均为 0。日志 `/tmp/iam-internal-verification.log`。首次回归新增用例的执行顺序落在既有 Redis 停机测试之后，且一项 Scope 测试数据违反 Client 创建约束；修正测试顺序及数据后重跑通过，未将首次失败计为通过。
+
+`sh -n deploy/compose/nacos-init.sh`、`git diff --check` 与 19 项本地服务脚本测试通过。本次没有运行完整 CI 或重启用户的 IDE 应用，仍不宣称 Issue #163 的真实浏览器及 IDE 验收全部完成。
