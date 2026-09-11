@@ -74,5 +74,7 @@
   "creationRecoveryUNKNOWN": "无法确定，请核查",
   "creationRecoveryNext": "下一页创建记录",
   "creationRecoveryPrevious": "上一页创建记录",
-  "creationRecoveryPending": "正在读取…"
+  "creationRecoveryPending": "正在读取…",
+  "platformLoginEntry": "平台管理",
+  "tenantLoginEntry": "租户控制台"
 }

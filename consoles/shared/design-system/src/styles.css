@@ -888,3 +888,156 @@ body {
   inline-size: 100%;
   border: 0;
 }
+
+.sf-login-layout {
+  min-block-size: 100dvh;
+  background: var(--sf-color-layout);
+}
+.sf-login-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-block-size: 80px;
+  padding: 24px 32px;
+}
+.sf-login-tools .sf-console-locale-control {
+  padding: 0;
+  inline-size: 132px;
+}
+.sf-login-tools .sf-console-locale-control label {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.sf-login-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-block-size: calc(100dvh - 80px);
+  padding: 32px 16px 80px;
+}
+.sf-login-card {
+  inline-size: 466px;
+  max-inline-size: 100%;
+  padding: 32px;
+  border: 1px solid var(--sf-color-border);
+  border-radius: 8px;
+  background: var(--sf-color-surface);
+}
+.sf-login-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-block-start: 12px;
+  margin-block-end: 28px;
+}
+.sf-login-brand .sf-application-logo {
+  inline-size: 36px;
+  block-size: 36px;
+  flex: none;
+}
+.sf-login-name {
+  position: relative;
+  min-inline-size: 0;
+}
+.sf-login-name > strong {
+  font-size: 22px;
+  letter-spacing: -0.6px;
+}
+.sf-login-entry {
+  position: absolute;
+  inset-block-start: -15px;
+  inset-inline-start: calc(100% + 5px);
+  inline-size: max-content;
+  max-inline-size: 80px;
+  padding: 2px 5px;
+  border: 1px solid var(--sf-color-border);
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--sf-color-text-secondary);
+  background: var(--sf-color-layout);
+  overflow-wrap: anywhere;
+}
+.sf-login-card .sf-page-title {
+  margin: 0 0 28px;
+}
+.sf-login-card .sf-page-title h1 {
+  font-size: 24px;
+  line-height: 1.4;
+}
+.sf-login-content {
+  display: grid;
+  gap: 24px;
+}
+.sf-login-card .sf-form {
+  gap: 24px;
+  max-inline-size: 100%;
+}
+.sf-login-card .sf-form-row {
+  display: block;
+}
+.sf-login-card .sf-form-field {
+  gap: 8px;
+}
+.sf-login-card .sf-form-field > .ant-input,
+.sf-login-card .ant-input-affix-wrapper,
+.sf-login-card .sf-form > .ant-btn {
+  min-block-size: 40px;
+}
+.sf-login-card .sf-form > .ant-btn {
+  inline-size: 100%;
+  margin-block-start: 4px;
+}
+@media (max-width: 540px) {
+  .sf-login-tools {
+    min-block-size: 64px;
+    padding: 16px;
+  }
+  .sf-login-main {
+    min-block-size: calc(100dvh - 64px);
+    padding: 24px 16px 48px;
+  }
+  .sf-login-card {
+    padding: 24px;
+  }
+  .sf-login-name > strong {
+    font-size: 20px;
+  }
+  .sf-login-card .sf-page-title h1 {
+    font-size: 22px;
+  }
+}
+@media (max-width: 360px) {
+  .sf-login-name > strong {
+    font-size: 18px;
+  }
+  .sf-login-entry {
+    max-inline-size: 68px;
+    font-size: 9px;
+  }
+}
+
+/* 登录主操作悬停仍使用已验证的品牌前景色对，避免默认提亮背景后白字对比不足。 */
+.sf-login-card .ant-btn-primary:not(:disabled):hover {
+  background: var(--sf-color-primary);
+  color: var(--sf-color-primary-foreground);
+}
+.sf-login-content {
+  grid-template-columns: minmax(0, 1fr);
+}
+.sf-login-card .sf-feedback {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  overflow-wrap: anywhere;
+}
+.sf-login-card .sf-feedback > .ant-btn {
+  grid-column: 2;
+  justify-self: start;
+  max-inline-size: 100%;
+  white-space: normal;
+  block-size: auto;
+  min-block-size: 32px;
+}

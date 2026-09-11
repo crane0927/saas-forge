@@ -74,5 +74,7 @@
   "creationRecoveryUNKNOWN": "Unknown. Verify the result",
   "creationRecoveryNext": "Next creation records",
   "creationRecoveryPrevious": "Previous creation records",
-  "creationRecoveryPending": "Reading…"
+  "creationRecoveryPending": "Reading…",
+  "platformLoginEntry": "Platform admin",
+  "tenantLoginEntry": "Tenant console"
 }

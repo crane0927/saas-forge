@@ -8,6 +8,7 @@ export {
 } from './bootstrap-status';
 export {
   ApplicationShell,
+  LoginLayout,
   ContentPanel,
   StatusTag,
   DescriptionList,

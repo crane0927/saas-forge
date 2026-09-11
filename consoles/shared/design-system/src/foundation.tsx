@@ -523,3 +523,43 @@ export function SplitLayout({
     </div>
   );
 }
+
+/** 登录入口的视觉容器；认证状态与品牌解析由 Shell 提供。 */
+export function LoginLayout({
+  applicationName,
+  logoUrl,
+  logoAlt,
+  entryLabel,
+  title,
+  tools,
+  children,
+}: {
+  readonly applicationName: string;
+  readonly logoUrl?: string;
+  readonly logoAlt?: string;
+  readonly entryLabel: string;
+  readonly title: ReactNode;
+  readonly tools: ReactNode;
+  readonly children: ReactNode;
+}) {
+  return (
+    <div className="sf-login-layout">
+      <header className="sf-login-tools">{tools}</header>
+      <main className="sf-login-main">
+        <div className="sf-login-card">
+          <div className="sf-login-brand">
+            {logoUrl === undefined ? null : (
+              <img className="sf-application-logo" src={logoUrl} alt={logoAlt ?? ''} />
+            )}
+            <span className="sf-login-name">
+              <strong>{applicationName}</strong>
+              <span className="sf-login-entry">{entryLabel}</span>
+            </span>
+          </div>
+          {title}
+          <div className="sf-login-content">{children}</div>
+        </div>
+      </main>
+    </div>
+  );
+}

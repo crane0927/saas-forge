@@ -10,6 +10,7 @@ import {
   ApplicationFatalError,
   ApplicationShell,
   ApplicationIdentity,
+  LoginLayout,
   Button,
   type DesignIconName,
   FormLayout,
@@ -688,6 +689,8 @@ function LoginPage({
   readonly tenantSessionEnded: boolean;
   readonly translate: ShellTranslator;
 }) {
+  const brand = useContext(BrandApplicationContext);
+  const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [problem, setProblem] = useState<AuthenticationProblem>();
@@ -701,12 +704,25 @@ function LoginPage({
   );
 
   return (
-    <PageLayout
+    <LoginLayout
+      applicationName={applicationName}
+      logoUrl={brand?.resolvedBrand.profile.logoUrl}
+      logoAlt={brand?.logoAlt}
+      entryLabel={translate.translate(
+        runtime.intent === 'PLATFORM' ? 'platformLoginEntry' : 'tenantLoginEntry',
+      )}
+      tools={<ConsoleLocaleSelectorSlot />}
       title={
-        <ShellPageTitle
-          headingId="login-title"
-          title={translate.translate('loginTitle', { applicationName })}
-        />
+        <>
+          <RouteFocusAnnouncement
+            routeKey={location.key}
+            pageTitle={translate.translate('loginTitle', { applicationName })}
+            focusTargetId="login-title"
+          />
+          <PageTitle headingId="login-title">
+            {translate.translate('loginTitle', { applicationName })}
+          </PageTitle>
+        </>
       }
     >
       {passwordChanged ? (
@@ -805,7 +821,7 @@ function LoginPage({
           {translate.translate('signIn')}
         </Button>
       </FormLayout>
-    </PageLayout>
+    </LoginLayout>
   );
 }
 
