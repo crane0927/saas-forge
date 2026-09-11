@@ -38,6 +38,7 @@
   "tenantUnknown": "创建结果待确认",
   "tenantUnknownHint": "响应丢失或取消不代表创建失败。请读取服务端创建记录，确认前不要重新创建。",
   "tenantReadFailed": "暂时无法读取",
+  "tenantLoading": "正在读取 Tenant…",
   "tenantReadHint": "请重试；读取失败不代表资源不存在。",
   "tenantBack": "返回 Tenant 列表",
   "tenantRetry": "重新读取",

@@ -1,6 +1,10 @@
 import { createRuntimeConfigBootstrap, type RuntimeConfigResult } from '@saas-forge/app-runtime';
 import { platformResolvedBrandProfile } from '@saas-forge/design-system';
-import { BrandApplicationProvider, ConsoleLocaleProvider } from '@saas-forge/react-shell';
+import {
+  AuthenticationRootErrorBoundary,
+  BrandApplicationProvider,
+  ConsoleLocaleProvider,
+} from '@saas-forge/react-shell';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -9,6 +13,41 @@ import { PlatformConsoleApp } from '../src/app';
 afterEach(cleanup);
 
 describe('PlatformConsoleApp', () => {
+  it('keeps route render errors inside the safe application boundary', async () => {
+    window.history.replaceState(null, '', '/');
+    const descriptor = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent');
+    if (descriptor?.set === undefined) throw new Error('Missing DOM text setter');
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    Object.defineProperty(Node.prototype, 'textContent', {
+      ...descriptor,
+      set(value: string | null) {
+        if ((this as Node).nodeName === 'H1' && value === '登录 SaaS Forge')
+          throw new Error('private-route-render-failure');
+        descriptor.set?.call(this, value);
+      },
+    });
+    try {
+      render(
+        <ConsoleLocaleProvider initialLocale="zh-CN">
+          <BrandApplicationProvider resolvedBrand={platformResolvedBrandProfile} surface="platform">
+            <AuthenticationRootErrorBoundary applicationName="SaaS Forge" locale="zh-CN">
+              <PlatformConsoleApp
+                bootstrap={createRuntimeConfigBootstrap(() => Promise.resolve(success()))}
+                authenticationFetch={() => Promise.resolve(new Response(null, { status: 401 }))}
+                realm={{}}
+              />
+            </AuthenticationRootErrorBoundary>
+          </BrandApplicationProvider>
+        </ConsoleLocaleProvider>,
+      );
+      expect(await screen.findByRole('heading', { name: 'SaaS Forge 无法继续运行' })).toBeTruthy();
+      expect(document.body.textContent).not.toContain('private-route-render-failure');
+    } finally {
+      Object.defineProperty(Node.prototype, 'textContent', descriptor);
+      errorLog.mockRestore();
+    }
+  });
+
   it.each([
     ['zh-CN', '当前身份暂时无法读取', '重新读取', '无平台管理员授权'],
     [

@@ -8,6 +8,7 @@ import {
 } from '@saas-forge/app-runtime';
 import {
   AuthenticationShell,
+  AuthenticationRootErrorBoundary,
   BrandApplicationLoading,
   BrandConfigurationFailure,
   FormExitGuardProvider,
@@ -93,9 +94,23 @@ function PlatformRouter(props: {
 }) {
   // Data Router 使表单离开确认覆盖页面链接、全局导航和浏览器后退。
   const [router] = useState(() =>
-    createBrowserRouter([{ path: '*', element: <PlatformAuthenticationPath {...props} /> }]),
+    createBrowserRouter([{ path: '*', element: <PlatformRouteBoundary {...props} /> }]),
   );
   return <RouterProvider router={router} />;
+}
+
+function PlatformRouteBoundary(props: {
+  readonly config: RuntimeConfig;
+  readonly authenticationFetch: AuthenticationFetch;
+  readonly realm: object;
+}) {
+  const { locale } = useConsoleLocale();
+  // 在 Data Router 的默认错误边界之前捕获，避免显示或记录原始异常。
+  return (
+    <AuthenticationRootErrorBoundary applicationName="SaaS Forge" locale={locale}>
+      <PlatformAuthenticationPath {...props} />
+    </AuthenticationRootErrorBoundary>
+  );
 }
 
 function PlatformAuthenticationPath({

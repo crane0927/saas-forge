@@ -175,6 +175,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
   const password = `Acceptance-${randomBytes(24).toString('hex')}`;
 
   await platform.goto(`https://platform.${rootDomain}/`);
+  await expectRouteAccessibility(platform, 'Sign in to SaaS Forge');
   await selectConsoleLocale(platform, '简体中文');
   const initial = await login(platform, email, initialPassword, 'zh-CN', {
     focusedElementId: 'console-locale',
@@ -249,6 +250,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         login,
         selectLocale: selectConsoleLocale,
         accessibility: expectRouteAccessibility,
+        safeStorage: expectSafeStorage,
         capture: captureBrandEvidence,
       });
     },
@@ -1601,7 +1603,7 @@ async function selectConsoleLocale(page, name) {
     'true',
     'locale selector opens by keyboard',
   );
-  await page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)').waitFor();
+  // 页面可同时存在筛选下拉层的退出动画；只等待目标语言选项。
   const target = page.locator('.ant-select-item-option', { hasText: name });
   await target.waitFor();
   let targetActive = false;

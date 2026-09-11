@@ -38,6 +38,7 @@
   "tenantUnknown": "Creation result needs confirmation",
   "tenantUnknownHint": "A lost response or cancellation does not mean creation failed. Read server-side creation records before creating again.",
   "tenantReadFailed": "Unable to read this information",
+  "tenantLoading": "Loading Tenant…",
   "tenantReadHint": "Retry the read. A failed read does not mean the resource is missing.",
   "tenantBack": "Back to Tenants",
   "tenantRetry": "Reload",

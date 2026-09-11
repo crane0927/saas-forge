@@ -14,6 +14,7 @@ export async function verifyTenantCreation({
   login,
   selectLocale,
   accessibility,
+  safeStorage,
   capture,
 }) {
   const profile = await mkdtemp(path.join(tmpdir(), 'sf-tenant-creation-'));
@@ -23,6 +24,7 @@ export async function verifyTenantCreation({
       channel: 'chrome',
       headless: true,
       ignoreHTTPSErrors: false,
+      locale: 'zh-CN',
       viewport: { width: 1440, height: 960 },
     });
   const base = `https://platform.${rootDomain}`;
@@ -35,12 +37,20 @@ export async function verifyTenantCreation({
     let page = await context.newPage();
     page.on('pageerror', () => errors.push('pageerror'));
     await page.goto(base);
-    await selectLocale(page, '简体中文');
-    await login(page, email, password, 'zh-CN', { focusedElementId: 'console-locale' });
+    await accessibility(page, '登录 SaaS Forge');
+    await login(page, email, password, 'zh-CN');
     await page.getByRole('link', { name: 'Tenant', exact: true }).click();
     await accessibility(page, 'Tenant');
     await page.getByRole('button', { name: '创建 Tenant', exact: true }).click();
-    await page.getByRole('textbox', { name: '名称', exact: true }).fill('Unsaved draft');
+    await accessibility(page, '创建 Tenant');
+    await page
+      .getByRole('form', { name: '创建 Tenant', exact: true })
+      .getByRole('textbox', { name: '名称', exact: true })
+      .fill('Unsaved draft');
+    assert.equal(
+      await page.getByRole('textbox', { name: '名称', exact: true }).inputValue(),
+      'Unsaved draft',
+    );
     await page.getByRole('link', { name: '首页', exact: true }).click();
     await page.getByRole('dialog', { name: '放弃未保存的修改？' }).waitFor();
     await page.getByRole('button', { name: '继续编辑', exact: true }).click();
@@ -62,6 +72,7 @@ export async function verifyTenantCreation({
     assert.equal(creates, 1);
     await page.unroute('**/api/v1/platform/tenants');
     await capture(page, 'issue-172-response-lost');
+    await safeStorage(page);
     await page.reload();
     await page.getByRole('textbox', { name: '名称', exact: true }).waitFor();
     assert.equal(await page.getByRole('textbox', { name: '名称', exact: true }).inputValue(), '');
@@ -104,7 +115,9 @@ export async function verifyTenantCreation({
       .getByRole('button', { name: 'View Tenant' })
       .click();
     await page.getByRole('heading', { name: 'Tenant details', exact: true }).waitFor();
+    await page.getByText(committedId, { exact: true }).waitFor();
     await capture(page, 'issue-172-english-detail');
+    await safeStorage(page);
     await context.close();
     context = await launch();
     page = await context.newPage();
@@ -156,6 +169,7 @@ export async function verifyTenantCreation({
     }
     const rollbackName = `${name} rollback`;
     await page.goto(`${base}/tenants/new`);
+    await accessibility(page, 'Create Tenant');
     await page.getByRole('textbox', { name: 'Name', exact: true }).fill(rollbackName);
     allowTenantWrites(false);
     try {
@@ -182,11 +196,13 @@ export async function verifyTenantCreation({
     await page.getByText(rollbackName, { exact: true }).waitFor();
     await capture(page, 'issue-172-replayed-after-rollback');
     await page.goto(`${base}/tenants/new`);
+    await accessibility(page, 'Create Tenant');
     await page.getByRole('textbox', { name: 'Name', exact: true }).fill(name);
     await page.getByRole('button', { name: 'Create Tenant', exact: true }).click();
     await page.getByRole('heading', { name: 'Tenant details', exact: true }).waitFor();
     await page.getByText(name, { exact: true }).waitFor();
     assert.notEqual(new URL(page.url()).pathname, `/tenants/${committedId}`);
+    await safeStorage(page);
     assert.deepEqual(errors, []);
   } finally {
     await context?.close();

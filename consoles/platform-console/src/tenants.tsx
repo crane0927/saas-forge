@@ -320,7 +320,7 @@ function TenantDetailContent({ client, locale, tenantId }: Props & { readonly te
     <section>
       <Heading title={t('tenantDetail')} />
       {result === undefined ? (
-        <p role="status">{t('currentSessionLoading')}</p>
+        <p role="status">{t('tenantLoading')}</p>
       ) : result.ok ? (
         <dl>
           <dt>{t('tenantId')}</dt>
