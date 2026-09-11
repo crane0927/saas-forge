@@ -1,6 +1,12 @@
 package io.saasforge.entitlement.api;
 
 import io.saasforge.entitlement.application.authorization.PlatformAdminAuthorizer;
+import io.saasforge.entitlement.application.bootstrap.QuotaDefinitionOperation;
+import io.saasforge.entitlement.contract.model.QuotaDefinitionOperationRecovery;
+import io.saasforge.entitlement.contract.model.QuotaDefinitionOperationPage;
+import io.saasforge.entitlement.contract.model.QuotaDefinitionPage;
+import io.saasforge.entitlement.application.bootstrap.QuotaDefinitionQueries;
+import io.saasforge.entitlement.application.bootstrap.RecoverableQuotaDefinitionService;
 import io.saasforge.entitlement.application.bootstrap.EntitlementBootstrapService;
 import io.saasforge.entitlement.application.bootstrap.PlanResult;
 import io.saasforge.entitlement.application.bootstrap.QuotaDefinitionResult;
@@ -35,14 +41,20 @@ public class EntitlementBootstrapController implements PlatformEntitlementBootst
     private final PlatformAdminAuthorizer authorizer;
     private final EntitlementBootstrapService bootstrap;
     private final CreateInitialSubscriptionService initialSubscriptions;
+    private final RecoverableQuotaDefinitionService recoverableQuota;
+    private final QuotaDefinitionQueries quotaQueries;
 
     public EntitlementBootstrapController(
             PlatformAdminAuthorizer authorizer,
             EntitlementBootstrapService bootstrap,
-            CreateInitialSubscriptionService initialSubscriptions) {
+            CreateInitialSubscriptionService initialSubscriptions,
+            RecoverableQuotaDefinitionService recoverableQuota,
+            QuotaDefinitionQueries quotaQueries) {
         this.authorizer = authorizer;
         this.bootstrap = bootstrap;
         this.initialSubscriptions = initialSubscriptions;
+        this.recoverableQuota = recoverableQuota;
+        this.quotaQueries = quotaQueries;
     }
 
     @Override
@@ -50,7 +62,7 @@ public class EntitlementBootstrapController implements PlatformEntitlementBootst
             UUID idempotencyKey, CreateQuotaDefinitionRequest request) {
         HttpServletRequest httpRequest = currentRequest();
         UUID actor = authorizer.authorize(httpRequest.getHeader(HttpHeaders.AUTHORIZATION));
-        QuotaDefinitionResult result = bootstrap.createQuotaDefinition(
+        QuotaDefinitionResult result = recoverableQuota.create(
                 actor, idempotencyKey,
                 request.getCode() == null ? null : request.getCode().getValue(), traceId(httpRequest));
         return ResponseEntity.created(URI.create("/api/v1/platform/quota-definitions/" + result.id()))
@@ -62,8 +74,66 @@ public class EntitlementBootstrapController implements PlatformEntitlementBootst
             UUID quotaDefinitionId, UUID idempotencyKey) {
         HttpServletRequest httpRequest = currentRequest();
         UUID actor = authorizer.authorize(httpRequest.getHeader(HttpHeaders.AUTHORIZATION));
-        return ResponseEntity.ok(toResponse(bootstrap.activateQuotaDefinition(
+        return ResponseEntity.ok(toResponse(recoverableQuota.activate(
                 actor, idempotencyKey, quotaDefinitionId, traceId(httpRequest))));
+    }
+
+    @Override
+    public ResponseEntity<QuotaDefinitionPage> listQuotaDefinitions(
+            String cursor, Integer limit, String code, QuotaDefinitionStatus status) {
+        authorizer.authorize(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
+        var page = quotaQueries.list(code, status == null ? null
+                : io.saasforge.entitlement.domain.quota.QuotaDefinitionStatus.valueOf(status.name()), cursor, limit);
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore()).body(
+                new QuotaDefinitionPage(
+                        page.items().stream().map(EntitlementBootstrapController::toResponse).toList(),
+                        page.nextCursor(), page.hasMore()));
+    }
+
+    @Override
+    public ResponseEntity<QuotaDefinition> getQuotaDefinition(UUID quotaDefinitionId) {
+        authorizer.authorize(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(toResponse(quotaQueries.get(quotaDefinitionId)));
+    }
+
+    @Override
+    public ResponseEntity<QuotaDefinitionOperationPage> listQuotaDefinitionOperations(
+            String cursor, Integer limit) {
+        UUID actor = authorizer.authorize(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
+        var page = recoverableQuota.list(actor, cursor, limit);
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore()).body(
+                new QuotaDefinitionOperationPage(
+                        page.items().stream().map(EntitlementBootstrapController::toResponse).toList(),
+                        page.nextCursor(), page.hasMore()));
+    }
+
+    @Override
+    public ResponseEntity<QuotaDefinitionOperationRecovery> getQuotaDefinitionOperation(UUID operationId) {
+        UUID actor = authorizer.authorize(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(toResponse(recoverableQuota.get(actor, operationId)));
+    }
+
+    @Override
+    public ResponseEntity<QuotaDefinitionOperationRecovery> recoverQuotaDefinitionOperation(
+            UUID operationId, UUID idempotencyKey, Object body) {
+        var request = currentRequest();
+        UUID actor = authorizer.authorize(request.getHeader(HttpHeaders.AUTHORIZATION));
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(toResponse(recoverableQuota.recover(actor, operationId, idempotencyKey, traceId(request))));
+    }
+
+    private static QuotaDefinitionOperationRecovery toResponse(
+            QuotaDefinitionOperation operation) {
+        var result = new QuotaDefinitionOperationRecovery(
+                operation.id(),
+                QuotaDefinitionOperationRecovery.OperationEnum.valueOf(operation.operation().name()),
+                QuotaDefinitionOperationRecovery.StateEnum.valueOf(operation.state().name()),
+                operation.createdAt().atOffset(ZoneOffset.UTC), operation.replayUntil().atOffset(ZoneOffset.UTC), operation.canReplay());
+        result.setQuotaDefinitionId(operation.quotaDefinitionId());
+        result.setIdempotencyKey(operation.idempotencyKey());
+        return result;
     }
 
     @Override

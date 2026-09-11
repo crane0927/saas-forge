@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.saasforge.entitlement.infrastructure.persistence.mapper.QuotaDefinitionRecoveryMapper">
+    <sql id="columns">
+        id, actor_identity_id AS actor, idempotency_key AS key, operation,
+        target_id AS targetId, created_at AS createdAt, replay_until AS replayUntil,
+        response_body::TEXT AS responseBody
+    </sql>
+    <insert id="prepare">
+        INSERT INTO quota_definition_recovery(actor_identity_id, idempotency_key, operation,
+                target_id, created_at, replay_until)
+        VALUES (#{actor}, #{key}, #{operation}, #{targetId}, #{createdAt}, #{replayUntil})
+        ON CONFLICT (actor_identity_id, idempotency_key) DO NOTHING
+    </insert>
+    <select id="findByKey" resultType="io.saasforge.entitlement.infrastructure.persistence.record.QuotaDefinitionRecoveryRow">
+        SELECT <include refid="columns"/> FROM quota_definition_recovery
+        WHERE actor_identity_id = #{actor} AND idempotency_key = #{key}
+    </select>
+    <!-- 获锁后必须重新读数据库，不能复用同一 SqlSession 中获锁前的快照。 -->
+    <select id="find" flushCache="true" resultType="io.saasforge.entitlement.infrastructure.persistence.record.QuotaDefinitionRecoveryRow">
+        SELECT <include refid="columns"/> FROM quota_definition_recovery
+        WHERE actor_identity_id = #{actor} AND id = #{id}
+    </select>
+    <select id="tryLock" resultType="boolean">
+        SELECT pg_try_advisory_xact_lock(hashtextextended('quota-definition-operation:' || CAST(#{id} AS TEXT), 0))
+    </select>
+    <select id="canExecute" resultType="boolean">
+        SELECT CASE WHEN operation = 'CREATE'
+            THEN NOT EXISTS (SELECT 1 FROM quota_definitions WHERE code = 'max_users')
+            ELSE EXISTS (SELECT 1 FROM quota_definitions WHERE id = target_id AND quota_definition_status = 'DRAFT')
+            END
+        FROM quota_definition_recovery WHERE id = #{id}
+    </select>
+    <update id="complete">
+        UPDATE quota_definition_recovery SET response_body = CAST(#{responseBody} AS JSONB), replay_until = #{replayUntil}
+        WHERE id = #{id} AND actor_identity_id = #{actor} AND response_body IS NULL
+    </update>
+    <select id="list" resultType="java.util.UUID">
+        SELECT id FROM quota_definition_recovery
+        WHERE actor_identity_id = #{actor}
+        <if test="after != null">AND id &gt; #{after}</if>
+        ORDER BY id LIMIT #{limit}
+    </select>
+</mapper>

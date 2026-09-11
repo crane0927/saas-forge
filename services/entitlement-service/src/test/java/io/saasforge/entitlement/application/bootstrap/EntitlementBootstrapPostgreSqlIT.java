@@ -130,13 +130,148 @@ class EntitlementBootstrapPostgreSqlIT {
 
     @BeforeEach
     void clean() throws SQLException {
-        executeAsMigrator("TRUNCATE entitlement_outbox_events, entitlement_bootstrap_idempotency, "
+        executeAsMigrator("TRUNCATE quota_definition_recovery, entitlement_outbox_events, entitlement_bootstrap_idempotency, "
                 + "quota_operations, quota_usages, subscriptions, plan_quotas, plans, quota_definitions CASCADE");
     }
 
     @AfterAll
     void stop() {
         POSTGRES.stop();
+    }
+
+    @Autowired
+    private RecoverableQuotaDefinitionService recoverableQuota;
+
+    @Autowired
+    private QuotaDefinitionRecoveryRepository quotaRecoveryRepository;
+    @Autowired
+    private QuotaDefinitionQueries quotaQueries;
+
+    @Test
+    void exposesPublishedQuotaReadsAndPrivateRecoveryOverHttp() throws Exception {
+        UUID actor = uuidV7(840);
+        var controller = new io.saasforge.entitlement.api.EntitlementBootstrapController(
+                authorization -> {
+                    if (!"allowed".equals(authorization)) throw new io.saasforge.sdk.auth.PlatformAuthorizationDeniedException();
+                    return actor;
+                }, service, initialSubscriptions, recoverableQuota, quotaQueries);
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new io.saasforge.entitlement.api.EntitlementBootstrapExceptionHandler()).build();
+        var created = recoverableQuota.create(actor, uuidV7(841), "max_users", null);
+        String definitions = "/api/v1/platform/quota-definitions";
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(definitions)
+                .header("Authorization", "allowed").param("code", "max").param("status", "DRAFT").param("limit", "1"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.items[0].id").value(created.id().toString()))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Cache-Control", "no-store"));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(definitions + "/" + created.id()).header("Authorization", "allowed"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk());
+        String operations = "/api/v1/platform/quota-definition-operations";
+        var record = recoverableQuota.list(actor, null, 50).items().get(0);
+        for (String path : java.util.List.of(definitions, definitions + "/" + created.id(), operations, operations + "/" + record.id())) {
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(path))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
+        }
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(operations).header("Authorization", "allowed"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.items[0].state").value("COMMITTED"));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(operations + "/" + record.id() + "/recovery")
+                .header("Authorization", "allowed").header("Idempotency-Key", uuidV7(841)).contentType("application/json").content("{}"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.quotaDefinitionId").value(created.id().toString()));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(operations + "/" + record.id() + "/recovery")
+                .header("Idempotency-Key", uuidV7(841)).contentType("application/json").content("{}"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
+    }
+
+    @Test
+    void retainsCommittedFactsButRefusesReplayAtExact24HourBoundary() {
+        UUID actor = uuidV7(810);
+        var created = recoverableQuota.create(actor, uuidV7(811), "max_users", null);
+        var operation = recoverableQuota.list(actor, null, 50).items().get(0);
+        var expired = new RecoverableQuotaDefinitionService(service, quotaRecoveryRepository,
+                Clock.fixed(operation.replayUntil(), java.time.ZoneOffset.UTC));
+        assertEquals(QuotaDefinitionOperation.State.COMMITTED, expired.get(actor, operation.id()).state());
+        assertEquals(created.id(), expired.get(actor, operation.id()).quotaDefinitionId());
+        assertFalse(expired.get(actor, operation.id()).canReplay());
+        assertEquals(null, expired.get(actor, operation.id()).idempotencyKey());
+        assertThrows(QuotaDefinitionRecoveryException.class,
+                () -> expired.recover(actor, operation.id(), uuidV7(811), null));
+        assertEquals(created, quotaQueries.get(created.id()));
+        assertEquals(1, quotaQueries.list("max", null, null, 1).items().size());
+        assertTrue(quotaQueries.list("absent", null, null, 1).items().isEmpty());
+        assertTrue(quotaQueries.list("", io.saasforge.entitlement.domain.quota.QuotaDefinitionStatus.ACTIVE, null, 1).items().isEmpty());
+        assertThrows(IllegalArgumentException.class, () -> quotaQueries.list("", null, "broken", 1));
+    }
+
+    @Test
+    void recoversRolledBackCreateAndActivationButNeverRestartsExpiredUnknownAttempt() throws Exception {
+        UUID actor = uuidV7(820);
+        executeAsMigrator("REVOKE INSERT ON quota_definitions FROM entitlement_app");
+        try {
+            assertThrows(RuntimeException.class, () -> recoverableQuota.create(actor, uuidV7(821), "max_users", null));
+        } finally { executeAsMigrator("GRANT INSERT ON quota_definitions TO entitlement_app"); }
+        var operation = recoverableQuota.list(actor, null, 50).items().get(0);
+        assertEquals(QuotaDefinitionOperation.State.NOT_COMMITTED, operation.state());
+        var expired = new RecoverableQuotaDefinitionService(service, quotaRecoveryRepository,
+                Clock.fixed(operation.replayUntil(), java.time.ZoneOffset.UTC));
+        assertEquals(QuotaDefinitionOperation.State.UNKNOWN, expired.get(actor, operation.id()).state());
+        assertThrows(QuotaDefinitionRecoveryException.class, () -> expired.recover(actor, operation.id(), uuidV7(821), null));
+        assertTrue(quotaQueries.list("", null, null, 50).items().isEmpty());
+        assertThrows(IdempotencyKeyReusedException.class,
+                () -> recoverableQuota.recover(actor, operation.id(), uuidV7(822), null));
+        var recovered = recoverableQuota.recover(actor, operation.id(), uuidV7(821), null);
+        assertEquals(QuotaDefinitionOperation.State.COMMITTED, recovered.state());
+        executeAsMigrator("REVOKE UPDATE ON quota_definitions FROM entitlement_app");
+        try {
+            assertThrows(RuntimeException.class, () -> recoverableQuota.activate(actor, uuidV7(823), recovered.quotaDefinitionId(), null));
+        } finally { executeAsMigrator("GRANT UPDATE ON quota_definitions TO entitlement_app"); }
+        var secondPage = recoverableQuota.list(actor, null, 1);
+        assertTrue(secondPage.hasMore());
+        var activation = recoverableQuota.list(actor, secondPage.nextCursor(), 1).items().get(0);
+        assertEquals(QuotaDefinitionOperation.Operation.ACTIVATE, activation.operation());
+        assertEquals(QuotaDefinitionOperation.State.NOT_COMMITTED, activation.state());
+        recoverableQuota.recover(actor, activation.id(), uuidV7(823), null);
+        assertEquals("ACTIVE", quotaQueries.get(recovered.quotaDefinitionId()).status().name());
+        assertThrows(IllegalArgumentException.class, () -> recoverableQuota.list(uuidV7(824), secondPage.nextCursor(), 1));
+    }
+
+    @Test
+    void reportsProcessingUnderRealTransactionLockAndRejectsParallelReplay() throws Exception {
+        UUID actor = uuidV7(830);
+        var saved = quotaRecoveryRepository.prepare(actor, uuidV7(831), QuotaDefinitionOperation.Operation.CREATE,
+                null, java.time.Instant.now());
+        try (var connection = java.sql.DriverManager.getConnection(jdbcUrl(), "entitlement_app", "entitlement-app-password")) {
+            connection.setAutoCommit(false);
+            try (var statement = connection.createStatement()) {
+                statement.execute("SELECT pg_advisory_xact_lock(hashtextextended('quota-definition-operation:" + saved.id() + "', 0))");
+                assertEquals(QuotaDefinitionOperation.State.PROCESSING, recoverableQuota.get(actor, saved.id()).state());
+                assertFalse(recoverableQuota.get(actor, saved.id()).canReplay());
+                assertThrows(IdempotencyRequestInProgressException.class,
+                        () -> recoverableQuota.recover(actor, saved.id(), saved.key(), null));
+            } finally { connection.rollback(); }
+        }
+        assertEquals(QuotaDefinitionOperation.State.NOT_COMMITTED, recoverableQuota.get(actor, saved.id()).state());
+        assertEquals(QuotaDefinitionOperation.State.COMMITTED, recoverableQuota.recover(actor, saved.id(), saved.key(), null).state());
+    }
+
+    @Test
+    void recoversCreateAndActivationUsingOriginalActorAndKey() {
+        UUID actor = uuidV7(801);
+        UUID key = uuidV7(802);
+        var created = recoverableQuota.create(actor, key, "max_users", null);
+        var attempts = recoverableQuota.list(actor, null, 50).items();
+        assertEquals(1, attempts.size());
+        assertEquals("COMMITTED", attempts.get(0).state().name());
+        assertEquals(created.id(), attempts.get(0).quotaDefinitionId());
+        assertEquals(created, recoverableQuota.create(actor, key, "max_users", null));
+        assertTrue(recoverableQuota.list(uuidV7(803), null, 50).items().isEmpty());
+        assertThrows(QuotaDefinitionRecoveryException.class,
+                () -> recoverableQuota.get(uuidV7(803), attempts.get(0).id()));
+        var active = recoverableQuota.activate(actor, uuidV7(804), created.id(), null);
+        assertEquals("ACTIVE", active.status().name());
+        assertEquals(2, recoverableQuota.list(actor, null, 50).items().size());
+        assertEquals(created, recoverableQuota.create(actor, key, "max_users", null));
     }
 
     @Test
@@ -613,6 +748,9 @@ class EntitlementBootstrapPostgreSqlIT {
             basePackages = "io.saasforge.entitlement.infrastructure.persistence.mapper",
             sqlSessionFactoryRef = "entitlementSqlSessionFactory")
     @Import({
+            RecoverableQuotaDefinitionService.class,
+            io.saasforge.entitlement.infrastructure.persistence.MyBatisQuotaDefinitionQueries.class,
+            io.saasforge.entitlement.infrastructure.persistence.MyBatisQuotaDefinitionRecovery.class,
             MyBatisQuotaDefinitionRepository.class,
             MyBatisQuotaOperationRepository.class,
             MyBatisPlanRepository.class,

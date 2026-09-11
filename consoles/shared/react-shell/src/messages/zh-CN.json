@@ -76,5 +76,17 @@
   "creationRecoveryPrevious": "上一页创建记录",
   "creationRecoveryPending": "正在读取…",
   "platformLoginEntry": "平台管理",
-  "tenantLoginEntry": "租户控制台"
+  "tenantLoginEntry": "租户控制台",
+  "quotaRecoveryTitle": "我的额度定义操作",
+  "quotaRecoveryHint": "仅显示当前操作者的服务端记录。未找到记录或已过期时，请核查结果，不要重新提交。",
+  "quotaRecoveryRead": "读取操作记录",
+  "quotaRecoveryContinue": "继续原操作",
+  "quotaRecoveryView": "查看额度定义",
+  "quotaRecoveryEmpty": "未找到操作记录；这不能证明先前请求未提交。",
+  "quotaRecoveryFailure": "操作记录暂时无法读取",
+  "quotaRecoveryNext": "下一页操作记录",
+  "quotaRecoveryPrevious": "上一页操作记录",
+  "quotaRecoveryCreate": "创建 max_users",
+  "quotaRecoveryActivate": "激活 max_users",
+  "quotaRecoveryUnavailable": "当前无法继续原操作，请核查已有定义或保留期。"
 }

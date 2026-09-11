@@ -76,5 +76,17 @@
   "creationRecoveryPrevious": "Previous creation records",
   "creationRecoveryPending": "Reading…",
   "platformLoginEntry": "Platform admin",
-  "tenantLoginEntry": "Tenant console"
+  "tenantLoginEntry": "Tenant console",
+  "quotaRecoveryTitle": "My quota definition operations",
+  "quotaRecoveryHint": "Only your server records are shown. If a record is missing or expired, verify the outcome before submitting again.",
+  "quotaRecoveryRead": "Read operation records",
+  "quotaRecoveryContinue": "Continue original operation",
+  "quotaRecoveryView": "View quota definition",
+  "quotaRecoveryEmpty": "No operation records found. This does not prove the request was not committed.",
+  "quotaRecoveryFailure": "Operation records unavailable",
+  "quotaRecoveryNext": "Next operation records",
+  "quotaRecoveryPrevious": "Previous operation records",
+  "quotaRecoveryCreate": "Create max_users",
+  "quotaRecoveryActivate": "Activate max_users",
+  "quotaRecoveryUnavailable": "The original operation cannot continue. Verify the existing definition and retention period."
 }

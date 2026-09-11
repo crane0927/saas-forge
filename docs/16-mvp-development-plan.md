@@ -165,6 +165,7 @@ flowchart TD
   - Issue #171 已补充 Current Session 正式读取、共享 Client 和双语页面，复用既有认证 Runtime；原生环境真实 HTTPS 当前身份、刷新、浏览器重启及双 Console 安全验收通过。首次改密与 Fresh Compose Chrome 产品测试 33/33 及浏览器门禁通过；本阶段仍有其他验收，本项保持未勾选，见 [验收记录](acceptance/issue-171-current-session.md)。
 - [ ] Platform Console 完成“Quota Definition/Plan → Tenant → Subscription → Tenant Administrator 初始化”产品路径，读取结果必须来自真实服务权威状态。
   - Issue #172 已实现 Tenant 列表/详情/创建和原操作者服务端恢复；前端完整门禁、后端测试及质量门禁复验通过，Fresh Compose 产品测试 34/34 与重置后 Chrome 浏览器门禁通过。当前子项验收完成，不代表父规格其他业务闭环完成，详见含关闭前复核与历史失败的[验收记录](acceptance/issue-172-tenant-creation-recovery.md)。
+  - Issue #173 已实现 Quota Definition 正式读取、创建/激活恢复及独立页面；最终完整门禁与真实 Chrome 验收进行中，尚未标记完成，见[验收记录](acceptance/issue-173-quota-definition-recovery.md)。
 - [ ] Tenant Console 完成“Password Setup → Tenant Administrator 登录 → Accessible Membership 选择 → Tenant Context Switch”，刷新页面后从权威状态恢复当前 Session 与资源上下文。
 - [ ] Platform Console 完成 Tenant Suspension、显式恢复和恢复失败处理；Tenant Console 可观察旧 Token 被拒绝、Session 失效及重新登录后的恢复结果。
 - [ ] Platform Console 完成 OAuth Client 创建、Secret 一次展示、结果不确定恢复、重叠轮换和吊销；Secret 不得进入浏览器持久存储、日志或重复读取接口。

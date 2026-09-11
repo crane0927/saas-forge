@@ -766,7 +766,136 @@ paths:
             application/problem+json:
               schema: { $ref: './common.yaml#/components/schemas/ProblemDetails' }
 
+  /api/v1/platform/quota-definition-operations:
+    get:
+      tags: [Platform entitlement bootstrap]
+      operationId: listQuotaDefinitionOperations
+      x-saasforge-service: entitlement-service
+      summary: Find only the current actor quota definition operation attempts after losing an in-memory handle
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: cursor
+          in: query
+          schema: { type: string, maxLength: 2048 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuotaDefinitionOperationPage' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/quota-definition-operations/{operationId}:
+    get:
+      tags: [Platform entitlement bootstrap]
+      operationId: getQuotaDefinitionOperation
+      x-saasforge-service: entitlement-service
+      summary: Read own quota definition operation result; missing or expired records never authorize a new quota definition operation
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: operationId
+          in: path
+          required: true
+          schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuotaDefinitionOperationRecovery' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/quota-definition-operations/{operationId}/recovery:
+    post:
+      tags: [Platform entitlement bootstrap]
+      operationId: recoverQuotaDefinitionOperation
+      x-saasforge-service: entitlement-service
+      summary: Continue the original quota definition operation with its server-stored actor, Key and request; never starts a new operation
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: operationId
+          in: path
+          required: true
+          schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              maxProperties: 0
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuotaDefinitionOperationRecovery' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
   /api/v1/platform/quota-definitions:
+    get:
+      tags: [Platform entitlement bootstrap]
+      operationId: listQuotaDefinitions
+      x-saasforge-service: entitlement-service
+      summary: List Quota Definitions by literal code substring and status
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: cursor
+          in: query
+          schema: { type: string, maxLength: 2048 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: code
+          in: query
+          schema: { type: string, maxLength: 100 }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/QuotaDefinitionStatus' }
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuotaDefinitionPage' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
     post:
       tags: [Platform entitlement bootstrap]
       operationId: createQuotaDefinition
@@ -796,6 +925,34 @@ paths:
         '404': { $ref: './common.yaml#/components/responses/Problem' }
         '405': { $ref: './common.yaml#/components/responses/Problem' }
         '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/quota-definitions/{quotaDefinitionId}:
+    get:
+      tags: [Platform entitlement bootstrap]
+      operationId: getQuotaDefinition
+      x-saasforge-service: entitlement-service
+      summary: Read authoritative Tenant detail
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: quotaDefinitionId
+          in: path
+          required: true
+          schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuotaDefinition' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
         '504': { $ref: './common.yaml#/components/responses/Problem' }
 
   /api/v1/platform/quota-definitions/{quotaDefinitionId}/activations:
@@ -1364,6 +1521,46 @@ components:
           type: array
           minItems: 1
           items: { $ref: '#/components/schemas/Jwk' }
+      additionalProperties: false
+    QuotaDefinitionPage:
+      allOf:
+        - $ref: './common.yaml#/components/schemas/Page'
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/QuotaDefinition' }
+            nextCursor:
+              oneOf:
+                - type: string
+                - type: 'null'
+            hasMore: { type: boolean }
+    QuotaDefinitionOperationPage:
+      allOf:
+        - $ref: './common.yaml#/components/schemas/Page'
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/QuotaDefinitionOperationRecovery' }
+            nextCursor:
+              oneOf:
+                - type: string
+                - type: 'null'
+            hasMore: { type: boolean }
+    QuotaDefinitionOperationRecovery:
+      type: object
+      description: Actor-private recovery material. Shared Runtime owns idempotencyKey. NOT_COMMITTED is a point-in-time observation, never authorization to create with a new key. UNKNOWN requires manual verification. Committed result remains known after replay retention ends.
+      required: [id, operation, state, createdAt, replayUntil, canReplay]
+      properties:
+        id: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        operation: { type: string, enum: [CREATE, ACTIVATE] }
+        state: { type: string, enum: [COMMITTED, PROCESSING, NOT_COMMITTED, UNKNOWN] }
+        createdAt: { $ref: '#/components/schemas/Timestamp' }
+        replayUntil: { $ref: '#/components/schemas/Timestamp' }
+        canReplay: { type: boolean }
+        quotaDefinitionId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        idempotencyKey: { $ref: './common.yaml#/components/schemas/UuidV7' }
       additionalProperties: false
     TenantPage:
       allOf:

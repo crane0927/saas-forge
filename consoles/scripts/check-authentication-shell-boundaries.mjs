@@ -24,6 +24,7 @@ export async function findAuthenticationShellBoundaryViolations(root = workspace
     '@saas-forge/design-system',
     '@saas-forge/i18n',
     'react',
+    'react-dom',
     'react-router',
   ]);
   for (const sourceFile of await listSourceFiles(path.join(shellRoot, 'src'))) {

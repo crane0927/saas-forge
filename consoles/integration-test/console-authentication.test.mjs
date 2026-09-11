@@ -6,6 +6,7 @@ import path from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { chromium, firefox, webkit } from 'playwright';
+import { verifyQuotaDefinition } from './quota-definition-acceptance.mjs';
 import { verifyTenantCreation } from './tenant-creation-acceptance.mjs';
 import { verifyClientRecovery } from './console-client-acceptance.mjs';
 import { verifyRequestProblemSurfaces } from './console-problem-acceptance.mjs';
@@ -258,7 +259,23 @@ test('Platform and Tenant sessions survive independent recovery and logout after
 
   // Node 侧正式 API 只用于准备 Tenant；浏览器认证断言仍由生产页面发起请求。
   // 使用同一 Identity 验证两个槽位，避免把不同账号误当成槽位隔离。
-  const firstTenant = await prepareTenant(platformLogin.accessToken, email);
+  let quotaDefinitionId;
+  await t.test(
+    'Quota Definition creation, activation, reuse and response-loss recovery',
+    async () => {
+      quotaDefinitionId = await verifyQuotaDefinition({
+        rootDomain,
+        email,
+        password,
+        login,
+        selectLocale: selectConsoleLocale,
+        accessibility: expectRouteAccessibility,
+        safeStorage: expectSafeStorage,
+        capture: captureBrandEvidence,
+      });
+    },
+  );
+  const firstTenant = await prepareTenant(platformLogin.accessToken, email, { quotaDefinitionId });
   {
     await t.test(
       'four-domain authenticated CSRF refusals preserve both browser sessions',
@@ -1702,8 +1719,12 @@ async function prepareTenant(token, email, options = {}) {
   }
   let planId = options.planId;
   if (planId === undefined) {
-    const quota = await post('quota-definitions', { code: 'max_users' }, 201);
-    await post(`quota-definitions/${quota.id}/activations`, undefined, 200);
+    const quota =
+      options.quotaDefinitionId === undefined
+        ? await post('quota-definitions', { code: 'max_users' }, 201)
+        : { id: options.quotaDefinitionId };
+    if (options.quotaDefinitionId === undefined)
+      await post(`quota-definitions/${quota.id}/activations`, undefined, 200);
     const plan = await post(
       'plans',
       {

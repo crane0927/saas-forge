@@ -29,6 +29,14 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice(assignableTypes = EntitlementBootstrapController.class)
 public class EntitlementBootstrapExceptionHandler {
+    @ExceptionHandler(io.saasforge.entitlement.application.bootstrap.QuotaDefinitionRecoveryException.class)
+    ResponseEntity<Problem> recoveryFailure(
+            io.saasforge.entitlement.application.bootstrap.QuotaDefinitionRecoveryException exception,
+            HttpServletRequest request) {
+        return problem(exception.code().endsWith("NOT_FOUND") ? HttpStatus.NOT_FOUND : HttpStatus.CONFLICT,
+                exception.code(), "Quota Definition recovery unavailable", exception.getMessage(), request);
+    }
+
     @ExceptionHandler(PlatformAuthorizationDeniedException.class)
     ResponseEntity<Problem> authorizationDenied(
             PlatformAuthorizationDeniedException exception, HttpServletRequest request) {

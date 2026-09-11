@@ -24,6 +24,14 @@
         WHERE id = #{id}
     </select>
 
+    <select id="listQuotaDefinitions" resultType="io.saasforge.entitlement.infrastructure.persistence.record.QuotaDefinitionRow">
+        SELECT id, code, quota_definition_status AS status, created_at AS createdAt, updated_at AS updatedAt
+        FROM quota_definitions
+        WHERE strpos(lower(code), lower(#{code})) &gt; 0
+        <if test="status != null">AND quota_definition_status = #{status}</if>
+        <if test="after != null">AND id &gt; #{after}</if>
+        ORDER BY id LIMIT #{limit}
+    </select>
     <update id="activateQuotaDefinition">
         UPDATE quota_definitions
         SET quota_definition_status = 'ACTIVE',

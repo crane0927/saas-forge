@@ -23,3 +23,5 @@ export {
 } from './brand-application';
 export { TenantCreationRecoveryPanel } from './tenant-creation-recovery';
 export { FormExitGuardProvider, useFormExitGuard } from './form-exit-guard';
+
+export { QuotaDefinitionRecoveryPanel } from './quota-definition-recovery';

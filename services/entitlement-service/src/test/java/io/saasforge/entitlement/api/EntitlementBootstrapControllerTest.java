@@ -160,7 +160,15 @@ class EntitlementBootstrapControllerTest {
             EntitlementBootstrapService bootstrap,
             CreateInitialSubscriptionService subscriptions) {
         return MockMvcBuilders.standaloneSetup(
-                        new EntitlementBootstrapController(authorizer, bootstrap, subscriptions))
+                        new EntitlementBootstrapController(authorizer, bootstrap, subscriptions,
+                            new io.saasforge.entitlement.application.bootstrap.RecoverableQuotaDefinitionService(bootstrap, null, null) {
+                                @Override public QuotaDefinitionResult create(UUID actor, UUID key, String code, String trace) {
+                                    return bootstrap.createQuotaDefinition(actor, key, code, trace);
+                                }
+                                @Override public QuotaDefinitionResult activate(UUID actor, UUID key, UUID id, String trace) {
+                                    return bootstrap.activateQuotaDefinition(actor, key, id, trace);
+                                }
+                            }, null))
                 .setControllerAdvice(new EntitlementBootstrapExceptionHandler())
                 .build();
     }

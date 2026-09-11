@@ -17,7 +17,13 @@ class HttpRouteCatalogLoaderTest {
                 .count();
 
         assertEquals(HttpRouteCatalogLoader.SUPPORTED_SCHEMA_VERSION, catalog.schemaVersion());
-        assertEquals(32 + acceptanceRoutes, catalog.routes().size());
+        assertEquals(37 + acceptanceRoutes, catalog.routes().size());
+        for (String operation : java.util.List.of("listQuotaDefinitions", "getQuotaDefinition",
+                "listQuotaDefinitionOperations", "getQuotaDefinitionOperation", "recoverQuotaDefinitionOperation")) {
+            var route = catalog.routes().stream().filter(value -> value.operationId().equals(operation)).findFirst().orElseThrow();
+            assertEquals("entitlement-service", route.serviceId());
+            assertEquals(HttpRouteCatalog.CredentialRequirement.USER_REQUIRED, route.credentialRequirement());
+        }
     }
 
     @Test

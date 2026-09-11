@@ -4,6 +4,11 @@ import {
   FetchError,
   OAuthClientsApi,
   PlatformTenantsApi,
+  PlatformEntitlementBootstrapApi,
+  type QuotaDefinition,
+  type QuotaDefinitionPage,
+  type QuotaDefinitionStatus,
+  type QuotaDefinitionOperationRecovery,
   type CreateTenantRequest,
   type Tenant,
   type TenantPage,
@@ -193,7 +198,13 @@ export interface CreateOAuthClientInput {
   readonly signal?: AbortSignal;
 }
 
-export type { CurrentSession, Tenant, TenantStatus } from '@saas-forge/api-client';
+export type {
+  CurrentSession,
+  Tenant,
+  TenantStatus,
+  QuotaDefinition,
+  QuotaDefinitionStatus,
+} from '@saas-forge/api-client';
 
 export interface ListTenantsInput {
   readonly name?: string;
@@ -210,7 +221,42 @@ export interface TenantCreationOperationPage {
   readonly hasMore: boolean;
 }
 
+export interface ListQuotaDefinitionsInput {
+  readonly code?: string;
+  readonly status?: QuotaDefinitionStatus;
+  readonly cursor?: string;
+  readonly limit?: number;
+  readonly signal?: AbortSignal;
+}
+
+export type QuotaDefinitionOperation = Omit<QuotaDefinitionOperationRecovery, 'idempotencyKey'>;
+export interface QuotaDefinitionOperationPage {
+  readonly items: readonly QuotaDefinitionOperation[];
+  readonly nextCursor: string | null;
+  readonly hasMore: boolean;
+}
+
 export interface ConsoleApiClient {
+  listQuotaDefinitions(
+    input: ListQuotaDefinitionsInput,
+  ): Promise<ConsoleApiResult<QuotaDefinitionPage>>;
+  getQuotaDefinition(id: string, signal?: AbortSignal): Promise<ConsoleApiResult<QuotaDefinition>>;
+  createQuotaDefinition(input: {
+    readonly signal?: AbortSignal;
+  }): Promise<IdempotentConsoleApiResult<QuotaDefinition>>;
+  activateQuotaDefinition(input: {
+    readonly id: string;
+    readonly signal?: AbortSignal;
+  }): Promise<IdempotentConsoleApiResult<QuotaDefinition>>;
+  listQuotaDefinitionOperations(input: {
+    readonly cursor?: string;
+    readonly limit?: number;
+    readonly signal?: AbortSignal;
+  }): Promise<ConsoleApiResult<QuotaDefinitionOperationPage>>;
+  recoverQuotaDefinitionOperation(
+    operation: QuotaDefinitionOperation,
+    signal?: AbortSignal,
+  ): Promise<ConsoleApiResult<QuotaDefinitionOperation>>;
   listTenants(input: ListTenantsInput): Promise<ConsoleApiResult<TenantPage>>;
   getTenant(tenantId: string, signal?: AbortSignal): Promise<ConsoleApiResult<Tenant>>;
   createTenant(input: {
@@ -415,6 +461,50 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
     const operation = Object.freeze(publicValue);
     if (value.canReplay && idempotencyKey !== undefined && UUID_V7.test(idempotencyKey)) {
       tenantRecoveryMaterials.set(operation, {
+        id: value.id,
+        key: idempotencyKey,
+        epoch: sessionEpoch,
+      });
+    } else if (value.canReplay) {
+      throw new Error('INVALID_SERVICE_RESPONSE');
+    }
+    return operation;
+  }
+
+  const quotaApi = new PlatformEntitlementBootstrapApi(
+    new Configuration({
+      basePath: options.config.apiBaseUrl,
+      credentials: 'include',
+      accessToken: () => accessToken ?? '',
+      fetchApi: generatedFetch,
+    }),
+  );
+  const quotaRecoveryMaterials = new WeakMap<
+    QuotaDefinitionOperation,
+    { id: string; key: string; epoch: number }
+  >();
+
+  function rememberQuotaOperation(
+    value: QuotaDefinitionOperationRecovery,
+  ): QuotaDefinitionOperation {
+    if (
+      !UUID_V7.test(value.id) ||
+      !['CREATE', 'ACTIVATE'].includes(value.operation) ||
+      !['COMMITTED', 'PROCESSING', 'NOT_COMMITTED', 'UNKNOWN'].includes(value.state) ||
+      typeof value.canReplay !== 'boolean' ||
+      !(value.createdAt instanceof Date) ||
+      !Number.isFinite(value.createdAt.getTime()) ||
+      !(value.replayUntil instanceof Date) ||
+      !Number.isFinite(value.replayUntil.getTime()) ||
+      (value.state === 'COMMITTED' &&
+        (value.quotaDefinitionId === undefined || !UUID_V7.test(value.quotaDefinitionId)))
+    ) {
+      throw new Error('INVALID_SERVICE_RESPONSE');
+    }
+    const { idempotencyKey, ...publicValue } = value;
+    const operation = Object.freeze(publicValue);
+    if (value.canReplay && idempotencyKey !== undefined && UUID_V7.test(idempotencyKey)) {
+      quotaRecoveryMaterials.set(operation, {
         id: value.id,
         key: idempotencyKey,
         epoch: sessionEpoch,
@@ -735,6 +825,47 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
   }
 
   const client: ConsoleApiClient = {
+    listQuotaDefinitions: ({ signal, ...query }) =>
+      executeRead(() => quotaApi.listQuotaDefinitions(query, { signal }), signal),
+    getQuotaDefinition: (quotaDefinitionId, signal) =>
+      executeRead(() => quotaApi.getQuotaDefinition({ quotaDefinitionId }, { signal }), signal),
+    createQuotaDefinition: ({ signal }) =>
+      executeMutation(undefined, signal, (idempotencyKey) =>
+        quotaApi.createQuotaDefinition(
+          { idempotencyKey, createQuotaDefinitionRequest: { code: 'max_users' } },
+          { signal },
+        ),
+      ),
+    activateQuotaDefinition: ({ id, signal }) =>
+      executeMutation(undefined, signal, (idempotencyKey) =>
+        quotaApi.activateQuotaDefinition({ quotaDefinitionId: id, idempotencyKey }, { signal }),
+      ),
+    listQuotaDefinitionOperations: ({ signal, ...query }) =>
+      executeRead(async () => {
+        const page = await quotaApi.listQuotaDefinitionOperations(query, { signal });
+        return {
+          items: page.items.map(rememberQuotaOperation),
+          nextCursor: page.nextCursor,
+          hasMore: page.hasMore,
+        };
+      }, signal),
+    recoverQuotaDefinitionOperation: (operation, signal) => {
+      const material = quotaRecoveryMaterials.get(operation);
+      if (material === undefined || material.epoch !== sessionEpoch) {
+        return Promise.resolve({ ok: false, problem: { code: 'INVALID_OPERATION_HANDLE' } });
+      }
+      return executeRead(
+        async () =>
+          rememberQuotaOperation(
+            await quotaApi.recoverQuotaDefinitionOperation(
+              { operationId: material.id, idempotencyKey: material.key, body: {} },
+              { signal },
+            ),
+          ),
+        signal,
+      );
+    },
+
     listTenants: ({ signal, ...query }) =>
       executeRead(() => tenantsApi.listPlatformTenants(query, { signal }), signal),
     getTenant: (tenantId, signal) =>
