@@ -1,11 +1,46 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+
+for (const target of ['local', 'ci']) {
+  test(`${target} acceptance report records Chrome progress and failures without retired channels`, async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), 'sf-chrome-report-'));
+    t.after(() => rm(directory, { recursive: true, force: true }));
+    const script = fileURLToPath(
+      new URL('../scripts/record-authentication-acceptance.mjs', import.meta.url),
+    );
+    const env = {
+      ...process.env,
+      SF_BRAND_EVIDENCE_DIRECTORY: directory,
+      SF_ACCEPTANCE_TARGET: target,
+      SF_ACCEPTANCE_SCOPE: '--product',
+      SF_PRODUCT_CHANNEL: '',
+    };
+    const record = (stage, status) =>
+      promisify(execFile)(process.execPath, [script, stage, status], { env });
+    const report = async () =>
+      JSON.parse(await readFile(join(directory, 'acceptance-run.json'), 'utf8'));
+    await record('preflight', 'running');
+    assert.deepEqual((await report()).channels, [{ browser: 'chrome', status: 'not-run' }]);
+    await record('product-chrome', 'running');
+    assert.deepEqual((await report()).channels, [{ browser: 'chrome', status: 'running' }]);
+    await record('product-chrome', 'failed');
+    await record('complete', 'failed');
+    const result = await report();
+    assert.equal(result.status, 'failed');
+    assert.equal(result.scope, '--product');
+    assert.equal(result.target, target);
+    assert.deepEqual(result.channels, [{ browser: 'chrome', status: 'failed' }]);
+    assert.ok(
+      result.stages.some(({ name, status }) => name === 'product-chrome' && status === 'failed'),
+    );
+  });
+}
 
 test('reports only controlled TLS hosts and fixed network observations', async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'sf-tls-diagnostics-'));

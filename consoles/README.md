@@ -179,17 +179,17 @@ pnpm --filter @saas-forge/tenant-console-shell run dev
 | `pnpm run lint` / `pnpm run format:check` | 手写代码与文档的 ESLint / Prettier 检查；生成物不参与                |
 | `pnpm run test`                           | 工作区静态边界检查与各包测试，不包含根浏览器套件                     |
 | `pnpm run test:browser:chromium`          | Design System、消费者及多标签页会话的 Chromium 测试                  |
-| `pnpm run test:browser:compatibility`     | 依次运行 Chrome、Edge、Firefox、WebKit 兼容测试                      |
+| `pnpm run test:browser:compatibility`     | 运行 Chrome 消费者兼容测试                                           |
 | `pnpm run build`                          | 生成 Client、递归生产构建并检查 Design System 制品边界               |
 | `pnpm run verify`                         | 生成 Client，再执行完整前端聚合门禁                                  |
 | `pnpm run verify:workspace`               | 不生成 Client，直接执行同一个前端聚合门禁，供 Maven 等已生成流程复用 |
 
 聚合门禁顺序为：类型检查 → ESLint → Prettier → 边界与包测试 → Chromium 浏览器测试 → 生产构建与制品检查。`typecheck`、`test` 和浏览器命令不会生成 Client，单独运行前需先执行 `pnpm run generate:api`。
 
-兼容测试需先准备相应浏览器；也可用 `test:browser:chrome`、`test:browser:edge`、`test:browser:firefox` 或 `test:browser:webkit` 单独运行：
+当前仅支持桌面 Chrome 当前稳定版。Chromium 保留日常功能与视觉测试；Chrome 消费者测试可用 `test:browser:chrome` 单独运行：
 
 ```bash
-pnpm exec playwright install chrome msedge firefox webkit
+pnpm exec playwright install chromium chrome
 pnpm run generate:api
 pnpm run test:browser:compatibility
 ```
@@ -198,7 +198,7 @@ pnpm run test:browser:compatibility
 
 ### 验证范围
 
-工作区门禁覆盖共享包边界、UI 交互、会话协调和静态制品一致性，不等同于真实后端登录或部署验收。WebKit 是可复现的 Safari 引擎兼容测试，不代表原生 Safari 实测。
+工作区门禁覆盖共享包边界、UI 交互、会话协调和静态制品一致性，不等同于真实后端登录或部署验收。必要的产品验收使用真实 Chrome；Chromium 测试工具不形成独立产品兼容承诺。
 
 真实 Console 认证使用独立的 [`verify-console-authentication-e2e.sh`](../scripts/verify-console-authentication-e2e.sh)，涉及全新 Compose 环境、受信 TLS 与真实服务请求，不属于 `pnpm run verify`。执行前请阅读 [产品验收说明与环境前提](../docs/acceptance/issue-115-console-authentication.md)；该文档中的历史结果不代表当前环境已验证通过。
 
@@ -233,7 +233,7 @@ pnpm run test:browser:compatibility
 | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `ERR_PNPM_VERIFY_DEPS_BEFORE_RUN`     | 核对 Node/pnpm 版本及 lockfile，回到 `consoles/` 执行冻结安装；不要关闭 `verifyDepsBeforeRun: error` 或改用其他包管理器 |
 | 找不到生成 Client 或 API 类型         | 在工作区根目录运行 `pnpm run generate:api`，并检查 JDK/Maven 依赖访问                                                   |
-| Playwright 提示浏览器可执行文件不存在 | 安装所运行测试对应的引擎或 Chrome/Edge 渠道                                                                             |
+| Playwright 提示浏览器可执行文件不存在 | 安装所运行测试对应的Chromium 或 Chrome 渠道                                                                             |
 | 页面停在配置错误状态                  | 检查 `/runtime-config.json` 的 HTTP 响应、JSON 两字段契约和 HTTPS Origin；生产环境需替换模板                            |
 | 页面可打开，但认证请求失败            | 核对真实 API 可达性、受信证书、入口域名与 Gateway 安全边界；页面可见不证明认证链路可用                                  |
 

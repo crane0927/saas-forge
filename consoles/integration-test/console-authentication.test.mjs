@@ -18,12 +18,7 @@ const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saasforge.test';
 
 async function captureBrandEvidence(page, scenario) {
   const directory = process.env.SF_BRAND_EVIDENCE_DIRECTORY;
-  if (
-    !directory ||
-    (process.env.SF_BROWSER ?? 'chromium') !== 'chromium' ||
-    process.env.SF_BROWSER_CHANNEL
-  )
-    return;
+  if (!directory) return;
   await mkdir(directory, { recursive: true });
   await page.screenshot({
     path: path.join(directory, `${scenario}.png`),

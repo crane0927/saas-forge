@@ -33,7 +33,7 @@ cp services/iam-service/src/main/resources/application-local.yaml.example servic
 
 ## IDE Run / Debug
 
-Maven 项目使用根 POM 支持的 JDK 17 或 21。首次导入并同步 Maven，使生成的契约源码和模块依赖进入 IDE 类路径；日常修改由 IDE 编译，不执行 `package`、JAR 启动或脚本生成参数。
+Maven 项目使用根 POM 支持的 JDK 17。首次导入并同步 Maven，使生成的契约源码和模块依赖进入 IDE 类路径；日常修改由 IDE 编译，不执行 `package`、JAR 启动或脚本生成参数。
 
 | 配置 | Main class | 模块 classpath | Active profiles |
 | --- | --- | --- | --- |

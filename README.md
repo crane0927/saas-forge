@@ -45,7 +45,7 @@ Tenant ── Subscription Version
 
 ## 构建
 
-后端运行环境为 JDK 17，CI 额外使用 JDK 21 验证兼容性。全仓库验证还要求 Node 24.14.1、pnpm 11.22.0，并先在 `consoles` 完成冻结 lockfile 安装；Maven 不安装前端工具或依赖。
+当前开发阶段仅支持 JDK 17 和桌面 Chrome 当前稳定版；Chromium 用于日常功能与视觉测试。全仓库验证还要求 Node 24.14.1、pnpm 11.22.0，并先在 `consoles` 完成冻结 lockfile 安装；Maven 不安装前端工具或依赖。
 
 ```bash
 cd consoles

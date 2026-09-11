@@ -102,7 +102,7 @@ flowchart TD
 
 **领域、契约与运行基线**
 
-- [x] 固化 Maven Wrapper、JDK 17 构建与 JDK 21 兼容性验证；补齐依赖版本管理、测试、覆盖率和制品发布的父 POM 约定。详见 [Maven 构建与制品发布](21-maven-build-and-release.md)与 [ADR 0012](adr/0012-maven-coordinates-use-github-namespace.md)。
+- [x] 固化 Maven Wrapper 与 JDK 17 构建（历史 JDK 21 兼容门禁现按 [ADR 0046](adr/0046-development-supports-chrome-and-jdk17.md) 退出当前支持范围）；补齐依赖版本管理、测试、覆盖率和制品发布的父 POM 约定。详见 [Maven 构建与制品发布](21-maven-build-and-release.md)与 [ADR 0012](adr/0012-maven-coordinates-use-github-namespace.md)。
 - [x] **先冻结 API 通用规范，再定义任何资源接口。** [API 设计](08-api-design.md#rest-约定)已明确路径、字段和枚举命名；UUIDv7、时间、日期、金额/小数与空值的 JSON 表示；参数边界与 `POST`、`PUT`、`PATCH` 语义；过滤、排序和游标分页；文件/异步任务；版本、幂等、关联 ID 和内容协商规则。
 - [x] 明确成功与失败的统一返回模型，并提供 OpenAPI 可复用 Schema 和正反例。[API 设计](08-api-design.md#成功与失败响应)已冻结直接成功表示、`201`／`202` 的 `Location`、`204` 无响应体、集合与 Job 不变式，以及 Problem Details 与字段校验语义；[OpenAPI 公共组件](../contracts/openapi/common.yaml)提供机器可读 Schema、Response、Header 和示例。
 - [x] 在[租户架构](05-tenant-architecture.md#tenant-context)、[API 设计](08-api-design.md#v1-资源边界)、[SDK 设计](09-sdk-design.md#身份与上下文)和[安全设计](12-security-design.md#授权租户与数据隔离)中重申租户安全边界：用户请求不得通过请求头、查询参数、请求体或语义等价别名传入/覆盖 Tenant；此类输入以 `400` 拒绝。服务身份只用 `client_id` 与显式 `scope` 授权，不建立或伪造用户上下文；缺少所需 scope 以 `403` 拒绝。
@@ -135,7 +135,7 @@ flowchart TD
   - 本项完成边界为四域名受信 HTTPS 与浏览器安全、静态资源交付：通过真实浏览器验证 API Cookie、CSRF、CORS，以及 Tenant Console 从 Remote 版本化路径无凭据加载真实静态资源，并验证不允许的 Origin 无法通过 CORS 读取。Manifest 审核启用、Shell 加载业务 Remote 与 Project/Task 闭环由第 3 阶段验收；本项静态资源证据不能替代这些验收。
   - 静态资源验收通过不加入产品导航的验收专用入口，实际加载版本化路径下的最小 ES Module、CSS 和图片，验证模块执行、样式生效、图片解码、无凭据请求及 CORS 拒绝路径。
   - 开发与 E2E 共用同一浏览器拓扑契约、安全策略和 Remote 静态制品，允许域名后的运行方式不同：开发保留 Console 的 Vite/HMR，Remote 提供构建制品；E2E 使用构建制品、独立 Compose 项目的全新数据卷和隔离浏览器上下文。`localhost` 与容器端口只作为内部代理或服务通信地址，不能作为阶段浏览器验收入口；E2E 清理仅作用于本次验收项目。
-  - 浏览器门禁沿用本地 Chromium、WebKit、Chrome，CI 再包含 Firefox、Microsoft Edge；各浏览器均启用正常 TLS 校验，覆盖四域资源加载与安全拒绝路径。
+  - 浏览器门禁按 [ADR 0046](adr/0046-development-supports-chrome-and-jdk17.md) 收缩：Chromium 用于日常功能与视觉测试，本地与 CI 的真实产品验收仅使用 Chrome；仍启用正常 TLS 校验，覆盖四域资源加载与安全拒绝路径。
   - Remote 同一版本路径的静态资源内容固定，内容变更使用新版本路径；本项验证两个版本可分别访问，缺失资源返回真实 `404`，不得回退为 Console HTML。完整升级与回退治理仍由后续阶段验收。
   - Remote 是无凭据静态资源源，仅允许 Tenant Console 通过 CORS 读取；不将静态文件定义为需要登录才能下载的私有资源。API 的 CSRF 拒绝必须在服务端阻止操作，不能仅以浏览器无法读取响应作为拒绝证据。
 - [ ] 建立共享组件测试、无障碍检查、关键稳定状态视觉快照和 Playwright 基础设施；组件与交互状态机覆盖中英文，浏览器测试可从全新 Compose 数据卷执行。
@@ -306,7 +306,7 @@ flowchart TD
 - [ ] 接入结构化日志、Trace、Metric 和健康探针；至少能关联 Gateway、服务调用、Kafka 事件和 Audit 的 `traceId`。
 - [ ] 将 Gateway 强化为唯一公网入口并实现 Redis 令牌桶限流，按 IP、Identity、Client、Tenant 维度使用环境化阈值；领域服务不开放公网端口。
 - [ ] 将数据库迁移、Redis Key Registry 和日志字段白名单接入 CI：迁移须符合服务数据库边界与 RLS 门禁，新增 Redis Key 须登记 TTL/所有者，日志测试须证明敏感字段不会输出。
-- [ ] 完善 GitHub Actions：JDK 17/21 构建、单元/集成/契约/前端测试、覆盖率、依赖与镜像漏洞扫描、ZAP 基线扫描、镜像构建及 Compose 配置验证；Helm 完整生产交付不作为 MVP 阻塞项。
+- [ ] 完善 GitHub Actions：JDK 17 构建、单元/集成/契约/前端测试、覆盖率、依赖与镜像漏洞扫描、ZAP 基线扫描、镜像构建及 Compose 配置验证；Helm 完整生产交付不作为 MVP 阻塞项。
 - [ ] 按文档补齐 Quick Start、API/SDK、部署、开发、数据隔离、安全边界和 Example 教程，并在开源文档中声明 MVP 范围与非目标。
 
 **完成标准：** 新环境可按文档启动并完成核心闭环；CI 对代码、契约和运行镜像执行可重复验证。

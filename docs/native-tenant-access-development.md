@@ -67,6 +67,6 @@ mvn -pl services/service-discovery,services/tenant-access-service,services/iam-s
   -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
-相关边界的完整模块检查使用 `mvn -pl gateway,services/iam-service,services/tenant-access-service -am verify`。测试会使用临时数据库/Redis/Kafka 等 Testcontainers；它不托管日常应用。仓库完整 CI、Fresh Compose 和多浏览器验收继续独立。
+相关边界的完整模块检查使用 `mvn -pl gateway,services/iam-service,services/tenant-access-service -am verify`。测试会使用临时数据库/Redis/Kafka 等 Testcontainers；它不托管日常应用。仓库完整 CI、Fresh Compose 和 Chrome 产品验收继续独立。
 
 验收记录见 [Issue #164](acceptance/issue-164-native-tenant-access.md)，明确区分自动化、真实 IDE/浏览器和未执行项。

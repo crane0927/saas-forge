@@ -17,7 +17,9 @@ const artifacts = [
 
 // 在隔离目录运行真实入口；缺制品必须在 TLS、Docker 和数据初始化之前失败。
 async function fixture(t, excluded) {
-  const root = await mkdtemp(path.join(os.tmpdir(), "sf-acceptance-prerequisites-"));
+  const root = await mkdtemp(
+    path.join(os.tmpdir(), "sf-acceptance-prerequisites-"),
+  );
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(path.join(root, "scripts"));
   await cp(
@@ -32,12 +34,33 @@ async function fixture(t, excluded) {
   return root;
 }
 
-function run(root) {
+function run(root, overrides = {}) {
   return spawnSync(
     "bash",
-    [path.join(root, "scripts/verify-console-authentication-e2e.sh"), "--product"],
-    { cwd: root, encoding: "utf8", env: { ...process.env, SF_ACCEPTANCE_TARGET: "ci" } },
+    [
+      path.join(root, "scripts/verify-console-authentication-e2e.sh"),
+      "--product",
+    ],
+    {
+      cwd: root,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        SF_ACCEPTANCE_TARGET: "ci",
+        SF_PRODUCT_CHANNEL: "",
+        ...overrides,
+      },
+    },
   );
+}
+
+for (const channel of ["chromium", "webkit", "firefox", "msedge"]) {
+  test(`product acceptance rejects retired ${channel} selection before environment setup`, async (t) => {
+    const result = run(await fixture(t), { SF_PRODUCT_CHANNEL: channel });
+    assert.equal(result.status, 2, result.stdout + result.stderr);
+    assert.match(result.stderr, /当前仅接受 chrome/u);
+    assert.doesNotMatch(result.stdout, /EVIDENCE:|PASS:|RUN:/u);
+  });
 }
 
 test("fresh product acceptance rejects a missing service artifact before environment setup", async (t) => {
@@ -48,7 +71,9 @@ test("fresh product acceptance rejects a missing service artifact before environ
   assert.doesNotMatch(result.stdout, /EVIDENCE:|PASS:|RUN:/u);
 });
 
-for (const artifact of artifacts.filter((file) => !file.startsWith("gateway/"))) {
+for (const artifact of artifacts.filter(
+  (file) => !file.startsWith("gateway/"),
+)) {
   test(`fresh product acceptance rejects missing ${artifact}`, async (t) => {
     const result = run(await fixture(t, artifact));
     assert.equal(result.status, 1, result.stdout + result.stderr);
@@ -59,7 +84,10 @@ for (const artifact of artifacts.filter((file) => !file.startsWith("gateway/")))
 
 test("fresh product acceptance rejects ambiguous runtime jars", async (t) => {
   const root = await fixture(t);
-  await writeFile(path.join(root, "gateway/target/old-gateway.jar"), "old fixture");
+  await writeFile(
+    path.join(root, "gateway/target/old-gateway.jar"),
+    "old fixture",
+  );
   const result = run(root);
   assert.equal(result.status, 1, result.stdout + result.stderr);
   assert.match(result.stderr, /BLOCKED:.*gateway.*JAR/u);

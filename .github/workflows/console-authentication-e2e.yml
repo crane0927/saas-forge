@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   product-authentication:
-    name: JDK 17, Fresh Compose and trusted TLS (five browser channels)
+    name: JDK 17, Fresh Compose and trusted TLS (Chrome)
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -17,6 +17,45 @@ jobs:
       SF_VISUAL_SNAPSHOTS: "false"
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Protect published v1 contract baselines
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
+            exit 0
+          fi
+          changes="$(git diff --name-status "$BASE_SHA" "$GITHUB_SHA" -- contracts/compatibility-baselines/v1)"
+          if [[ -n "$(printf '%s\n' "$changes" | awk '$1 !~ /^A/')" ]]; then
+            echo "已发布 v1 契约基线不可修改或删除；仅允许新增快照目录。" >&2
+            printf '%s\n' "$changes" >&2
+            exit 1
+          fi
+          while IFS= read -r tag; do
+            [[ -z "$tag" ]] && continue
+            if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "新增 v1 契约基线目录必须使用待发布 Git tag: $tag" >&2
+              exit 1
+            fi
+            baseline="contracts/compatibility-baselines/v1/$tag"
+            diff -u contracts/openapi/v1.yaml "$baseline/openapi/v1.yaml"
+            diff -u contracts/openapi/common.yaml "$baseline/openapi/common.yaml"
+            diff -u \
+              <(find contracts/protobuf -path '*/v1/*.proto' -type f | sed 's#^contracts/protobuf/##' | sort) \
+              <(find "$baseline/protobuf" -type f -name '*.proto' | sed "s#^$baseline/protobuf/##" | sort)
+            while IFS= read -r proto; do
+              diff -u "contracts/protobuf/$proto" "$baseline/protobuf/$proto"
+            done < <(find contracts/protobuf -path '*/v1/*.proto' -type f | sed 's#^contracts/protobuf/##' | sort)
+            diff -u \
+              <(find contracts/events -type f -name '*.v1.schema.json' | sed 's#^contracts/events/##' | sort) \
+              <(find "$baseline/events" -type f -name '*.v1.schema.json' | sed "s#^$baseline/events/##" | sort)
+            while IFS= read -r schema; do
+              diff -u "contracts/events/$schema" "$baseline/events/$schema"
+            done < <(find contracts/events -type f -name '*.v1.schema.json' | sed 's#^contracts/events/##' | sort)
+          done < <(git diff --name-only --diff-filter=A "$BASE_SHA" "$GITHUB_SHA" -- contracts/compatibility-baselines/v1 \
+            | awk -F/ 'NF >= 5 {print $4}' | sort -u)
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -29,9 +68,9 @@ jobs:
       - name: Install locked workspace dependencies
         working-directory: consoles
         run: pnpm install --frozen-lockfile
-      - name: Install all required browser engines and release channels
+      - name: Install Chromium test runtime and Chrome product browser
         working-directory: consoles
-        run: pnpm exec playwright install --with-deps chromium firefox webkit chrome msedge
+        run: pnpm exec playwright install --with-deps chromium chrome
       - name: Verify scoped verification entry points
         run: node --test --test-concurrency=1 scripts/test/scoped-frontend-verification.test.mjs scripts/test/backend-verification-profile.test.mjs scripts/test/console-acceptance-prerequisites.test.mjs scripts/test/tenant-revocation-probe.test.mjs
       # 同一 checkout 的完整构建只执行一次，随后复用其制品；失败会阻止后续产品验收。
@@ -42,23 +81,9 @@ jobs:
           {
             echo 'SF_ACCEPTANCE_TARGET=ci'
             echo "SF_BRAND_EVIDENCE_DIRECTORY=$GITHUB_WORKSPACE/.scratch/issue-159-ci"
-            # Linux libsoup 的对照域只作用于产品/TLS 阶段，不改变通用构建夹具。
+            # 产品/TLS 根域仅作用于此阶段，不改变通用构建夹具。
             echo 'SF_ACCEPTANCE_ROOT_DOMAIN=saasforge.example.com'
           } >> "$GITHUB_ENV"
-      - name: Observe Linux cookie base domains
-        run: |
-          python3 - <<'PY'
-          import ctypes
-          import os
-          soup = ctypes.CDLL('libsoup-3.0.so.0')
-          base_domain = soup.soup_tld_get_base_domain
-          base_domain.argtypes = [ctypes.c_char_p, ctypes.c_void_p]
-          base_domain.restype = ctypes.c_char_p
-          for root in ['saasforge.test', os.environ['SF_ACCEPTANCE_ROOT_DOMAIN']]:
-              domains = [base_domain(f'{host}.{root}'.encode(), None) for host in ['platform', 'console', 'api', 'remote']]
-              shared = domains[0] is not None and len(set(domains)) == 1
-              print(f'DOMAIN: root={root} sharedBase={str(shared).lower()}')
-          PY
       - name: Configure ephemeral trusted TLS and controlled Origins
         working-directory: consoles
         shell: bash
@@ -90,7 +115,7 @@ jobs:
           sudo update-ca-certificates
           sudo apt-get update
           sudo apt-get install -y libnss3-tools
-          # Chromium M146 起迁移 NSS 默认路径；两个实际发行渠道可能处于不同版本。
+          # Chrome 版本间 NSS 默认路径可能不同；保留两个信任存储。
           for nss_directory in "$HOME/.pki/nssdb" "$HOME/.local/share/pki/nssdb"; do
             mkdir -p "$nss_directory"
             if [[ ! -f "$nss_directory/cert9.db" ]]; then
@@ -99,15 +124,11 @@ jobs:
             certutil -A -d "sql:$nss_directory" -n 'SaaS Forge CI Acceptance CA' \
               -t 'C,,' -i "$tls_directory/root-ca.pem"
           done
-          # Playwright 指定 alternatePath，必须显式传入企业证书策略文件。
-          node -e 'require("node:fs").writeFileSync(process.argv[1], JSON.stringify({policies:{Certificates:{Install:[process.argv[2]]}}}))' \
-            "$tls_directory/firefox-policies.json" "$tls_directory/root-ca.pem"
           printf '\n127.0.0.1 platform.saasforge.example.com console.saasforge.example.com api.saasforge.example.com remote.saasforge.example.com\n' | sudo tee -a /etc/hosts >/dev/null
           {
             printf 'SF_ACCEPTANCE_TLS_CERT=%s\n' "$tls_directory/server.pem"
             printf 'SF_ACCEPTANCE_TLS_KEY=%s\n' "$tls_directory/server.key"
             printf 'NODE_EXTRA_CA_CERTS=%s\n' "$tls_directory/root-ca.pem"
-            printf 'PLAYWRIGHT_FIREFOX_POLICIES_JSON=%s\n' "$tls_directory/firefox-policies.json"
           } >> "$GITHUB_ENV"
       - name: Verify actual Console product paths through fresh services
         run: bash scripts/verify-console-authentication-e2e.sh --product

@@ -11,6 +11,12 @@ readonly acceptance_target="${SF_ACCEPTANCE_TARGET:-local}"
   exit 2
 }
 
+# 旧聚焦变量不能重新启用已退出当前支持范围的产品渠道。
+if [[ -n "${SF_PRODUCT_CHANNEL:-}" && "$SF_PRODUCT_CHANNEL" != chrome ]]; then
+  echo 'SF_PRODUCT_CHANNEL 当前仅接受 chrome；产品验收仅支持 Google Chrome' >&2
+  exit 2
+fi
+
 if [[ "${1:-}" != "" && "${1:-}" != "--preflight" && "${1:-}" != "--product" && "${1:-}" != "--development" ]] || [[ "$#" -gt 1 ]]; then
   echo '用法：bash scripts/verify-console-authentication-e2e.sh [--preflight|--product|--development]' >&2
   exit 2
@@ -261,7 +267,7 @@ const urls = [
 // Compose health 与宿主端口转发异步收敛；仍要求四入口在浏览器正常证书校验下均返回 200。
 const deadline = Date.now() + 180_000;
 const observations = new Map();
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ headless: true, channel: 'chrome' });
 try {
   const context = await browser.newContext({ ignoreHTTPSErrors: false });
   let ready = false;
@@ -305,53 +311,15 @@ try {
 JS
 }
 
-# 各渠道使用独立数据卷；CI 优先验证本次补齐证书信任的 Firefox。
-engines=(webkit chromium)
-channels=(chrome)
-if [[ "$acceptance_target" == ci ]]; then
-  engines=(firefox webkit chromium)
-  channels+=(msedge)
-fi
-if [[ -n "${SF_PRODUCT_CHANNEL:-}" ]]; then
-  [[ "${1:-}" == '--product' && "$acceptance_target" == local ]] || {
-    echo 'SF_PRODUCT_CHANNEL 仅用于本地 --product 聚焦验证' >&2
-    exit 2
-  }
-  case "$SF_PRODUCT_CHANNEL" in
-    chromium|webkit) engines=("$SF_PRODUCT_CHANNEL"); channels=() ;;
-    chrome) engines=(); channels=(chrome) ;;
-    *) echo 'SF_PRODUCT_CHANNEL 必须是 chromium、webkit 或 chrome' >&2; exit 2 ;;
-  esac
-  printf 'SCOPE: 仅执行 %s 产品切片；不执行其他渠道或兼容门禁。\n' "$SF_PRODUCT_CHANNEL"
-fi
-for engine in "${engines[@]}"; do
-  start_fresh_environment
-  stage "product-$engine" env SF_BROWSER="$engine" SF_BROWSER_CHANNEL= \
-    node --test --test-reporter=tap "$repository_root/consoles/integration-test/console-authentication.test.mjs"
-  stage compose-reset compose down --volumes --remove-orphans
-done
-for channel in "${channels[@]}"; do
-  start_fresh_environment
-  stage "product-$channel" env SF_BROWSER=chromium SF_BROWSER_CHANNEL="$channel" \
-    node --test --test-reporter=tap "$repository_root/consoles/integration-test/console-authentication.test.mjs"
-  stage compose-reset compose down --volumes --remove-orphans
-done
-if [[ -n "${SF_PRODUCT_CHANNEL:-}" ]]; then
-  echo 'PASS: 聚焦产品用例通过；本命令不包含其他渠道或 Maven/workspace 门禁。'
-  exit 0
-fi
+# 产品验收仅运行 Chrome；Chromium 的日常功能与视觉检查由 workspace 承担。
+start_fresh_environment
+stage product-chrome env SF_BROWSER=chromium SF_BROWSER_CHANNEL=chrome \
+  node --test --test-reporter=tap "$repository_root/consoles/integration-test/console-authentication.test.mjs"
+stage compose-reset compose down --volumes --remove-orphans
 # Corepack 根据 cwd 选择 packageManager；pnpm --dir 不会改变 Corepack 的版本解析目录。
 (
   cd "$repository_root/consoles"
-  if [[ "$acceptance_target" == ci ]]; then
-    for channel in chrome edge firefox webkit; do
-      stage "console-browser-$channel" pnpm run "test:browser:$channel"
-    done
-  else
-    stage console-browser-chrome pnpm run test:browser:chrome
-    stage console-browser-webkit pnpm run test:browser:webkit
-    echo 'PENDING: Firefox 与 Edge 的真实产品证据由 GitHub CI 提供。'
-  fi
+  stage console-browser-chrome pnpm run test:browser:chrome
 )
 
 if [[ "${1:-}" == '--product' ]]; then

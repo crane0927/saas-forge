@@ -1,5 +1,7 @@
 # 四域跨浏览器聚合验收（Issue #159）
 
+> 当前阶段范围已由 [ADR 0046](../adr/0046-development-supports-chrome-and-jdk17.md) 调整为桌面 Chrome 当前稳定版与 JDK 17；Chromium 保留日常功能与视觉测试。本文旧矩阵的执行结果属于历史证据，不作为当前多浏览器或 JDK 21 要求。现行复现入口见 [本地验证说明](../local-verification.md)。
+
 ## 入口与边界
 
 父规格为 #155。开发与 Fresh Compose 共用 `static-remote.test.mjs`、`browser-session-security.mjs` 和 `browser-api-security.mjs`；成功路径使用真实 Console、受信 TLS Edge、Gateway/真实服务及版本化 Remote。此验收不交付 Manifest、业务 Remote、生产/CDN 或完整升级回退治理，不修改或关闭父 Issue。
@@ -15,7 +17,7 @@ export SF_BRAND_EVIDENCE_DIRECTORY="$PWD/.scratch/issue-159/development"
 bash scripts/verify-console-authentication-e2e.sh --development
 ```
 
-此入口依次运行 Chromium、WebKit、Chrome。每个浏览器先对四域执行正常 TLS 导航；缺少浏览器、信任或服务记录 `blocked`，后续阶段记录 `not-run`。测试实际失败记录 `failed`。只有该环境全部渠道及阶段通过才返回 0。开发保留 Vite 模块与正式域名 WSS connected 证据；不清理开发数据库或创建测试 Tenant。
+此入口只运行 Chrome，先对四域执行正常 TLS 导航；缺少浏览器、信任或服务记录 `blocked`，后续阶段记录 `not-run`。测试实际失败记录 `failed`。只有该环境 Chrome 全部阶段通过才返回 0。开发保留 Vite 模块与正式域名 WSS connected 证据；不清理开发数据库或创建测试 Tenant。
 
 Fresh Compose 继续使用原入口。443 必须空闲；不能覆盖开发 Edge，先通过其受控生命周期释放端口，验收退出后再恢复开发入口。
 
@@ -27,7 +29,7 @@ bash scripts/verify-console-authentication-e2e.sh --preflight
 bash scripts/verify-console-authentication-e2e.sh
 ```
 
-`--product` 仅复用已有构建、重跑产品及兼容门禁，不代表本次执行了 Maven/workspace；`SF_PRODUCT_CHANNEL` 仅可用于本地 `--product` 聚焦，不是完整矩阵证据。每个渠道使用独立浏览器上下文，Compose 数据卷在渠道之间删除并重新初始化。清理只使用本次随机项目名；清理失败使整轮失败。Remote 制品仍由唯一构建目录及 `remote-static.mjs` 交付；两个环境都从浏览器下载资源并对照冻结 SHA-256 清单。
+`--product` 仅复用已有构建、重跑产品及兼容门禁，不代表本次执行了 Maven/workspace；产品渠道固定为 Chrome，无需设置 `SF_PRODUCT_CHANNEL`（旧变量仅接受 `chrome`，其他值拒绝执行）。Chrome 使用独立浏览器上下文与全新随机项目数据卷。清理只使用本次随机项目名；清理失败使整轮失败。Remote 制品仍由唯一构建目录及 `remote-static.mjs` 交付；两个环境都从浏览器下载资源并对照冻结 SHA-256 清单。
 
 ## 证据与安全
 
@@ -37,9 +39,9 @@ bash scripts/verify-console-authentication-e2e.sh
 - `static-remote-policy-<channel>.json`：冻结制品 SHA-256、版本重复读取、真实 404、非法来源浏览器拒绝与对应 Edge 响应。
 - `session-security-<channel>/browser-sessions.json`：双槽位流程、Cookie 属性与范围、32 个探针、拒绝后 Cookie 不变及两侧真实恢复、开发 HMR。
 
-Chromium 系列使用 CDP ExtraInfo；WebKit/Firefox 使用公开 Playwright 网络 API，CORS 隐藏的预检/拒绝由同一真实 TLS Edge 的随机关联探针日志补充。Edge 不修改请求或放宽安全规则；日志不包含 Cookie/Token 值、密码或正文。服务端不变必须由每个探针后的双 Console 实际恢复共同证明，不能仅凭 fetch 抛错或 Cookie 字节未变。
+Chrome 使用 CDP ExtraInfo，CORS 隐藏的预检/拒绝由同一真实 TLS Edge 的随机关联探针日志补充。Edge 不修改请求或放宽安全规则；日志不包含 Cookie/Token 值、密码或正文。服务端不变必须由每个探针后的双 Console 实际恢复共同证明，不能仅凭 fetch 抛错或 Cookie 字节未变。
 
-受限 `.log` 文件可能包含原始测试诊断，不直接公开。CI 使用原有五浏览器工作流，四域都纳入证书 SAN 和 hosts；延续此前已批准的 Linux `saasforge.example.com` 对照根域及相同主机推导策略。工作流以 `always()` 上传白名单 JSON，排除原始日志、凭据与截图。远端验收需记录对应提交的 workflow URL 和 artifact，不能引用旧运行替代。
+受限 `.log` 文件可能包含原始测试诊断，不直接公开。CI 使用 Chrome 产品工作流，四域都纳入证书 SAN 和 hosts；延续此前已批准的 Linux `saasforge.example.com` 对照根域及相同主机推导策略。工作流以 `always()` 上传白名单 JSON，排除原始日志、凭据与截图。远端验收需记录对应提交的 workflow URL 和 artifact，不能引用旧运行替代。
 
 ## 父规格验收映射
 
@@ -54,7 +56,7 @@ Chromium 系列使用 CDP ExtraInfo；WebKit/Firefox 使用公开 Playwright 网
 | ES Module/CSS/图片实际执行呈现 | static-remote rendering 与真实资源请求 |
 | Remote 无凭据及精确 CORS | 非敏感 Cookie 夹具、网络头、关联负向 Edge 记录 |
 | 固定双版本与真实 404 | policy versions、artifactHashes、missing |
-| 本地三浏览器与 CI 五浏览器 | 分环境矩阵、对应远端运行和上传 JSON |
+| 本地与 CI Chrome 验收 | 分环境结果、对应远端运行和上传 JSON |
 | Fresh 状态隔离与限项目清理 | 原随机 Compose 项目/全新卷检查、reset/cleanup 结果 |
 | 文档与 MVP 状态 | 本文；全部证据成立前保留 MVP 未勾选 |
 

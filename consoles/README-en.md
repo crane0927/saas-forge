@@ -179,17 +179,17 @@ Run all commands below from `consoles/`.
 | `pnpm run lint` / `pnpm run format:check` | ESLint / Prettier checks for handwritten sources and documentation, excluding generated output                   |
 | `pnpm run test`                           | Static workspace boundaries and package tests, excluding the root browser suite                                  |
 | `pnpm run test:browser:chromium`          | Chromium tests for the Design System, consumers, and cross-tab sessions                                          |
-| `pnpm run test:browser:compatibility`     | Chrome, Edge, Firefox, and WebKit compatibility tests, in sequence                                               |
+| `pnpm run test:browser:compatibility`     | Chrome consumer compatibility tests                                                                              |
 | `pnpm run build`                          | Generate the client, build workspace packages, and verify Design System artifact boundaries                      |
 | `pnpm run verify`                         | Generate the client, then run the complete frontend verification pipeline                                        |
 | `pnpm run verify:workspace`               | The same frontend pipeline without generation, reused by Maven and other flows that already generated the client |
 
 The pipeline runs type checks → ESLint → Prettier → boundary and package tests → Chromium browser tests → production builds and artifact checks. Standalone `typecheck`, `test`, and browser commands do not generate the client; run `pnpm run generate:api` first.
 
-Compatibility tests require their browser installations. Individual commands are also available: `test:browser:chrome`, `test:browser:edge`, `test:browser:firefox`, and `test:browser:webkit`.
+Only the current stable desktop Google Chrome is supported during development. Chromium remains the daily functional and visual test tool. Run `test:browser:chrome` for Chrome consumer checks.
 
 ```bash
-pnpm exec playwright install chrome msedge firefox webkit
+pnpm exec playwright install chromium chrome
 pnpm run generate:api
 pnpm run test:browser:compatibility
 ```
@@ -198,7 +198,7 @@ Each application's package-level `dev`, `typecheck`, `lint`, `format:check`, `te
 
 ### Verification scope
 
-Workspace checks cover shared package boundaries, UI interactions, session coordination, and static artifact consistency. They are not equivalent to real backend login or deployment acceptance. WebKit provides reproducible Safari-engine compatibility testing, not native Safari testing.
+Workspace checks cover shared package boundaries, UI interactions, session coordination, and static artifact consistency. They are not equivalent to real backend login or deployment acceptance. Product acceptance uses actual Chrome; Chromium as a test tool is not a separate product compatibility commitment.
 
 Real Console authentication uses the separate [`verify-console-authentication-e2e.sh`](../scripts/verify-console-authentication-e2e.sh), involving a fresh Compose environment, trusted TLS, and actual service requests. It is not part of `pnpm run verify`. Read the [product acceptance guide and prerequisites](../docs/acceptance/issue-115-console-authentication.md) before running it; historical results there do not establish that your current environment passes.
 
@@ -231,7 +231,7 @@ Static hosting must provide SPA fallback for client-side routes while serving `/
 | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ERR_PNPM_VERIFY_DEPS_BEFORE_RUN`                 | Check Node/pnpm versions and the lockfile, then run a frozen install from `consoles/`. Do not disable `verifyDepsBeforeRun: error` or switch package managers |
 | Missing generated client or API types             | Run `pnpm run generate:api` from the workspace root and check JDK/Maven dependency access                                                                     |
-| Playwright cannot find a browser executable       | Install the engine or Chrome/Edge channel required by the selected test                                                                                       |
+| Playwright cannot find a browser executable       | Install the Chromium runtime or Chrome channel required by the selected test                                                                                  |
 | Application stays on the configuration error page | Inspect the `/runtime-config.json` HTTP response, its two-field JSON contract, and the HTTPS Origin; replace production templates                             |
 | Page loads but authentication requests fail       | Check API reachability, certificate trust, entry-point domains, and Gateway security boundaries; a visible page does not prove authentication works           |
 

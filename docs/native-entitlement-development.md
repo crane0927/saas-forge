@@ -69,4 +69,4 @@ mvn -pl services/entitlement-service,services/tenant-access-service -am \
 mvn -pl gateway,services/iam-service,services/tenant-access-service,services/entitlement-service -am verify
 ```
 
-仓库完整 CI、Fresh Compose 和多浏览器矩阵独立执行与记录。当前结果见 [Issue #165 验收记录](acceptance/issue-165-native-entitlement.md)。
+仓库完整 CI、Fresh Compose 和 Chrome 产品验收独立执行与记录。当前结果见 [Issue #165 验收记录](acceptance/issue-165-native-entitlement.md)。

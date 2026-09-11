@@ -194,7 +194,7 @@ Tenant Context Switch 是单一不可回滚的客户端转换：
 - 根错误、路由错误和请求 Problem 分层验证，同时覆盖键盘、焦点、读屏状态与窄屏布局；
 - 从全新 Compose 数据卷执行最终产品路径，不以 Mock、curl、生成 Client 或单一应用构建代替。
 
-Chromium、Firefox 与 Playwright WebKit 均阻塞核心认证行为，视觉快照只由 Chromium 维护；Chrome 与 Microsoft Edge 实机渠道作为发布兼容门禁。浏览器缺少原子锁或跨标签页消息能力时，必须验证服务端 Lease 回退，不得静默跳过。
+当前开发阶段仅承诺桌面 Chrome 当前稳定版，真实产品验收使用 Chrome；Chromium 保留日常功能与视觉快照检查，不形成独立产品兼容承诺。浏览器缺少原子锁或跨标签页消息能力时，必须验证服务端 Lease 回退，不得静默跳过。
 
 ## 12. 交付顺序与完成边界
 

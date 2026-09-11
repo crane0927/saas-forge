@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:https';
 import { createConnection } from 'node:net';
 import { isAbsolute } from 'node:path';
-import { chromium, firefox, webkit } from 'playwright';
+import { chromium } from 'playwright';
 
 const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saasforge.test';
 // 对照实验仅允许已批准的两个根域；不能把验收代理开放给任意 Host。
@@ -67,16 +67,7 @@ await new Promise((done) => {
   });
 });
 
-const browsers = [
-  ['Chromium', chromium],
-  ['WebKit', webkit],
-  ['Chrome', chromium, 'chrome'],
-];
-if (target === 'ci') browsers.push(['Firefox', firefox], ['Microsoft Edge', chromium, 'msedge']);
-else
-  console.info(
-    'SCOPE: local；Firefox 与 Microsoft Edge 必须由真实产品 CI 补齐，不能据此声明聚合通过',
-  );
+const browsers = [['Chrome', chromium, 'chrome']];
 // 在长时间构建前验证浏览器实际信任；临时监听仅绑定回环随机端口，不替代正式 443 产品路径。
 let tlsServer;
 if (problems.length === 0) {

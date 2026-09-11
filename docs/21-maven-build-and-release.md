@@ -2,9 +2,9 @@
 
 ## 工具链基线
 
-仓库唯一构建入口为 Maven Wrapper。Wrapper 固定 Maven 3.9.14，并通过 `distributionSha256Sum` 校验下载的发行包；本地与 CI 都使用 `./mvnw`。父 POM 的 Enforcer 只接受 Maven 3.9.14 以及 JDK 17、JDK 21。
+仓库唯一构建入口为 Maven Wrapper。Wrapper 固定 Maven 3.9.14，并通过 `distributionSha256Sum` 校验下载的发行包；本地与 CI 都使用 `./mvnw`。父 POM 的 Enforcer 只接受 Maven 3.9.14 以及 JDK 17。
 
-所有 Java 源码统一以 `release=17` 编译。JDK 17 是最低构建与运行版本，JDK 17 和 JDK 21 都是正式支持的运行时；Pull Request 与普通 Push 必须分别在两个 JDK 上通过完整的：
+所有 Java 源码统一以 `release=17` 编译。当前开发阶段仅支持 JDK 17 构建与运行；Pull Request 与普通 Push 必须在 JDK 17 上通过完整的：
 
 ```bash
 ./mvnw --batch-mode --no-transfer-progress verify
@@ -50,7 +50,7 @@ Permission、Feature、Quota 与 Audit SDK 仍是未交付的 Reactor 占位模�
 
 首版公开 SDK 与 Starter 通过 [`sdk/public-api-allowlist.json`](../sdk/public-api-allowlist.json) 固定允许的 package 和公共类型。Maven Enforcer 检查传递依赖，制品质量门检查公共签名、JAR 内容与 `jdeps` 实现引用，拒绝内部 Protobuf、gRPC、持久化与浏览器安全参数泄漏。首个正式 SDK 发布前没有真实二进制兼容基线；发布首版后才以已发布制品启用版本间比较。
 
-受保护的 `vX.Y.Z` 标签触发 `.github/workflows/release.yml`。发布流程先在 JDK 17 和 JDK 21 上以 `X.Y.Z` 执行完整 `verify`，全部通过后才由 JDK 17 重新构建正式制品。Release Profile 附加 sources、Javadoc 和 GPG 签名，通过 Central Publisher Portal 自动公开并等待 `published` 结果。
+受保护的 `vX.Y.Z` 标签触发 `.github/workflows/release.yml`。发布流程先在 JDK 17 上以 `X.Y.Z` 执行完整 `verify`，全部通过后才由 JDK 17 重新构建正式制品。Release Profile 附加 sources、Javadoc 和 GPG 签名，通过 Central Publisher Portal 自动公开并等待 `published` 结果。
 
 GitHub Actions 需要配置以下 Secrets：
 

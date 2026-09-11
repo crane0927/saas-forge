@@ -1,5 +1,7 @@
 # CI 完整门禁去重（Issue #168）
 
+> 当前阶段范围已由 [ADR 0046](../adr/0046-development-supports-chrome-and-jdk17.md) 调整为桌面 Chrome 当前稳定版与 JDK 17；Chromium 保留日常功能与视觉测试。本文旧矩阵的执行结果属于历史证据，不作为当前多浏览器或 JDK 21 要求。现行复现入口见 [本地验证说明](../local-verification.md)。
+
 依据 #161、#167 与 ADR 0044。实现基点为 `d20360927816a71c7c234e4a941fcc462808f29a`，不改变 #155、#159 的验收条件或状态。
 
 ## 覆盖映射与去重依据
@@ -36,9 +38,9 @@ JSON 清单仍保留 `scope=--product`，明确本脚本没有再次执行 Maven
 
 ## 本机完整复现
 
-准备 JDK 17/21、Node 24.14.1、pnpm 11.22.0、Docker/Compose 与 Testcontainers 可访问的 daemon；首次在 `consoles` 执行 `pnpm install --frozen-lockfile`，安装所需 Playwright 引擎及 Chrome/Edge 发行渠道。Maven 需要其依赖仓库网络或已准备的缓存。两个 JDK 分别串行执行完整 `./mvnw --batch-mode --no-transfer-progress verify`，不加 `backend-local`。
+准备 JDK 17、Node 24.14.1、pnpm 11.22.0、Docker/Compose 与 Testcontainers 可访问的 daemon；首次在 `consoles` 执行 `pnpm install --frozen-lockfile`，安装 Chromium 测试工具及 Chrome。Maven 需要其依赖仓库网络或已准备的缓存。使用 JDK 17 执行完整 `./mvnw --batch-mode --no-transfer-progress verify`，不加 `backend-local`。
 
-Fresh 前另行按 [四域验收说明](issue-159-four-domain-matrix.md) 准备四个受控域名、受信证书和所有浏览器的正常 TLS 信任，并释放 443；需要 node、pnpm、docker、openssl、ruby。Linux 五渠道对照使用 CI workflow 内明确列出的 hosts、SAN、CA/NSS/Firefox 策略步骤。实际 TLS 私钥只保存在受限目录。不得以关闭证书校验获得通过。
+Fresh 前另行按 [四域验收说明](issue-159-four-domain-matrix.md) 准备四个受控域名、受信证书和所有浏览器的正常 TLS 信任，并释放 443；需要 node、pnpm、docker、openssl、ruby。Linux Chrome 验收使用 CI workflow 内明确列出的 hosts、SAN、CA/NSS 步骤。实际 TLS 私钥只保存在受限目录。不得以关闭证书校验获得通过。
 
 ```bash
 # 完整本机入口自己执行 Maven/workspace，不依赖 CI 或下载制品。
@@ -55,7 +57,7 @@ bash scripts/verify-tenant-lifecycle-e2e.sh
 bash scripts/verify-console-authentication-e2e.sh --development
 ```
 
-本地默认产品渠道为 Chromium/WebKit/Chrome；Linux 五渠道对照需 `SF_ACCEPTANCE_TARGET=ci` 及上述信任准备，不能把默认三渠道报告当作五渠道完成。开发入口另需运行中的 Nacos、服务、HTTPS Edge、两个 Vite Console 和受限账号文件。Nacos 的发布、ACL、恢复需要独立依赖环境和对应受限身份，命令仍以 Verify job 为准；不要向共享环境误执行故障恢复测试。
+本地与 CI 产品渠道均为 Chrome；Linux CI 复现需 `SF_ACCEPTANCE_TARGET=ci` 及上述信任准备，本地结果不能代替远端 CI 证据。开发入口另需运行中的 Nacos、服务、HTTPS Edge、两个 Vite Console 和受限账号文件。Nacos 的发布、ACL、恢复需要独立依赖环境和对应受限身份，命令仍以 Verify job 为准；不要向共享环境误执行故障恢复测试。
 
 ## 实际记录
 

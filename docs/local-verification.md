@@ -34,7 +34,7 @@ pnpm --dir consoles --workspace-concurrency=1 --filter '...@saas-forge/react-she
 
 ## 后端日常流程
 
-使用仓库 Maven Wrapper，JDK 17 或 21，先确保 Maven 依赖可用。代表性服务发现模块的流程：
+使用仓库 Maven Wrapper，JDK 17，先确保 Maven 依赖可用。代表性服务发现模块的流程：
 
 ```bash
 # 开发循环：单文件测试；上游聚合模块没有该测试时允许无匹配，务必核对目标测试实际运行。
@@ -60,8 +60,8 @@ pnpm --dir consoles --workspace-concurrency=1 --filter '...@saas-forge/react-she
 | Flyway | 遵守迁移不可变规则；`java script/FlywayMigrationGenerator.java validate` 与对应数据库迁移/隔离集成测试 |
 | Nacos | 对应 revision 递增；`bash scripts/validate-nacos-config.sh` 与相关服务验证；权限、发布或恢复变更补相应专项入口 |
 | Design System 国际化资源新增或移动 | 更新资源校验入口；`pnpm --dir consoles run validate:i18n` 与 `pnpm --dir consoles run build:workspace`，保留 tree-shake 检查 |
-| 共享 UI/布局、浏览器行为 | 消费者包级验证与对应浏览器测试；兼容性变化升级至 Chrome、Edge、Firefox、WebKit |
-| 具体 Issue / PRD 明确要求的本地、fresh 或端到端验收 | 原要求继续有效，不因本地分层流程而豁免 |
+| 共享 UI/布局、浏览器行为 | 消费者包级验证与对应浏览器测试；日常使用 Chromium，必要的产品验收使用 Chrome |
+| 具体 Issue / PRD 明确要求的本地、fresh 或端到端验收 | 除兼容矩阵按 ADR 0046 收缩外，原要求继续有效 |
 
 ## 完整复现与 CI 覆盖清单
 
@@ -75,10 +75,10 @@ bash scripts/verify-tenant-lifecycle-e2e.sh
 bash scripts/verify-console-authentication-e2e.sh
 ```
 
-- Maven 完整 Reactor：JDK 17/21、后端单元/集成/契约、数据库/Redis/Kafka、JaCoCo 聚合质量门；OpenAPI 阶段调用前端 `verify:workspace`，含 Chromium。
+- Maven 完整 Reactor：JDK 17、后端单元/集成/契约、数据库/Redis/Kafka、JaCoCo 聚合质量门；OpenAPI 阶段调用前端 `verify:workspace`，含 Chromium。
 - 独立前端 `verify`：正式 Client 生成后执行全工作区校验、测试、Chromium 和构建；与 Maven 有重复，供前端独立复现，日常无需两者都跑。
-- `.github/workflows/verify.yml`：JDK 21、独立 Chrome/Edge/Firefox/WebKit、Tenant fresh-volume、Nacos 配置/权限/恢复及 CLI 接缝回归；调用认证 reusable workflow 提供 JDK 17 与五渠道 Fresh 产品证据。
-- `.github/workflows/console-authentication-e2e.yml`：同一 job 先执行完整 JDK 17 Maven/workspace，再用 `--product` 复用制品执行五渠道 Fresh 产品与四渠道兼容门禁；失败直接传播。保留手动触发和本机默认完整入口，覆盖映射、准备条件与证据边界见 [Issue #168](acceptance/issue-168-ci-verification.md)。Nacos 的发布、ACL、恢复入口与环境配置以 Verify workflow 为准。
+- `.github/workflows/verify.yml`：Tenant fresh-volume 与 Nacos 配置/权限/恢复；调用认证 reusable workflow 提供契约基线保护、CLI 接缝回归、完整 JDK 17 构建与 Chrome Fresh 产品证据。
+- `.github/workflows/console-authentication-e2e.yml`：同一 job 先执行完整 JDK 17 Maven/workspace，再用 `--product` 复用制品执行Chrome Fresh 产品与 Chrome 消费者门禁；失败直接传播。保留手动触发和本机默认完整入口，覆盖映射、准备条件与证据边界见 [Issue #168](acceptance/issue-168-ci-verification.md)。Nacos 的发布、ACL、恢复入口与环境配置以 Verify workflow 为准。
 - 五服务本机替换矩阵保留 `bash scripts/verify-local-development-matrix.sh` 及其既有准备要求，作为专项复现，不是普通修改的默认门禁。
 
 ## 结果和实测记录
