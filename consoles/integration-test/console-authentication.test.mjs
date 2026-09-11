@@ -801,6 +801,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         await captureBrandEvidence(tenant, `tenant-${asset}`);
       }
       await expectBrand('Acceptance Blue Brand', '#155EEF', '#7A5AF8', 'blue');
+      await openCompactNavigation(tenant);
       await verifyBrandRemoteInheritance(tenant);
       const refreshPath = '**/api/v1/auth/refresh';
       const stalledRefresh = Promise.withResolvers();
@@ -845,6 +846,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       await tenant.getByRole('button', { name: '重试完成切换', exact: true }).click();
       assert.equal((await refreshed).status(), 200);
       await expectBrand('Acceptance Violet Brand', '#7C3AED', '#C026D3', 'violet');
+      await openCompactNavigation(tenant);
       await verifyBrandRemoteInheritance(tenant);
       await expectGlobalNavigation(
         tenant,
