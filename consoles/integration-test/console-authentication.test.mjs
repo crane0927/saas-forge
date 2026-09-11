@@ -403,15 +403,10 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       assert.equal(body.tenantContext.tenantId, firstTenant.tenantId);
       await tenant.getByRole('heading', { name: 'Tenant workspace', exact: true }).waitFor();
       assert.equal(new URL(tenant.url()).pathname, '/');
-      await expectGlobalNavigation(tenant, 'SaaS Forge global navigation');
-      assert.equal(
-        await tenant
-          .getByRole('navigation', {
-            name: 'Second Acceptance Tenant global navigation',
-            exact: true,
-          })
-          .count(),
-        0,
+      await expectGlobalNavigation(
+        tenant,
+        'SaaS Forge global navigation',
+        'Second Acceptance Tenant global navigation',
       );
       await recover(tenant, 'Tenant workspace');
       await expectGlobalNavigation(tenant, 'SaaS Forge global navigation');
@@ -851,11 +846,10 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       assert.equal((await refreshed).status(), 200);
       await expectBrand('Acceptance Violet Brand', '#7C3AED', '#C026D3', 'violet');
       await verifyBrandRemoteInheritance(tenant);
-      assert.equal(
-        await tenant
-          .getByRole('navigation', { name: 'Acceptance Blue Brand 全局导航', exact: true })
-          .count(),
-        0,
+      await expectGlobalNavigation(
+        tenant,
+        'Acceptance Violet Brand 全局导航',
+        'Acceptance Blue Brand 全局导航',
       );
       console.info('BRAND: switched Remote verified; starting cold recovery');
       await recover(tenant, 'Tenant 工作台');
@@ -1573,9 +1567,14 @@ async function openCompactNavigation(page) {
   if (await open.count()) await open.press('Enter');
 }
 
-async function expectGlobalNavigation(page, name) {
+async function expectGlobalNavigation(page, name, previousName) {
   await openCompactNavigation(page);
   await page.getByRole('navigation', { name, exact: true }).waitFor();
+  if (previousName !== undefined)
+    assert.equal(
+      await page.getByRole('navigation', { name: previousName, exact: true }).count(),
+      0,
+    );
   const close = page.getByRole('button', { name: /^(关闭导航|Close navigation)$/ });
   if (await close.isVisible()) await close.press('Enter');
 }
