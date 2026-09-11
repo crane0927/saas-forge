@@ -162,7 +162,7 @@ flowchart TD
 
 - [ ] 补齐页面刷新和浏览器重启所需的最小权威读取契约，包括 Current Session、Accessible Memberships，以及本阶段 Quota Definition、Plan、Tenant、Subscription 和 OAuth Client 的必要列表/详情；只增加资源化最小读模型，不前移后续完整 CRUD。
 - [ ] Platform Console 完成“登录 → 首次密码修改 → Refresh → Logout”，并显示稳定的登录保护、凭据错误、会话失效和恢复反馈。
-  - Issue #171 已补充 Current Session 正式读取、共享 Client 和双语页面，复用既有认证 Runtime；原生环境真实 HTTPS 当前身份、刷新、浏览器重启及双 Console 安全验收通过。首次改密及 Fresh Compose 等剩余场景未完成，本项保持未勾选，见 [验收记录](acceptance/issue-171-current-session.md)。
+  - Issue #171 已补充 Current Session 正式读取、共享 Client 和双语页面，复用既有认证 Runtime；原生环境真实 HTTPS 当前身份、刷新、浏览器重启及双 Console 安全验收通过。首次改密与 Fresh Compose Chrome 产品测试 33/33 及浏览器门禁通过；本阶段仍有其他验收，本项保持未勾选，见 [验收记录](acceptance/issue-171-current-session.md)。
 - [ ] Platform Console 完成“Quota Definition/Plan → Tenant → Subscription → Tenant Administrator 初始化”产品路径，读取结果必须来自真实服务权威状态。
 - [ ] Tenant Console 完成“Password Setup → Tenant Administrator 登录 → Accessible Membership 选择 → Tenant Context Switch”，刷新页面后从权威状态恢复当前 Session 与资源上下文。
 - [ ] Platform Console 完成 Tenant Suspension、显式恢复和恢复失败处理；Tenant Console 可观察旧 Token 被拒绝、Session 失效及重新登录后的恢复结果。

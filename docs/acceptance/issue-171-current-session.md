@@ -29,14 +29,45 @@
 - 安全验收首次未设置 `SF_SECURITY_EDGE_CONTAINER`，缺少直接 CORS 拒绝证据而失败；
   显式指定当前 Edge 后，完整安全验收通过。不能将首次失败记录计为通过。
 
-### 未执行及完成边界
+## 2026-09-11 Fresh Compose
 
-- 本轮使用已有可正常登录账号，未验证必要首次改密、登录保护阈值及全部故障恢复分支。
-- 尚未运行本切片 Fresh Compose 浏览器验收。现有验收入口要求 443 空闲；当前由
-  用户开发环境 Edge 占用，不能自行停止或覆盖。Fresh Compose 使用随机项目和新卷，
-  仅清理自己的环境；运行前仍需协调临时释放 443。
-- 错误 Token、授权拒绝与迟到响应已有聚焦自动化证据；本轮真实成功路径与开发模式
-  安全证据不能替代 Fresh Compose 和未执行的场景。Issue #171 暂不声明完整验收通过。
+用户停止本地 HTTPS Edge 并释放 443 后，执行既有入口：
+
+```bash
+SF_ACCEPTANCE_TLS_CERT=<受信证书绝对路径> \
+SF_ACCEPTANCE_TLS_KEY=<私钥绝对路径> \
+bash scripts/verify-console-authentication-e2e.sh --product
+```
+
+- 最终进程退出码为 0；Chrome 产品测试 **33/33**，失败、跳过、取消均为 0；
+  `console-browser-chrome` 门禁通过。机器记录见
+  [fresh-compose-run.json](assets/issue-171/fresh-compose-run.json)。
+- 使用随机项目 `saas-forge-console-1789114665-6219-bd76b6` 的全新数据卷，验证
+  首次登录要求改密且不签发 Access Token、改密 204、重新登录、中文当前身份、英文
+  重新读取及双槽位独立刷新/退出。复用测试还验证 Membership 选择、Tenant Switch、
+  未决 Logout、服务端 Lease 回退、正式 Client 恢复和安全存储等既有边界。
+- 产品成功路径经过生产 Console、受信 HTTPS、Gateway 与真实服务；可恢复故障、
+  迟到响应和错误页面用例中沿用既有受控故障注入，不能描述为全部故障都由真实服务产生。
+- 第一次运行 7 通过、1 失败：语言切换后焦点仍在语言选择器，登录前测试却要求标题
+  获焦。仅为该次检查指定 `focusedElementId: 'console-locale'` 后重跑通过；
+  标题、ARIA 播报、Tab 顺序和后续路由标题焦点检查保留，修正经复审无问题。
+- 记录中的基线为 `b807ce1`，`dirty=true` 对应上述尚未提交的焦点测试修正。
+  `--product` 复用已有构建，本轮不包含 Maven/workspace 重跑。
+- 验收结束后已确认该随机项目的容器及数据卷均不存在。
+
+### Issue #171 验收映射与边界
+
+| 验收项 | 证据 |
+| --- | --- |
+| 正式 Current Session、共享 Client、权威身份与授权展示 | IAM HTTP 测试、共享 Client 测试；原生 Chrome 与 Fresh Compose 实际页面读取 |
+| 既有认证 Runtime、首次改密、刷新、退出及恢复 | Fresh Compose 首次改密与双槽位恢复；原生 Chrome 浏览器重启；Runtime 错误/恢复测试 |
+| Tenant Context 与 Accessible Memberships 的复用和边界 | 聚焦 HTTP 授权测试；Fresh Compose Membership 选择与 Tenant Switch |
+| 读取和业务分别授权、错误 Token、迟到响应隔离 | 聚焦 HTTP 测试及共享 Client 的成功/错误正文延迟回归；Fresh Compose 既有恢复与迟到认证用例 |
+| 真实受信 HTTPS、双语与浏览器安全 | 原生 Chrome、Fresh Compose 33/33 和双槽位安全探针；中文主路径与英文代表操作 |
+
+本切片的实现、聚焦测试和上述产品验收已完成。没有对原生环境账号主动触发登录保护
+阈值，也未追加所有故障的真实基础设施中断矩阵；相关稳定反馈沿用已有 Runtime/HTTP
+测试。父 Issue #170 的资源页面、初始化产品闭环及第 2 阶段其他验收不因此完成。
 
 此前全前端 workspace 验证通过。完整 Maven verify 曾在最终 SDK 发布边界检查失败，
 移除不需要的 SDK 发布标记后，相关单元测试及剩余 quality-gates 集成检查通过；

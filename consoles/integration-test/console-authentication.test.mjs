@@ -175,7 +175,9 @@ test('Platform and Tenant sessions survive independent recovery and logout after
 
   await platform.goto(`https://platform.${rootDomain}/`);
   await selectConsoleLocale(platform, '简体中文');
-  const initial = await login(platform, email, initialPassword, 'zh-CN');
+  const initial = await login(platform, email, initialPassword, 'zh-CN', {
+    focusedElementId: 'console-locale',
+  });
   assert.equal(initial.contextState, 'PASSWORD_CHANGE_REQUIRED');
   assert.equal(Object.hasOwn(initial, 'accessToken'), false);
   const initialCookieStored = (await context.cookies(`https://api.${rootDomain}`)).some(
