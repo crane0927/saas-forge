@@ -10,7 +10,7 @@
 → Tenant Context、Permission、Feature、Quota 校验 → 执行业务 → 审计可查询
 ```
 
-当前仓库已完成第 1、2 阶段的大部分后端契约、服务、数据、安全与诊断型端到端切片，并已建立可独立构建的 Platform Console、Tenant Console Shell、共享 Runtime 与生成 API Client；这些应用宿主尚未实现登录、真实 API、业务页面、受控 TLS Origin、Remote 或 Playwright 浏览器闭环。Gateway 的 Password Setup 静态页不能替代最终 Console 产品路径。原有后端勾选保留，尚无直接证据的 Console 与浏览器验收项保持未完成，因此第 1、2 阶段当前均属于部分完成。
+当前仓库已完成第 1、2 阶段的大部分后端契约、服务、数据、安全与诊断型端到端切片，并已建立可独立构建的 Platform Console、Tenant Console Shell、共享 Runtime 与生成 API Client。共享认证已实现登录、首次改密、刷新、恢复和登出，并有部分真实受信 HTTPS 浏览器证据，见 [Browser Session 安全验收记录](acceptance/issue-158-browser-session-security.md)；不能再将应用宿主视为完全没有登录或真实 API 能力。Tenant/Entitlement 产品页面及必要权威读取仍有缺口，局部认证证据不代表本计划完整产品与浏览器闭环通过。Gateway 的 Password Setup 静态页不能替代最终 Console 产品路径。原有后端勾选保留，未完成专项验收的 Console 与浏览器事项保持未完成。
 
 MVP 不包含完整支付/账单/发票、公共注册和外部身份源、多语言 SDK、Schema Per Tenant 或 Database Per Tenant 隔离、CLI，以及 Helm/systemd 的完整生产交付。后两项在架构与配置上保持兼容，但按照 [路线图](15-roadmap.md) 中 Phase 1 的范围，不作为 MVP 发布阻塞项。
 
@@ -143,6 +143,8 @@ flowchart TD
 **完成标准：** API、数据库、Redis 与日志基础规范已版本化；最小契约可生成骨架；Compose 能启动基础组件；CI 能构建全仓库并执行契约、迁移和 RLS 测试夹具；两个最终产品 Console 可在受控 TLS/Origin 拓扑启动，共享 Design System、认证/HTTP/错误、布局、双语和 Playwright 基线均有直接验证。当前后端基线已完成，但新增 Console 与浏览器基线未完成，因此本阶段仍为部分完成。
 
 ### 2. 身份与租户最小闭环
+
+「Console 交互」前三项的已确认范围、最小额度新规则、历史兼容和操作恢复设计见 [Platform Console 身份与租户初始化闭环](30-platform-console-tenant-initialization.md)。该设计尚待实现和验收，不据此勾选以下事项。
 
 **领域与服务**
 
