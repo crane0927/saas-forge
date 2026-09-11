@@ -74,6 +74,9 @@ public class EntitlementBootstrapController implements PlatformEntitlementBootst
             UUID quotaDefinitionId, UUID idempotencyKey, java.util.Map<String, Object> requestBody) {
         HttpServletRequest httpRequest = currentRequest();
         UUID actor = authorizer.authorize(httpRequest.getHeader(HttpHeaders.AUTHORIZATION));
+        if (requestBody != null && !requestBody.isEmpty()) {
+            throw new IllegalArgumentException("Quota activation requires an empty JSON object");
+        }
         return ResponseEntity.ok(toResponse(recoverableQuota.activate(
                 actor, idempotencyKey, quotaDefinitionId, traceId(httpRequest))));
     }
@@ -120,6 +123,9 @@ public class EntitlementBootstrapController implements PlatformEntitlementBootst
             UUID operationId, UUID idempotencyKey, Object body) {
         var request = currentRequest();
         UUID actor = authorizer.authorize(request.getHeader(HttpHeaders.AUTHORIZATION));
+        if (!(body instanceof java.util.Map<?, ?> values) || !values.isEmpty()) {
+            throw new IllegalArgumentException("Quota recovery requires an empty JSON object");
+        }
         return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
                 .body(toResponse(recoverableQuota.recover(actor, operationId, idempotencyKey, traceId(request))));
     }

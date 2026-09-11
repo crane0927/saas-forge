@@ -26,7 +26,8 @@
 - 首轮 Fresh Chrome 产品运行 8/10 通过、2 项失败：脚本把数据库权限拒绝的 Gateway 响应错误预期为 500，实际为 502；受限服务日志确认 `permission denied for table quota_definitions`。网络拦截内抛断言导致父测试连带失败。改为拦截仅记录结果并完成请求，临时权限在 finally 恢复后再断言 Gateway 502；后续恢复仍严格要求 200 和原 Key。
 - 第二轮在 `tls-ready` 失败，未进入产品测试：容器健康通过，但四域 Chrome 导航均为 ERR_CONNECTION_CLOSED，180 秒内未恢复；环境已自动清理。用相同证书、现有 Node 镜像和回环 443 的最小 TLS 容器复核，curl 及 Chrome 四域均为 200，探针已删除。未修改 TLS 配置或重启开发环境；该间歇连接故障原因未确定。
 - 第三轮 TLS 通过，创建回滚后的原 Key 恢复成功；激活请求被 Gateway 以 403 拒绝。定位到原契约没有请求正文，生成客户端没有 JSON Content-Type。新增 Runtime 回归测试先失败（Content-Type 为 null），再通过正式契约声明可选空 JSON 正文并由类型化 Client 发送 `{}`，未放宽 Gateway。Entitlement 全量复验通过，Controller 同时覆盖 JSON 和原无正文调用。
-- 第四轮真实 Chrome/Fresh Compose 产品复验：准备中，最终结果待补。
+- 修复后的完整前端门禁再次退出码 0（Runtime 128 项）。最后 Standards 复审发现生成 Java 未执行空正文约束，补充激活/恢复入口校验；非空对象、数组、标量不能触发业务，返回 400。Controller 红灯后，Entitlement 全量复验退出码 0，Controller 7 项、PostgreSQL 集成 18 项。
+- 第四轮真实 Chrome/Fresh Compose 产品复验：运行中；最后空正文校验将以新制品另行复验。
 
 ## 真实产品验收入口
 
