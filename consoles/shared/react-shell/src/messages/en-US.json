@@ -59,5 +59,20 @@
   "tenantSwitchUnknownDescription": "Retry the same operation. Do not start a new switch.",
   "tenantSwitchUnknownTitle": "Tenant switch result unknown",
   "tenantUnavailableDescription": "The current Identity has no Tenant it can enter. Contact a Tenant administrator.",
-  "tenantUnavailableTitle": "Unable to enter a Tenant"
+  "tenantUnavailableTitle": "Unable to enter a Tenant",
+  "creationRecoveryTitle": "My Tenant creation records",
+  "creationRecoveryHint": "Only this actor’s server-side records appear here. Missing or expired records and similar names require verification before creating again.",
+  "creationRecoveryRead": "Read creation records",
+  "creationRecoveryContinue": "Continue original creation",
+  "creationRecoveryView": "View Tenant",
+  "creationRecoveryEmpty": "No creation records found. This does not prove an earlier request was not committed.",
+  "creationRecoveryFailure": "Creation records are unavailable",
+  "creationRecoveryExpired": "Safe replay retention has ended. Verify the result.",
+  "creationRecoveryCOMMITTED": "Committed",
+  "creationRecoveryPROCESSING": "Still processing. Read again later",
+  "creationRecoveryNOT_COMMITTED": "Not committed at this read. The original operation can continue",
+  "creationRecoveryUNKNOWN": "Unknown. Verify the result",
+  "creationRecoveryNext": "Next creation records",
+  "creationRecoveryPrevious": "Previous creation records",
+  "creationRecoveryPending": "Reading…"
 }

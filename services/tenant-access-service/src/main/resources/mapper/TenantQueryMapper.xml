@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.saasforge.tenantaccess.infrastructure.persistence.mapper.TenantQueryMapper">
+    <select id="list" resultType="io.saasforge.tenantaccess.infrastructure.persistence.record.TenantRow">
+        SELECT id, display_name AS displayName, tenant_status AS status,
+               expires_at AS expiresAt, created_at AS createdAt, updated_at AS updatedAt
+        FROM list_platform_tenants(#{name}, #{status}, #{after}, #{limit})
+    </select>
+</mapper>

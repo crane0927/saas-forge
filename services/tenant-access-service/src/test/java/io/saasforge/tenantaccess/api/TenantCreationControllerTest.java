@@ -16,7 +16,7 @@ import io.saasforge.tenantaccess.application.administrator.TenantAdministratorIn
 import io.saasforge.tenantaccess.application.administrator.AdministratorPasswordSetupException;
 import io.saasforge.tenantaccess.application.administrator.ResendAdministratorPasswordSetupService;
 import io.saasforge.tenantaccess.domain.tenant.TenantStatus;
-import io.saasforge.tenantaccess.application.tenant.CreatePendingTenantService;
+import io.saasforge.tenantaccess.application.tenant.RecoverableTenantCreationService;
 import io.saasforge.tenantaccess.application.tenant.TenantCreationResult;
 import java.time.Instant;
 import java.util.UUID;
@@ -29,11 +29,27 @@ class TenantCreationControllerTest {
     private static final UUID KEY = UUID.fromString("019535d9-0000-7000-8000-000000000001");
 
     @Test
+    void everyTenantReadAndRecoveryRechecksCurrentPlatformAuthorization() throws Exception {
+        MockMvc mvc = mvc(authorization -> { throw new PlatformAuthorizationDeniedException(); }, unusedCreation());
+        for (var request : java.util.List.of(
+                org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/platform/tenants"),
+                org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/platform/tenants/" + KEY),
+                org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/platform/tenant-creations"),
+                org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/platform/tenant-creations/" + KEY),
+                post("/api/v1/platform/tenant-creations/" + KEY + "/recovery").header("Idempotency-Key", KEY)
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))) {
+            mvc.perform(request.header("Authorization", "Bearer platform-token"))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.code").value("PLATFORM_AUTHORIZATION_DENIED"));
+        }
+    }
+
+    @Test
     void rejectsRequestWhenIamDoesNotConfirmPlatformAdminRole() throws Exception {
         PlatformAdminAuthorizer authorizer = authorization -> {
             throw new PlatformAuthorizationDeniedException();
         };
-        CreatePendingTenantService creation = unusedCreation();
+        RecoverableTenantCreationService creation = unusedCreation();
         MockMvc mvc = mvc(authorizer, creation);
 
         mvc.perform(post("/api/v1/platform/tenants")
@@ -49,7 +65,7 @@ class TenantCreationControllerTest {
     void acceptsPublishedV1RequestWithoutExpiry() throws Exception {
         PlatformAdminAuthorizer authorizer = authorization -> KEY;
         Instant createdAt = Instant.parse("2026-08-23T01:00:00Z");
-        CreatePendingTenantService creation = new CreatePendingTenantService(null, null, null, null, null, null) {
+        RecoverableTenantCreationService creation = new RecoverableTenantCreationService(null, null, null) {
             @Override
             public TenantCreationResult create(
                     UUID callerIdentityId,
@@ -226,7 +242,7 @@ class TenantCreationControllerTest {
     }
 
     private static MockMvc mvc(
-            PlatformAdminAuthorizer authorizer, CreatePendingTenantService creation) {
+            PlatformAdminAuthorizer authorizer, RecoverableTenantCreationService creation) {
         return MockMvcBuilders.standaloneSetup(new TenantCreationController(
                         authorizer, creation,
                         unusedInitialization(), unusedPasswordSetup()))
@@ -242,8 +258,8 @@ class TenantCreationControllerTest {
         return new ResendAdministratorPasswordSetupService(null, null, null, null, null, null);
     }
 
-    private static CreatePendingTenantService unusedCreation() {
-        return new CreatePendingTenantService(null, null, null, null, null, null) {
+    private static RecoverableTenantCreationService unusedCreation() {
+        return new RecoverableTenantCreationService(null, null, null) {
             @Override
             public TenantCreationResult create(
                     UUID callerIdentityId,

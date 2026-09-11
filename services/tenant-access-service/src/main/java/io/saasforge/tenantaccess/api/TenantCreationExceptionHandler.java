@@ -64,14 +64,14 @@ public class TenantCreationExceptionHandler {
     ResponseEntity<Problem> tenantLifecycleFailure(
             TenantLifecycleException exception, HttpServletRequest request) {
         HttpStatus status = switch (exception.code()) {
-            case "TENANT_NOT_FOUND" -> HttpStatus.NOT_FOUND;
+            case "TENANT_NOT_FOUND", "TENANT_CREATION_NOT_FOUND" -> HttpStatus.NOT_FOUND;
             case "TENANT_SUSPENSION_PENDING", "TENANT_RESUME_PENDING",
                     "TENANT_SUSPENSION_RECOVERY_PENDING" -> HttpStatus.SERVICE_UNAVAILABLE;
             default -> HttpStatus.CONFLICT;
         };
         ResponseEntity<Problem> response = problem(status, exception.code(),
                 "Tenant lifecycle change failed", exception.getMessage(), request);
-        if (status == HttpStatus.SERVICE_UNAVAILABLE) {
+        if (status == HttpStatus.SERVICE_UNAVAILABLE || "IDEMPOTENCY_REQUEST_IN_PROGRESS".equals(exception.code())) {
             return ResponseEntity.status(status)
                     .header("Retry-After", Long.toString(Math.max(1, exception.retryAfterSeconds())))
                     .contentType(MediaType.APPLICATION_PROBLEM_JSON)

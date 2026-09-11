@@ -12,5 +12,7 @@
   "tableSelectionCleared": "Current-page selection cleared.",
   "tableSelectionCount": "{count, plural, one {# current-page item selected.} other {# current-page items selected.}}",
   "tableSelectionNone": "No current-page items selected.",
-  "tableTotal": "{count, plural, one {# item} other {# items}}"
+  "tableTotal": "{count, plural, one {# item} other {# items}}",
+  "tablePreviousPage": "Previous page",
+  "tableNextPage": "Next page"
 }

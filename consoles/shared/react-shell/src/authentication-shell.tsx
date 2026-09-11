@@ -33,12 +33,14 @@ import {
 } from 'react';
 import { matchPath, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
 
+import { useRequestFormExit } from './form-exit-guard';
 import { shellMessages } from './messages';
 import { useConsoleLocale } from './console-locale';
 import { BrandApplicationContext } from './brand-application';
 
 export interface AuthenticationShellRoute {
   readonly path: string;
+  readonly navigationPath?: string;
   readonly label: string;
   readonly element: ReactNode;
 }
@@ -109,6 +111,7 @@ export function AuthenticationShell({
   defaultPath,
   routes,
 }: AuthenticationShellProps) {
+  const requestFormExit = useRequestFormExit();
   const brand = useContext(BrandApplicationContext);
   const resolvedApplicationName = brand?.applicationName ?? applicationName;
   if (resolvedApplicationName === undefined) {
@@ -252,7 +255,7 @@ export function AuthenticationShell({
           applicationName: resolvedApplicationName,
         })}
         navigationItems={routes.map((route) => ({
-          href: route.path,
+          href: route.navigationPath ?? route.path,
           label: route.label,
           current: matchPath({ path: route.path, end: true }, location.pathname) !== null,
         }))}
@@ -279,8 +282,10 @@ export function AuthenticationShell({
               loading={state.transition === 'logout'}
               loadingLabel={translate.translate('logoutLoading')}
               onClick={() => {
-                logoutRequested.current = true;
-                void runtime.logout();
+                requestFormExit(() => {
+                  logoutRequested.current = true;
+                  void runtime.logout();
+                });
               }}
             >
               {translate.translate('logout')}

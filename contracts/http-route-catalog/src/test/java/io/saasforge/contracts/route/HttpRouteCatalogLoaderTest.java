@@ -17,7 +17,7 @@ class HttpRouteCatalogLoaderTest {
                 .count();
 
         assertEquals(HttpRouteCatalogLoader.SUPPORTED_SCHEMA_VERSION, catalog.schemaVersion());
-        assertEquals(27 + acceptanceRoutes, catalog.routes().size());
+        assertEquals(32 + acceptanceRoutes, catalog.routes().size());
     }
 
     @Test

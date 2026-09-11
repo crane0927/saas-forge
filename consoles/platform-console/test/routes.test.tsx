@@ -26,6 +26,7 @@ describe('Platform route tree', () => {
   it('registers only the Platform local routes consumed by the shared shell', () => {
     expect(platformAuthenticationRoutes.map(({ path, label }) => ({ path, label }))).toEqual([
       { path: '/', label: '首页' },
+      { path: '/tenants/*', label: 'Tenant' },
       { path: '/oauth-clients', label: 'OAuth Client' },
     ]);
   });
@@ -48,6 +49,7 @@ describe('Platform route tree', () => {
     const routes = createPlatformAuthenticationRoutes('en-US', client);
     expect(routes.map(({ path, label }) => ({ path, label }))).toEqual([
       { path: '/', label: 'Home' },
+      { path: '/tenants/*', label: 'Tenants' },
       { path: '/oauth-clients', label: 'OAuth Client' },
     ]);
 

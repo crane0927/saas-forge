@@ -6,6 +6,7 @@ import path from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { chromium, firefox, webkit } from 'playwright';
+import { verifyTenantCreation } from './tenant-creation-acceptance.mjs';
 import { verifyClientRecovery } from './console-client-acceptance.mjs';
 import { verifyRequestProblemSurfaces } from './console-problem-acceptance.mjs';
 import { verifyBrandRemoteInheritance } from './brand-remote-acceptance.mjs';
@@ -237,6 +238,21 @@ test('Platform and Tenant sessions survive independent recovery and logout after
   await platform.getByText(email, { exact: true }).waitFor();
   await selectConsoleLocale(platform, '简体中文');
   await platform.getByRole('heading', { name: 'Platform 总览', exact: true }).waitFor();
+
+  await t.test(
+    'Tenant creation survives lost response, refresh, browser restart and re-login',
+    async () => {
+      await verifyTenantCreation({
+        rootDomain,
+        email,
+        password,
+        login,
+        selectLocale: selectConsoleLocale,
+        accessibility: expectRouteAccessibility,
+        capture: captureBrandEvidence,
+      });
+    },
+  );
 
   // Node 侧正式 API 只用于准备 Tenant；浏览器认证断言仍由生产页面发起请求。
   // 使用同一 Identity 验证两个槽位，避免把不同账号误当成槽位隔离。

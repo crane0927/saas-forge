@@ -399,6 +399,40 @@ paths:
         '504': { $ref: './common.yaml#/components/responses/Problem' }
 
   /api/v1/platform/tenants:
+    get:
+      tags: [Platform tenants]
+      operationId: listPlatformTenants
+      x-saasforge-service: tenant-access-service
+      summary: List Tenants by literal name substring and lifecycle status
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: cursor
+          in: query
+          schema: { type: string, maxLength: 2048 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: name
+          in: query
+          schema: { type: string, maxLength: 200 }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/TenantStatus' }
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantPage' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
     post:
       tags: [Platform tenants]
       operationId: createPlatformTenant
@@ -430,6 +464,129 @@ paths:
         '404': { $ref: './common.yaml#/components/responses/Problem' }
         '405': { $ref: './common.yaml#/components/responses/Problem' }
         '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/tenants/{tenantId}:
+    get:
+      tags: [Platform tenants]
+      operationId: getPlatformTenant
+      x-saasforge-service: tenant-access-service
+      summary: Read authoritative Tenant detail
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tenant' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/tenant-creations:
+    get:
+      tags: [Platform tenants]
+      operationId: listTenantCreations
+      x-saasforge-service: tenant-access-service
+      summary: Find only the current actor creation attempts after losing an in-memory handle
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: cursor
+          in: query
+          schema: { type: string, maxLength: 2048 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantCreationPage' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/tenant-creations/{creationId}:
+    get:
+      tags: [Platform tenants]
+      operationId: getTenantCreation
+      x-saasforge-service: tenant-access-service
+      summary: Read own creation result; missing or expired records never authorize a new creation
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: creationId
+          in: path
+          required: true
+          schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantCreationRecovery' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/tenant-creations/{creationId}/recovery:
+    post:
+      tags: [Platform tenants]
+      operationId: recoverTenantCreation
+      x-saasforge-service: tenant-access-service
+      summary: Continue the original creation with its server-stored actor, Key and request; never starts a new operation
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: creationId
+          in: path
+          required: true
+          schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              maxProperties: 0
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantCreationRecovery' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
         '504': { $ref: './common.yaml#/components/responses/Problem' }
 
   /api/v1/platform/tenants/{tenantId}/administrator-initializations:
@@ -1207,6 +1364,46 @@ components:
           type: array
           minItems: 1
           items: { $ref: '#/components/schemas/Jwk' }
+      additionalProperties: false
+    TenantPage:
+      allOf:
+        - $ref: './common.yaml#/components/schemas/Page'
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/Tenant' }
+            nextCursor:
+              oneOf:
+                - type: string
+                - type: 'null'
+            hasMore: { type: boolean }
+    TenantCreationPage:
+      allOf:
+        - $ref: './common.yaml#/components/schemas/Page'
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/TenantCreationRecovery' }
+            nextCursor:
+              oneOf:
+                - type: string
+                - type: 'null'
+            hasMore: { type: boolean }
+    TenantCreationRecovery:
+      type: object
+      description: Actor-private recovery material. Shared Runtime owns idempotencyKey. NOT_COMMITTED is a point-in-time observation, never authorization to create with a new key. UNKNOWN requires manual verification. Committed result remains known after replay retention ends.
+      required: [id, displayName, state, createdAt, replayUntil, canReplay]
+      properties:
+        id: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        displayName: { type: string, minLength: 1, maxLength: 200 }
+        state: { type: string, enum: [COMMITTED, PROCESSING, NOT_COMMITTED, UNKNOWN] }
+        createdAt: { $ref: '#/components/schemas/Timestamp' }
+        replayUntil: { $ref: '#/components/schemas/Timestamp' }
+        canReplay: { type: boolean }
+        tenantId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        idempotencyKey: { $ref: './common.yaml#/components/schemas/UuidV7' }
       additionalProperties: false
     TenantStatus:
       type: string

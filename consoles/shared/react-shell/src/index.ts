@@ -21,3 +21,5 @@ export {
   type BrandApplicationProviderProps,
   type ConsoleBrandSurface,
 } from './brand-application';
+export { TenantCreationRecoveryPanel } from './tenant-creation-recovery';
+export { FormExitGuardProvider, useFormExitGuard } from './form-exit-guard';

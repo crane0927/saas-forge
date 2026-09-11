@@ -10,10 +10,11 @@ import {
   AuthenticationShell,
   BrandApplicationLoading,
   BrandConfigurationFailure,
+  FormExitGuardProvider,
   useConsoleLocale,
 } from '@saas-forge/react-shell';
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { BrowserRouter } from 'react-router';
+import { createBrowserRouter, RouterProvider } from 'react-router';
 
 import { createPlatformAuthenticationRoutes } from './routes';
 
@@ -65,13 +66,11 @@ function BootstrapSurface({
 }) {
   if (state.status === 'ready') {
     return (
-      <BrowserRouter>
-        <PlatformAuthenticationPath
-          config={state.config}
-          authenticationFetch={authenticationFetch}
-          realm={realm}
-        />
-      </BrowserRouter>
+      <PlatformRouter
+        config={state.config}
+        authenticationFetch={authenticationFetch}
+        realm={realm}
+      />
     );
   }
 
@@ -85,6 +84,18 @@ function BootstrapSurface({
   }
 
   return <BrandApplicationLoading />;
+}
+
+function PlatformRouter(props: {
+  readonly config: RuntimeConfig;
+  readonly authenticationFetch: AuthenticationFetch;
+  readonly realm: object;
+}) {
+  // Data Router 使表单离开确认覆盖页面链接、全局导航和浏览器后退。
+  const [router] = useState(() =>
+    createBrowserRouter([{ path: '*', element: <PlatformAuthenticationPath {...props} /> }]),
+  );
+  return <RouterProvider router={router} />;
 }
 
 function PlatformAuthenticationPath({
@@ -114,10 +125,12 @@ function PlatformAuthenticationPath({
     );
   }
   return (
-    <AuthenticationShell
-      runtime={runtimeResult.runtime}
-      defaultPath="/"
-      routes={createPlatformAuthenticationRoutes(locale, runtimeResult.runtime.client)}
-    />
+    <FormExitGuardProvider>
+      <AuthenticationShell
+        runtime={runtimeResult.runtime}
+        defaultPath="/"
+        routes={createPlatformAuthenticationRoutes(locale, runtimeResult.runtime.client)}
+      />
+    </FormExitGuardProvider>
   );
 }

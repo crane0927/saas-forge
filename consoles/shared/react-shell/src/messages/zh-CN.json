@@ -59,5 +59,20 @@
   "tenantSwitchUnknownDescription": "请使用同一次操作重试，不要重复发起新的切换。",
   "tenantSwitchUnknownTitle": "Tenant 切换结果未知",
   "tenantUnavailableDescription": "当前 Identity 没有可进入的 Tenant，请联系 Tenant 管理员。",
-  "tenantUnavailableTitle": "无法进入 Tenant"
+  "tenantUnavailableTitle": "无法进入 Tenant",
+  "creationRecoveryTitle": "我的 Tenant 创建记录",
+  "creationRecoveryHint": "这里仅显示当前操作者的服务端记录。未找到记录、记录过期或发现同名资源时，请先核查，不要直接重新创建。",
+  "creationRecoveryRead": "读取创建记录",
+  "creationRecoveryContinue": "继续原创建",
+  "creationRecoveryView": "查看 Tenant",
+  "creationRecoveryEmpty": "未找到创建记录；这不能证明先前请求未提交。",
+  "creationRecoveryFailure": "创建记录暂时无法读取",
+  "creationRecoveryExpired": "已超过安全重放期，请核查结果。",
+  "creationRecoveryCOMMITTED": "已提交",
+  "creationRecoveryPROCESSING": "仍在处理，请稍后重新读取",
+  "creationRecoveryNOT_COMMITTED": "读取时确认未提交，可继续原操作",
+  "creationRecoveryUNKNOWN": "无法确定，请核查",
+  "creationRecoveryNext": "下一页创建记录",
+  "creationRecoveryPrevious": "上一页创建记录",
+  "creationRecoveryPending": "正在读取…"
 }

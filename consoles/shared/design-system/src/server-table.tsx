@@ -60,7 +60,13 @@ export interface ServerTableProps<RecordType> {
   readonly actionColumnTitle?: string;
   readonly page: number;
   readonly pageSize: number;
-  readonly total: number;
+  readonly total?: number;
+  readonly cursorPagination?: {
+    readonly hasPrevious: boolean;
+    readonly hasNext: boolean;
+    readonly onPrevious: () => void;
+    readonly onNext: () => void;
+  };
   readonly sort?: ServerTableSort;
   readonly onTableChange: (request: ServerTableRequest, reason: ServerTableChangeReason) => void;
   readonly onSelectionChange?: (selectedRows: readonly RecordType[]) => void;
@@ -99,6 +105,7 @@ export function ServerTable<RecordType>({
   page,
   pageSize,
   total,
+  cursorPagination,
   sort,
   onTableChange,
   onSelectionChange,
@@ -277,13 +284,17 @@ export function ServerTable<RecordType>({
               updateSelection(keys, selectedRows);
             },
           }}
-          pagination={{
-            current: page,
-            pageSize,
-            total,
-            showSizeChanger: false,
-            showTotal: (count) => translate.translate('tableTotal', { count }),
-          }}
+          pagination={
+            cursorPagination === undefined
+              ? {
+                  current: page,
+                  pageSize,
+                  total,
+                  showSizeChanger: false,
+                  showTotal: (count) => translate.translate('tableTotal', { count }),
+                }
+              : false
+          }
           onChange={(pagination, _filters, sorter, extra) => {
             if (extra.action === 'paginate') {
               clearSelection();
@@ -315,6 +326,22 @@ export function ServerTable<RecordType>({
             onTableChange({ page: 1, pageSize, sort: nextSort }, 'sort');
           }}
         />
+        {cursorPagination === undefined ? null : (
+          <nav aria-label={ariaLabel}>
+            <Button
+              disabled={!cursorPagination.hasPrevious || refreshing}
+              onClick={cursorPagination.onPrevious}
+            >
+              {translate.translate('tablePreviousPage')}
+            </Button>
+            <Button
+              disabled={!cursorPagination.hasNext || refreshing}
+              onClick={cursorPagination.onNext}
+            >
+              {translate.translate('tableNextPage')}
+            </Button>
+          </nav>
+        )}
       </RefreshingContent>
     );
   }

@@ -4,6 +4,8 @@ import { createTranslator, type SupportedLocale } from '@saas-forge/i18n';
 import type { AuthenticationShellRoute } from '@saas-forge/react-shell';
 import { useLocation } from 'react-router';
 
+import { TenantRoutes } from './tenants';
+
 import { CurrentSessionPanel } from './current-session';
 import { platformMessages } from './messages';
 
@@ -33,6 +35,12 @@ export function createPlatformAuthenticationRoutes(
           locale={locale}
         />
       ),
+    },
+    {
+      path: '/tenants/*',
+      navigationPath: '/tenants',
+      label: translate.translate('tenantsTitle'),
+      element: <TenantRoutes client={client} locale={locale} />,
     },
     {
       path: '/oauth-clients',

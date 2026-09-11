@@ -3,6 +3,12 @@ import {
   Configuration,
   FetchError,
   OAuthClientsApi,
+  PlatformTenantsApi,
+  type CreateTenantRequest,
+  type Tenant,
+  type TenantPage,
+  type TenantStatus,
+  type TenantCreationRecovery,
   ResponseError,
   type CreateOAuthClientRequest,
   type CurrentSession,
@@ -187,9 +193,40 @@ export interface CreateOAuthClientInput {
   readonly signal?: AbortSignal;
 }
 
-export type { CurrentSession } from '@saas-forge/api-client';
+export type { CurrentSession, Tenant, TenantStatus } from '@saas-forge/api-client';
+
+export interface ListTenantsInput {
+  readonly name?: string;
+  readonly status?: TenantStatus;
+  readonly cursor?: string;
+  readonly limit?: number;
+  readonly signal?: AbortSignal;
+}
+
+export type TenantCreationOperation = Omit<TenantCreationRecovery, 'idempotencyKey'>;
+export interface TenantCreationOperationPage {
+  readonly items: readonly TenantCreationOperation[];
+  readonly nextCursor: string | null;
+  readonly hasMore: boolean;
+}
 
 export interface ConsoleApiClient {
+  listTenants(input: ListTenantsInput): Promise<ConsoleApiResult<TenantPage>>;
+  getTenant(tenantId: string, signal?: AbortSignal): Promise<ConsoleApiResult<Tenant>>;
+  createTenant(input: {
+    readonly request: CreateTenantRequest;
+    readonly operationHandle?: IdempotentOperationHandle;
+    readonly signal?: AbortSignal;
+  }): Promise<IdempotentConsoleApiResult<Tenant>>;
+  listTenantCreations(input: {
+    readonly cursor?: string;
+    readonly limit?: number;
+    readonly signal?: AbortSignal;
+  }): Promise<ConsoleApiResult<TenantCreationOperationPage>>;
+  recoverTenantCreation(
+    operation: TenantCreationOperation,
+    signal?: AbortSignal,
+  ): Promise<ConsoleApiResult<TenantCreationOperation>>;
   getCurrentSession(signal?: AbortSignal): Promise<ConsoleApiResult<CurrentSession>>;
   getOAuthClient(input: GetOAuthClientInput): Promise<ConsoleApiResult<OAuthClientDetail>>;
   createOAuthClient(
@@ -345,6 +382,48 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
       fetchApi: generatedFetch,
     }),
   );
+
+  const tenantsApi = new PlatformTenantsApi(
+    new Configuration({
+      basePath: options.config.apiBaseUrl,
+      credentials: 'include',
+      accessToken: () => accessToken ?? '',
+      fetchApi: generatedFetch,
+    }),
+  );
+  const tenantRecoveryMaterials = new WeakMap<
+    TenantCreationOperation,
+    { id: string; key: string; epoch: number }
+  >();
+
+  function rememberTenantCreation(value: TenantCreationRecovery): TenantCreationOperation {
+    if (
+      !UUID_V7.test(value.id) ||
+      typeof value.displayName !== 'string' ||
+      !['COMMITTED', 'PROCESSING', 'NOT_COMMITTED', 'UNKNOWN'].includes(value.state) ||
+      typeof value.canReplay !== 'boolean' ||
+      !(value.createdAt instanceof Date) ||
+      !Number.isFinite(value.createdAt.getTime()) ||
+      !(value.replayUntil instanceof Date) ||
+      !Number.isFinite(value.replayUntil.getTime()) ||
+      (value.state === 'COMMITTED' &&
+        (value.tenantId === undefined || !UUID_V7.test(value.tenantId)))
+    ) {
+      throw new Error('INVALID_SERVICE_RESPONSE');
+    }
+    const { idempotencyKey, ...publicValue } = value;
+    const operation = Object.freeze(publicValue);
+    if (value.canReplay && idempotencyKey !== undefined && UUID_V7.test(idempotencyKey)) {
+      tenantRecoveryMaterials.set(operation, {
+        id: value.id,
+        key: idempotencyKey,
+        epoch: sessionEpoch,
+      });
+    } else if (value.canReplay) {
+      throw new Error('INVALID_SERVICE_RESPONSE');
+    }
+    return operation;
+  }
 
   async function synchronizeTenantContext(
     epoch: number,
@@ -656,6 +735,42 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
   }
 
   const client: ConsoleApiClient = {
+    listTenants: ({ signal, ...query }) =>
+      executeRead(() => tenantsApi.listPlatformTenants(query, { signal }), signal),
+    getTenant: (tenantId, signal) =>
+      executeRead(() => tenantsApi.getPlatformTenant({ tenantId }, { signal }), signal),
+    createTenant: ({ request, operationHandle, signal }) =>
+      executeMutation(operationHandle, signal, (idempotencyKey) =>
+        tenantsApi.createPlatformTenant(
+          { idempotencyKey, createTenantRequest: request },
+          { signal },
+        ),
+      ),
+    listTenantCreations: ({ signal, ...query }) =>
+      executeRead(async () => {
+        const page = await tenantsApi.listTenantCreations(query, { signal });
+        return {
+          items: page.items.map(rememberTenantCreation),
+          nextCursor: page.nextCursor,
+          hasMore: page.hasMore,
+        };
+      }, signal),
+    recoverTenantCreation: (operation, signal) => {
+      const material = tenantRecoveryMaterials.get(operation);
+      if (material === undefined || material.epoch !== sessionEpoch) {
+        return Promise.resolve({ ok: false, problem: { code: 'INVALID_OPERATION_HANDLE' } });
+      }
+      return executeRead(
+        async () =>
+          rememberTenantCreation(
+            await tenantsApi.recoverTenantCreation(
+              { creationId: material.id, idempotencyKey: material.key, requestBody: {} },
+              { signal },
+            ),
+          ),
+        signal,
+      );
+    },
     getCurrentSession: (signal) =>
       executeRead(async () => {
         const response: unknown = await authenticationApi.getCurrentSession({ signal });

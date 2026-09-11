@@ -12,5 +12,7 @@
   "tableSelectionCleared": "已清除当前页选择。",
   "tableSelectionCount": "{count, plural, other {已选择 # 项当前页记录。}}",
   "tableSelectionNone": "当前页尚未选择记录。",
-  "tableTotal": "{count, plural, other {共 # 项}}"
+  "tableTotal": "{count, plural, other {共 # 项}}",
+  "tablePreviousPage": "上一页",
+  "tableNextPage": "下一页"
 }
