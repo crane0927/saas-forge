@@ -968,6 +968,15 @@ paths:
       parameters:
         - $ref: '#/components/parameters/QuotaDefinitionId'
         - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        description: Browser clients send an empty JSON object to satisfy the browser request media-type boundary.
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              maxProperties: 0
       responses:
         '200':
           description: The Quota Definition is ACTIVE.

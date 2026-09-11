@@ -838,7 +838,10 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
       ),
     activateQuotaDefinition: ({ id, signal }) =>
       executeMutation(undefined, signal, (idempotencyKey) =>
-        quotaApi.activateQuotaDefinition({ quotaDefinitionId: id, idempotencyKey }, { signal }),
+        quotaApi.activateQuotaDefinition(
+          { quotaDefinitionId: id, idempotencyKey, requestBody: {} },
+          { signal },
+        ),
       ),
     listQuotaDefinitionOperations: ({ signal, ...query }) =>
       executeRead(async () => {

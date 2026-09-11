@@ -71,7 +71,7 @@ public class EntitlementBootstrapController implements PlatformEntitlementBootst
 
     @Override
     public ResponseEntity<QuotaDefinition> activateQuotaDefinition(
-            UUID quotaDefinitionId, UUID idempotencyKey) {
+            UUID quotaDefinitionId, UUID idempotencyKey, java.util.Map<String, Object> requestBody) {
         HttpServletRequest httpRequest = currentRequest();
         UUID actor = authorizer.authorize(httpRequest.getHeader(HttpHeaders.AUTHORIZATION));
         return ResponseEntity.ok(toResponse(recoverableQuota.activate(

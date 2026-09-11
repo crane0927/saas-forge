@@ -136,6 +136,13 @@ class EntitlementBootstrapControllerTest {
                         .header("Idempotency-Key", KEY))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("ACTIVE"));
+        mvc.perform(post("/api/v1/platform/quota-definitions/{id}/activations", DEFINITION)
+                        .header("Authorization", "Bearer platform-token")
+                        .header("Idempotency-Key", KEY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
     }
 
     @Test

@@ -52,6 +52,28 @@ describe('createAuthenticationRuntime', () => {
     });
   });
 
+  it('sends quota activation as JSON through the generated client for the browser security boundary', async () => {
+    const id = '019535d9-0000-7000-8000-000000000002';
+    const fetch = vi
+      .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({ id, code: 'max_users', status: 'ACTIVE' }));
+    const runtime = createRuntime({ realm: {}, intent: 'PLATFORM', fetch });
+    await runtime.login({ email: 'admin@example.test', password: 'secret' });
+    expect(await runtime.client.activateQuotaDefinition({ id })).toMatchObject({ ok: true });
+    const [url, request] = fetch.mock.calls[1];
+    expect(url).toEqual(expect.stringContaining(`/quota-definitions/${id}/activations`));
+    expect(new Headers(request?.headers).get('Content-Type')).toBe('application/json');
+    expect(request?.body).toBe('{}');
+  });
+
   it.each(['CREATE', 'ACTIVATE'])('restores quota %s with only its original Key', async (kind) => {
     const key = '019535d9-0000-7000-8000-000000000001';
     const id = '019535d9-0000-7000-8000-000000000002';

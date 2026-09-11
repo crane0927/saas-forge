@@ -275,6 +275,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       });
     },
   );
+  assert.ok(quotaDefinitionId, 'Quota acceptance must finish before dependent Tenant setup');
   const firstTenant = await prepareTenant(platformLogin.accessToken, email, { quotaDefinitionId });
   {
     await t.test(

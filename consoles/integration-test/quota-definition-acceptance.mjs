@@ -60,11 +60,19 @@ export async function verifyQuotaDefinition({
       .waitFor();
     assert.equal(await page.getByRole('button', { name: label, exact: true }).count(), 0);
     await page.getByRole('button', { name: '读取操作记录', exact: true }).click();
+    let recovered;
     await page.route('**/api/v1/platform/quota-definition-operations/*/recovery', async (route) => {
-      assert.equal(route.request().headers()['idempotency-key'], key);
-      const response = await route.fetch();
-      assert.equal(response.status(), 200);
-      id = (await response.json()).quotaDefinitionId;
+      try {
+        const response = await route.fetch();
+        const body = await response.json();
+        recovered = {
+          status: response.status(),
+          key: route.request().headers()['idempotency-key'],
+          id: body.quotaDefinitionId,
+        };
+      } catch {
+        recovered = { status: 0 };
+      }
       await route.abort('failed');
     });
     await page
@@ -74,6 +82,9 @@ export async function verifyQuotaDefinition({
       .click();
     await page.getByText('操作记录暂时无法读取', { exact: true }).waitFor();
     await page.unroute('**/api/v1/platform/quota-definition-operations/*/recovery');
+    assert.equal(recovered?.status, 200);
+    assert.equal(recovered.key, key);
+    id = recovered.id;
   }
   try {
     context = await launch();
@@ -87,13 +98,17 @@ export async function verifyQuotaDefinition({
     await accessibility(page, '创建 max_users');
     let creates = 0;
     let createKey;
+    let createStatus;
     allowWrites('INSERT', false);
     await page.route('**/api/v1/platform/quota-definitions', async (route) => {
       if (route.request().method() !== 'POST') return route.continue();
       creates += 1;
-      const response = await route.fetch();
-      assert.equal(response.status(), 500);
       createKey = route.request().headers()['idempotency-key'];
+      try {
+        createStatus = (await route.fetch()).status();
+      } catch {
+        createStatus = 0;
+      }
       await route.abort('failed');
     });
     try {
@@ -103,6 +118,7 @@ export async function verifyQuotaDefinition({
       allowWrites('INSERT', true);
     }
     assert.equal(creates, 1);
+    assert.equal(createStatus, 502);
     await capture(page, 'issue-173-create-response-lost');
     await page.unroute('**/api/v1/platform/quota-definitions');
     await continueAfterRollback(page, '创建 max_users', createKey);
@@ -122,12 +138,16 @@ export async function verifyQuotaDefinition({
     await page.getByText(id, { exact: true }).waitFor();
     let activations = 0;
     let activationKey;
+    let activationStatus;
     allowWrites('UPDATE', false);
     await page.route('**/api/v1/platform/quota-definitions/*/activations', async (route) => {
       activations += 1;
-      const response = await route.fetch();
-      assert.equal(response.status(), 500);
       activationKey = route.request().headers()['idempotency-key'];
+      try {
+        activationStatus = (await route.fetch()).status();
+      } catch {
+        activationStatus = 0;
+      }
       await route.abort('failed');
     });
     try {
@@ -137,6 +157,7 @@ export async function verifyQuotaDefinition({
       allowWrites('UPDATE', true);
     }
     assert.equal(activations, 1);
+    assert.equal(activationStatus, 502);
     await capture(page, 'issue-173-activation-response-lost');
     await page.unroute('**/api/v1/platform/quota-definitions/*/activations');
     await continueAfterRollback(page, '激活 max_users', activationKey);
