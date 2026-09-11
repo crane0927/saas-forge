@@ -89,7 +89,7 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
         working-directory: consoles
       - name: Verify scoped verification entry points
-        run: node --test --test-concurrency=1 scripts/test/scoped-frontend-verification.test.mjs scripts/test/backend-verification-profile.test.mjs scripts/test/console-acceptance-prerequisites.test.mjs
+        run: node --test --test-concurrency=1 scripts/test/scoped-frontend-verification.test.mjs scripts/test/backend-verification-profile.test.mjs scripts/test/console-acceptance-prerequisites.test.mjs scripts/test/tenant-revocation-probe.test.mjs
       - run: ./mvnw --batch-mode --no-transfer-progress verify
         env:
           SF_VISUAL_SNAPSHOTS: "false"

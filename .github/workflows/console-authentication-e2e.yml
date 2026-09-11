@@ -33,7 +33,7 @@ jobs:
         working-directory: consoles
         run: pnpm exec playwright install --with-deps chromium firefox webkit chrome msedge
       - name: Verify scoped verification entry points
-        run: node --test --test-concurrency=1 scripts/test/scoped-frontend-verification.test.mjs scripts/test/backend-verification-profile.test.mjs scripts/test/console-acceptance-prerequisites.test.mjs
+        run: node --test --test-concurrency=1 scripts/test/scoped-frontend-verification.test.mjs scripts/test/backend-verification-profile.test.mjs scripts/test/console-acceptance-prerequisites.test.mjs scripts/test/tenant-revocation-probe.test.mjs
       # 同一 checkout 的完整构建只执行一次，随后复用其制品；失败会阻止后续产品验收。
       - name: Verify JDK 17 and build all acceptance prerequisites
         run: ./mvnw --batch-mode --no-transfer-progress verify

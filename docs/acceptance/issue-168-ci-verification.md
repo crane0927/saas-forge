@@ -110,3 +110,17 @@ JDK 17/21 CI 完整 Maven 日志各核对 641 tests、0 failures、0 errors、0 
 
 - Standards：无规范阻断项。原 JAR 选择重复已集中到 `runtime_jar()`；镜像函数显式传播选择失败，避免 `stage` 的条件调用抑制 Bash errexit。修改后九项制品回归重新通过。
 - Spec：静态覆盖映射无缺失或范围扩张；原 P1 的实际 CI 与失败传播证据已补齐。规格没有要求另造顶层 workflow 失败；真实 CI 内执行的负向入口回归、必要 job 完整成功状态与五渠道 artifact 共同完成验收。
+
+## Tenant Fresh 失败复查（2026-09-11）
+
+后续文档提交 `d759442` 的 [Verify 34469298907](https://github.com/crane0927/saas-forge/actions/runs/34469298907) 为 7/8 job 成功；Tenant Fresh 在第二个撤销索引故障探针失败：预期 HTTP 503，实际 201。Redis 停机探针已通过；失败位于重启 Redis、等待 Ready、人工 `SET Ready=0` 之后。不能用前一次成功结果覆盖这次失败。
+
+IAM 的 `RevocationIndexRecovery.recoverIfNeeded()` 默认每 5 秒检查索引，发现未就绪就重建；`RedisRevocationIndex.rebuild()` 最后写回 Ready=1。原探针未隔离这个写入方，注入到请求之间存在自动恢复窗口。
+
+修复仅作用于验收脚本：在探针子 shell 中临时撤销隔离 Redis 默认用户的 `SET` 权限，再用 `MSET` 写入 Ready=0。IAM 重建使用 `SET`，因此不能在断言前消除故障；IAM 的 JWKS 服务、Redis `GET/MGET` 保持可用。EXIT trap 在正常或异常退出时恢复 `SET` 权限，返回后等待 IAM 自行重建，不再人工置 Ready=1。Redis 停机探针、HTTP 503 与错误码断言、租户数量不变检查及后续恢复和令牌失效验证保持原样。`redis-cli -e` 确保服务端命令错误传播到脚本。
+
+- PASS：真实环境中注入 Ready=0 后等待 6 秒，实测读回 Ready=1，原请求返回 HTTP 201，复现了自动恢复竞争。诊断过程中还确认 Gateway 每次验签都同步读取 IAM JWKS，所以最终方案不能暂停整个 IAM。
+- PASS：独立 Redis 8.8.1 对照中，撤销 `SET` 后 IAM 使用的写入命令被拒绝，Ready 可读取且保持 0；恢复权限后可写回 1。该检查不替代完整 HTTP 验收。
+- PASS：真实 Bash 探针的编排回归先失败（expected=503 actual=201），修复后五项通过；包含固定竞争恢复时序、禁止写入失败、注入失败、请求失败和响应断言失败，验证失败传播及权限恢复。Compose/HTTP 在此测试中为边界替身，不能替代真实 Fresh 结果。
+- PASS：相关 CLI 回归、Bash 语法、两份工作流 YAML 解析、格式与 diff 检查。
+- 本次修复提交时，正式 Tenant Fresh 入口及修复提交的完整 CI 复验结果仍待完成；最终通过或失败必须以 [Issue #168](https://github.com/crane0927/saas-forge/issues/168) 后续闭环评论中关联的提交、运行及证据为准，不能引用旧运行替代。

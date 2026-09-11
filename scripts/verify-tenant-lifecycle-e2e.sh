@@ -295,6 +295,24 @@ wait_for_redis_revocation_ready() {
   return 1
 }
 
+verify_revocation_index_not_ready() (
+  # IAM 定时用 SET 重建索引；禁止该写入以保持故障，但保留 JWKS 服务和 Redis 读取。
+  # 仅作用于本脚本创建的隔离 Redis；退出时恢复权限，不覆盖主脚本的清理 trap。
+  restore_redis_set() {
+    compose exec -T redis sh -eu -c '
+      redis-cli -e --no-auth-warning -a "$REDIS_PASSWORD" ACL SETUSER default +set >/dev/null
+    '
+  }
+  trap restore_redis_set EXIT
+  compose exec -T redis sh -eu -c '
+    redis-cli -e --no-auth-warning -a "$REDIS_PASSWORD" ACL SETUSER default -set >/dev/null
+    redis-cli -e --no-auth-warning -a "$REDIS_PASSWORD" MSET \
+      sf:dev:iam-service:revocation-index-ready:v1:state 0 >/dev/null
+  '
+  request 503 POST /api/v1/platform/tenants "$probe_body" "$platform_token" "$(uuid_v7)"
+  assert_json '.code == "TOKEN_REVOCATION_STATUS_UNAVAILABLE"'
+)
+
 postgres_value() {
   local database="$1"
   local query="$2"
@@ -785,16 +803,7 @@ assert_json '.code == "TOKEN_REVOCATION_STATUS_UNAVAILABLE"'
 compose start redis >/dev/null
 wait_for_redis_revocation_ready
 
-compose exec -T redis sh -eu -c '
-  redis-cli --no-auth-warning -a "$REDIS_PASSWORD" SET \
-    sf:dev:iam-service:revocation-index-ready:v1:state 0 >/dev/null
-'
-request 503 POST /api/v1/platform/tenants "$probe_body" "$platform_token" "$(uuid_v7)"
-assert_json '.code == "TOKEN_REVOCATION_STATUS_UNAVAILABLE"'
-compose exec -T redis sh -eu -c '
-  redis-cli --no-auth-warning -a "$REDIS_PASSWORD" SET \
-    sf:dev:iam-service:revocation-index-ready:v1:state 1 >/dev/null
-'
+verify_revocation_index_not_ready
 wait_for_redis_revocation_ready
 
 tenant_count_after_fail_closed="$(compose exec -T postgres sh -eu -c '
