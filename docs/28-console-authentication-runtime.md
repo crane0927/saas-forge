@@ -210,6 +210,9 @@ Platform 总览通过同一 Runtime 的 `ConsoleApiClient.getCurrentSession()` �
 支持中英文与失败重试。读取沿用共享刷新/重放规则，并在响应及 Problem 正文解析后隔离
 会话变化产生的迟到结果。Tenant Context 与 Accessible Memberships 继续使用原正式契约。
 
+原生开发环境已通过真实 Chrome 当前身份、刷新、浏览器重启及双 Console 安全验收；
+首次改密与 Fresh Compose 等剩余场景见 [Issue #171 验收记录](acceptance/issue-171-current-session.md)。
+
 ### 完成条件
 
 交付按以下依赖顺序拆分：
