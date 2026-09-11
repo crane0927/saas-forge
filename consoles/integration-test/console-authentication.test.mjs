@@ -951,6 +951,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         async () => {
           await verifyLatestBrandRead(context, `https://console.${rootDomain}/`, {
             source: tenant,
+            openNavigation: openCompactNavigation,
             publishLatest: () =>
               writeBrandFault("display_name = 'Acceptance Newest Brand'", 'latest'),
             restore: () => writeBrandFault("display_name = 'Acceptance Violet Brand'", 'restore'),
@@ -1583,7 +1584,8 @@ function isAuthResponse(operation) {
 // Its navigation is rendered inside a closed drawer until opened through the product UI.
 async function openCompactNavigation(page) {
   const open = page.getByRole('button', { name: /^(打开导航|Open navigation)$/ });
-  if (await open.count()) await open.press('Enter');
+  if ((await open.count()) && (await open.getAttribute('aria-expanded')) !== 'true')
+    await open.press('Enter');
 }
 
 async function expectGlobalNavigation(page, name, previousName) {
