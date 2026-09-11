@@ -729,7 +729,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       await tenant
         .getByRole('button', { name: '进入 Console Acceptance Tenant', exact: true })
         .press('Enter');
-      async function expectBrand(name, color, accent, asset) {
+      async function expectBrand(name, colors, accent, asset) {
         await tenant.getByRole('heading', { name: 'Tenant 工作台', exact: true }).waitFor();
         await expectGlobalNavigation(tenant, `${name} 全局导航`);
         assert.equal(new URL(tenant.url()).pathname, '/');
@@ -768,7 +768,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
               .evaluate((root) =>
                 globalThis.getComputedStyle(root).getPropertyValue('--sf-color-primary').trim(),
               ),
-            color,
+            colors[scheme],
           );
           assert.equal(
             await tenant
@@ -800,7 +800,12 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         });
         await captureBrandEvidence(tenant, `tenant-${asset}`);
       }
-      await expectBrand('Acceptance Blue Brand', '#155EEF', '#7A5AF8', 'blue');
+      await expectBrand(
+        'Acceptance Blue Brand',
+        { light: '#155EEF', dark: '#155EEF' },
+        '#7A5AF8',
+        'blue',
+      );
       await openCompactNavigation(tenant);
       await verifyBrandRemoteInheritance(tenant);
       const refreshPath = '**/api/v1/auth/refresh';
@@ -845,7 +850,13 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       const refreshed = tenant.waitForResponse(isAuthResponse('refresh'));
       await tenant.getByRole('button', { name: '重试完成切换', exact: true }).click();
       assert.equal((await refreshed).status(), 200);
-      await expectBrand('Acceptance Violet Brand', '#7C3AED', '#C026D3', 'violet');
+      // ADR 0042 resolves separate theme tokens; the dark violet must meet 3:1 against #1A202A.
+      await expectBrand(
+        'Acceptance Violet Brand',
+        { light: '#7C3AED', dark: '#8344EE' },
+        '#C026D3',
+        'violet',
+      );
       await openCompactNavigation(tenant);
       await verifyBrandRemoteInheritance(tenant);
       await expectGlobalNavigation(
@@ -855,7 +866,13 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       );
       console.info('BRAND: switched Remote verified; starting cold recovery');
       await recover(tenant, 'Tenant 工作台');
-      await expectBrand('Acceptance Violet Brand', '#7C3AED', '#C026D3', 'violet');
+      // ADR 0042 resolves separate theme tokens; the dark violet must meet 3:1 against #1A202A.
+      await expectBrand(
+        'Acceptance Violet Brand',
+        { light: '#7C3AED', dark: '#8344EE' },
+        '#C026D3',
+        'violet',
+      );
       console.info('BRAND: cold recovery verified');
       function writeBrandFault(assignment, scenario) {
         try {
