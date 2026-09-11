@@ -7,6 +7,12 @@ import type {
 } from '@saas-forge/app-runtime';
 import {
   Button,
+  ContentPanel,
+  DescriptionList,
+  DesignIcon,
+  PageLayout,
+  PageTitle,
+  StatusTag,
   FormLayout,
   PersistentError,
   RouteFocusAnnouncement,
@@ -18,7 +24,7 @@ import {
 } from '@saas-forge/design-system';
 import { createTranslator, type SupportedLocale } from '@saas-forge/i18n';
 import { TenantCreationRecoveryPanel, useFormExitGuard } from '@saas-forge/react-shell';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Route, Routes, useBlocker, useLocation, useNavigate, useParams } from 'react-router';
 import { platformMessages } from './messages';
 
@@ -30,6 +36,13 @@ function translator(locale: SupportedLocale) {
     messages: platformMessages,
   });
 }
+const statusTones = {
+  PENDING: 'warning',
+  ACTIVE: 'success',
+  SUSPENDED: 'danger',
+  CLOSED: 'neutral',
+} as const;
+
 const statuses = {
   PENDING: 'tenantPending',
   ACTIVE: 'tenantActive',
@@ -47,7 +60,15 @@ export function TenantRoutes(props: Props) {
   );
 }
 
-function Heading({ title }: { readonly title: string }) {
+function Heading({
+  title,
+  description,
+  actions,
+}: {
+  readonly title: string;
+  readonly description?: ReactNode;
+  readonly actions?: ReactNode;
+}) {
   const location = useLocation();
   return (
     <>
@@ -56,9 +77,9 @@ function Heading({ title }: { readonly title: string }) {
         pageTitle={title}
         focusTargetId="tenant-page-title"
       />
-      <h1 id="tenant-page-title" tabIndex={-1}>
+      <PageTitle headingId="tenant-page-title" description={description} actions={actions}>
         {title}
-      </h1>
+      </PageTitle>
     </>
   );
 }
@@ -105,24 +126,43 @@ function TenantList({ client, locale }: Props) {
     setQuery({ ...query, cursor: next.at(-1) });
   }
   return (
-    <section>
-      <Heading title={t('tenantsTitle')} />
-      <p>{t('tenantsDescription')}</p>
-      <Button
-        variant="primary"
-        onClick={() => {
-          void navigate('/tenants/new');
-        }}
-      >
-        {t('tenantCreate')}
-      </Button>
+    <PageLayout
+      as="section"
+      width="wide"
+      title={
+        <Heading
+          title={t('tenantsTitle')}
+          description={t('tenantsDescription')}
+          actions={
+            <Button
+              variant="primary"
+              onClick={() => {
+                void navigate('/tenants/new');
+              }}
+            >
+              <DesignIcon name="plus" size={16} />
+              {t('tenantCreate')}
+            </Button>
+          }
+        />
+      }
+    >
       <ServerTable<Tenant>
+        presentation="panel"
+        title={t('tenantListTitle')}
+        selectable={false}
         ariaLabel={t('tenantsTitle')}
         rows={result?.ok ? result.value.items : []}
         rowKey={(row) => row.id}
         columns={[
           { key: 'name', title: t('tenantName'), render: (row) => row.displayName },
-          { key: 'status', title: t('tenantStatus'), render: (row) => t(statuses[row.status]) },
+          {
+            key: 'status',
+            title: t('tenantStatus'),
+            render: (row) => (
+              <StatusTag tone={statusTones[row.status]}>{t(statuses[row.status])}</StatusTag>
+            ),
+          },
         ]}
         actions={[
           {
@@ -192,7 +232,7 @@ function TenantList({ client, locale }: Props) {
           void navigate(`/tenants/${id}`);
         }}
       />
-    </section>
+    </PageLayout>
   );
 }
 
@@ -215,49 +255,53 @@ function TenantCreate({ client, locale }: Props) {
     [],
   );
   return (
-    <section>
-      <Heading title={t('tenantCreate')} />
-      <p>{t('tenantCreateDescription')}</p>
-      <FormLayout
-        ariaLabel={t('tenantCreate')}
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (pending.current !== null || phase !== 'editing') return;
-          if (name.trim().length === 0 || name.length > 200) {
-            setInvalid(true);
-            return;
-          }
-          const controller = new AbortController();
-          pending.current = controller;
-          setPhase('submitting');
-          void client
-            .createTenant({ request: { displayName: name }, signal: controller.signal })
-            .then((result) => {
-              if (controller.signal.aborted) return;
-              if (result.ok) {
-                void navigate(`/tenants/${result.value.id}`, { replace: true });
-              } else {
-                setProblem(result.problem.code);
-                // 发出请求后的不确定结果不得被表单当成可重新创建的普通失败。
-                setPhase('unknown');
-              }
-            });
-        }}
-      >
-        <TextField
-          id="tenant-create-name"
-          label={t('tenantName')}
-          value={name}
-          onValueChange={setName}
-          disabled={phase !== 'editing'}
-          required
-          error={invalid ? t('tenantNameError') : undefined}
-        />
-        <p>{t('tenantExpiryHint')}</p>
-        <Button type="submit" variant="primary" disabled={phase !== 'editing'}>
-          {t(phase === 'submitting' ? 'tenantSaving' : 'tenantCreate')}
-        </Button>
-      </FormLayout>
+    <PageLayout
+      as="section"
+      width="wide"
+      title={<Heading title={t('tenantCreate')} description={t('tenantCreateDescription')} />}
+    >
+      <ContentPanel>
+        <FormLayout
+          ariaLabel={t('tenantCreate')}
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (pending.current !== null || phase !== 'editing') return;
+            if (name.trim().length === 0 || name.length > 200) {
+              setInvalid(true);
+              return;
+            }
+            const controller = new AbortController();
+            pending.current = controller;
+            setPhase('submitting');
+            void client
+              .createTenant({ request: { displayName: name }, signal: controller.signal })
+              .then((result) => {
+                if (controller.signal.aborted) return;
+                if (result.ok) {
+                  void navigate(`/tenants/${result.value.id}`, { replace: true });
+                } else {
+                  setProblem(result.problem.code);
+                  // 发出请求后的不确定结果不得被表单当成可重新创建的普通失败。
+                  setPhase('unknown');
+                }
+              });
+          }}
+        >
+          <TextField
+            id="tenant-create-name"
+            label={t('tenantName')}
+            value={name}
+            onValueChange={setName}
+            disabled={phase !== 'editing'}
+            required
+            error={invalid ? t('tenantNameError') : undefined}
+          />
+          <p>{t('tenantExpiryHint')}</p>
+          <Button type="submit" variant="primary" disabled={phase !== 'editing'}>
+            {t(phase === 'submitting' ? 'tenantSaving' : 'tenantCreate')}
+          </Button>
+        </FormLayout>
+      </ContentPanel>
       {phase === 'unknown' ? (
         <WarningFeedback title={t('tenantUnknown')}>
           <p>{t('tenantUnknownHint')}</p>
@@ -287,7 +331,7 @@ function TenantCreate({ client, locale }: Props) {
           if (blocker.state === 'blocked') blocker.proceed();
         }}
       />
-    </section>
+    </PageLayout>
   );
 }
 
@@ -317,49 +361,56 @@ function TenantDetailContent({ client, locale, tenantId }: Props & { readonly te
     };
   }, [client, tenantId, attempt]);
   return (
-    <section>
-      <Heading title={t('tenantDetail')} />
-      {result === undefined ? (
-        <p role="status">{t('tenantLoading')}</p>
-      ) : result.ok ? (
-        <dl>
-          <dt>{t('tenantId')}</dt>
-          <dd>{result.value.id}</dd>
-          <dt>{t('tenantName')}</dt>
-          <dd>{result.value.displayName}</dd>
-          <dt>{t('tenantStatus')}</dt>
-          <dd>{t(statuses[result.value.status])}</dd>
-          <dt>{t('tenantCreatedAt')}</dt>
-          <dd>{result.value.createdAt.toLocaleString(locale)}</dd>
-          <dt>{t('tenantExpiresAt')}</dt>
-          <dd>
-            {result.value.expiresAt === null
-              ? t('tenantNoExpiry')
-              : result.value.expiresAt.toLocaleString(locale)}
-          </dd>
-        </dl>
-      ) : (
-        <PersistentError title={t('tenantReadFailed')}>
-          <p>{t(result.problem.status === 404 ? 'tenantNotFound' : 'tenantReadHint')}</p>
-          <p>{result.problem.code}</p>
-        </PersistentError>
-      )}
-      <Button
-        disabled={busy}
-        onClick={() => {
-          setBusy(true);
-          setAttempt((value) => value + 1);
-        }}
-      >
-        {t('tenantRetry')}
-      </Button>
-      <Button
-        onClick={() => {
-          void navigate('/tenants');
-        }}
-      >
-        {t('tenantBack')}
-      </Button>
-    </section>
+    <PageLayout as="section" width="wide" title={<Heading title={t('tenantDetail')} />}>
+      <ContentPanel title={t('tenantBasicInformation')}>
+        {result === undefined ? (
+          <p role="status">{t('tenantLoading')}</p>
+        ) : result.ok ? (
+          <DescriptionList
+            items={[
+              { label: t('tenantId'), value: result.value.id },
+              { label: t('tenantName'), value: result.value.displayName },
+              {
+                label: t('tenantStatus'),
+                value: (
+                  <StatusTag tone={statusTones[result.value.status]}>
+                    {t(statuses[result.value.status])}
+                  </StatusTag>
+                ),
+              },
+              { label: t('tenantCreatedAt'), value: result.value.createdAt.toLocaleString(locale) },
+              {
+                label: t('tenantExpiresAt'),
+                value:
+                  result.value.expiresAt === null
+                    ? t('tenantNoExpiry')
+                    : result.value.expiresAt.toLocaleString(locale),
+              },
+            ]}
+          />
+        ) : (
+          <PersistentError title={t('tenantReadFailed')}>
+            <p>{t(result.problem.status === 404 ? 'tenantNotFound' : 'tenantReadHint')}</p>
+            <p>{result.problem.code}</p>
+          </PersistentError>
+        )}
+        <Button
+          disabled={busy}
+          onClick={() => {
+            setBusy(true);
+            setAttempt((value) => value + 1);
+          }}
+        >
+          {t('tenantRetry')}
+        </Button>
+        <Button
+          onClick={() => {
+            void navigate('/tenants');
+          }}
+        >
+          {t('tenantBack')}
+        </Button>
+      </ContentPanel>
+    </PageLayout>
   );
 }

@@ -45,5 +45,7 @@
   "tenantView": "查看详情",
   "tenantEmpty": "暂无 Tenant",
   "tenantNotFound": "未找到 Tenant，请核对标识。",
-  "tenantExpiryHint": "初始 Tenant 不设到期时间；本页仅创建 Tenant，后续初始化单独办理。"
+  "tenantExpiryHint": "初始 Tenant 不设到期时间；本页仅创建 Tenant，后续初始化单独办理。",
+  "tenantListTitle": "Tenant 列表",
+  "tenantBasicInformation": "基本信息"
 }

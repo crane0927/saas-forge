@@ -91,6 +91,13 @@ export function DesignSystemProvider({
         colorPrimary: primary,
         colorBgBase: palette.surface,
         colorTextBase: palette.text,
+        colorText: palette.text,
+        colorTextSecondary: palette.textSecondary,
+        colorBgContainer: palette.surface,
+        colorBgLayout: palette.layout,
+        colorBorder: palette.controlBorder,
+        colorBorderSecondary: palette.border,
+        controlHeight: 34,
         colorTextPlaceholder: palette.textSecondary,
         fontFamily: semanticTokens.font.system,
         borderRadius: 6,
@@ -107,6 +114,14 @@ export function DesignSystemProvider({
         paddingLG: 24,
         paddingXL: 32,
       },
+      components: {
+        Table: {
+          headerBg: palette.surfaceElevated,
+          borderColor: palette.border,
+          cellPaddingBlock: 12,
+          cellPaddingInline: 24,
+        },
+      },
     }),
     [colorScheme, palette, primary],
   );
@@ -118,13 +133,23 @@ export function DesignSystemProvider({
     '--sf-color-accent': accent,
     '--sf-color-accent-foreground': accentForeground,
     '--sf-color-surface': palette.surface,
+    '--sf-color-layout': palette.layout,
     '--sf-color-surface-elevated': palette.surfaceElevated,
     '--sf-color-text': palette.text,
     '--sf-color-text-secondary': palette.textSecondary,
     '--sf-color-border': palette.border,
-    '--sf-color-success': semanticTokens.color.status.success,
-    '--sf-color-warning': semanticTokens.color.status.warning,
-    '--sf-color-danger': semanticTokens.color.status.danger,
+    '--sf-color-success':
+      colorScheme === 'dark'
+        ? semanticTokens.color.statusDark.success
+        : semanticTokens.color.status.success,
+    '--sf-color-warning':
+      colorScheme === 'dark'
+        ? semanticTokens.color.statusDark.warning
+        : semanticTokens.color.status.warning,
+    '--sf-color-danger':
+      colorScheme === 'dark'
+        ? semanticTokens.color.statusDark.danger
+        : semanticTokens.color.status.danger,
   } as CSSProperties;
 
   return (

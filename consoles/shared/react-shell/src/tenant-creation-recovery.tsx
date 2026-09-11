@@ -4,7 +4,7 @@ import type {
   TenantCreationOperation,
   TenantCreationOperationPage,
 } from '@saas-forge/app-runtime';
-import { Button, PersistentError } from '@saas-forge/design-system';
+import { Button, ContentPanel, PersistentError } from '@saas-forge/design-system';
 import { createTranslator, type SupportedLocale } from '@saas-forge/i18n';
 import { useEffect, useRef, useState } from 'react';
 import { shellMessages } from './messages';
@@ -70,17 +70,20 @@ export function TenantCreationRecoveryPanel({
   }
 
   return (
-    <section aria-labelledby="tenant-creation-recovery-title">
-      <h2 id="tenant-creation-recovery-title">{t('creationRecoveryTitle')}</h2>
-      <p>{t('creationRecoveryHint')}</p>
-      <Button
-        disabled={busy}
-        onClick={() => {
-          void read();
-        }}
-      >
-        {t('creationRecoveryRead')}
-      </Button>
+    <ContentPanel
+      title={t('creationRecoveryTitle')}
+      description={t('creationRecoveryHint')}
+      actions={
+        <Button
+          disabled={busy}
+          onClick={() => {
+            void read();
+          }}
+        >
+          {t('creationRecoveryRead')}
+        </Button>
+      }
+    >
       {busy ? <p role="status">{t('creationRecoveryPending')}</p> : null}
       {problem !== undefined || result?.ok === false ? (
         <PersistentError title={t('creationRecoveryFailure')}>
@@ -145,6 +148,6 @@ export function TenantCreationRecoveryPanel({
           </Button>
         </>
       ) : null}
-    </section>
+    </ContentPanel>
   );
 }

@@ -45,5 +45,7 @@
   "tenantView": "View details",
   "tenantEmpty": "No Tenants yet",
   "tenantNotFound": "Tenant not found. Verify the identifier.",
-  "tenantExpiryHint": "The new Tenant has no expiry. This page creates the Tenant; initialization is a separate step."
+  "tenantExpiryHint": "The new Tenant has no expiry. This page creates the Tenant; initialization is a separate step.",
+  "tenantListTitle": "Tenant list",
+  "tenantBasicInformation": "Basic information"
 }

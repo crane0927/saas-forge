@@ -14,5 +14,6 @@
   "tableSelectionNone": "当前页尚未选择记录。",
   "tableTotal": "{count, plural, other {共 # 项}}",
   "tablePreviousPage": "上一页",
-  "tableNextPage": "下一页"
+  "tableNextPage": "下一页",
+  "tableCurrentPage": "第 {page} 页"
 }

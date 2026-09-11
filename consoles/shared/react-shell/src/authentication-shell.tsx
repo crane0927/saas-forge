@@ -11,6 +11,7 @@ import {
   ApplicationShell,
   ApplicationIdentity,
   Button,
+  type DesignIconName,
   FormLayout,
   FormRow,
   PageLayout,
@@ -35,13 +36,14 @@ import { matchPath, Navigate, Route, Routes, useLocation, useNavigate } from 're
 
 import { useRequestFormExit } from './form-exit-guard';
 import { shellMessages } from './messages';
-import { useConsoleLocale } from './console-locale';
+import { ConsoleLocaleSelectorSlot, useConsoleLocale } from './console-locale';
 import { BrandApplicationContext } from './brand-application';
 
 export interface AuthenticationShellRoute {
   readonly path: string;
   readonly navigationPath?: string;
   readonly label: string;
+  readonly icon?: DesignIconName;
   readonly element: ReactNode;
 }
 
@@ -257,6 +259,7 @@ export function AuthenticationShell({
         navigationItems={routes.map((route) => ({
           href: route.navigationPath ?? route.path,
           label: route.label,
+          icon: route.icon,
           current: matchPath({ path: route.path, end: true }, location.pathname) !== null,
         }))}
         onNavigate={(href) => {
@@ -264,6 +267,7 @@ export function AuthenticationShell({
         }}
         actions={
           <>
+            <ConsoleLocaleSelectorSlot />
             {runtime.intent === 'TENANT' &&
             state.tenantContext !== undefined &&
             state.tenantContext.accessibleMemberships.length > 1 ? (

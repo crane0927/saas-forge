@@ -48,6 +48,9 @@ export interface ServerTableAction<RecordType> {
 
 export interface ServerTableProps<RecordType> {
   readonly ariaLabel: string;
+  readonly title?: string;
+  readonly presentation?: 'plain' | 'panel';
+  readonly selectable?: boolean;
   readonly query?: ReactNode;
   readonly onQuery?: () => void;
   readonly onReset?: () => void;
@@ -92,6 +95,9 @@ function useServerTableTranslator() {
  */
 export function ServerTable<RecordType>({
   ariaLabel,
+  title,
+  presentation = 'plain',
+  selectable = true,
   query,
   onQuery,
   onReset,
@@ -210,9 +216,6 @@ export function ServerTable<RecordType>({
       >
         <div className="sf-table-query-fields">{query}</div>
         <div className="sf-table-query-actions">
-          <Button type="submit" variant="primary">
-            {queryLabel ?? translate.translate('tableQuery')}
-          </Button>
           <Button
             onClick={() => {
               clearSelection();
@@ -220,6 +223,9 @@ export function ServerTable<RecordType>({
             }}
           >
             {resetLabel ?? translate.translate('tableReset')}
+          </Button>
+          <Button type="submit" variant="primary">
+            {queryLabel ?? translate.translate('tableQuery')}
           </Button>
         </div>
       </form>
@@ -268,22 +274,28 @@ export function ServerTable<RecordType>({
           tableLayout="fixed"
           scroll={{ x: 'max-content' }}
           loading={false}
-          rowSelection={{
-            fixed: true,
-            // Ant Design 的固定列测量行会复制可聚焦的全选框；逐行选择保留当前页语义且避免隐藏焦点。
-            hideSelectAll: true,
-            columnTitle: (
-              <span className="sf-visually-hidden">{translate.translate('tableSelectColumn')}</span>
-            ),
-            preserveSelectedRowKeys: false,
-            selectedRowKeys: [...selectedKeys],
-            getCheckboxProps: (record) => ({
-              'aria-label': selectionLabel?.(record) ?? translate.translate('tableSelectRow'),
-            }),
-            onChange: (keys, selectedRows) => {
-              updateSelection(keys, selectedRows);
-            },
-          }}
+          rowSelection={
+            selectable
+              ? {
+                  fixed: true,
+                  // Ant Design 的固定列测量行会复制可聚焦的全选框；逐行选择保留当前页语义且避免隐藏焦点。
+                  hideSelectAll: true,
+                  columnTitle: (
+                    <span className="sf-visually-hidden">
+                      {translate.translate('tableSelectColumn')}
+                    </span>
+                  ),
+                  preserveSelectedRowKeys: false,
+                  selectedRowKeys: [...selectedKeys],
+                  getCheckboxProps: (record) => ({
+                    'aria-label': selectionLabel?.(record) ?? translate.translate('tableSelectRow'),
+                  }),
+                  onChange: (keys, selectedRows) => {
+                    updateSelection(keys, selectedRows);
+                  },
+                }
+              : undefined
+          }
           pagination={
             cursorPagination === undefined
               ? {
@@ -327,7 +339,8 @@ export function ServerTable<RecordType>({
           }}
         />
         {cursorPagination === undefined ? null : (
-          <nav aria-label={ariaLabel}>
+          <nav className="sf-table-pagination" aria-label={ariaLabel}>
+            <span>{translate.translate('tableCurrentPage', { page })}</span>
             <Button
               disabled={!cursorPagination.hasPrevious || refreshing}
               onClick={cursorPagination.onPrevious}
@@ -347,12 +360,20 @@ export function ServerTable<RecordType>({
   }
 
   return (
-    <section className="sf-server-table" aria-label={ariaLabel}>
+    <section
+      className={`sf-server-table${presentation === 'panel' ? ' sf-server-table-panel' : ''}`}
+      aria-label={ariaLabel}
+    >
       {queryPanel}
-      <p className="sf-table-selection-status" role="status" aria-live="polite">
-        {selectionMessage}
-      </p>
-      {content}
+      <div className="sf-table-content">
+        {title === undefined ? null : <h2 className="sf-table-title">{title}</h2>}
+        {selectable ? (
+          <p className="sf-table-selection-status" role="status" aria-live="polite">
+            {selectionMessage}
+          </p>
+        ) : null}
+        {content}
+      </div>
     </section>
   );
 }

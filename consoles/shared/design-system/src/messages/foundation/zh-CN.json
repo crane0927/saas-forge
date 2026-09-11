@@ -1,4 +1,8 @@
 {
   "applicationNavigation": "{applicationName} 全局导航",
-  "buttonProcessing": "正在处理"
+  "buttonProcessing": "正在处理",
+  "navigationOpen": "打开导航",
+  "navigationClose": "关闭导航",
+  "navigationExpand": "展开导航",
+  "navigationCollapse": "收起导航"
 }

@@ -1,4 +1,8 @@
 {
   "applicationNavigation": "{applicationName} global navigation",
-  "buttonProcessing": "Processing"
+  "buttonProcessing": "Processing",
+  "navigationOpen": "Open navigation",
+  "navigationClose": "Close navigation",
+  "navigationExpand": "Expand navigation",
+  "navigationCollapse": "Collapse navigation"
 }

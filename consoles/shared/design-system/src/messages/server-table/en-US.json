@@ -14,5 +14,6 @@
   "tableSelectionNone": "No current-page items selected.",
   "tableTotal": "{count, plural, one {# item} other {# items}}",
   "tablePreviousPage": "Previous page",
-  "tableNextPage": "Next page"
+  "tableNextPage": "Next page",
+  "tableCurrentPage": "Page {page}"
 }

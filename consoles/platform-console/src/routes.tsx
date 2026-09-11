@@ -26,6 +26,7 @@ export function createPlatformAuthenticationRoutes(
   return [
     {
       path: '/',
+      icon: 'home',
       label: translate.translate('navigationHome'),
       element: (
         <PlatformOverview
@@ -38,12 +39,14 @@ export function createPlatformAuthenticationRoutes(
     },
     {
       path: '/tenants/*',
+      icon: 'building',
       navigationPath: '/tenants',
       label: translate.translate('tenantsTitle'),
       element: <TenantRoutes client={client} locale={locale} />,
     },
     {
       path: '/oauth-clients',
+      icon: 'key',
       label: 'OAuth Client',
       element: <OAuthClientsPage title={oauthClientsTitle} description={oauthClientsDescription} />,
     },

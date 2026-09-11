@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import {
   isSupportedLocale,
   resolveLocale,
@@ -48,6 +49,14 @@ interface InitialConsoleLocale {
   readonly preferenceState: LocalePreferenceState;
 }
 
+const LocaleSelectorHostContext = createContext<
+  | {
+      readonly host: HTMLDivElement | null;
+      readonly setHost: (host: HTMLDivElement | null) => void;
+    }
+  | undefined
+>(undefined);
+
 const ConsoleLocaleContext = createContext<ConsoleLocaleContextValue | undefined>(undefined);
 const localeOptions = supportedLocaleRegistry.map(({ locale, selfName }) => ({
   value: locale,
@@ -68,6 +77,7 @@ export function resolveInitialConsoleLocale({
 }
 
 export function ConsoleLocaleProvider({ children, initialLocale }: ConsoleLocaleProviderProps) {
+  const [selectorHost, setSelectorHost] = useState<HTMLDivElement | null>(null);
   const [initial] = useState(resolveInitialConsoleLocaleState);
   const [locale, setCurrentLocale] = useState(() => initialLocale ?? initial.locale);
   const [preferenceState, setPreferenceState] = useState<LocalePreferenceState>(
@@ -137,7 +147,13 @@ export function ConsoleLocaleProvider({ children, initialLocale }: ConsoleLocale
     };
   }, [preferenceState.kind, refreshLocaleFromStorage]);
 
-  return <ConsoleLocaleContext.Provider value={value}>{children}</ConsoleLocaleContext.Provider>;
+  return (
+    <ConsoleLocaleContext.Provider value={value}>
+      <LocaleSelectorHostContext.Provider value={{ host: selectorHost, setHost: setSelectorHost }}>
+        {children}
+      </LocaleSelectorHostContext.Provider>
+    </ConsoleLocaleContext.Provider>
+  );
 }
 
 export function useConsoleLocale(): ConsoleLocaleContextValue {
@@ -148,7 +164,14 @@ export function useConsoleLocale(): ConsoleLocaleContextValue {
   return value;
 }
 
+/** 已认证 Shell 提供落点，现有唯一语言控件通过 Portal 移入顶栏，退出后回到启动页面。 */
+export function ConsoleLocaleSelectorSlot() {
+  const placement = useContext(LocaleSelectorHostContext);
+  return <div className="sf-console-locale-slot" ref={placement?.setHost} />;
+}
+
 export function ConsoleLocaleSelector() {
+  const placement = useContext(LocaleSelectorHostContext);
   const { enabledLocales, locale, setLocale } = useConsoleLocale();
   const onValueChange = useCallback(
     (value: string) => {
@@ -157,7 +180,7 @@ export function ConsoleLocaleSelector() {
     [setLocale],
   );
 
-  return (
+  const control = (
     <div className="sf-console-locale-control">
       <SelectField
         id="console-locale"
@@ -168,6 +191,7 @@ export function ConsoleLocaleSelector() {
       />
     </div>
   );
+  return placement?.host == null ? control : createPortal(control, placement.host);
 }
 
 function resolveInitialConsoleLocaleState({
