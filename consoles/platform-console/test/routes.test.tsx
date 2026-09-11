@@ -27,6 +27,7 @@ describe('Platform route tree', () => {
     expect(platformAuthenticationRoutes.map(({ path, label }) => ({ path, label }))).toEqual([
       { path: '/', label: '首页' },
       { path: '/tenants/*', label: 'Tenant' },
+      { path: '/quota-definitions/*', label: '额度定义' },
       { path: '/oauth-clients', label: 'OAuth Client' },
     ]);
   });
@@ -50,6 +51,7 @@ describe('Platform route tree', () => {
     expect(routes.map(({ path, label }) => ({ path, label }))).toEqual([
       { path: '/', label: 'Home' },
       { path: '/tenants/*', label: 'Tenants' },
+      { path: '/quota-definitions/*', label: 'Quota definitions' },
       { path: '/oauth-clients', label: 'OAuth Client' },
     ]);
 

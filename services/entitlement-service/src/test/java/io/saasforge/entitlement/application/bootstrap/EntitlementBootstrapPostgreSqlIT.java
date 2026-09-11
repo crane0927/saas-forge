@@ -148,6 +148,23 @@ class EntitlementBootstrapPostgreSqlIT {
     private QuotaDefinitionQueries quotaQueries;
 
     @Test
+    void doesNotOfferImpossibleReplayAfterAnotherActorCreatesOrActivatesDefinition() {
+        UUID actor = uuidV7(850);
+        var created = recoverableQuota.create(actor, uuidV7(851), "max_users", null);
+        assertThrows(io.saasforge.entitlement.domain.quota.QuotaDefinitionAlreadyExistsException.class,
+                () -> recoverableQuota.create(uuidV7(852), uuidV7(853), "max_users", null));
+        var conflict = recoverableQuota.list(uuidV7(852), null, 50).items().get(0);
+        assertEquals(QuotaDefinitionOperation.State.NOT_COMMITTED, conflict.state());
+        assertFalse(conflict.canReplay());
+        recoverableQuota.activate(actor, uuidV7(854), created.id(), null);
+        assertThrows(QuotaDefinitionTransitionException.class,
+                () -> recoverableQuota.activate(uuidV7(852), uuidV7(855), created.id(), null));
+        assertTrue(recoverableQuota.list(uuidV7(852), null, 50).items().stream().noneMatch(QuotaDefinitionOperation::canReplay));
+        assertThrows(IdempotencyKeyReusedException.class,
+                () -> recoverableQuota.activate(actor, uuidV7(851), created.id(), null));
+    }
+
+    @Test
     void exposesPublishedQuotaReadsAndPrivateRecoveryOverHttp() throws Exception {
         UUID actor = uuidV7(840);
         var controller = new io.saasforge.entitlement.api.EntitlementBootstrapController(
@@ -197,6 +214,8 @@ class EntitlementBootstrapPostgreSqlIT {
         assertEquals(null, expired.get(actor, operation.id()).idempotencyKey());
         assertThrows(QuotaDefinitionRecoveryException.class,
                 () -> expired.recover(actor, operation.id(), uuidV7(811), null));
+        assertThrows(QuotaDefinitionRecoveryException.class,
+                () -> expired.create(actor, uuidV7(811), "max_users", null));
         assertEquals(created, quotaQueries.get(created.id()));
         assertEquals(1, quotaQueries.list("max", null, null, 1).items().size());
         assertTrue(quotaQueries.list("absent", null, null, 1).items().isEmpty());
@@ -230,6 +249,7 @@ class EntitlementBootstrapPostgreSqlIT {
         assertTrue(secondPage.hasMore());
         var activation = recoverableQuota.list(actor, secondPage.nextCursor(), 1).items().get(0);
         assertEquals(QuotaDefinitionOperation.Operation.ACTIVATE, activation.operation());
+        assertEquals(recovered.quotaDefinitionId(), activation.quotaDefinitionId());
         assertEquals(QuotaDefinitionOperation.State.NOT_COMMITTED, activation.state());
         recoverableQuota.recover(actor, activation.id(), uuidV7(823), null);
         assertEquals("ACTIVE", quotaQueries.get(recovered.quotaDefinitionId()).status().name());

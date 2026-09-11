@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { chromium } from 'playwright';
 
 // Browser plugin not available. 所有业务响应来自真实服务；仅在提交后丢弃响应。
@@ -28,6 +29,52 @@ export async function verifyQuotaDefinition({
   let context;
   let id;
   const errors = [];
+  const project = process.env.SF_ACCEPTANCE_PROJECT;
+  assert.match(project ?? '', /^saas-forge-console-\d+-\d+-[a-f0-9]{6}$/);
+  function allowWrites(privilege, allow) {
+    assert.ok(['INSERT', 'UPDATE'].includes(privilege));
+    execFileSync(
+      'docker',
+      [
+        'exec',
+        '-i',
+        `${project}-postgres-1`,
+        'psql',
+        '-U',
+        'saasforge_console_e2e',
+        '-d',
+        'entitlement_db',
+        '-v',
+        'ON_ERROR_STOP=1',
+      ],
+      {
+        input: `${allow ? 'GRANT' : 'REVOKE'} ${privilege} ON quota_definitions ${allow ? 'TO' : 'FROM'} entitlement_app;`,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      },
+    );
+  }
+  async function continueAfterRollback(page, label, key) {
+    await page.reload();
+    await page
+      .getByText('已有操作待核查，请读取操作记录继续原操作或核查结果。', { exact: true })
+      .waitFor();
+    assert.equal(await page.getByRole('button', { name: label, exact: true }).count(), 0);
+    await page.getByRole('button', { name: '读取操作记录', exact: true }).click();
+    await page.route('**/api/v1/platform/quota-definition-operations/*/recovery', async (route) => {
+      assert.equal(route.request().headers()['idempotency-key'], key);
+      const response = await route.fetch();
+      assert.equal(response.status(), 200);
+      id = (await response.json()).quotaDefinitionId;
+      await route.abort('failed');
+    });
+    await page
+      .getByRole('listitem')
+      .filter({ hasText: label })
+      .getByRole('button', { name: '继续原操作' })
+      .click();
+    await page.getByText('操作记录暂时无法读取', { exact: true }).waitFor();
+    await page.unroute('**/api/v1/platform/quota-definition-operations/*/recovery');
+  }
   try {
     context = await launch();
     let page = await context.newPage();
@@ -39,19 +86,26 @@ export async function verifyQuotaDefinition({
     await page.getByRole('button', { name: '创建 max_users', exact: true }).click();
     await accessibility(page, '创建 max_users');
     let creates = 0;
+    let createKey;
+    allowWrites('INSERT', false);
     await page.route('**/api/v1/platform/quota-definitions', async (route) => {
       if (route.request().method() !== 'POST') return route.continue();
       creates += 1;
       const response = await route.fetch();
-      assert.equal(response.status(), 201);
-      id = (await response.json()).id;
+      assert.equal(response.status(), 500);
+      createKey = route.request().headers()['idempotency-key'];
       await route.abort('failed');
     });
-    await page.getByRole('button', { name: '创建 max_users', exact: true }).dblclick();
-    await page.getByText('操作结果待确认', { exact: true }).waitFor();
+    try {
+      await page.getByRole('button', { name: '创建 max_users', exact: true }).dblclick();
+      await page.getByText('操作结果待确认', { exact: true }).waitFor();
+    } finally {
+      allowWrites('INSERT', true);
+    }
     assert.equal(creates, 1);
     await capture(page, 'issue-173-create-response-lost');
     await page.unroute('**/api/v1/platform/quota-definitions');
+    await continueAfterRollback(page, '创建 max_users', createKey);
     await page.reload();
     await page.getByRole('button', { name: '复用 max_users', exact: true }).waitFor();
     assert.equal(
@@ -67,17 +121,25 @@ export async function verifyQuotaDefinition({
     await accessibility(page, '额度定义详情');
     await page.getByText(id, { exact: true }).waitFor();
     let activations = 0;
+    let activationKey;
+    allowWrites('UPDATE', false);
     await page.route('**/api/v1/platform/quota-definitions/*/activations', async (route) => {
       activations += 1;
       const response = await route.fetch();
-      assert.equal(response.status(), 200);
+      assert.equal(response.status(), 500);
+      activationKey = route.request().headers()['idempotency-key'];
       await route.abort('failed');
     });
-    await page.getByRole('button', { name: '激活 max_users', exact: true }).dblclick();
-    await page.getByText('操作结果待确认', { exact: true }).waitFor();
+    try {
+      await page.getByRole('button', { name: '激活 max_users', exact: true }).dblclick();
+      await page.getByText('操作结果待确认', { exact: true }).waitFor();
+    } finally {
+      allowWrites('UPDATE', true);
+    }
     assert.equal(activations, 1);
     await capture(page, 'issue-173-activation-response-lost');
     await page.unroute('**/api/v1/platform/quota-definitions/*/activations');
+    await continueAfterRollback(page, '激活 max_users', activationKey);
     await page.reload();
     await page.getByText('已激活', { exact: true }).waitFor();
     assert.equal(

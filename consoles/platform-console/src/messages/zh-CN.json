@@ -76,5 +76,6 @@
   "quotaUnknownHint": "请读取自己的操作记录核查结果，不要重新提交。",
   "quotaCreateDescription": "只支持全局唯一的 max_users。创建后需要激活；已有定义时直接复用。",
   "quotaSaving": "正在提交…",
-  "quotaRetired": "已停用"
+  "quotaRetired": "已停用",
+  "quotaPendingGuard": "已有操作待核查，请读取操作记录继续原操作或核查结果。"
 }

@@ -79,7 +79,7 @@ public class MyBatisQuotaDefinitionRecovery implements QuotaDefinitionRecoveryRe
                     : !unlocked ? QuotaDefinitionOperation.State.PROCESSING
                     : retained ? QuotaDefinitionOperation.State.NOT_COMMITTED : QuotaDefinitionOperation.State.UNKNOWN;
             return new QuotaDefinitionOperation(id, saved.operation(), state, saved.createdAt(), saved.replayUntil(),
-                    retained && unlocked && (saved.result() != null || mapper.canExecute(id)), saved.result() == null ? null : saved.result().id(), retained ? saved.key() : null);
+                    retained && unlocked && (saved.result() != null || mapper.canExecute(id)), saved.result() == null ? saved.targetId() : saved.result().id(), retained ? saved.key() : null);
         });
     }
 

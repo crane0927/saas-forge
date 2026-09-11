@@ -76,5 +76,6 @@
   "quotaUnknownHint": "Read your operation records to verify the outcome. Do not submit again.",
   "quotaCreateDescription": "Only the globally unique max_users is supported. Activate after creation; reuse an existing definition.",
   "quotaSaving": "Submitting…",
-  "quotaRetired": "Retired"
+  "quotaRetired": "Retired",
+  "quotaPendingGuard": "An earlier operation needs verification. Read operation records to continue it or verify the outcome."
 }

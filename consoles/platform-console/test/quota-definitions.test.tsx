@@ -40,18 +40,20 @@ it('recovers a committed Quota Definition after a lost create response without c
     }
     if (path.endsWith('/quota-definition-operations'))
       return Response.json({
-        items: [
-          {
-            id,
-            operation: 'CREATE',
-            state: 'COMMITTED',
-            createdAt: tenant.createdAt,
-            replayUntil: '2026-09-12T00:00:00.000Z',
-            canReplay: true,
-            quotaDefinitionId: id,
-            idempotencyKey: key,
-          },
-        ],
+        items: key
+          ? [
+              {
+                id,
+                operation: 'CREATE',
+                state: 'COMMITTED',
+                createdAt: tenant.createdAt,
+                replayUntil: '2026-09-12T00:00:00.000Z',
+                canReplay: true,
+                quotaDefinitionId: id,
+                idempotencyKey: key,
+              },
+            ]
+          : [],
         nextCursor: null,
         hasMore: false,
       });
@@ -130,6 +132,8 @@ it('reuses an existing definition in English without issuing a creation', async 
         expiresIn: 120,
       });
     expect(init?.method).toBe('GET');
+    if (path.endsWith('/quota-definition-operations'))
+      return Response.json({ items: [], nextCursor: null, hasMore: false });
     return Response.json(
       path.endsWith(id) ? definition : { items: [definition], nextCursor: null, hasMore: false },
     );
@@ -162,3 +166,148 @@ function mountQuota(
     </ConsoleLocaleProvider>,
   );
 }
+
+it.each(['NOT_COMMITTED', 'PROCESSING', 'UNKNOWN'])(
+  'blocks a new Key after refresh with an unresolved %s creation',
+  async (state) => {
+    window.history.replaceState(null, '', '/quota-definitions/new');
+    const authenticationFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      await Promise.resolve();
+      const path = new URL(input instanceof Request ? input.url : input).pathname;
+      if (path.endsWith('/refresh'))
+        return Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        });
+      expect(init?.method).toBe('GET');
+      return Response.json({
+        items: path.endsWith('/quota-definition-operations')
+          ? [
+              {
+                id: '019535d9-0000-7000-8000-000000000003',
+                operation: 'CREATE',
+                state,
+                createdAt: '2026-09-11T00:00:00Z',
+                replayUntil: '2026-09-12T00:00:00Z',
+                canReplay: false,
+              },
+            ]
+          : [],
+        nextCursor: null,
+        hasMore: false,
+      });
+    };
+    mountQuota(authenticationFetch);
+    expect(
+      await screen.findByText('已有操作待核查，请读取操作记录继续原操作或核查结果。'),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '创建 max_users' })).toBeNull();
+  },
+);
+
+it('continues a rolled-back activation with the original Key and clears the pending warning', async () => {
+  const id = '019535d9-0000-7000-8000-000000000002';
+  const operationId = '019535d9-0000-7000-8000-000000000003';
+  window.history.replaceState(null, '', `/quota-definitions/${id}`);
+  let key = '';
+  let active = false;
+  let activations = 0;
+  const operation = () => ({
+    id: operationId,
+    operation: 'ACTIVATE',
+    state: active ? 'COMMITTED' : 'NOT_COMMITTED',
+    quotaDefinitionId: id,
+    createdAt: '2026-09-11T00:00:00Z',
+    replayUntil: '2026-09-12T00:00:00Z',
+    canReplay: true,
+    idempotencyKey: key,
+  });
+  const authenticationFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    await Promise.resolve();
+    const path = new URL(input instanceof Request ? input.url : input).pathname;
+    if (path.endsWith('/refresh'))
+      return Response.json({
+        contextState: 'ACCESS_TOKEN_ISSUED',
+        accessToken: 'token',
+        tokenType: 'Bearer',
+        expiresIn: 120,
+      });
+    if (path.endsWith('/activations')) {
+      activations += 1;
+      key = new Headers(init?.headers).get('Idempotency-Key') ?? '';
+      throw new TypeError('Response lost');
+    }
+    if (path.endsWith('/recovery')) {
+      expect(new Headers(init?.headers).get('Idempotency-Key')).toBe(key);
+      active = true;
+      return Response.json(operation());
+    }
+    if (path.endsWith('/quota-definition-operations'))
+      return Response.json({ items: key ? [operation()] : [], nextCursor: null, hasMore: false });
+    return Response.json({
+      id,
+      code: 'max_users',
+      status: active ? 'ACTIVE' : 'DRAFT',
+      createdAt: '2026-09-11T00:00:00Z',
+      updatedAt: '2026-09-11T00:00:00Z',
+    });
+  };
+  mountQuota(authenticationFetch);
+  fireEvent.click(await screen.findByRole('button', { name: '激活 max_users' }));
+  expect(await screen.findByText('操作结果待确认')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '读取操作记录' }));
+  fireEvent.click(await screen.findByRole('button', { name: '继续原操作' }));
+  expect(await screen.findByText('已激活')).toBeTruthy();
+  expect(screen.queryByText('操作结果待确认')).toBeNull();
+  expect(activations).toBe(1);
+});
+
+it.each(['NOT_COMMITTED', 'PROCESSING', 'UNKNOWN'])(
+  'blocks a fresh activation Key after refresh when %s',
+  async (state) => {
+    const id = '019535d9-0000-7000-8000-000000000002';
+    window.history.replaceState(null, '', `/quota-definitions/${id}`);
+    const authenticationFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      await Promise.resolve();
+      const path = new URL(input instanceof Request ? input.url : input).pathname;
+      if (path.endsWith('/refresh'))
+        return Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        });
+      expect(init?.method).toBe('GET');
+      if (path.endsWith('/quota-definition-operations'))
+        return Response.json({
+          items: [
+            {
+              id: '019535d9-0000-7000-8000-000000000003',
+              operation: 'ACTIVATE',
+              state,
+              quotaDefinitionId: id,
+              createdAt: '2026-09-11T00:00:00Z',
+              replayUntil: '2026-09-12T00:00:00Z',
+              canReplay: false,
+            },
+          ],
+          nextCursor: null,
+          hasMore: false,
+        });
+      return Response.json({
+        id,
+        code: 'max_users',
+        status: 'DRAFT',
+        createdAt: '2026-09-11T00:00:00Z',
+        updatedAt: '2026-09-11T00:00:00Z',
+      });
+    };
+    mountQuota(authenticationFetch);
+    expect(
+      await screen.findByText('已有操作待核查，请读取操作记录继续原操作或核查结果。'),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '激活 max_users' })).toBeNull();
+  },
+);

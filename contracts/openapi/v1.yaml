@@ -902,6 +902,7 @@ paths:
       x-saasforge-service: entitlement-service
       x-saasforge-java-sdk: true
       summary: Create the max_users Quota Definition in DRAFT state
+      description: Once registered, the actor and Key identify the original operation. After its 24-hour replay window, this entrypoint also rejects that Key with QUOTA_DEFINITION_RECOVERY_EXPIRED; read the actor-private operation record to verify the result instead of starting again.
       security: [{ UserBearerAuth: [] }]
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -932,7 +933,7 @@ paths:
       tags: [Platform entitlement bootstrap]
       operationId: getQuotaDefinition
       x-saasforge-service: entitlement-service
-      summary: Read authoritative Tenant detail
+      summary: Read authoritative Quota Definition detail
       security: [{ UserBearerAuth: [] }]
       parameters:
         - name: quotaDefinitionId
@@ -962,6 +963,7 @@ paths:
       x-saasforge-service: entitlement-service
       x-saasforge-java-sdk: true
       summary: Activate a DRAFT Quota Definition
+      description: Once registered, the actor and Key identify the original operation. After its 24-hour replay window, this entrypoint also rejects that Key with QUOTA_DEFINITION_RECOVERY_EXPIRED; read the actor-private operation record to verify the result instead of starting again.
       security: [{ UserBearerAuth: [] }]
       parameters:
         - $ref: '#/components/parameters/QuotaDefinitionId'

@@ -270,6 +270,7 @@ function QuotaDefinitionDetailContent({
   const [result, setResult] = useState<ConsoleApiResult<QuotaDefinition>>();
   const [attempt, setAttempt] = useState(0);
   const [busy, setBusy] = useState(true);
+  const [guard, retryGuard] = useOperationGuard(client, quotaDefinitionId, attempt);
   const [phase, setPhase] = useState<'ready' | 'pending' | 'unknown'>('ready');
   const [problem, setProblem] = useState<string>();
   const pending = useRef<AbortController | null>(null);
@@ -319,7 +320,11 @@ function QuotaDefinitionDetailContent({
             <p>{result.problem.code}</p>
           </PersistentError>
         )}
-        {result?.ok && result.value.status === 'DRAFT' && !busy && phase === 'ready' ? (
+        {result?.ok &&
+        result.value.status === 'DRAFT' &&
+        !busy &&
+        phase === 'ready' &&
+        guard.status === 'clear' ? (
           <Button
             variant="primary"
             onClick={() => {
@@ -351,11 +356,21 @@ function QuotaDefinitionDetailContent({
             <p>{problem}</p>
           </WarningFeedback>
         ) : null}
+        {guard.status === 'pending' ? <p>{t('quotaPendingGuard')}</p> : null}
+        {guard.status === 'failed' ? (
+          <PersistentError title={t('quotaReadFailed')}>
+            <p>{guard.problem}</p>
+            <Button onClick={retryGuard}>{t('quotaRetry')}</Button>
+          </PersistentError>
+        ) : null}
         <QuotaDefinitionRecoveryPanel
           client={client}
           locale={locale}
           onView={(id) => {
             if (id === quotaDefinitionId) {
+              setPhase('ready');
+              setProblem(undefined);
+              pending.current = null;
               setBusy(true);
               setAttempt((value) => value + 1);
             } else void navigate(`/quota-definitions/${id}`);
@@ -410,6 +425,7 @@ function QuotaDefinitionCreate({ client, locale }: Props) {
   const t = translate.translate.bind(translate);
   const navigate = useNavigate();
   const [result, retryAvailability] = useMaxUsers(client);
+  const [guard, retryGuard] = useOperationGuard(client);
   const [phase, setPhase] = useState<'ready' | 'pending' | 'unknown'>('ready');
   const [problem, setProblem] = useState<string>();
   const pending = useRef<AbortController | null>(null);
@@ -440,6 +456,15 @@ function QuotaDefinitionCreate({ client, locale }: Props) {
           >
             {t('quotaReuse')}
           </Button>
+        ) : guard.status === 'pending' ? (
+          <p>{t('quotaPendingGuard')}</p>
+        ) : guard.status === 'failed' ? (
+          <PersistentError title={t('quotaReadFailed')}>
+            <p>{guard.problem}</p>
+            <Button onClick={retryGuard}>{t('quotaRetry')}</Button>
+          </PersistentError>
+        ) : guard.status === 'loading' ? (
+          <p role="status">{t('quotaLoading')}</p>
         ) : (
           <Button
             variant="primary"
@@ -486,4 +511,67 @@ function QuotaDefinitionCreate({ client, locale }: Props) {
       </Button>
     </PageLayout>
   );
+}
+
+type OperationGuard = {
+  readonly status: 'loading' | 'clear' | 'pending' | 'failed';
+  readonly problem?: string;
+};
+
+/** 先核对原操作者的全部相关记录，资源仍为空/DRAFT 不能授权新逻辑操作。 */
+function useOperationGuard(client: ConsoleApiClient, targetId?: string, revision = 0) {
+  const [guard, setGuard] = useState<OperationGuard>({ status: 'loading' });
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    async function read() {
+      let cursor: string | undefined;
+      const visited = new Set<string>();
+      for (;;) {
+        const page = await client.listQuotaDefinitionOperations({
+          cursor,
+          limit: 100,
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+        if (!page.ok) {
+          setGuard({ status: 'failed', problem: page.problem.code });
+          return;
+        }
+        if (
+          page.value.items.some(
+            (operation) =>
+              operation.state !== 'COMMITTED' &&
+              (targetId === undefined
+                ? operation.operation === 'CREATE'
+                : operation.operation === 'ACTIVATE' && operation.quotaDefinitionId === targetId),
+          )
+        ) {
+          setGuard({ status: 'pending' });
+          return;
+        }
+        if (!page.value.hasMore) {
+          setGuard({ status: 'clear' });
+          return;
+        }
+        if (page.value.nextCursor === null || visited.has(page.value.nextCursor)) {
+          setGuard({ status: 'failed', problem: 'INVALID_SERVICE_RESPONSE' });
+          return;
+        }
+        cursor = page.value.nextCursor;
+        visited.add(cursor);
+      }
+    }
+    void read();
+    return () => {
+      controller.abort();
+    };
+  }, [client, targetId, revision, attempt]);
+  return [
+    guard,
+    () => {
+      setGuard({ status: 'loading' });
+      setAttempt((value) => value + 1);
+    },
+  ] as const;
 }

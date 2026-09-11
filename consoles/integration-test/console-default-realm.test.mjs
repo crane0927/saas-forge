@@ -109,7 +109,10 @@ for (const [application, directory, heading] of [
         .boundingBox();
       assert.ok(localeBounds && logoutBounds);
       assert.ok(
-        localeBounds.y + localeBounds.height <= logoutBounds.y,
+        localeBounds.y + localeBounds.height <= logoutBounds.y ||
+          logoutBounds.y + logoutBounds.height <= localeBounds.y ||
+          localeBounds.x + localeBounds.width <= logoutBounds.x ||
+          logoutBounds.x + logoutBounds.width <= localeBounds.x,
         'Locale control must leave the authenticated logout action unobstructed',
       );
     }
