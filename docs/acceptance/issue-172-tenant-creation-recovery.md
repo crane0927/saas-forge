@@ -62,4 +62,6 @@ Standards 和 Spec 两个独立审查发现并修复：恢复 POST 缺少正式 
 
 真实浏览器后续修复和最终测试同步由 Standards/Spec 再次只读复审通过；临时诊断已移除。
 
-仓库 `AGENTS.md` 指定的 `java script/FlywayMigrationGenerator.java validate` 无法运行：该文件在当前检出中不存在。本轮通过现有 Testcontainers/Flyway 实际执行新增迁移；不将缺失的独立命令记录为通过。建议维护者确认并更新规范中的有效入口。
+历史专项缺口：仓库 `AGENTS.md` 原指定的 `java script/FlywayMigrationGenerator.java validate` 无法运行，该文件在当前检出中不存在。2026-09-11 经用户明确授权，移除这条失效命令要求；保留迁移不可变、前向迁移及 checksum 修复规范。现有 Testcontainers/Flyway 与 Fresh Compose 已实际执行新增迁移，不将缺失命令记录为通过。
+
+2026-09-11 关闭前复核：上述 7 项验收均有对应证据，依赖 #171 已关闭，两项独立审查无未解决阻塞意见。移除失效命令要求后，#172 无剩余验收阻塞，满足关闭条件；此结论不扩展至父 Issue #170 或其他业务子项。
