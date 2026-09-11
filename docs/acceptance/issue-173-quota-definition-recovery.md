@@ -27,7 +27,8 @@
 - 第二轮在 `tls-ready` 失败，未进入产品测试：容器健康通过，但四域 Chrome 导航均为 ERR_CONNECTION_CLOSED，180 秒内未恢复；环境已自动清理。用相同证书、现有 Node 镜像和回环 443 的最小 TLS 容器复核，curl 及 Chrome 四域均为 200，探针已删除。未修改 TLS 配置或重启开发环境；该间歇连接故障原因未确定。
 - 第三轮 TLS 通过，创建回滚后的原 Key 恢复成功；激活请求被 Gateway 以 403 拒绝。定位到原契约没有请求正文，生成客户端没有 JSON Content-Type。新增 Runtime 回归测试先失败（Content-Type 为 null），再通过正式契约声明可选空 JSON 正文并由类型化 Client 发送 `{}`，未放宽 Gateway。Entitlement 全量复验通过，Controller 同时覆盖 JSON 和原无正文调用。
 - 修复后的完整前端门禁再次退出码 0（Runtime 128 项）。最后 Standards 复审发现生成 Java 未执行空正文约束，补充激活/恢复入口校验；非空对象、数组、标量不能触发业务，返回 400。Controller 红灯后，Entitlement 全量复验退出码 0，Controller 7 项、PostgreSQL 集成 18 项。
-- 第四轮真实 Chrome/Fresh Compose 产品复验：运行中；最后空正文校验将以新制品另行复验。
+- 第四轮 #173 Chrome 子测试通过（约 7.9 秒），整套 14/22 通过、8 项失败。首个失败为旧 Tenant 用例在 390px 窗口直接等待导航，而当前 Shell 使用默认关闭的抽屉；后续串行用例因未完成语言/会话转换连带失败。更新脚本通过实际导航按钮打开、检查和关闭抽屉，保留 390px，品牌遮挡检查改为当前可见页头。
+- 第五轮使用最终后端制品及修正后的真实 UI 导航流程复验，结果待补。
 
 ## 真实产品验收入口
 

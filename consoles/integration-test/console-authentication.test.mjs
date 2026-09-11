@@ -403,12 +403,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       assert.equal(body.tenantContext.tenantId, firstTenant.tenantId);
       await tenant.getByRole('heading', { name: 'Tenant workspace', exact: true }).waitFor();
       assert.equal(new URL(tenant.url()).pathname, '/');
-      await tenant
-        .getByRole('navigation', {
-          name: 'SaaS Forge global navigation',
-          exact: true,
-        })
-        .waitFor();
+      await expectGlobalNavigation(tenant, 'SaaS Forge global navigation');
       assert.equal(
         await tenant
           .getByRole('navigation', {
@@ -419,12 +414,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         0,
       );
       await recover(tenant, 'Tenant workspace');
-      await tenant
-        .getByRole('navigation', {
-          name: 'SaaS Forge global navigation',
-          exact: true,
-        })
-        .waitFor();
+      await expectGlobalNavigation(tenant, 'SaaS Forge global navigation');
       await recover(platform, 'Platform 总览');
     },
   );
@@ -497,12 +487,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       assert.equal(body.tenantContext.tenantDisplayName, 'Second Acceptance Tenant');
       assert.ok(body.accessToken !== beforeSwitch.accessToken, 'recovery must issue a new token');
       await tenant.getByRole('heading', { name: 'Tenant workspace', exact: true }).waitFor();
-      await tenant
-        .getByRole('navigation', {
-          name: 'SaaS Forge global navigation',
-          exact: true,
-        })
-        .waitFor();
+      await expectGlobalNavigation(tenant, 'SaaS Forge global navigation');
       assert.equal(await tenant.evaluate(() => localStorage.getItem('sf:ui:locale')), 'en-US');
       const reloadRefresh = tenant.waitForResponse(isAuthResponse('refresh'));
       await tenant.reload();
@@ -537,9 +522,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
           });
           await outcome.waitFor();
           assert.equal(await outcome.textContent(), 'Tenant 工作台');
-          await page
-            .getByRole('navigation', { name: 'SaaS Forge 全局导航', exact: true })
-            .waitFor();
+          await expectGlobalNavigation(page, 'SaaS Forge 全局导航');
         }
         tenant.off('response', observe);
         peer.off('response', observe);
@@ -753,19 +736,20 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         .press('Enter');
       async function expectBrand(name, color, accent, asset) {
         await tenant.getByRole('heading', { name: 'Tenant 工作台', exact: true }).waitFor();
-        await tenant.getByRole('navigation', { name: `${name} 全局导航`, exact: true }).waitFor();
+        await expectGlobalNavigation(tenant, `${name} 全局导航`);
         assert.equal(new URL(tenant.url()).pathname, '/');
         assert.equal(await tenant.title(), `${name} · SaaS Forge Tenant Console`);
         const logo = tenant.getByRole('img', { name: `${name} Logo`, exact: true });
         await logo.waitFor({ state: 'visible' });
-        const navigationBounds = await tenant
-          .getByRole('navigation', { name: `${name} 全局导航`, exact: true })
-          .boundingBox();
+        const brandBounds = await tenant.locator('.sf-application-compact-brand').boundingBox();
         const localeBounds = await tenant.locator('.sf-console-locale-control').boundingBox();
-        assert.ok(navigationBounds && localeBounds);
+        assert.ok(brandBounds && localeBounds);
         assert.ok(
-          localeBounds.y + localeBounds.height <= navigationBounds.y,
-          'Narrow-screen language control must not overlap the brand navigation',
+          localeBounds.x + localeBounds.width <= brandBounds.x ||
+            brandBounds.x + brandBounds.width <= localeBounds.x ||
+            localeBounds.y + localeBounds.height <= brandBounds.y ||
+            brandBounds.y + brandBounds.height <= localeBounds.y,
+          'Narrow-screen language control must not overlap the visible brand',
         );
         assert.equal(await logo.getAttribute('src'), `/brands/acceptance-${asset}.svg`);
         assert.equal(
@@ -920,9 +904,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
           ),
           true,
         );
-        await tenant
-          .getByRole('navigation', { name: 'SaaS Forge 全局导航', exact: true })
-          .waitFor();
+        await expectGlobalNavigation(tenant, 'SaaS Forge 全局导航');
         assert.equal(await tenant.title(), 'SaaS Forge Tenant Console');
         const logo = tenant.getByRole('img', { name: 'SaaS Forge Logo', exact: true });
         await logo.waitFor({ state: 'visible' });
@@ -1119,6 +1101,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
   await t.test(
     'protected navigation and a route failure retain the authenticated Shell',
     async () => {
+      await openCompactNavigation(platform);
       const navigation = platform.getByRole('link', { name: 'OAuth Client', exact: true });
       await navigation.focus();
       await navigation.press('Enter');
@@ -1146,7 +1129,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       }, marker);
       await page.goto(`https://platform.${rootDomain}/oauth-clients`);
       await expectRouteAccessibility(page, '当前页面出现错误');
-      await page.getByRole('navigation', { name: 'SaaS Forge 全局导航', exact: true }).waitFor();
+      await expectGlobalNavigation(page, 'SaaS Forge 全局导航');
       assert.equal((await page.locator('body').innerText()).includes(marker), false);
       const home = page.getByRole('button', { name: '返回首页', exact: true });
       await home.focus();
@@ -1164,6 +1147,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
   await t.test(
     'Platform Locale switching retains the protected route without an API request and persists through reload and logout',
     async () => {
+      await openCompactNavigation(platform);
       const home = platform.getByRole('link', { name: '首页', exact: true });
       await home.focus();
       await home.press('Enter');
@@ -1177,9 +1161,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       platform.on('request', observe);
       await selectConsoleLocale(platform, 'English');
       await platform.getByRole('heading', { name: 'Platform overview', exact: true }).waitFor();
-      await platform
-        .getByRole('navigation', { name: 'SaaS Forge global navigation', exact: true })
-        .waitFor();
+      await expectGlobalNavigation(platform, 'SaaS Forge global navigation');
       assert.deepEqual(requests, []);
       platform.off('request', observe);
 
@@ -1191,6 +1173,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         'Locale reload keeps the real session recoverable',
       );
       await expectRouteAccessibility(platform, 'Platform overview');
+      await openCompactNavigation(platform);
       const navigation = platform.getByRole('link', { name: 'OAuth Client', exact: true });
       await navigation.focus();
       await navigation.press('Enter');
@@ -1581,6 +1564,20 @@ function isAuthResponse(operation) {
   return (response) =>
     new URL(response.url()).pathname === `/api/v1/auth/${operation}` &&
     response.request().method() === 'POST';
+}
+
+// The shared session fixture deliberately stays at 390px to cover the compact Shell.
+// Its navigation is rendered inside a closed drawer until opened through the product UI.
+async function openCompactNavigation(page) {
+  const open = page.getByRole('button', { name: /^(打开导航|Open navigation)$/ });
+  if (await open.count()) await open.press('Enter');
+}
+
+async function expectGlobalNavigation(page, name) {
+  await openCompactNavigation(page);
+  await page.getByRole('navigation', { name, exact: true }).waitFor();
+  const close = page.getByRole('button', { name: /^(关闭导航|Close navigation)$/ });
+  if (await close.isVisible()) await close.press('Enter');
 }
 
 async function login(page, email, password, locale = 'zh-CN', { focusedElementId } = {}) {
