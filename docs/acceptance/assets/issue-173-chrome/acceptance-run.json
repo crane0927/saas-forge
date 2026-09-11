@@ -1,0 +1,82 @@
+{
+  "recordedAt": "2026-09-11T16:13:00.381Z",
+  "commit": "652a788d775be167f2b55f392f217f947406390d",
+  "dirty": false,
+  "mode": "fresh-compose",
+  "target": "local",
+  "scope": "--product",
+  "status": "passed",
+  "stages": [
+    {
+      "name": "preflight",
+      "status": "passed"
+    },
+    {
+      "name": "compose-config",
+      "status": "passed"
+    },
+    {
+      "name": "acceptance-client-build",
+      "status": "passed"
+    },
+    {
+      "name": "image-gateway",
+      "status": "passed"
+    },
+    {
+      "name": "image-iam-service",
+      "status": "passed"
+    },
+    {
+      "name": "image-tenant-access-service",
+      "status": "passed"
+    },
+    {
+      "name": "image-entitlement-service",
+      "status": "passed"
+    },
+    {
+      "name": "image-audit-service",
+      "status": "passed"
+    },
+    {
+      "name": "signing-key",
+      "status": "passed"
+    },
+    {
+      "name": "platform-bootstrap",
+      "status": "passed"
+    },
+    {
+      "name": "service-bootstrap",
+      "status": "passed"
+    },
+    {
+      "name": "compose-start",
+      "status": "passed"
+    },
+    {
+      "name": "tls-ready",
+      "status": "passed"
+    },
+    {
+      "name": "product-chrome",
+      "status": "passed"
+    },
+    {
+      "name": "compose-reset",
+      "status": "passed"
+    },
+    {
+      "name": "console-browser-chrome",
+      "status": "passed"
+    }
+  ],
+  "channels": [
+    {
+      "browser": "chrome",
+      "status": "passed"
+    }
+  ],
+  "project": "saas-forge-console-1789143182-71483-411ea0"
+}

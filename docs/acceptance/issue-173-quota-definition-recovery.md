@@ -1,5 +1,11 @@
 # Issue #173：Quota Definition 创建、激活与复用
 
+## 结果
+
+2026-09-12 本地实现、回归及真实 Chrome/Fresh Compose 验收完成。产品套件 **35/35 通过**，随后 Compose 重置及 Chrome 浏览器门禁通过，正式脚本退出码 0。通过的源码提交为 `652a788d775be167f2b55f392f217f947406390d`，启动时 tracked 工作区干净；后续提交仅更新文档与证据。
+
+完整后端、完整前端门禁均已通过，最后后端改动另外完成 Entitlement 全量复验。未推送，远端 CI 未执行，GitHub Issue 尚未更新或关闭。
+
 ## 范围
 
 对应 #173，父规格 #170；复用已关闭 #172 的恢复交互。保留全局唯一 `max_users`，不增加其他额度类型或 Plan 管理。
@@ -32,7 +38,7 @@
 - 第六轮 #173 继续通过；20/22 通过，唯一品牌用例失败为旧断言要求紫色深浅主题不变。ADR 0042 和现有解析器生成独立主题 Token；原色 `#7C3AED` 对深背景 `#1A202A` 约 2.87:1，实际 `#8344EE` 约 3.14:1。保留精确 Token 检查，夹具按主题声明正确预期，未修改产品色彩或降低对比度。
 - 第七轮在 TLS 就绪阶段连接重置，curl 同样返回 connection reset；未进入业务测试，隔离环境自动清理，未改变开发服务。
 - 第八轮 32/35 通过，#173 与深浅主题均通过；唯一叶子失败是品牌并发回读辅助脚本的新窄窗口未打开抽屉，连带两个父项失败。补齐其初始与最新回读后的开导航步骤，保留旧响应晚到、Token/Context 与品牌隔离断言。
-- 第九轮从最终提交启动真实 Chrome/Fresh Compose 复验，结果待补。
+- 第九轮从 `652a788` 启动，所有 35 项产品测试通过，无失败/取消/跳过；Compose 重置及 `console-browser-chrome` 通过，退出码 0。受信 HTTPS → Gateway → Nacos → 真实服务链路完成；隔离环境已清理。
 
 ## 真实产品验收入口
 
@@ -42,8 +48,26 @@
 
 ## 独立审查
 
-固定起点 `0f2bc00`。初审发现刷新后未决记录不参与新操作按钮判断（Spec P1）、恢复成功仍残留未知提示（Standards P2）、错误 Tenant 术语（Standards P3）及 ADR 0003 的到期默认规则需要明确例外。均已修复，`3ddcd30` 两轴复审无剩余阻塞项。
+固定起点 `0f2bc00`。初审发现刷新后未决记录不参与新操作按钮判断（Spec P1）、恢复成功仍残留未知提示（Standards P2）、错误 Tenant 术语（Standards P3）及 ADR 0003 的到期默认规则需要明确例外。均已修复。后续审查发现空正文契约缺少入口校验、旧导航消失断言需要在抽屉打开时执行，也已修复。最终 `652a788` 两轴复审各 0 项剩余发现。
 
 页面现在先遍历原操作者的相关恢复记录，未决、过期未知或读取失败均不开放新 Key。真实回滚恢复测试及页面测试覆盖 CREATE/ACTIVATE 的 NOT_COMMITTED、PROCESSING 和 UNKNOWN；已确认 COMMITTED 后清除本地未知提示。ADR 0045 与正式接口说明明确已登记 actor/Key 过期后不从原入口重建，保留可读取的稳定结果。
 
-当前未推送、未关闭 Issue；本切片完成不代表 #170 或 #165 完成。
+## 逐项验收
+
+| #173 验收项 | 证据与结果 |
+| --- | --- |
+| 正式列表/详情、类型化 Client、独立页面及筛选/游标 | OpenAPI 与路由归属门禁、PostgreSQL HTTP/游标测试、Runtime 与页面测试通过；Chrome 编码/状态筛选返回 200。 |
+| 全局唯一 max_users，已有复用，创建并激活 | 数据库唯一约束、并发和状态机测试通过；Chrome 创建 DRAFT、激活 ACTIVE、复用同一 ID，双击只发送一次。 |
+| 持久事实恢复，原操作者/Key/24h，不因刷新新建 | PostgreSQL 真事务回滚/锁、actor 隔离、精确到期边界通过；Chrome 创建和激活在写入失败与提交成功但响应丢失后均继续原 Key，刷新/重启/重登读取同一结果。 |
+| 权限不足、读取失败及动作限制 | HTTP 权限测试、跨 actor 恢复读取拒绝和页面 403/503 测试通过；未决、PROCESSING、UNKNOWN、读取失败或非 DRAFT 不开放不适用操作。授权隔离与 24h 由后端集成测试证明，未冒称浏览器覆盖。 |
+| 真实浏览器及代表场景 | Chrome 153.0.8010.36，Fresh Compose 产品 35/35；包含响应丢失、重复操作、中文/英文、存储检查、无障碍及四域安全回归。 |
+
+## 归档证据
+
+- [本轮阶段与源码提交记录](assets/issue-173-chrome/acceptance-run.json)
+- [创建响应丢失](assets/issue-173-chrome/issue-173-create-response-lost.png)
+- [激活响应丢失](assets/issue-173-chrome/issue-173-activation-response-lost.png)
+- [权威详情与两条已提交记录](assets/issue-173-chrome/issue-173-authoritative-detail.png)
+- [英文详情](assets/issue-173-chrome/issue-173-english-detail.png)
+
+截图已逐张检查。只归档安全阶段记录与页面截图，不上传原始服务日志、凭据或幂等 Key。本切片完成不代表 #170 或 #165 完成。
