@@ -1,5 +1,7 @@
 package io.saasforge.iam.api;
 
+import io.saasforge.iam.contract.model.CurrentSession;
+import io.saasforge.iam.application.authentication.CurrentSessionQuery;
 import io.saasforge.iam.application.authentication.AccessTokenLoginResult;
 import io.saasforge.iam.application.authentication.CurrentTenantContextQuery;
 import io.saasforge.iam.application.authentication.TenantAuthenticationContextSnapshot;
@@ -65,6 +67,7 @@ public class AuthenticationController implements AuthenticationApi {
     private final TenantContextSwitchService tenantContextSwitchService;
     private final BrowserRequestSecurity browserRequestSecurity;
     private final CurrentTenantContextQuery currentTenantContext;
+    private final CurrentSessionQuery currentSession;
 
     public AuthenticationController(
             PasswordLoginService loginService,
@@ -76,7 +79,8 @@ public class AuthenticationController implements AuthenticationApi {
             ClientCredentialsTokenService clientCredentialsTokenService,
             TenantContextSwitchService tenantContextSwitchService,
             BrowserRequestSecurity browserRequestSecurity,
-            CurrentTenantContextQuery currentTenantContext) {
+            CurrentTenantContextQuery currentTenantContext,
+            CurrentSessionQuery currentSession) {
         this.loginService = loginService;
         this.contextSelectionService = contextSelectionService;
         this.passwordChangeService = passwordChangeService;
@@ -87,6 +91,16 @@ public class AuthenticationController implements AuthenticationApi {
         this.tenantContextSwitchService = tenantContextSwitchService;
         this.browserRequestSecurity = browserRequestSecurity;
         this.currentTenantContext = currentTenantContext;
+        this.currentSession = currentSession;
+    }
+
+    @Override
+    public ResponseEntity<CurrentSession> getCurrentSession() {
+        var snapshot = currentSession.read(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(new CurrentSession()
+                        .identityId(snapshot.identityId()).email(snapshot.email())
+                        .displayName(snapshot.displayName()).platformAdmin(snapshot.platformAdmin()));
     }
 
     @Override

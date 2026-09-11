@@ -33,6 +33,7 @@ export {
   type AuthenticationStateAction,
   type AuthenticationTransition,
   type ConsoleApiClient,
+  type CurrentSession,
   type ConsoleApiResult,
   type ContextSelectionRequiredAuthenticationState,
   type AuthenticationOperationResult,

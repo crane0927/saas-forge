@@ -12,6 +12,13 @@ declare const operationHandle: IdempotentOperationHandle;
 // @ts-expect-error 未验证 Runtime Config 的底层构造器不属于公共根入口。
 void appRuntime.createAuthenticationRuntime;
 
+void runtime.client.getCurrentSession();
+void runtime.client.getCurrentSession({
+  // @ts-expect-error Current Session 不接受调用方指定的身份或凭据。
+  identityId: 'other',
+  headers: { Authorization: 'Bearer other' },
+});
+
 void runtime.client.getOAuthClient({ clientId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6076' });
 void runtime.client.createOAuthClient({
   request: { displayName: 'Runtime Client', allowedScopes: new Set(['runtime:read']) },

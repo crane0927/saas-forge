@@ -971,6 +971,79 @@ class AuthenticationHttpIT {
 
     @Test
     @Order(5)
+    void readsCurrentPlatformSessionFromAuthoritativeIdentityAndAuthorization() throws Exception {
+        TestUser user = createUser("current-platform@example.test", "correct-password", true, Credential.REGULAR);
+        MvcResult login = login("current-platform@example.test", "correct-password", "PLATFORM")
+                .andExpect(status().isOk()).andReturn();
+        String bearer = "Bearer " + accessToken(login);
+        mockMvc.perform(get("/api/v1/auth/session").header(HttpHeaders.AUTHORIZATION, bearer))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(header().doesNotExist("Set-Cookie"))
+                .andExpect(jsonPath("$.identityId").value(user.identity().id().toString()))
+                .andExpect(jsonPath("$.email").value("current-platform@example.test"))
+                .andExpect(jsonPath("$.platformAdmin").value(true))
+                .andExpect(jsonPath("$.accessToken").doesNotExist())
+                .andExpect(jsonPath("$.expiresIn").doesNotExist());
+        // 读取成功并不冻结授权；业务操作必须再次检查当前 Role。
+        jdbc.update("UPDATE iam_platform_role_assignments SET revoked_at = now() WHERE identity_id = ?",
+                user.identity().id());
+        mockMvc.perform(get("/api/v1/auth/session").header(HttpHeaders.AUTHORIZATION, bearer))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.platformAdmin").value(false));
+        mockMvc.perform(get("/api/v1/platform/oauth-clients/{clientId}", uuidV7(69_001))
+                        .header(HttpHeaders.AUTHORIZATION, bearer))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @Order(5)
+    void currentSessionRejectsWrongCredentialsAndTenantContextWithoutChangingCookies() throws Exception {
+        mockMvc.perform(get("/api/v1/auth/session")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/auth/session").header(HttpHeaders.AUTHORIZATION, "Bearer malformed"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/auth/session")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + SERVICE_TOKENS.get().membershipReadToken()))
+                .andExpect(status().isUnauthorized());
+        TestUser tenant = createUser("current-tenant@example.test", "correct-password", true, Credential.REGULAR);
+        accessibleMemberships(tenant.identity().id(), membership(uuidV7(69_011), uuidV7(69_012), "Tenant"));
+        MvcResult login = login("current-tenant@example.test", "correct-password", "TENANT")
+                .andExpect(status().isOk()).andReturn();
+        mockMvc.perform(get("/api/v1/auth/session")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken(login)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_CONTEXT_UNAVAILABLE"))
+                .andExpect(header().doesNotExist("Set-Cookie"));
+        mockMvc.perform(get("/api/v1/auth/session")
+                        .cookie(new Cookie("__Host-sf_tenant_refresh", refreshToken(login))))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @Order(5)
+    void currentSessionDoesNotPromiseRefreshAndFailsClosedForRevocation() throws Exception {
+        TestUser user = createUser("current-revocation@example.test", "correct-password", true, Credential.REGULAR);
+        MvcResult login = login("current-revocation@example.test", "correct-password", "PLATFORM")
+                .andExpect(status().isOk()).andReturn();
+        String token = accessToken(login);
+        // 仅终止 Refresh Family，保留短期 Access Token，证明读取不是未来刷新的保证。
+        jdbc.update("UPDATE iam_refresh_token_families SET revoked_at = now() WHERE identity_id = ?",
+                user.identity().id());
+        mockMvc.perform(get("/api/v1/auth/session").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk());
+        refresh(refreshToken(login), UUID.randomUUID()).andExpect(status().isUnauthorized());
+        revocationIndex.markNotReady();
+        try {
+            mockMvc.perform(get("/api/v1/auth/session").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.code").value("TOKEN_REVOCATION_STATUS_UNAVAILABLE"))
+                    .andExpect(header().doesNotExist("Set-Cookie"));
+        } finally {
+            revocationIndexRecovery.recover();
+        }
+    }
+
+    @Test
+    @Order(5)
     void readsCurrentTenantContextWithBearerWithoutRotatingTheSession() throws Exception {
         TestUser user = createUser("context-reader@example.test", "correct-password", false, Credential.REGULAR);
         UUID membershipId = UUID.fromString("0198c9d5-0f25-7b21-8d67-31c8652d4d90");

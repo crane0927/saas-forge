@@ -3,5 +3,18 @@
   "oauthClientsDescription": "This entry registers only Platform local routes; it does not load a dynamic Remote.",
   "oauthClientsTitle": "OAuth Client management",
   "platformOverviewDescription": "The current session was restored or signed in through the Platform authentication Runtime.",
-  "platformOverviewTitle": "Platform overview"
+  "platformOverviewTitle": "Platform overview",
+  "currentSessionTitle": "Current identity",
+  "currentSessionLoading": "Reading current identity…",
+  "currentSessionFailed": "Current identity is unavailable",
+  "currentSessionRetry": "Reload identity",
+  "currentSessionScope": "This describes identity and authorization for this request only. It does not guarantee a future session refresh.",
+  "identityId": "Identity ID",
+  "email": "Email",
+  "displayName": "Display name",
+  "platformAccess": "Platform authorization",
+  "platformAdmin": "Platform administrator",
+  "noPlatformAccess": "No platform administrator authorization",
+  "currentSessionRetryHint": "Retry, or sign in again if the session has ended.",
+  "currentSessionDenied": "These credentials cannot read a Platform identity."
 }

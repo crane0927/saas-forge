@@ -179,21 +179,22 @@ test('Platform and Tenant sessions survive independent recovery and logout after
   const password = `Acceptance-${randomBytes(24).toString('hex')}`;
 
   await platform.goto(`https://platform.${rootDomain}/`);
-  const initial = await login(platform, email, initialPassword, 'en-US');
+  await selectConsoleLocale(platform, '简体中文');
+  const initial = await login(platform, email, initialPassword, 'zh-CN');
   assert.equal(initial.contextState, 'PASSWORD_CHANGE_REQUIRED');
   assert.equal(Object.hasOwn(initial, 'accessToken'), false);
   const initialCookieStored = (await context.cookies(`https://api.${rootDomain}`)).some(
     (cookie) => cookie.name === '__Host-sf_platform_refresh',
   );
-  await expectRouteAccessibility(platform, 'Set a new password');
+  await expectRouteAccessibility(platform, '设置新密码');
   await platform
-    .getByLabel(/^New password/)
+    .getByLabel(/^新密码/)
     .fill(password)
     .catch(() => {
       throw new Error('new password field unavailable');
     });
   const changed = platform.waitForResponse(isAuthResponse('password-changes'));
-  await platform.getByRole('button', { name: 'Update password', exact: true }).press('Enter');
+  await platform.getByRole('button', { name: '更新密码', exact: true }).press('Enter');
   const changedResponse = await changed;
   platform.off('response', observeCookie);
   const initialCookieEvents = await Promise.all(cookieEvents);
@@ -221,10 +222,22 @@ test('Platform and Tenant sessions survive independent recovery and logout after
     changeDiagnostic += `\n${initialCookieEvents.join('\n')}`;
   }
   assert.equal(changedResponse.status(), 204, changeDiagnostic);
-  await platform.getByRole('heading', { name: 'Sign in to SaaS Forge', exact: true }).waitFor();
-  const platformLogin = await login(platform, email, password, 'en-US');
+  await platform.getByRole('heading', { name: '登录 SaaS Forge', exact: true }).waitFor();
+  const platformLogin = await login(platform, email, password, 'zh-CN');
   assert.equal(platformLogin.contextState, 'ACCESS_TOKEN_ISSUED');
-  await expectRouteAccessibility(platform, 'Platform overview');
+  await expectRouteAccessibility(platform, 'Platform 总览');
+  await platform.getByText(email, { exact: true }).waitFor();
+  await platform.getByText('平台管理员', { exact: true }).waitFor();
+  await selectConsoleLocale(platform, 'English');
+  await platform.getByRole('heading', { name: 'Current identity', exact: true }).waitFor();
+  const reread = platform.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === '/api/v1/auth/session' &&
+      response.request().method() === 'GET',
+  );
+  await platform.getByRole('button', { name: 'Reload identity', exact: true }).click();
+  assert.equal((await reread).status(), 200);
+  await platform.getByText(email, { exact: true }).waitFor();
   await selectConsoleLocale(platform, '简体中文');
   await platform.getByRole('heading', { name: 'Platform 总览', exact: true }).waitFor();
 
@@ -286,6 +299,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
   }
 
   await assertOtherSessionUnchanged(context, 'PLATFORM', () => recover(platform, 'Platform 总览'));
+  await platform.getByText(email, { exact: true }).waitFor();
   await assertOtherSessionUnchanged(context, 'TENANT', () => recover(tenant, 'Tenant workspace'));
   await assertOtherSessionUnchanged(context, 'PLATFORM', () =>
     logout(platform, 'Platform Console'),

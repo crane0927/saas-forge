@@ -2,7 +2,23 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MemoryRouter } from 'react-router';
 
-import { createPlatformAuthenticationRoutes, platformAuthenticationRoutes } from '../src/routes';
+import {
+  createAuthenticationRuntimeAfterConfig,
+  parseRuntimeConfig,
+} from '@saas-forge/app-runtime';
+import { createPlatformAuthenticationRoutes } from '../src/routes';
+
+const result = createAuthenticationRuntimeAfterConfig(
+  parseRuntimeConfig({ schemaVersion: 1, apiBaseUrl: 'https://api.example.test' }),
+  {
+    realm: {},
+    intent: 'PLATFORM',
+    fetch: () => Promise.resolve(new Response(null, { status: 401 })),
+  },
+);
+if (!result.ok) throw new Error('Invalid test configuration');
+const client = result.runtime.client;
+const platformAuthenticationRoutes = createPlatformAuthenticationRoutes('zh-CN', client);
 
 afterEach(cleanup);
 
@@ -29,7 +45,7 @@ describe('Platform route tree', () => {
   });
 
   it('uses the active Locale for Platform navigation, routes, and accessibility announcements', async () => {
-    const routes = createPlatformAuthenticationRoutes('en-US');
+    const routes = createPlatformAuthenticationRoutes('en-US', client);
     expect(routes.map(({ path, label }) => ({ path, label }))).toEqual([
       { path: '/', label: 'Home' },
       { path: '/oauth-clients', label: 'OAuth Client' },

@@ -198,6 +198,20 @@ Chromium、Firefox 与 Playwright WebKit 均阻塞核心认证行为，视觉快
 
 ## 12. 交付顺序与完成边界
 
+### Platform Current Session（Issue #171）
+
+`GET /api/v1/auth/session` 使用 Platform User Access Token，返回 IAM 当前权威
+`identityId`、`email`、可选 `displayName` 和 `platformAdmin` 授权事实。响应禁止缓存，
+不设置 Cookie，也不读取或轮换 Refresh Token Family；读取成功不保证未来刷新成功。
+Tenant/Service Token 不能用该接口冒充 Platform 当前身份。角色撤销后，尚有效的
+Platform Access Token 可读取 `platformAdmin=false`，后续业务 operation 仍独立授权。
+
+Platform 总览通过同一 Runtime 的 `ConsoleApiClient.getCurrentSession()` 读取并展示，
+支持中英文与失败重试。读取沿用共享刷新/重放规则，并在响应及 Problem 正文解析后隔离
+会话变化产生的迟到结果。Tenant Context 与 Accessible Memberships 继续使用原正式契约。
+
+### 完成条件
+
 交付按以下依赖顺序拆分：
 
 1. ADR、术语与正式认证契约；

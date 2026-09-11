@@ -8,6 +8,182 @@ import {
 } from '../src';
 
 describe('createAuthenticationRuntime', () => {
+  it.each([
+    {},
+    {
+      identityId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6071',
+      email: 'admin@example.test',
+      platformAdmin: 'false',
+    },
+  ])(
+    'rejects an incomplete or malformed Current Session instead of inventing authorization',
+    async (snapshot) => {
+      const fetch = vi
+        .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+        .mockResolvedValueOnce(
+          Response.json({
+            contextState: 'ACCESS_TOKEN_ISSUED',
+            accessToken: 'memory-token',
+            tokenType: 'Bearer',
+            expiresIn: 120,
+          }),
+        )
+        .mockResolvedValueOnce(Response.json(snapshot));
+      const runtime = createRuntime({ realm: {}, intent: 'PLATFORM', fetch });
+      await runtime.login({ email: 'admin@example.test', password: 'secret' });
+      expect(await runtime.client.getCurrentSession()).toEqual({
+        ok: false,
+        problem: { code: 'INVALID_SERVICE_RESPONSE' },
+      });
+    },
+  );
+
+  it.each([403, 503])(
+    'isolates a late Current Session Problem body (%s) after logout',
+    async (status) => {
+      let release!: () => void;
+      let parsing = false;
+      const response = problemResponse(status, 'PLATFORM_ACCESS_DENIED');
+      const readJson: () => Promise<unknown> = response.json.bind(response);
+      response.json = async () => {
+        parsing = true;
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        return readJson();
+      };
+      const fetch = vi
+        .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+        .mockResolvedValueOnce(
+          Response.json({
+            contextState: 'ACCESS_TOKEN_ISSUED',
+            accessToken: 'old-token',
+            tokenType: 'Bearer',
+            expiresIn: 120,
+          }),
+        )
+        .mockResolvedValueOnce(response)
+        .mockResolvedValueOnce(new Response(null, { status: 204 }));
+      const runtime = createRuntime({ realm: {}, intent: 'PLATFORM', fetch });
+      await runtime.login({ email: 'old@example.test', password: 'secret' });
+      const pending = runtime.client.getCurrentSession();
+      await vi.waitFor(() => {
+        expect(parsing).toBe(true);
+      });
+      await runtime.logout();
+      release();
+      expect(await pending).toEqual({ ok: false, problem: { code: 'SESSION_CHANGED' } });
+    },
+  );
+
+  it.each([false, true])(
+    'isolates late Current Session responses after logout (failure=%s)',
+    async (failure) => {
+      let complete!: (response: Response) => void;
+      const fetch = vi
+        .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+        .mockResolvedValueOnce(
+          Response.json({
+            contextState: 'ACCESS_TOKEN_ISSUED',
+            accessToken: 'old-token',
+            tokenType: 'Bearer',
+            expiresIn: 120,
+          }),
+        )
+        .mockImplementationOnce(
+          () =>
+            new Promise<Response>((resolve) => {
+              complete = resolve;
+            }),
+        )
+        .mockResolvedValueOnce(new Response(null, { status: 204 }));
+      const runtime = createRuntime({ realm: {}, intent: 'PLATFORM', fetch });
+      await runtime.login({ email: 'old@example.test', password: 'secret' });
+      const pending = runtime.client.getCurrentSession();
+      await vi.waitFor(() => {
+        expect(fetch).toHaveBeenCalledTimes(2);
+      });
+      await runtime.logout();
+      complete(
+        failure
+          ? problemResponse(401, 'ACCESS_TOKEN_INVALID')
+          : Response.json({
+              identityId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6071',
+              email: 'old@example.test',
+              platformAdmin: true,
+            }),
+      );
+      expect(await pending).toEqual({ ok: false, problem: { code: 'SESSION_CHANGED' } });
+      expect(runtime.getState().status).toBe('anonymous');
+      expect(fetch).toHaveBeenCalledTimes(3);
+    },
+  );
+
+  it('refreshes and replays Current Session once while preserving independent business denial', async () => {
+    const snapshot = {
+      identityId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6071',
+      email: 'admin@example.test',
+      platformAdmin: false,
+    };
+    const issued = (accessToken: string) =>
+      Response.json({
+        contextState: 'ACCESS_TOKEN_ISSUED',
+        accessToken,
+        tokenType: 'Bearer',
+        expiresIn: 120,
+      });
+    const fetch = vi
+      .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+      .mockResolvedValueOnce(issued('old-token'))
+      .mockResolvedValueOnce(problemResponse(401, 'ACCESS_TOKEN_INVALID'))
+      .mockResolvedValueOnce(issued('fresh-token'))
+      .mockResolvedValueOnce(Response.json(snapshot))
+      .mockResolvedValueOnce(problemResponse(403, 'PLATFORM_ACCESS_DENIED'));
+    const runtime = createRuntime({
+      realm: {},
+      intent: 'PLATFORM',
+      fetch,
+      createIdempotencyKey: () => '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6073',
+    });
+    await runtime.login({ email: 'admin@example.test', password: 'secret' });
+    expect(await runtime.client.getCurrentSession()).toEqual({ ok: true, value: snapshot });
+    const business = await runtime.client.getOAuthClient({
+      clientId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6072',
+    });
+    expect(business).toMatchObject({ ok: false, problem: { status: 403 } });
+    expect(runtime.getState().status).toBe('authenticated');
+    expect(
+      fetch.mock.calls.filter(([url]) => requestUrl(url).endsWith('/auth/refresh')),
+    ).toHaveLength(1);
+  });
+
+  it('reads authoritative Current Session through the shared authenticated client', async () => {
+    const currentSession = {
+      identityId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6071',
+      email: 'admin@example.test',
+      displayName: 'Platform administrator',
+      platformAdmin: true,
+    };
+    const fetch = vi
+      .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'memory-token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      )
+      .mockResolvedValueOnce(Response.json(currentSession));
+    const runtime = createRuntime({ realm: {}, intent: 'PLATFORM', fetch });
+    await runtime.login({ email: 'admin@example.test', password: 'secret' });
+    expect(await runtime.client.getCurrentSession()).toEqual({ ok: true, value: currentSession });
+    expect(requestUrl(fetch.mock.calls[1][0])).toBe('https://api.example.test/api/v1/auth/session');
+    expect(new Headers(fetch.mock.calls[1][1]?.headers).get('Authorization')).toBe(
+      'Bearer memory-token',
+    );
+  });
+
   it.each(['displayName', 'logoUrl', 'faviconUrl', 'primaryColor', 'accentColor'] as const)(
     'keeps an authoritative Tenant context when brand field %s is missing',
     async (missingField) => {

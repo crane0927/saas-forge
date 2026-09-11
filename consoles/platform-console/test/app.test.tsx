@@ -1,7 +1,7 @@
 import { createRuntimeConfigBootstrap, type RuntimeConfigResult } from '@saas-forge/app-runtime';
 import { platformResolvedBrandProfile } from '@saas-forge/design-system';
 import { BrandApplicationProvider, ConsoleLocaleProvider } from '@saas-forge/react-shell';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { PlatformConsoleApp } from '../src/app';
@@ -9,6 +9,67 @@ import { PlatformConsoleApp } from '../src/app';
 afterEach(cleanup);
 
 describe('PlatformConsoleApp', () => {
+  it.each([
+    ['zh-CN', '当前身份暂时无法读取', '重新读取', '无平台管理员授权'],
+    [
+      'en-US',
+      'Current identity is unavailable',
+      'Reload identity',
+      'No platform administrator authorization',
+    ],
+  ] as const)(
+    'retries an unavailable authoritative identity in %s without inventing authorization',
+    async (locale, failure, retry, denied) => {
+      window.history.replaceState(null, '', '/');
+      const authenticationFetch = vi
+        .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+        .mockResolvedValueOnce(
+          Response.json({
+            contextState: 'ACCESS_TOKEN_ISSUED',
+            accessToken: 'memory-only-token',
+            tokenType: 'Bearer',
+            expiresIn: 120,
+          }),
+        )
+        .mockResolvedValueOnce(
+          Response.json(
+            { code: 'TOKEN_REVOCATION_STATUS_UNAVAILABLE', status: 503 },
+            { status: 503 },
+          ),
+        )
+        .mockResolvedValueOnce(
+          Response.json({
+            identityId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6071',
+            email: 'reader@example.test',
+            platformAdmin: false,
+          }),
+        );
+      render(
+        <ConsoleLocaleProvider initialLocale={locale}>
+          <BrandApplicationProvider
+            resolvedBrand={platformResolvedBrandProfile}
+            surface="platform"
+            locale={locale}
+          >
+            <PlatformConsoleApp
+              bootstrap={createRuntimeConfigBootstrap(() => Promise.resolve(success()))}
+              authenticationFetch={authenticationFetch}
+              realm={{}}
+            />
+          </BrandApplicationProvider>
+        </ConsoleLocaleProvider>,
+      );
+      expect(await screen.findByText(failure)).toBeTruthy();
+      expect(screen.queryByText('reader@example.test')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: retry }));
+      expect(await screen.findByText('reader@example.test')).toBeTruthy();
+      expect(screen.getByText(denied)).toBeTruthy();
+      await waitFor(() => {
+        expect(screen.queryByText(failure)).toBeNull();
+      });
+    },
+  );
+
   it('creates the Platform authentication path only after runtime configuration succeeds', async () => {
     const loader = vi.fn(() => Promise.resolve(success()));
     const authenticationFetch = vi
@@ -20,6 +81,14 @@ describe('PlatformConsoleApp', () => {
           accessToken: 'memory-only-token',
           tokenType: 'Bearer',
           expiresIn: 120,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          identityId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6071',
+          email: 'admin@example.test',
+          displayName: 'Platform administrator',
+          platformAdmin: true,
         }),
       );
 
@@ -52,6 +121,9 @@ describe('PlatformConsoleApp', () => {
     fireEvent.click(screen.getByRole('button', { name: '登录' }));
 
     expect(await screen.findByRole('heading', { name: 'Platform 总览' })).toBeTruthy();
+    expect(await screen.findByText('admin@example.test')).toBeTruthy();
+    expect(screen.getByText('Platform administrator')).toBeTruthy();
+    expect(screen.getByText('平台管理员')).toBeTruthy();
     expect(loader).toHaveBeenCalledOnce();
     expect(jsonRequestBody(authenticationFetch.mock.calls[1])).toEqual({
       email: 'admin@example.test',
@@ -72,7 +144,7 @@ describe('PlatformConsoleApp', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'Platform 总览' })).toBeTruthy();
-    expect(authenticationFetch).toHaveBeenCalledTimes(2);
+    expect(authenticationFetch).toHaveBeenCalledTimes(3);
   });
 
   it('shows a stable bilingual configuration failure and retries only after user action', async () => {

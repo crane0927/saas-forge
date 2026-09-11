@@ -1,5 +1,6 @@
 package io.saasforge.iam.config;
 
+import io.saasforge.iam.application.authentication.CurrentSessionQuery;
 import io.saasforge.contracts.tenantaccess.membership.v1.AccessibleMembershipQueryServiceGrpc;
 import io.saasforge.iam.application.authentication.AccessibleMemberships;
 import io.saasforge.iam.application.authentication.CurrentTenantContextQuery;
@@ -92,6 +93,17 @@ import tools.jackson.databind.ObjectMapper;
 
 @Configuration(proxyBeanMethods = false)
 public class AuthenticationConfiguration {
+    @Bean
+    CurrentSessionQuery currentSessionQuery(
+            SigningKeyRepository signingKeys, RevocationIndex revocations,
+            IdentityRepository identities, PlatformRoleAuthorizationService roles, Clock clock,
+            @Value("${security.jwt.issuer}") String issuer) {
+        return new CurrentSessionQuery(
+                new UserAccessTokenSignatureVerifier(new IamJwtVerificationKeyResolver(signingKeys),
+                        clock, issuer, "saasforge-api", Duration.ofSeconds(30)),
+                revocations, identities, roles);
+    }
+
     @Bean
     CurrentTenantContextQuery currentTenantContextQuery(
             SigningKeyRepository signingKeys, AccessibleMemberships memberships,

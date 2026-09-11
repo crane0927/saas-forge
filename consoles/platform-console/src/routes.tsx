@@ -1,14 +1,15 @@
+import type { ConsoleApiClient } from '@saas-forge/app-runtime';
 import { RouteFocusAnnouncement } from '@saas-forge/design-system';
 import { createTranslator, type SupportedLocale } from '@saas-forge/i18n';
 import type { AuthenticationShellRoute } from '@saas-forge/react-shell';
 import { useLocation } from 'react-router';
 
+import { CurrentSessionPanel } from './current-session';
 import { platformMessages } from './messages';
-
-export const platformAuthenticationRoutes = createPlatformAuthenticationRoutes('zh-CN');
 
 export function createPlatformAuthenticationRoutes(
   locale: SupportedLocale,
+  client: ConsoleApiClient,
 ): readonly AuthenticationShellRoute[] {
   const translate = createTranslator({
     namespace: '@saas-forge/platform-console',
@@ -24,7 +25,14 @@ export function createPlatformAuthenticationRoutes(
     {
       path: '/',
       label: translate.translate('navigationHome'),
-      element: <PlatformOverview title={overviewTitle} description={overviewDescription} />,
+      element: (
+        <PlatformOverview
+          title={overviewTitle}
+          description={overviewDescription}
+          client={client}
+          locale={locale}
+        />
+      ),
     },
     {
       path: '/oauth-clients',
@@ -37,9 +45,13 @@ export function createPlatformAuthenticationRoutes(
 function PlatformOverview({
   title,
   description,
+  client,
+  locale,
 }: {
   readonly title: string;
   readonly description: string;
+  readonly client: ConsoleApiClient;
+  readonly locale: SupportedLocale;
 }) {
   const location = useLocation();
   return (
@@ -53,6 +65,7 @@ function PlatformOverview({
         {title}
       </h1>
       <p>{description}</p>
+      <CurrentSessionPanel client={client} locale={locale} />
     </section>
   );
 }

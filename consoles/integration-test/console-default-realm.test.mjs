@@ -68,6 +68,14 @@ for (const [application, directory, heading] of [
             ...(application === 'Tenant' ? { tenantContext } : {}),
           },
         });
+      } else if (new URL(route.request().url()).pathname === '/api/v1/auth/session') {
+        await route.fulfill({
+          json: {
+            identityId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6071',
+            email: 'admin@example.test',
+            platformAdmin: true,
+          },
+        });
       } else {
         assert.equal(new URL(route.request().url()).pathname, '/api/v1/auth/context');
         await route.fulfill({ json: tenantContext });
@@ -95,6 +103,15 @@ for (const [application, directory, heading] of [
     release();
     for (const page of pages) {
       await page.getByRole('heading', { name: heading, exact: true }).waitFor();
+      const localeBounds = await page.locator('.sf-console-locale-control').boundingBox();
+      const logoutBounds = await page
+        .getByRole('button', { name: '退出登录', exact: true })
+        .boundingBox();
+      assert.ok(localeBounds && logoutBounds);
+      assert.ok(
+        localeBounds.y + localeBounds.height <= logoutBounds.y,
+        'Locale control must leave the authenticated logout action unobstructed',
+      );
     }
     assert.equal(refreshes, 1, 'one coordinated browser session must perform one refresh');
 

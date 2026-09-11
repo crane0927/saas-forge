@@ -17,6 +17,35 @@ tags:
   - name: Platform entitlement bootstrap
   - name: OAuth clients
 paths:
+  /api/v1/auth/session:
+    get:
+      tags: [Authentication]
+      operationId: getCurrentSession
+      x-saasforge-service: iam-service
+      summary: Read the current Platform Identity and authorization
+      description: |
+        Uses only a verified Platform User Access Token. Reads authoritative IAM
+        Identity and current PLATFORM_ADMIN authorization, independently of future
+        business authorization. Tenant and Service Access Tokens are rejected.
+        Does not consume, validate or rotate a Refresh Token Family and does not
+        promise that future refresh will succeed. Never sets cookies.
+      security: [{ UserBearerAuth: [] }]
+      responses:
+        '200':
+          description: Current request identity and authorization; never cached.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CurrentSession' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
   /api/v1/auth/context:
     get:
       tags: [Authentication]
@@ -989,6 +1018,17 @@ components:
       required: true
       schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
   schemas:
+    CurrentSession:
+      type: object
+      additionalProperties: false
+      required: [identityId, email, platformAdmin]
+      properties:
+        identityId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        email: { type: string, format: email }
+        displayName: { type: string, minLength: 1, maxLength: 200 }
+        platformAdmin:
+          type: boolean
+          description: Current active PLATFORM_ADMIN assignment; not a grant for any later operation.
     Timestamp:
       type: string
       format: date-time

@@ -3,5 +3,18 @@
   "oauthClientsDescription": "该入口只注册 Platform 本地路由，不加载动态 Remote。",
   "oauthClientsTitle": "OAuth Client 管理",
   "platformOverviewDescription": "当前会话已通过 Platform 认证 Runtime 恢复或登录。",
-  "platformOverviewTitle": "Platform 总览"
+  "platformOverviewTitle": "Platform 总览",
+  "currentSessionTitle": "当前身份",
+  "currentSessionLoading": "正在读取当前身份…",
+  "currentSessionFailed": "当前身份暂时无法读取",
+  "currentSessionRetry": "重新读取",
+  "currentSessionScope": "此信息仅表示本次请求的身份与授权，不保证之后的会话刷新成功。",
+  "identityId": "Identity 标识",
+  "email": "邮箱",
+  "displayName": "显示名",
+  "platformAccess": "平台授权",
+  "platformAdmin": "平台管理员",
+  "noPlatformAccess": "无平台管理员授权",
+  "currentSessionRetryHint": "请重试；若会话已失效，请重新登录。",
+  "currentSessionDenied": "当前凭据不能读取平台身份。"
 }

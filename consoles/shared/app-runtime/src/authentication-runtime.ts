@@ -5,6 +5,7 @@ import {
   OAuthClientsApi,
   ResponseError,
   type CreateOAuthClientRequest,
+  type CurrentSession,
   type OAuthClientDetail,
   type OAuthClientSecretResult,
 } from '@saas-forge/api-client';
@@ -186,7 +187,10 @@ export interface CreateOAuthClientInput {
   readonly signal?: AbortSignal;
 }
 
+export type { CurrentSession } from '@saas-forge/api-client';
+
 export interface ConsoleApiClient {
+  getCurrentSession(signal?: AbortSignal): Promise<ConsoleApiResult<CurrentSession>>;
   getOAuthClient(input: GetOAuthClientInput): Promise<ConsoleApiResult<OAuthClientDetail>>;
   createOAuthClient(
     input: CreateOAuthClientInput,
@@ -593,57 +597,95 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
     }
   }
 
-  const client: ConsoleApiClient = {
-    getOAuthClient: async ({ clientId, signal }) => {
-      if (
-        session.isLogoutPending() ||
-        state.status !== 'authenticated' ||
-        (state.transition !== null && state.transition !== 'refresh') ||
-        accessToken === undefined ||
-        expiresAt === undefined
-      ) {
-        return { ok: false, problem: { code: 'INVALID_AUTHENTICATION_TRANSITION' } };
+  async function executeRead<T>(
+    execute: () => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<ConsoleApiResult<T>> {
+    if (
+      session.isLogoutPending() ||
+      state.status !== 'authenticated' ||
+      (state.transition !== null && state.transition !== 'refresh') ||
+      accessToken === undefined ||
+      expiresAt === undefined
+    ) {
+      return { ok: false, problem: { code: 'INVALID_AUTHENTICATION_TRANSITION' } };
+    }
+    if (expiresAt - now() <= 30_000) {
+      const problem = await refreshForBusinessRequest(signal);
+      if (problem !== undefined) {
+        return { ok: false, problem };
       }
-      if (expiresAt - now() <= 30_000) {
-        const problem = await refreshForBusinessRequest(signal);
-        if (problem !== undefined) {
+    }
+    let requestEpoch = sessionEpoch;
+    try {
+      const value = await execute();
+      if (requestEpoch !== sessionEpoch) return { ok: false, problem: { code: 'SESSION_CHANGED' } };
+      return { ok: true, value };
+    } catch (error) {
+      if (requestEpoch !== sessionEpoch) return { ok: false, problem: { code: 'SESSION_CHANGED' } };
+      if (error instanceof ResponseError && error.response.status === 401) {
+        const refreshProblem = await refreshForBusinessRequest(signal);
+        if (refreshProblem !== undefined) {
+          return { ok: false, problem: refreshProblem };
+        }
+        const replayToken = accessToken;
+        requestEpoch = sessionEpoch;
+        try {
+          const value = await execute();
+          if (requestEpoch !== sessionEpoch)
+            return { ok: false, problem: { code: 'SESSION_CHANGED' } };
+          return { ok: true, value };
+        } catch (replayError) {
+          if (requestEpoch !== sessionEpoch)
+            return { ok: false, problem: { code: 'SESSION_CHANGED' } };
+          if (replayError instanceof ResponseError && replayError.response.status === 401) {
+            await invalidateRejectedToken(replayToken);
+            return { ok: false, problem: { code: 'SESSION_ENDED' } };
+          }
+          const problem = await normalizeOperationError(replayError);
+          if (requestEpoch !== sessionEpoch)
+            return { ok: false, problem: { code: 'SESSION_CHANGED' } };
           return { ok: false, problem };
         }
       }
-      let requestEpoch = sessionEpoch;
-      try {
-        const value = await oauthClientsApi.getOAuthClient({ clientId }, { signal });
-        if (requestEpoch !== sessionEpoch)
-          return { ok: false, problem: { code: 'SESSION_CHANGED' } };
-        return { ok: true, value };
-      } catch (error) {
-        if (requestEpoch !== sessionEpoch)
-          return { ok: false, problem: { code: 'SESSION_CHANGED' } };
-        if (error instanceof ResponseError && error.response.status === 401) {
-          const refreshProblem = await refreshForBusinessRequest(signal);
-          if (refreshProblem !== undefined) {
-            return { ok: false, problem: refreshProblem };
-          }
-          const replayToken = accessToken;
-          requestEpoch = sessionEpoch;
-          try {
-            const value = await oauthClientsApi.getOAuthClient({ clientId }, { signal });
-            if (requestEpoch !== sessionEpoch)
-              return { ok: false, problem: { code: 'SESSION_CHANGED' } };
-            return { ok: true, value };
-          } catch (replayError) {
-            if (requestEpoch !== sessionEpoch)
-              return { ok: false, problem: { code: 'SESSION_CHANGED' } };
-            if (replayError instanceof ResponseError && replayError.response.status === 401) {
-              await invalidateRejectedToken(replayToken);
-              return { ok: false, problem: { code: 'SESSION_ENDED' } };
-            }
-            return { ok: false, problem: await normalizeOperationError(replayError) };
-          }
+      // Problem 正文也可能延迟到会话变化后才完成，必须在解析后再次隔离。
+      const problem = await normalizeOperationError(error);
+      if (requestEpoch !== sessionEpoch) return { ok: false, problem: { code: 'SESSION_CHANGED' } };
+      return { ok: false, problem };
+    }
+  }
+
+  const client: ConsoleApiClient = {
+    getCurrentSession: (signal) =>
+      executeRead(async () => {
+        const response: unknown = await authenticationApi.getCurrentSession({ signal });
+        if (typeof response !== 'object' || response === null) {
+          throw new Error('INVALID_SERVICE_RESPONSE');
         }
-        return { ok: false, problem: await normalizeOperationError(error) };
-      }
-    },
+        const value = response as Record<string, unknown>;
+        // 生成 Client 只转换字段；缺失或错误类型的授权不能被页面当成 true/false。
+        if (
+          typeof value.identityId !== 'string' ||
+          !UUID_V7.test(value.identityId) ||
+          typeof value.email !== 'string' ||
+          value.email.length === 0 ||
+          typeof value.platformAdmin !== 'boolean' ||
+          (value.displayName !== undefined &&
+            (typeof value.displayName !== 'string' ||
+              value.displayName.length === 0 ||
+              value.displayName.length > 200))
+        ) {
+          throw new Error('INVALID_SERVICE_RESPONSE');
+        }
+        return {
+          identityId: value.identityId,
+          email: value.email,
+          platformAdmin: value.platformAdmin,
+          ...(value.displayName === undefined ? {} : { displayName: value.displayName }),
+        };
+      }, signal),
+    getOAuthClient: ({ clientId, signal }) =>
+      executeRead(() => oauthClientsApi.getOAuthClient({ clientId }, { signal }), signal),
     createOAuthClient: ({ request, operationHandle, signal }) =>
       executeMutation(operationHandle, signal, (idempotencyKey) =>
         oauthClientsApi.createOAuthClient(

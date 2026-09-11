@@ -117,7 +117,7 @@ function PlatformAuthenticationPath({
     <AuthenticationShell
       runtime={runtimeResult.runtime}
       defaultPath="/"
-      routes={createPlatformAuthenticationRoutes(locale)}
+      routes={createPlatformAuthenticationRoutes(locale, runtimeResult.runtime.client)}
     />
   );
 }
