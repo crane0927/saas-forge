@@ -30,6 +30,20 @@ Secret 路径为绝对路径，文件建议 600、父目录 700。使用已初�
 
 非 dev 环境使用实际角色及 namespace。既有 IAM ↔ Tenant Access 权限继续保留，不增加跨应用配置读取或注册权限。新 dev 环境初始化脚本已包含上述权限，`scripts/verify-nacos-acl.sh` 检查对应读取与配置隔离。脚本通过不等于业务通信成功。
 
+## 更新代码后的数据库迁移
+
+原生应用使用应用账号，启动或重启 IDE 服务不会自动执行数据库迁移。更新代码后，先用迁移账号检查并应用新增迁移，再验证新接口。已有环境升级 #173 时应从 V4 前进到 V5，新增 `quota_definition_recovery` 表；已有额度定义不会因此生成历史恢复记录。
+
+若使用仓库既有 Compose PostgreSQL 和已配置的受限凭据，可独立运行迁移容器：
+
+```bash
+cd deploy/compose
+docker compose run --rm --no-deps entitlement-migrate info
+docker compose run --rm --no-deps entitlement-migrate migrate
+```
+
+该命令只执行 Entitlement 的 Flyway 迁移，不启停 IDE 应用，也不替换 HTTPS Edge。外部数据库使用对应环境的受控 Flyway 发布流程，不把 Compose 设为必经步骤。若历史校验失败，先按迁移不可变规则调查，不使用 repair 或重建数据绕过。
+
 ## IDEA Run / Debug / 重启
 
 重新同步 Maven，在 IDEA 创建 Spring Boot 配置：主类 `io.saasforge.entitlement.EntitlementServiceApplication`，classpath `entitlement-service`，Active profiles `local`。只保留 IDE Build，不添加 package、后台 JAR 或 replace/restore 前置步骤。

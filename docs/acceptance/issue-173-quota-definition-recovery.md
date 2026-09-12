@@ -4,7 +4,7 @@
 
 2026-09-12 本地实现、回归及真实 Chrome/Fresh Compose 验收完成。产品套件 **35/35 通过**，随后 Compose 重置及 Chrome 浏览器门禁通过，正式脚本退出码 0。通过的源码提交为 `652a788d775be167f2b55f392f217f947406390d`，启动时 tracked 工作区干净；后续提交仅更新文档与证据。
 
-完整后端、完整前端门禁均已通过，最后后端改动另外完成 Entitlement 全量复验。未推送，远端 CI 未执行，GitHub Issue 尚未更新或关闭。
+完整后端、完整前端门禁均已通过，最后后端改动另外完成 Entitlement 全量复验。最终远端 CI、验收清单与关闭状态见 [Issue #173 的完成记录](https://github.com/crane0927/saas-forge/issues/173)。
 
 ## 范围
 
@@ -71,3 +71,14 @@
 - [英文详情](assets/issue-173-chrome/issue-173-english-detail.png)
 
 截图已逐张检查。只归档安全阶段记录与页面截图，不上传原始服务日志、凭据或幂等 Key。本切片完成不代表 #170 或 #165 完成。
+
+
+## 2026-09-12 关闭前原生环境复核
+
+用户报告详情页两处 `NETWORK_UNAVAILABLE`。在用户原 Chrome 页面复现：`GET /api/v1/platform/quota-definition-operations`（含 `limit=100` 的自动检查）得到 502，浏览器因响应缺少 CORS 允许头而拒绝暴露结果。既有定义详情仍可读取。
+
+只读检查确认本地 `entitlement_db` 的 Flyway 历史仅到 V4，恢复表不存在。正式 `entitlement-migrate info` 明确 V5 为 Pending；执行 `docker compose run --rm --no-deps entitlement-migrate migrate`，5 条历史/当前迁移校验成功，仅应用 V5，退出码 0。未修改历史迁移、删除数据、重启 IDE 服务或接管 Edge。
+
+迁移后在同一 Chrome 页面分别重试，自动操作检查及手动操作记录读取均恢复，两个错误提示消失。当前操作者没有新恢复记录，显示“未找到操作记录；这不能证明先前请求未提交。”；9 月 4 日创建的原额度仍为 ACTIVE。此处证明已有数据库的前向升级与正式读取恢复，创建/激活/响应丢失场景仍由前述 Fresh 35/35 和服务集成测试证明。
+
+补充[原生数据库升级步骤](../native-entitlement-development.md)，明确 IDE 应用账号不会代执行迁移。关闭前核验以最新推送提交的 Verify workflow 为准，运行链接和结论记录到 Issue，不以旧提交的 CI 代替。
