@@ -26,7 +26,10 @@
 - 沙箱阻断：首次 PostgreSQL 无法访问 Docker；前端边界测试回环监听 `EPERM`。这些运行不计为通过。
 - 两轴审查发现历史零额度 HTTP 提前校验、不可修复字段登记，以及所有套餐被单个未决操作阻断；已针对性修改并补回归，两轴复审各 0 项剩余阻断发现。Standards 另有重复消息选择的可选维护建议，本切片未扩展重构。
 - 已通过：`bash scripts/verify-tenant-lifecycle-e2e.sh` 隔离 Fresh Compose 13/13，退出码 0；合法 limit=1 经真实 gRPC Consume 后用量为 1，HTTP 初始化返回 `QUOTA_EXCEEDED`，Release 后用量为 0。包含 Tenant、订阅、撤销、Audit 隔离重放和 Readiness 恢复。
-- 真实 Chrome/Fresh Compose 页面验收：预检阻断。Chrome 153.0.8010.36 可用，但当前本地 HTTPS Edge 占用 443；已请开发者释放，不接管 IDE 或现有 Edge。
+- 历史阻断：本地 HTTPS Edge 占用 443，开发者停止后预检通过；未接管 IDE 或现有 Edge。
+- 真实 Chrome/Fresh 页面验收最终通过：Chrome 153.0.8010.36、1440×960、受信 HTTPS 四域入口，`verify-console-authentication-e2e.sh --product` 产品 36/36，重置后 Chrome 浏览器门禁通过，退出码 0。该命令复用已构建产物，不宣称再次执行 Maven/workspace 门禁。
+- 浏览器复验保留失败事实：首轮创建恢复等待超时；补充截图和请求计数后确认编码为空、请求数 0、页面异常数 0。列表与创建表单都有编码框，脚本未等待路由切换；改为等待 `/plans/new` 并限定创建表单后完整通过。期间另一轮四域出现 `ERR_CONNECTION_CLOSED`，在重新建立隔离环境后未复现。
+- 本地原生环境：开发者报告操作记录读取失败；只读核实数据库仍为 V5、缺少 `plan_recovery`。执行既有独立 Flyway 入口后 V6 成功，应用角色可读 CREATE/ACTIVATE 各 1 条记录，原 `local-development` 仍为 ACTIVE、limit=1；开发者刷新后确认已正常。
 
 ## 正式验收入口
 
@@ -34,4 +37,6 @@
 
 生命周期脚本原新建零额度夹具改为合法上限 1，再以正式授权 gRPC Consume 占满、HTTP 初始化验证 `QUOTA_EXCEEDED`，最后 Release 验证已用量为 0；不通过修改用量表伪造耗尽。
 
-本切片不自动关闭 #170 或 #165。前后端完整门禁与生命周期 Fresh 均已通过；真实 Chrome 页面验收仍被 443 占用阻断，因此不宣称 #174 全部验收通过。当前开发库仅做过只读盘点，尚未代开发者应用 V6 或重启 IDE 服务。
+本切片不自动关闭 #170 或 #165。前后端完整门禁、生命周期 Fresh 13/13、真实 Chrome 产品 36/36 和重置后浏览器门禁均已通过。本次未推送、未运行远程 CI、未关闭 Issue。
+
+本轮截图位于验收输出目录 `/tmp/issue174-chrome-evidence-4/`：`issue-174-create-response-lost.png`、`issue-174-activation-response-lost.png`、`issue-174-active-detail.png`、`issue-174-legacy-english.png`。页面身份、有效内容、无框架错误遮罩、交互状态、无障碍和存储检查通过；截图已人工检查，没有内容遮挡。证据对应实现提交 `bd98d6d` 加本次测试定位修正。

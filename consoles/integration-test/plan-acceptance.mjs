@@ -42,25 +42,38 @@ export async function verifyPlan({
     await page.goto(`${base}/plans`);
     await accessibility(page, '套餐');
     await page.getByRole('button', { name: '创建套餐', exact: true }).click();
-    await page.getByRole('textbox', { name: '编码', exact: false }).fill('browser-plan');
-    await page.getByRole('textbox', { name: '名称', exact: false }).fill('Browser Plan');
-    await page.getByRole('textbox', { name: 'max_users 上限', exact: false }).fill('0');
+    await page.waitForURL(`${base}/plans/new`);
+    const createForm = page.getByRole('form', { name: '创建套餐', exact: true });
+    await createForm.getByRole('textbox', { name: '编码', exact: false }).fill('browser-plan');
+    await createForm.getByRole('textbox', { name: '名称', exact: false }).fill('Browser Plan');
+    await createForm.getByRole('textbox', { name: 'max_users 上限', exact: false }).fill('0');
     await page.getByRole('button', { name: '创建套餐', exact: true }).click();
     await page.getByText(/编码需为/).waitFor();
-    await page.getByRole('textbox', { name: 'max_users 上限', exact: false }).fill('1');
+    await createForm.getByRole('textbox', { name: 'max_users 上限', exact: false }).fill('1');
     let creates = 0;
     let createKey;
+    let createStatus;
     await page.route('**/api/v1/platform/plans', async (route) => {
       if (route.request().method() !== 'POST') return route.continue();
       creates++;
       createKey = route.request().headers()['idempotency-key'];
       const response = await route.fetch();
-      if (response.status() === 201) id = (await response.json()).id;
+      createStatus = response.status();
+      if (createStatus === 201) id = (await response.json()).id;
       await route.abort('failed');
     });
-    await page.getByRole('button', { name: '创建套餐', exact: true }).dblclick();
-    await page.getByText('操作结果待确认', { exact: true }).waitFor();
+    try {
+      await page.getByRole('button', { name: '创建套餐', exact: true }).dblclick();
+      await page.getByText('操作结果待确认', { exact: true }).waitFor();
+    } catch (error) {
+      await capture(page, 'issue-174-create-failure');
+      throw new Error(
+        `Plan create recovery: requests=${creates}, status=${createStatus ?? 'none'}, pageErrors=${errors.length}`,
+        { cause: error },
+      );
+    }
     assert.equal(creates, 1);
+    assert.equal(createStatus, 201);
     assert.ok(id);
     assert.ok(createKey);
     await capture(page, 'issue-174-create-response-lost');
