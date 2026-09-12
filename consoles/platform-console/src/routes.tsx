@@ -4,6 +4,7 @@ import { createTranslator, type SupportedLocale } from '@saas-forge/i18n';
 import type { AuthenticationShellRoute } from '@saas-forge/react-shell';
 import { useLocation } from 'react-router';
 
+import { PlanRoutes } from './plans';
 import { QuotaDefinitionRoutes } from './quota-definitions';
 import { TenantRoutes } from './tenants';
 
@@ -51,6 +52,13 @@ export function createPlatformAuthenticationRoutes(
       navigationPath: '/quota-definitions',
       label: translate.translate('quotaDefinitionsTitle'),
       element: <QuotaDefinitionRoutes client={client} locale={locale} />,
+    },
+    {
+      path: '/plans/*',
+      icon: 'building',
+      navigationPath: '/plans',
+      label: translate.translate('planDefinitionsTitle'),
+      element: <PlanRoutes client={client} locale={locale} />,
     },
     {
       path: '/oauth-clients',

@@ -28,6 +28,7 @@ describe('Platform route tree', () => {
       { path: '/', label: '首页' },
       { path: '/tenants/*', label: 'Tenant' },
       { path: '/quota-definitions/*', label: '额度定义' },
+      { path: '/plans/*', label: '套餐' },
       { path: '/oauth-clients', label: 'OAuth Client' },
     ]);
   });
@@ -52,6 +53,7 @@ describe('Platform route tree', () => {
       { path: '/', label: 'Home' },
       { path: '/tenants/*', label: 'Tenants' },
       { path: '/quota-definitions/*', label: 'Quota definitions' },
+      { path: '/plans/*', label: 'Plans' },
       { path: '/oauth-clients', label: 'OAuth Client' },
     ]);
 

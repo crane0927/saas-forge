@@ -13,6 +13,7 @@ import java.util.UUID;
 import org.apache.ibatis.annotations.Param;
 
 public interface EntitlementBootstrapMapper {
+    java.util.List<UUID> listPlans(QuotaQuery query);
     java.util.List<QuotaDefinitionRow> listQuotaDefinitions(QuotaQuery query);
     record QuotaQuery(String code, String status, UUID after, int limit) { }
 

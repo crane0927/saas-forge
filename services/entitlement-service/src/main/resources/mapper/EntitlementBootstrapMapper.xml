@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="io.saasforge.entitlement.infrastructure.persistence.mapper.EntitlementBootstrapMapper">
+    <select id="listPlans" resultType="java.util.UUID">
+        SELECT id FROM plans WHERE strpos(code, #{code}) &gt; 0
+        <if test="status != null">AND plan_status = #{status}</if>
+        <if test="after != null">AND id &gt; #{after}</if>
+        ORDER BY id LIMIT #{limit}
+    </select>
     <select id="setOperationTarget" resultType="string">
         SELECT set_config('app.tenant_id', CAST(#{tenantId} AS TEXT), true)
     </select>

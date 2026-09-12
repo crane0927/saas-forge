@@ -24,6 +24,13 @@ public record Plan(
         if (id == null || id.version() != 7) {
             throw new PlanInvalidException("Plan ID 必须是 UUIDv7");
         }
+        validateDraftFields(code, displayName, quotaLimit);
+        requirePositiveLimit(List.of(quotaLimit));
+        return new Plan(id, code, displayName, PlanStatus.DRAFT, List.of(quotaLimit), now, now);
+    }
+
+    /** 校验与保留期无关的字段；新额度下限仍须在历史重放判定后执行。 */
+    public static void validateDraftFields(String code, String displayName, PlanQuotaLimit quotaLimit) {
         if (code == null || !CODE.matcher(code).matches()) {
             throw new PlanInvalidException("Plan code 不合法");
         }
@@ -33,13 +40,24 @@ public record Plan(
         if (quotaLimit == null) {
             throw new PlanInvalidException("Plan 必须恰好包含一个 max_users 限额");
         }
-        return new Plan(id, code, displayName, PlanStatus.DRAFT, List.of(quotaLimit), now, now);
+    }
+
+    /** 历史读取允许零额度；仅新建、激活和新订阅授予使用新下限。 */
+    public void requireNewGrantEligible() {
+        requirePositiveLimit(quotaLimits);
+    }
+
+    private static void requirePositiveLimit(List<PlanQuotaLimit> limits) {
+        if (limits.size() != 1 || limits.get(0).limit() < 1) {
+            throw new PlanInvalidException("New Plan grants require max_users of at least 1");
+        }
     }
 
     public Plan activate(Instant now) {
         if (status != PlanStatus.DRAFT) {
             throw new PlanTransitionException();
         }
+        requireNewGrantEligible();
         return new Plan(id, code, displayName, PlanStatus.ACTIVE, quotaLimits, createdAt, now);
     }
 }

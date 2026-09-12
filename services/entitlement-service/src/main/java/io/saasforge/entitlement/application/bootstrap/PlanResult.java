@@ -19,7 +19,7 @@ public record PlanResult(
         quotaLimits = List.copyOf(quotaLimits);
     }
 
-    static PlanResult from(Plan plan) {
+    public static PlanResult from(Plan plan) {
         return new PlanResult(
                 plan.id(), plan.code(), plan.displayName(), plan.status(), plan.quotaLimits(),
                 plan.createdAt(), plan.updatedAt());

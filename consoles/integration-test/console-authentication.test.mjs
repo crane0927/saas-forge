@@ -6,6 +6,7 @@ import path from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { chromium, firefox, webkit } from 'playwright';
+import { verifyPlan } from './plan-acceptance.mjs';
 import { verifyQuotaDefinition } from './quota-definition-acceptance.mjs';
 import { verifyTenantCreation } from './tenant-creation-acceptance.mjs';
 import { verifyClientRecovery } from './console-client-acceptance.mjs';
@@ -276,6 +277,22 @@ test('Platform and Tenant sessions survive independent recovery and logout after
     },
   );
   assert.ok(quotaDefinitionId, 'Quota acceptance must finish before dependent Tenant setup');
+  await t.test(
+    'Plan positive grants, historical zero reads and response-loss recovery',
+    async () => {
+      await verifyPlan({
+        rootDomain,
+        email,
+        password,
+        login,
+        quotaDefinitionId,
+        selectLocale: selectConsoleLocale,
+        accessibility: expectRouteAccessibility,
+        safeStorage: expectSafeStorage,
+        capture: captureBrandEvidence,
+      });
+    },
+  );
   const firstTenant = await prepareTenant(platformLogin.accessToken, email, { quotaDefinitionId });
   {
     await t.test(

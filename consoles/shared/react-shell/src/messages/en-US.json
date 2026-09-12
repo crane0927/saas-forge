@@ -88,5 +88,17 @@
   "quotaRecoveryPrevious": "Previous operation records",
   "quotaRecoveryCreate": "Create max_users",
   "quotaRecoveryActivate": "Activate max_users",
-  "quotaRecoveryUnavailable": "The original operation cannot continue. Verify the existing definition and retention period."
+  "quotaRecoveryUnavailable": "The original operation cannot continue. Verify the existing definition and retention period.",
+  "planRecoveryTitle": "My plan operations",
+  "planRecoveryHint": "Only your server records are shown. If a record is missing or expired, verify the outcome before submitting again.",
+  "planRecoveryRead": "Read operation records",
+  "planRecoveryContinue": "Continue original operation",
+  "planRecoveryView": "View plan",
+  "planRecoveryEmpty": "No operation records found. This does not prove the request was not committed.",
+  "planRecoveryFailure": "Operation records unavailable",
+  "planRecoveryNext": "Next operation records",
+  "planRecoveryPrevious": "Previous operation records",
+  "planRecoveryCreate": "Create Plan",
+  "planRecoveryActivate": "Activate Plan",
+  "planRecoveryUnavailable": "The original operation cannot continue. Verify the existing plan and retention period."
 }

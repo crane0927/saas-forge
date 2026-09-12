@@ -5,6 +5,11 @@ import {
   OAuthClientsApi,
   PlatformTenantsApi,
   PlatformEntitlementBootstrapApi,
+  type Plan,
+  type PlanPage,
+  type PlanStatus,
+  type PlanOperationRecovery,
+  type CreatePlanRequest,
   type QuotaDefinition,
   type QuotaDefinitionPage,
   type QuotaDefinitionStatus,
@@ -202,6 +207,8 @@ export type {
   CurrentSession,
   Tenant,
   TenantStatus,
+  Plan,
+  PlanStatus,
   QuotaDefinition,
   QuotaDefinitionStatus,
 } from '@saas-forge/api-client';
@@ -236,6 +243,21 @@ export interface QuotaDefinitionOperationPage {
   readonly hasMore: boolean;
 }
 
+export interface ListPlansInput {
+  readonly code?: string;
+  readonly status?: PlanStatus;
+  readonly cursor?: string;
+  readonly limit?: number;
+  readonly signal?: AbortSignal;
+}
+
+export type PlanOperation = Omit<PlanOperationRecovery, 'idempotencyKey'>;
+export interface PlanOperationPage {
+  readonly items: readonly PlanOperation[];
+  readonly nextCursor: string | null;
+  readonly hasMore: boolean;
+}
+
 export interface ConsoleApiClient {
   listQuotaDefinitions(
     input: ListQuotaDefinitionsInput,
@@ -257,6 +279,25 @@ export interface ConsoleApiClient {
     operation: QuotaDefinitionOperation,
     signal?: AbortSignal,
   ): Promise<ConsoleApiResult<QuotaDefinitionOperation>>;
+  listPlans(input: ListPlansInput): Promise<ConsoleApiResult<PlanPage>>;
+  getPlan(id: string, signal?: AbortSignal): Promise<ConsoleApiResult<Plan>>;
+  createPlan(input: {
+    readonly request: CreatePlanRequest;
+    readonly signal?: AbortSignal;
+  }): Promise<IdempotentConsoleApiResult<Plan>>;
+  activatePlan(input: {
+    readonly id: string;
+    readonly signal?: AbortSignal;
+  }): Promise<IdempotentConsoleApiResult<Plan>>;
+  listPlanOperations(input: {
+    readonly cursor?: string;
+    readonly limit?: number;
+    readonly signal?: AbortSignal;
+  }): Promise<ConsoleApiResult<PlanOperationPage>>;
+  recoverPlanOperation(
+    operation: PlanOperation,
+    signal?: AbortSignal,
+  ): Promise<ConsoleApiResult<PlanOperation>>;
   listTenants(input: ListTenantsInput): Promise<ConsoleApiResult<TenantPage>>;
   getTenant(tenantId: string, signal?: AbortSignal): Promise<ConsoleApiResult<Tenant>>;
   createTenant(input: {
@@ -505,6 +546,39 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
     const operation = Object.freeze(publicValue);
     if (value.canReplay && idempotencyKey !== undefined && UUID_V7.test(idempotencyKey)) {
       quotaRecoveryMaterials.set(operation, {
+        id: value.id,
+        key: idempotencyKey,
+        epoch: sessionEpoch,
+      });
+    } else if (value.canReplay) {
+      throw new Error('INVALID_SERVICE_RESPONSE');
+    }
+    return operation;
+  }
+
+  const planRecoveryMaterials = new WeakMap<
+    PlanOperation,
+    { id: string; key: string; epoch: number }
+  >();
+
+  function rememberPlanOperation(value: PlanOperationRecovery): PlanOperation {
+    if (
+      !UUID_V7.test(value.id) ||
+      !['CREATE', 'ACTIVATE'].includes(value.operation) ||
+      !['COMMITTED', 'PROCESSING', 'NOT_COMMITTED', 'UNKNOWN'].includes(value.state) ||
+      typeof value.canReplay !== 'boolean' ||
+      !(value.createdAt instanceof Date) ||
+      !Number.isFinite(value.createdAt.getTime()) ||
+      !(value.replayUntil instanceof Date) ||
+      !Number.isFinite(value.replayUntil.getTime()) ||
+      (value.state === 'COMMITTED' && (value.planId === undefined || !UUID_V7.test(value.planId)))
+    ) {
+      throw new Error('INVALID_SERVICE_RESPONSE');
+    }
+    const { idempotencyKey, ...publicValue } = value;
+    const operation = Object.freeze(publicValue);
+    if (value.canReplay && idempotencyKey !== undefined && UUID_V7.test(idempotencyKey)) {
+      planRecoveryMaterials.set(operation, {
         id: value.id,
         key: idempotencyKey,
         epoch: sessionEpoch,
@@ -861,6 +935,44 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
         async () =>
           rememberQuotaOperation(
             await quotaApi.recoverQuotaDefinitionOperation(
+              { operationId: material.id, idempotencyKey: material.key, body: {} },
+              { signal },
+            ),
+          ),
+        signal,
+      );
+    },
+
+    listPlans: ({ signal, ...query }) =>
+      executeRead(() => quotaApi.listPlans(query, { signal }), signal),
+    getPlan: (planId, signal) =>
+      executeRead(() => quotaApi.getPlan({ planId }, { signal }), signal),
+    createPlan: ({ request, signal }) =>
+      executeMutation(undefined, signal, (idempotencyKey) =>
+        quotaApi.createPlan({ idempotencyKey, createPlanRequest: request }, { signal }),
+      ),
+    activatePlan: ({ id, signal }) =>
+      executeMutation(undefined, signal, (idempotencyKey) =>
+        quotaApi.activatePlan({ planId: id, idempotencyKey, body: {} }, { signal }),
+      ),
+    listPlanOperations: ({ signal, ...query }) =>
+      executeRead(async () => {
+        const page = await quotaApi.listPlanOperations(query, { signal });
+        return {
+          items: page.items.map(rememberPlanOperation),
+          nextCursor: page.nextCursor,
+          hasMore: page.hasMore,
+        };
+      }, signal),
+    recoverPlanOperation: (operation, signal) => {
+      const material = planRecoveryMaterials.get(operation);
+      if (material === undefined || material.epoch !== sessionEpoch) {
+        return Promise.resolve({ ok: false, problem: { code: 'INVALID_OPERATION_HANDLE' } });
+      }
+      return executeRead(
+        async () =>
+          rememberPlanOperation(
+            await quotaApi.recoverPlanOperation(
               { operationId: material.id, idempotencyKey: material.key, body: {} },
               { signal },
             ),

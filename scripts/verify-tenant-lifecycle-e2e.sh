@@ -860,26 +860,46 @@ cat "$response_body" >>"$business_response_log"
 echo "[10/13] 验证额度耗尽、Tenant 到期与跨 Tenant RLS"
 request 201 POST /api/v1/platform/plans \
   "$(jq -cn --arg id "$quota_definition_id" \
-    '{code:"tenant-zero",displayName:"Tenant Zero",quotaLimits:[{quotaDefinitionId:$id,limit:0}]}')" \
+    '{code:"tenant-exhausted",displayName:"Tenant Exhausted",quotaLimits:[{quotaDefinitionId:$id,limit:1}]}')" \
   "$platform_token" "$(uuid_v7)"
-zero_plan_id="$(jq -r '.id' "$response_body")"
+exhausted_plan_id="$(jq -r '.id' "$response_body")"
 cat "$response_body" >>"$business_response_log"
-request 200 POST "/api/v1/platform/plans/$zero_plan_id/activations" '' \
+request 200 POST "/api/v1/platform/plans/$exhausted_plan_id/activations" '' \
   "$platform_token" "$(uuid_v7)"
-zero_tenant_expires_at="$(ruby -rtime -e 'puts (Time.now.utc + 3600).iso8601')"
+exhausted_tenant_expires_at="$(ruby -rtime -e 'puts (Time.now.utc + 3600).iso8601')"
 request 201 POST /api/v1/platform/tenants \
-  "$(jq -cn --arg expiresAt "$zero_tenant_expires_at" \
-    '{displayName:"Zero Quota Tenant",expiresAt:$expiresAt}')" \
+  "$(jq -cn --arg expiresAt "$exhausted_tenant_expires_at" \
+    '{displayName:"Exhausted Quota Tenant",expiresAt:$expiresAt}')" \
   "$platform_token" "$(uuid_v7)"
-zero_tenant_id="$(jq -r '.id' "$response_body")"
-request 201 POST "/api/v1/platform/tenants/$zero_tenant_id/subscriptions" \
-  "$(jq -cn --arg planId "$zero_plan_id" '{planId:$planId}')" \
+exhausted_tenant_id="$(jq -r '.id' "$response_body")"
+request 201 POST "/api/v1/platform/tenants/$exhausted_tenant_id/subscriptions" \
+  "$(jq -cn --arg planId "$exhausted_plan_id" '{planId:$planId}')" \
   "$platform_token" "$(uuid_v7)"
-request 409 POST "/api/v1/platform/tenants/$zero_tenant_id/administrator-initializations" \
-  '{"administratorEmail":"zero-admin@saasforge.test"}' \
+# 通过正式服务凭据和 gRPC 占满合法正额度，不直接伪造 quota_usages。
+quota_token_status="$(curl --silent --show-error --output "$response_body" --write-out '%{http_code}' \
+  --user "$(<"$secret_directory/tenant-access-client-id"):$(<"$secret_directory/tenant-access-client-secret")" \
+  --header 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'grant_type=client_credentials' --data-urlencode 'scope=entitlement:quota:write' \
+  "$gateway_base/oauth2/token")"
+[[ "$quota_token_status" == "200" ]]
+quota_token="$(jq -r '.access_token' "$response_body")"
+quota_grpc_port="$(compose port entitlement-service 9090 | sed 's/.*://')"
+quota_probe() {
+  SERVICE_ACCESS_TOKEN="$quota_token" "$repository_root/mvnw" --quiet -pl contracts/protobuf \
+    -Denforcer.skip=true org.codehaus.mojo:exec-maven-plugin:java \
+    -Dexec.mainClass=io.saasforge.contracts.acceptance.QuotaCommandGrpcProbe \
+    -Dexec.classpathScope=test -Dexec.args="$quota_grpc_port $exhausted_tenant_id $(uuid_v7) $1" \
+    >>"$work_directory/quota-probe.log" 2>&1
+}
+quota_probe consume
+request 409 POST "/api/v1/platform/tenants/$exhausted_tenant_id/administrator-initializations" \
+  '{"administratorEmail":"exhausted-admin@saasforge.test"}' \
   "$platform_token" "$(uuid_v7)"
 assert_json '.code == "QUOTA_EXCEEDED"'
 cat "$response_body" >>"$business_response_log"
+
+quota_probe release
+unset quota_token
 
 expired_at="$(ruby -rtime -e 'puts (Time.now.utc + 4).iso8601')"
 request 201 POST /api/v1/platform/tenants \
@@ -898,7 +918,7 @@ cat "$response_body" >>"$business_response_log"
 
 compose exec -T postgres sh -eu -c '
   psql --username "$POSTGRES_USER" --dbname tenant_access_db --tuples-only --no-align \
-    --set=visible="'"$tenant_id"'" --set=hidden="'"$zero_tenant_id"'" <<SQL | grep -qx t
+    --set=visible="'"$tenant_id"'" --set=hidden="'"$exhausted_tenant_id"'" <<SQL | grep -qx t
       BEGIN;
       SET LOCAL ROLE tenant_access_app;
       SELECT set_config('\''app.tenant_id'\'', :'"'"'visible'"'"', true);

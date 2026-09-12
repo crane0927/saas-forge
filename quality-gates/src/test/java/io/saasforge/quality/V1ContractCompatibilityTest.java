@@ -76,6 +76,18 @@ class V1ContractCompatibilityTest {
         }
     }
 
+    @Test
+    void planMinimumExceptionIsLimitedToApprovedNewRequestAndExactValues() {
+        String request = "POST /api/v1/platform/plans requestBody media type application/json property quotaLimits items property limit";
+        assertBoundNotTightened(Map.of("minimum", 0), Map.of("minimum", 1), "minimum", true, request);
+        org.junit.jupiter.api.Assertions.assertThrows(AssertionError.class, () ->
+                assertBoundNotTightened(Map.of("minimum", 0), Map.of("minimum", 2), "minimum", true, request));
+        org.junit.jupiter.api.Assertions.assertThrows(AssertionError.class, () ->
+                assertBoundNotTightened(Map.of("minimum", 0), Map.of("minimum", 1), "minimum", true, request.replace("requestBody", "response 201")));
+        org.junit.jupiter.api.Assertions.assertThrows(AssertionError.class, () ->
+                assertBoundNotTightened(Map.of("minimum", 0), Map.of("minimum", 1), "minimum", true, request.replace("plans", "other")));
+    }
+
     private static void assertOpenApiCompatible(Path baseline) throws IOException {
         Map<String, Object> baselineApi = readYaml(baseline.resolve("openapi/v1.yaml"));
         Map<String, Object> baselineCommon = readYaml(baseline.resolve("openapi/common.yaml"));
@@ -386,6 +398,11 @@ class V1ContractCompatibilityTest {
         }
         double baselineValue = number(baseline.get(keyword), location + " " + keyword);
         double currentValue = number(current.get(keyword), location + " " + keyword);
+        // #170/#174 明确批准的唯一新请求下限变化；响应、其他字段与其他数值仍受原门禁约束。
+        if ("POST /api/v1/platform/plans requestBody media type application/json property quotaLimits items property limit".equals(location)
+                && "minimum".equals(keyword) && lowerBound && baselineValue == 0 && currentValue == 1) {
+            return;
+        }
         assertTrue(lowerBound ? currentValue <= baselineValue : currentValue >= baselineValue,
                 location + " 收紧了 " + keyword + " 约束");
     }

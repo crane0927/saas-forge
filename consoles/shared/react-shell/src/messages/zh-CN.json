@@ -88,5 +88,17 @@
   "quotaRecoveryPrevious": "上一页操作记录",
   "quotaRecoveryCreate": "创建 max_users",
   "quotaRecoveryActivate": "激活 max_users",
-  "quotaRecoveryUnavailable": "当前无法继续原操作，请核查已有定义或保留期。"
+  "quotaRecoveryUnavailable": "当前无法继续原操作，请核查已有定义或保留期。",
+  "planRecoveryTitle": "我的套餐操作",
+  "planRecoveryHint": "仅显示当前操作者的服务端记录。未找到记录或已过期时，请核查结果，不要重新提交。",
+  "planRecoveryRead": "读取操作记录",
+  "planRecoveryContinue": "继续原操作",
+  "planRecoveryView": "查看套餐",
+  "planRecoveryEmpty": "未找到操作记录；这不能证明先前请求未提交。",
+  "planRecoveryFailure": "操作记录暂时无法读取",
+  "planRecoveryNext": "下一页操作记录",
+  "planRecoveryPrevious": "上一页操作记录",
+  "planRecoveryCreate": "创建 Plan",
+  "planRecoveryActivate": "激活 Plan",
+  "planRecoveryUnavailable": "当前无法继续原操作，请核查已有套餐或保留期。"
 }

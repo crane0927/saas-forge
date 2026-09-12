@@ -163,7 +163,7 @@ class EntitlementBootstrapControllerTest {
         var recovery = Mockito.mock(
                 io.saasforge.entitlement.application.bootstrap.RecoverableQuotaDefinitionService.class);
         MockMvc mvc = MockMvcBuilders.standaloneSetup(
-                        new EntitlementBootstrapController(authorization -> KEY, null, null, recovery, null))
+                        new EntitlementBootstrapController(authorization -> KEY, null, null, null, recovery, null))
                 .setControllerAdvice(new EntitlementBootstrapExceptionHandler())
                 .build();
         for (String body : List.of("{\"unexpected\":true}", "[]", "42", "null")) {
@@ -199,7 +199,15 @@ class EntitlementBootstrapControllerTest {
             EntitlementBootstrapService bootstrap,
             CreateInitialSubscriptionService subscriptions) {
         return MockMvcBuilders.standaloneSetup(
-                        new EntitlementBootstrapController(authorizer, bootstrap, subscriptions,
+                        new EntitlementBootstrapController(authorizer,
+                            new io.saasforge.entitlement.application.bootstrap.RecoverablePlanService(bootstrap, null, null) {
+                                @Override public PlanResult create(UUID actor, UUID key, io.saasforge.entitlement.application.bootstrap.PlanDraft draft, String trace) {
+                                    return bootstrap.createPlan(actor, key, draft.code(), draft.displayName(), draft.quotaDefinitionId(), draft.limit(), trace);
+                                }
+                                @Override public PlanResult activate(UUID actor, UUID key, UUID id, String trace) {
+                                    return bootstrap.activatePlan(actor, key, id, trace);
+                                }
+                            }, null, subscriptions,
                             new io.saasforge.entitlement.application.bootstrap.RecoverableQuotaDefinitionService(bootstrap, null, null) {
                                 @Override public QuotaDefinitionResult create(UUID actor, UUID key, String code, String trace) {
                                     return bootstrap.createQuotaDefinition(actor, key, code, trace);

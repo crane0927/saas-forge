@@ -37,6 +37,14 @@ public class EntitlementBootstrapExceptionHandler {
                 exception.code(), "Quota Definition recovery unavailable", exception.getMessage(), request);
     }
 
+    @ExceptionHandler(io.saasforge.entitlement.application.bootstrap.PlanRecoveryException.class)
+    ResponseEntity<Problem> recoveryFailure(
+            io.saasforge.entitlement.application.bootstrap.PlanRecoveryException exception,
+            HttpServletRequest request) {
+        return problem(exception.code().endsWith("NOT_FOUND") ? HttpStatus.NOT_FOUND : HttpStatus.CONFLICT,
+                exception.code(), "Plan recovery unavailable", exception.getMessage(), request);
+    }
+
     @ExceptionHandler(PlatformAuthorizationDeniedException.class)
     ResponseEntity<Problem> authorizationDenied(
             PlatformAuthorizationDeniedException exception, HttpServletRequest request) {

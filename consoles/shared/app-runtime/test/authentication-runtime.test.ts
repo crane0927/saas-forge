@@ -74,6 +74,38 @@ describe('createAuthenticationRuntime', () => {
     expect(request?.body).toBe('{}');
   });
 
+  it('sends plan activation as JSON through the generated client for the browser security boundary', async () => {
+    const id = '019535d9-0000-7000-8000-000000000002';
+    const fetch = vi
+      .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          id,
+          code: 'starter',
+          displayName: 'Starter',
+          status: 'ACTIVE',
+          quotaLimits: [{ quotaDefinitionId: id, limit: 1 }],
+          createdAt: '2026-09-12T00:00:00Z',
+          updatedAt: '2026-09-12T00:00:00Z',
+        }),
+      );
+    const runtime = createRuntime({ realm: {}, intent: 'PLATFORM', fetch });
+    await runtime.login({ email: 'admin@example.test', password: 'secret' });
+    expect(await runtime.client.activatePlan({ id })).toMatchObject({ ok: true });
+    const [url, request] = fetch.mock.calls[1];
+    expect(url).toEqual(expect.stringContaining(`/plans/${id}/activations`));
+    expect(new Headers(request?.headers).get('Content-Type')).toBe('application/json');
+    expect(request?.body).toBe('{}');
+  });
+
   it.each(['CREATE', 'ACTIVATE'])('restores quota %s with only its original Key', async (kind) => {
     const key = '019535d9-0000-7000-8000-000000000001';
     const id = '019535d9-0000-7000-8000-000000000002';
@@ -115,6 +147,49 @@ describe('createAuthenticationRuntime', () => {
     });
     expect(new Headers(fetch.mock.calls[2]?.[1]?.headers).get('Idempotency-Key')).toBe(key);
     expect(await runtime.client.recoverQuotaDefinitionOperation({ ...restored })).toMatchObject({
+      ok: false,
+      problem: { code: 'INVALID_OPERATION_HANDLE' },
+    });
+  });
+  it.each(['CREATE', 'ACTIVATE'])('restores plan %s with only its original Key', async (kind) => {
+    const key = '019535d9-0000-7000-8000-000000000001';
+    const id = '019535d9-0000-7000-8000-000000000002';
+    const operation = {
+      id,
+      operation: kind,
+      state: 'NOT_COMMITTED',
+      createdAt: '2026-09-11T00:00:00.000Z',
+      replayUntil: '2026-09-12T00:00:00.000Z',
+      canReplay: true,
+      idempotencyKey: key,
+    };
+    const fetch = vi
+      .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ items: [operation], nextCursor: null, hasMore: false }),
+      )
+      .mockResolvedValueOnce(Response.json({ ...operation, state: 'COMMITTED', planId: id }));
+    const runtime = createRuntime({ realm: {}, intent: 'PLATFORM', fetch });
+    await runtime.login({ email: 'admin@example.test', password: 'secret' });
+    const page = await runtime.client.listPlanOperations({});
+    expect(page.ok).toBe(true);
+    if (!page.ok) throw new Error('Expected own recovery records');
+    const restored = page.value.items[0];
+    expect(restored).not.toHaveProperty('idempotencyKey');
+    expect(await runtime.client.recoverPlanOperation(restored)).toMatchObject({
+      ok: true,
+      value: { state: 'COMMITTED', planId: id },
+    });
+    expect(new Headers(fetch.mock.calls[2]?.[1]?.headers).get('Idempotency-Key')).toBe(key);
+    expect(await runtime.client.recoverPlanOperation({ ...restored })).toMatchObject({
       ok: false,
       problem: { code: 'INVALID_OPERATION_HANDLE' },
     });
