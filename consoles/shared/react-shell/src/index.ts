@@ -27,3 +27,5 @@ export { FormExitGuardProvider, useFormExitGuard } from './form-exit-guard';
 export { QuotaDefinitionRecoveryPanel } from './quota-definition-recovery';
 
 export { PlanRecoveryPanel } from './plan-recovery';
+
+export { SubscriptionRecoveryPanel } from './subscription-recovery';

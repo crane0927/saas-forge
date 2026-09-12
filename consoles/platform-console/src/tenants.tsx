@@ -27,6 +27,7 @@ import { TenantCreationRecoveryPanel, useFormExitGuard } from '@saas-forge/react
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Route, Routes, useBlocker, useLocation, useNavigate, useParams } from 'react-router';
 import { platformMessages } from './messages';
+import { TenantSubscriptionSection } from './tenant-subscription';
 
 type Props = { readonly client: ConsoleApiClient; readonly locale: SupportedLocale };
 function translator(locale: SupportedLocale) {
@@ -411,6 +412,9 @@ function TenantDetailContent({ client, locale, tenantId }: Props & { readonly te
           {t('tenantBack')}
         </Button>
       </ContentPanel>
+      {result?.ok ? (
+        <TenantSubscriptionSection client={client} locale={locale} tenant={result.value} />
+      ) : null}
     </PageLayout>
   );
 }

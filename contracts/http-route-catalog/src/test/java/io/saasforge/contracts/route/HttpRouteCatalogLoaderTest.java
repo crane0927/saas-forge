@@ -17,7 +17,7 @@ class HttpRouteCatalogLoaderTest {
                 .count();
 
         assertEquals(HttpRouteCatalogLoader.SUPPORTED_SCHEMA_VERSION, catalog.schemaVersion());
-        assertEquals(42 + acceptanceRoutes, catalog.routes().size());
+        assertEquals(46 + acceptanceRoutes, catalog.routes().size());
         for (String operation : java.util.List.of("listQuotaDefinitions", "getQuotaDefinition",
                 "listQuotaDefinitionOperations", "getQuotaDefinitionOperation", "recoverQuotaDefinitionOperation", "listPlans", "getPlan", "listPlanOperations", "getPlanOperation", "recoverPlanOperation")) {
             var route = catalog.routes().stream().filter(value -> value.operationId().equals(operation)).findFirst().orElseThrow();

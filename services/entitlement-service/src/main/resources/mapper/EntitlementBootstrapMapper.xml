@@ -87,6 +87,15 @@
           AND plan_status = 'DRAFT'
     </update>
 
+    <select id="findSubscription" resultType="io.saasforge.entitlement.infrastructure.persistence.record.SubscriptionRow">
+        SELECT id, tenant_id AS tenantId, plan_id AS planId, subscription_status AS status,
+               ends_at AS endsAt, created_at AS createdAt FROM subscriptions WHERE tenant_id = #{tenantId}
+    </select>
+    <!-- 未发生过计量操作时没有 Usage 行；这是领域初始值，不是读取失败的回退。 -->
+    <select id="findSubscriptionUsage" resultType="int">
+        SELECT COALESCE((SELECT used FROM quota_usages
+            WHERE tenant_id = #{tenantId} AND quota_definition_id = #{quotaDefinitionId}), 0)
+    </select>
     <insert id="insertSubscription">
         INSERT INTO subscriptions
             (id, tenant_id, plan_id, subscription_status, ends_at, created_at)

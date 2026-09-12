@@ -3,6 +3,9 @@ package io.saasforge.entitlement.api;
 import io.saasforge.entitlement.application.authorization.PlatformAdminAuthorizer;
 import io.saasforge.entitlement.application.bootstrap.QuotaDefinitionOperation;
 import io.saasforge.entitlement.application.bootstrap.PlanOperation;
+import io.saasforge.entitlement.application.subscription.SubscriptionOperation;
+import io.saasforge.entitlement.contract.model.SubscriptionOperationPage;
+import io.saasforge.entitlement.contract.model.SubscriptionOperationRecovery;
 import io.saasforge.entitlement.contract.model.PlanOperationRecovery;
 import io.saasforge.entitlement.contract.model.PlanOperationPage;
 import io.saasforge.entitlement.contract.model.PlanPage;
@@ -44,7 +47,8 @@ public class EntitlementBootstrapController implements PlatformEntitlementBootst
     private final PlatformAdminAuthorizer authorizer;
     private final io.saasforge.entitlement.application.bootstrap.RecoverablePlanService recoverablePlans;
     private final io.saasforge.entitlement.application.bootstrap.PlanQueries planQueries;
-    private final CreateInitialSubscriptionService initialSubscriptions;
+    private final io.saasforge.entitlement.application.subscription.RecoverableSubscriptionService initialSubscriptions;
+    private final io.saasforge.entitlement.application.subscription.SubscriptionQueries subscriptionQueries;
     private final RecoverableQuotaDefinitionService recoverableQuota;
     private final QuotaDefinitionQueries quotaQueries;
 
@@ -52,15 +56,17 @@ public class EntitlementBootstrapController implements PlatformEntitlementBootst
             PlatformAdminAuthorizer authorizer,
             io.saasforge.entitlement.application.bootstrap.RecoverablePlanService recoverablePlans,
             io.saasforge.entitlement.application.bootstrap.PlanQueries planQueries,
-            CreateInitialSubscriptionService initialSubscriptions,
+            io.saasforge.entitlement.application.subscription.RecoverableSubscriptionService initialSubscriptions,
             RecoverableQuotaDefinitionService recoverableQuota,
-            QuotaDefinitionQueries quotaQueries) {
+            QuotaDefinitionQueries quotaQueries,
+            io.saasforge.entitlement.application.subscription.SubscriptionQueries subscriptionQueries) {
         this.authorizer = authorizer;
         this.recoverablePlans = recoverablePlans;
         this.planQueries = planQueries;
         this.initialSubscriptions = initialSubscriptions;
         this.recoverableQuota = recoverableQuota;
         this.quotaQueries = quotaQueries;
+        this.subscriptionQueries = subscriptionQueries;
     }
 
     /** 仅延后新额度下限校验至幂等判定之后；其余生成约束仍由 MVC 执行。 */
@@ -189,6 +195,46 @@ public class EntitlementBootstrapController implements PlatformEntitlementBootst
     }
 
     @Override
+    public ResponseEntity<SubscriptionOperationPage> listSubscriptionOperations(
+            UUID tenantId, String cursor, Integer limit) {
+        UUID actor = authorizer.authorize(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
+        var page = initialSubscriptions.list(actor, tenantId, cursor, limit);
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore()).body(
+                new SubscriptionOperationPage(
+                        page.items().stream().map(EntitlementBootstrapController::toResponse).toList(),
+                        page.nextCursor(), page.hasMore()));
+    }
+
+    @Override
+    public ResponseEntity<SubscriptionOperationRecovery> getSubscriptionOperation(UUID operationId) {
+        UUID actor = authorizer.authorize(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(toResponse(initialSubscriptions.get(actor, operationId)));
+    }
+
+    @Override
+    public ResponseEntity<SubscriptionOperationRecovery> recoverSubscriptionOperation(
+            UUID operationId, UUID idempotencyKey, Object body) {
+        var request = currentRequest();
+        UUID actor = authorizer.authorize(request.getHeader(HttpHeaders.AUTHORIZATION));
+        if (!(body instanceof java.util.Map<?, ?> values) || !values.isEmpty()) {
+            throw new IllegalArgumentException("Subscription recovery requires an empty JSON object");
+        }
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(toResponse(initialSubscriptions.recover(actor, operationId, idempotencyKey, traceId(request))));
+    }
+
+    private static SubscriptionOperationRecovery toResponse(
+            SubscriptionOperation operation) {
+        var result = new SubscriptionOperationRecovery(operation.id(), operation.tenantId(),
+                SubscriptionOperationRecovery.StateEnum.valueOf(operation.state().name()),
+                operation.createdAt().atOffset(ZoneOffset.UTC), operation.replayUntil().atOffset(ZoneOffset.UTC), operation.canReplay());
+        result.setSubscriptionId(operation.subscriptionId());
+        result.setIdempotencyKey(operation.idempotencyKey());
+        return result;
+    }
+
+    @Override
     public ResponseEntity<PlanOperationPage> listPlanOperations(
             String cursor, Integer limit) {
         UUID actor = authorizer.authorize(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
@@ -255,6 +301,17 @@ public class EntitlementBootstrapController implements PlatformEntitlementBootst
         if (requestBody != null && (!(requestBody instanceof java.util.Map<?, ?> values) || !values.isEmpty())) throw new IllegalArgumentException("Expected empty JSON object");
         return ResponseEntity.ok(toResponse(recoverablePlans.activate(
                 actor, idempotencyKey, planId, traceId(httpRequest))));
+    }
+
+    @Override
+    public ResponseEntity<io.saasforge.entitlement.contract.model.TenantSubscription> getTenantSubscription(UUID tenantId) {
+        authorizer.authorize(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
+        var value = subscriptionQueries.get(tenantId);
+        var response = new io.saasforge.entitlement.contract.model.TenantSubscription(
+                value.observedAt().atOffset(ZoneOffset.UTC),
+                value.subscription() == null ? null : toResponse(value.subscription()),
+                value.effective(), value.maxUsersLimit(), value.maxUsersUsed());
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore()).body(response);
     }
 
     @Override

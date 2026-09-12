@@ -111,6 +111,15 @@ class EntitlementBootstrapPostgreSqlIT {
     }
 
     @Autowired
+    private io.saasforge.entitlement.application.subscription.SubscriptionRecoveryRepository subscriptionRecoveryRepository;
+
+    @Autowired
+    private io.saasforge.entitlement.application.subscription.RecoverableSubscriptionService recoverableSubscriptions;
+
+    @Autowired
+    private io.saasforge.entitlement.application.subscription.SubscriptionQueries subscriptionQueries;
+
+    @Autowired
     private EntitlementBootstrapService service;
 
     @Autowired
@@ -145,7 +154,7 @@ class EntitlementBootstrapPostgreSqlIT {
         assertEquals(0, count("entitlement_outbox_events"));
         var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(
                 new io.saasforge.entitlement.api.EntitlementBootstrapController(authorization -> actor,
-                        recoverablePlans, planQueries, initialSubscriptions, recoverableQuota, quotaQueries))
+                        recoverablePlans, planQueries, recoverableSubscriptions, recoverableQuota, quotaQueries, subscriptionQueries))
                 .setControllerAdvice(new io.saasforge.entitlement.api.EntitlementBootstrapExceptionHandler()).build();
         String legacyRequest = "{\"code\":\"legacy-zero\",\"displayName\":\"Legacy Zero\",\"quotaLimits\":[{\"quotaDefinitionId\":\"" + definition + "\",\"limit\":0}]}";
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/platform/plans")
@@ -168,7 +177,7 @@ class EntitlementBootstrapPostgreSqlIT {
 
     @BeforeEach
     void clean() throws SQLException {
-        executeAsMigrator("TRUNCATE plan_recovery, quota_definition_recovery, entitlement_outbox_events, entitlement_bootstrap_idempotency, "
+        executeAsMigrator("TRUNCATE subscription_recovery, plan_recovery, quota_definition_recovery, entitlement_outbox_events, entitlement_bootstrap_idempotency, "
                 + "quota_operations, quota_usages, subscriptions, plan_quotas, plans, quota_definitions CASCADE");
     }
 
@@ -252,10 +261,18 @@ class EntitlementBootstrapPostgreSqlIT {
                 authorization -> {
                     if (!"allowed".equals(authorization)) throw new io.saasforge.sdk.auth.PlatformAuthorizationDeniedException();
                     return actor;
-                }, recoverablePlans, planQueries, initialSubscriptions, recoverableQuota, quotaQueries);
+                }, recoverablePlans, planQueries, recoverableSubscriptions, recoverableQuota, quotaQueries, subscriptionQueries);
         var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new io.saasforge.entitlement.api.EntitlementBootstrapExceptionHandler()).build();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                "/api/v1/platform/tenants/" + uuidV7(899) + "/subscription").header("Authorization", "allowed"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.subscription").isEmpty());
         var created = recoverableQuota.create(actor, uuidV7(841), "max_users", null);
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                "/api/v1/platform/tenants/" + uuidV7(899) + "/subscription-operations").header("Authorization", "allowed"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.items").isEmpty());
         String definitions = "/api/v1/platform/quota-definitions";
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(definitions)
                 .header("Authorization", "allowed").param("code", "max").param("status", "DRAFT").param("limit", "1"))
@@ -266,7 +283,9 @@ class EntitlementBootstrapPostgreSqlIT {
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk());
         String operations = "/api/v1/platform/quota-definition-operations";
         var record = recoverableQuota.list(actor, null, 50).items().get(0);
-        for (String path : java.util.List.of(definitions, definitions + "/" + created.id(), operations, operations + "/" + record.id())) {
+        for (String path : java.util.List.of(definitions, definitions + "/" + created.id(), operations, operations + "/" + record.id(),
+                "/api/v1/platform/tenants/" + uuidV7(899) + "/subscription",
+                "/api/v1/platform/tenants/" + uuidV7(899) + "/subscription-operations")) {
             mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(path))
                     .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
         }
@@ -289,7 +308,7 @@ class EntitlementBootstrapPostgreSqlIT {
                 authorization -> {
                     if (!"allowed".equals(authorization)) throw new io.saasforge.sdk.auth.PlatformAuthorizationDeniedException();
                     return actor;
-                }, recoverablePlans, planQueries, initialSubscriptions, recoverableQuota, quotaQueries);
+                }, recoverablePlans, planQueries, recoverableSubscriptions, recoverableQuota, quotaQueries, subscriptionQueries);
         var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new io.saasforge.entitlement.api.EntitlementBootstrapExceptionHandler()).build();
         var definition = service.createQuotaDefinition(actor, uuidV7(838), "max_users", null);
@@ -305,7 +324,9 @@ class EntitlementBootstrapPostgreSqlIT {
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk());
         String operations = "/api/v1/platform/plan-operations";
         var record = recoverablePlans.list(actor, null, 50).items().get(0);
-        for (String path : java.util.List.of(definitions, definitions + "/" + created.id(), operations, operations + "/" + record.id())) {
+        for (String path : java.util.List.of(definitions, definitions + "/" + created.id(), operations, operations + "/" + record.id(),
+                "/api/v1/platform/tenants/" + uuidV7(899) + "/subscription",
+                "/api/v1/platform/tenants/" + uuidV7(899) + "/subscription-operations")) {
             mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(path))
                     .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
         }
@@ -505,6 +526,57 @@ class EntitlementBootstrapPostgreSqlIT {
     }
 
     @Test
+    void readsAuthoritativeSubscriptionUsageAndRestoresOriginalActorAfterResponseLoss() {
+        UUID actor = uuidV7(901), tenant = uuidV7(902), key = uuidV7(903);
+        var plan = activePlan(actor, 910, 2);
+        assertThrows(IllegalArgumentException.class, () -> recoverableSubscriptions.create(actor, key, tenant,
+                plan.id(), java.time.Instant.EPOCH, null));
+        assertTrue(recoverableSubscriptions.list(actor, tenant, null, 50).items().isEmpty());
+        var created = recoverableSubscriptions.create(actor, key, tenant, plan.id(), null, null);
+        var read = subscriptionQueries.get(tenant);
+        assertEquals(created, read.subscription());
+        assertTrue(read.effective());
+        assertEquals(2, read.maxUsersLimit());
+        assertEquals(0, read.maxUsersUsed());
+        quotaCommands.consume(uuidV7(920), tenant, "max_users", 1, uuidV7(921), QuotaOperationPurpose.TENANT_ADMIN_INITIALIZATION);
+        assertEquals(1, subscriptionQueries.get(tenant).maxUsersUsed());
+        quotaCommands.release(uuidV7(920), tenant, "max_users", 1, uuidV7(922), QuotaOperationPurpose.TENANT_ADMIN_INITIALIZATION);
+        assertEquals(0, subscriptionQueries.get(tenant).maxUsersUsed());
+        var operation = recoverableSubscriptions.list(actor, tenant, null, 50).items().get(0);
+        assertEquals("COMMITTED", operation.state().name());
+        assertEquals(created.id(), operation.subscriptionId());
+        assertEquals(created.id(), recoverableSubscriptions.recover(actor, operation.id(), key, null).subscriptionId());
+        assertTrue(recoverableSubscriptions.list(uuidV7(904), tenant, null, 50).items().isEmpty());
+        assertThrows(io.saasforge.entitlement.application.subscription.SubscriptionRecoveryException.class,
+                () -> recoverableSubscriptions.get(uuidV7(904), operation.id()));
+        assertThrows(InitialSubscriptionAlreadyExistsException.class,
+                () -> recoverableSubscriptions.create(actor, uuidV7(905), tenant, plan.id(), null, null));
+        assertEquals(null, subscriptionQueries.get(uuidV7(906)).subscription());
+    }
+
+    @Test
+    void subscriptionRecoveryExpiresWithoutRecreatingAndKeepsCommittedFacts() {
+        UUID actor = uuidV7(930), tenant = uuidV7(931), key = uuidV7(932);
+        var plan = activePlan(actor, 940, 1);
+        var deadline = java.time.Instant.now().plusSeconds(60).truncatedTo(java.time.temporal.ChronoUnit.MILLIS);
+        var result = recoverableSubscriptions.create(actor, key, tenant, plan.id(), deadline, null);
+        var operation = recoverableSubscriptions.list(actor, tenant, null, 1).items().get(0);
+        var later = new io.saasforge.entitlement.application.subscription.RecoverableSubscriptionService(
+                initialSubscriptions, subscriptionRecoveryRepository, Clock.fixed(operation.replayUntil(), java.time.ZoneOffset.UTC));
+        assertEquals(result.id(), later.get(actor, operation.id()).subscriptionId());
+        assertFalse(later.get(actor, operation.id()).canReplay());
+        assertThrows(io.saasforge.entitlement.application.subscription.SubscriptionRecoveryException.class,
+                () -> later.recover(actor, operation.id(), key, null));
+        var pending = subscriptionRecoveryRepository.prepare(actor, uuidV7(933),
+                new io.saasforge.entitlement.application.subscription.SubscriptionDraft(uuidV7(934), plan.id(), null),
+                operation.createdAt());
+        assertEquals("UNKNOWN", later.get(actor, pending.id()).state().name());
+        assertFalse(later.get(actor, pending.id()).canReplay());
+        assertThrows(io.saasforge.entitlement.application.subscription.SubscriptionRecoveryException.class,
+                () -> later.recover(actor, pending.id(), pending.key(), null));
+    }
+
+    @Test
     void commitsFourStableOperationsAndAllowlistedOutboxEvents() throws SQLException {
         UUID actor = uuidV7(1);
         QuotaDefinitionResult quota = service.createQuotaDefinition(actor, uuidV7(2), "max_users",
@@ -660,7 +732,7 @@ class EntitlementBootstrapPostgreSqlIT {
                 """);
         try {
             assertThrows(RuntimeException.class,
-                    () -> initialSubscriptions.create(
+                    () -> recoverableSubscriptions.create(
                             actor, uuidV7(66), tenant, plan.id(), null, null));
             assertEquals(0, count("subscriptions"));
             assertEquals(idempotencyBefore, count("entitlement_bootstrap_idempotency"));
@@ -669,6 +741,11 @@ class EntitlementBootstrapPostgreSqlIT {
             executeAsMigrator("DROP TRIGGER fail_entitlement_outbox ON entitlement_outbox_events; "
                     + "DROP FUNCTION fail_entitlement_outbox()");
         }
+        var operation = recoverableSubscriptions.list(actor, tenant, null, 50).items().get(0);
+        assertEquals("NOT_COMMITTED", operation.state().name());
+        assertTrue(operation.canReplay());
+        assertEquals("COMMITTED", recoverableSubscriptions.recover(actor, operation.id(), uuidV7(66), null).state().name());
+        assertEquals(0, subscriptionQueries.get(tenant).maxUsersUsed());
     }
 
     @Test
@@ -978,6 +1055,9 @@ class EntitlementBootstrapPostgreSqlIT {
             basePackages = "io.saasforge.entitlement.infrastructure.persistence.mapper",
             sqlSessionFactoryRef = "entitlementSqlSessionFactory")
     @Import({
+            io.saasforge.entitlement.application.subscription.RecoverableSubscriptionService.class,
+            io.saasforge.entitlement.infrastructure.persistence.MyBatisSubscriptionRecovery.class,
+            io.saasforge.entitlement.infrastructure.persistence.MyBatisSubscriptionQueries.class,
             RecoverablePlanService.class,
             io.saasforge.entitlement.infrastructure.persistence.MyBatisPlanRecovery.class,
             io.saasforge.entitlement.infrastructure.persistence.MyBatisPlanQueries.class,

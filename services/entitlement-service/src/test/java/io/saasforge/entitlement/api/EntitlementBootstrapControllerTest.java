@@ -163,7 +163,7 @@ class EntitlementBootstrapControllerTest {
         var recovery = Mockito.mock(
                 io.saasforge.entitlement.application.bootstrap.RecoverableQuotaDefinitionService.class);
         MockMvc mvc = MockMvcBuilders.standaloneSetup(
-                        new EntitlementBootstrapController(authorization -> KEY, null, null, null, recovery, null))
+                        new EntitlementBootstrapController(authorization -> KEY, null, null, null, recovery, null, null))
                 .setControllerAdvice(new EntitlementBootstrapExceptionHandler())
                 .build();
         for (String body : List.of("{\"unexpected\":true}", "[]", "42", "null")) {
@@ -207,7 +207,12 @@ class EntitlementBootstrapControllerTest {
                                 @Override public PlanResult activate(UUID actor, UUID key, UUID id, String trace) {
                                     return bootstrap.activatePlan(actor, key, id, trace);
                                 }
-                            }, null, subscriptions,
+                            }, null, new io.saasforge.entitlement.application.subscription.RecoverableSubscriptionService(subscriptions, null, null) {
+                                @Override public io.saasforge.entitlement.application.subscription.InitialSubscriptionResult create(
+                                        UUID actor, UUID key, UUID tenant, UUID plan, java.time.Instant endsAt, String trace) {
+                                    return subscriptions.create(actor, key, tenant, plan, endsAt, trace);
+                                }
+                            },
                             new io.saasforge.entitlement.application.bootstrap.RecoverableQuotaDefinitionService(bootstrap, null, null) {
                                 @Override public QuotaDefinitionResult create(UUID actor, UUID key, String code, String trace) {
                                     return bootstrap.createQuotaDefinition(actor, key, code, trace);
@@ -215,7 +220,7 @@ class EntitlementBootstrapControllerTest {
                                 @Override public QuotaDefinitionResult activate(UUID actor, UUID key, UUID id, String trace) {
                                     return bootstrap.activateQuotaDefinition(actor, key, id, trace);
                                 }
-                            }, null))
+                            }, null, null))
                 .setControllerAdvice(new EntitlementBootstrapExceptionHandler())
                 .build();
     }

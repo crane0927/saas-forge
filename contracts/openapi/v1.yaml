@@ -992,6 +992,102 @@ paths:
         '502': { $ref: './common.yaml#/components/responses/Problem' }
         '504': { $ref: './common.yaml#/components/responses/Problem' }
 
+  /api/v1/platform/tenants/{tenantId}/subscription-operations:
+    get:
+      tags: [Platform entitlement bootstrap]
+      operationId: listSubscriptionOperations
+      x-saasforge-service: entitlement-service
+      summary: Find only the current actor Subscription operation attempts after losing an in-memory handle
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: cursor
+          in: query
+          schema: { type: string, maxLength: 2048 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SubscriptionOperationPage' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/subscription-operations/{operationId}:
+    get:
+      tags: [Platform entitlement bootstrap]
+      operationId: getSubscriptionOperation
+      x-saasforge-service: entitlement-service
+      summary: Read own Subscription operation result; missing or expired records never authorize a new Subscription operation
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: operationId
+          in: path
+          required: true
+          schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SubscriptionOperationRecovery' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/subscription-operations/{operationId}/recovery:
+    post:
+      tags: [Platform entitlement bootstrap]
+      operationId: recoverSubscriptionOperation
+      x-saasforge-service: entitlement-service
+      summary: Continue the original Subscription operation with its server-stored actor, Key and request; never starts a new operation
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: operationId
+          in: path
+          required: true
+          schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              maxProperties: 0
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SubscriptionOperationRecovery' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
   /api/v1/platform/plan-operations:
     get:
       tags: [Platform entitlement bootstrap]
@@ -1216,6 +1312,32 @@ paths:
         '409': { $ref: './common.yaml#/components/responses/Problem' }
         '405': { $ref: './common.yaml#/components/responses/Problem' }
         '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/tenants/{tenantId}/subscription:
+    get:
+      tags: [Platform entitlement bootstrap]
+      operationId: getTenantSubscription
+      x-saasforge-service: entitlement-service
+      summary: Read the Tenant subscription and authoritative max_users usage
+      description: Entitlement-owned read. Null subscription means no grant; failures never mean absent subscription or zero usage. Effectiveness is evaluated at observedAt separately from persisted ACTIVE. No Tenant lifecycle facts are inferred.
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: Authoritative subscription and quota observation.
+          headers:
+            Cache-Control: { schema: { type: string, const: no-store } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantSubscription' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
         '504': { $ref: './common.yaml#/components/responses/Problem' }
 
   /api/v1/platform/tenants/{tenantId}/subscriptions:
@@ -1714,6 +1836,52 @@ components:
                 - type: string
                 - type: 'null'
             hasMore: { type: boolean }
+    TenantSubscription:
+      type: object
+      required: [observedAt, subscription, effective, maxUsersLimit, maxUsersUsed]
+      properties:
+        observedAt: { $ref: '#/components/schemas/Timestamp' }
+        subscription:
+          oneOf:
+            - $ref: '#/components/schemas/Subscription'
+            - type: 'null'
+        effective: { type: boolean, description: Subscription validity at observedAt; does not certify Tenant eligibility. }
+        maxUsersLimit:
+          type: [integer, 'null']
+          minimum: 0
+          description: Granted limit including historical zero; null only without Subscription.
+        maxUsersUsed:
+          type: [integer, 'null']
+          minimum: 0
+          description: Authoritative cumulative usage; an absent usage row is zero under Entitlement rules. Null only without Subscription.
+      additionalProperties: false
+    SubscriptionOperationPage:
+      allOf:
+        - $ref: './common.yaml#/components/schemas/Page'
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/SubscriptionOperationRecovery' }
+            nextCursor:
+              oneOf:
+                - type: string
+                - type: 'null'
+            hasMore: { type: boolean }
+    SubscriptionOperationRecovery:
+      type: object
+      description: Actor-private recovery material. Shared Runtime owns idempotencyKey. NOT_COMMITTED is a point-in-time observation, never authorization to create with a new key. UNKNOWN requires manual verification. Committed result remains known after replay retention ends.
+      required: [id, tenantId, state, createdAt, replayUntil, canReplay]
+      properties:
+        id: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        tenantId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        state: { type: string, enum: [COMMITTED, PROCESSING, NOT_COMMITTED, UNKNOWN] }
+        createdAt: { $ref: '#/components/schemas/Timestamp' }
+        replayUntil: { $ref: '#/components/schemas/Timestamp' }
+        canReplay: { type: boolean }
+        subscriptionId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        idempotencyKey: { $ref: './common.yaml#/components/schemas/UuidV7' }
+      additionalProperties: false
     PlanOperationPage:
       allOf:
         - $ref: './common.yaml#/components/schemas/Page'

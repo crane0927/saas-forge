@@ -100,5 +100,16 @@
   "planRecoveryPrevious": "上一页操作记录",
   "planRecoveryCreate": "创建 Plan",
   "planRecoveryActivate": "激活 Plan",
-  "planRecoveryUnavailable": "当前无法继续原操作，请核查已有套餐或保留期。"
+  "planRecoveryUnavailable": "当前无法继续原操作，请核查已有套餐或保留期。",
+  "subscriptionRecoveryTitle": "我的订阅操作",
+  "subscriptionRecoveryHint": "仅显示当前操作者的服务端记录。未找到记录或已过期时，请核查结果，不要重新提交。",
+  "subscriptionRecoveryRead": "读取操作记录",
+  "subscriptionRecoveryContinue": "继续原操作",
+  "subscriptionRecoveryView": "查看订阅",
+  "subscriptionRecoveryEmpty": "未找到操作记录；这不能证明先前请求未提交。",
+  "subscriptionRecoveryFailure": "操作记录暂时无法读取",
+  "subscriptionRecoveryNext": "下一页操作记录",
+  "subscriptionRecoveryPrevious": "上一页操作记录",
+  "subscriptionRecoveryCreate": "创建 Subscription",
+  "subscriptionRecoveryUnavailable": "当前无法继续原操作，请核查已有订阅或保留期。"
 }

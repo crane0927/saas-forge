@@ -16,14 +16,64 @@ interface RecoveryPage<T> {
   readonly hasMore: boolean;
 }
 
+const recoveryMessageKeys = {
+  creation: {
+    title: 'creationRecoveryTitle',
+    hint: 'creationRecoveryHint',
+    read: 'creationRecoveryRead',
+    failure: 'creationRecoveryFailure',
+    empty: 'creationRecoveryEmpty',
+    unavailable: 'creationRecoveryExpired',
+    view: 'creationRecoveryView',
+    continue: 'creationRecoveryContinue',
+    previous: 'creationRecoveryPrevious',
+    next: 'creationRecoveryNext',
+  },
+  quota: {
+    title: 'quotaRecoveryTitle',
+    hint: 'quotaRecoveryHint',
+    read: 'quotaRecoveryRead',
+    failure: 'quotaRecoveryFailure',
+    empty: 'quotaRecoveryEmpty',
+    unavailable: 'quotaRecoveryUnavailable',
+    view: 'quotaRecoveryView',
+    continue: 'quotaRecoveryContinue',
+    previous: 'quotaRecoveryPrevious',
+    next: 'quotaRecoveryNext',
+  },
+  plan: {
+    title: 'planRecoveryTitle',
+    hint: 'planRecoveryHint',
+    read: 'planRecoveryRead',
+    failure: 'planRecoveryFailure',
+    empty: 'planRecoveryEmpty',
+    unavailable: 'planRecoveryUnavailable',
+    view: 'planRecoveryView',
+    continue: 'planRecoveryContinue',
+    previous: 'planRecoveryPrevious',
+    next: 'planRecoveryNext',
+  },
+  subscription: {
+    title: 'subscriptionRecoveryTitle',
+    hint: 'subscriptionRecoveryHint',
+    read: 'subscriptionRecoveryRead',
+    failure: 'subscriptionRecoveryFailure',
+    empty: 'subscriptionRecoveryEmpty',
+    unavailable: 'subscriptionRecoveryUnavailable',
+    view: 'subscriptionRecoveryView',
+    continue: 'subscriptionRecoveryContinue',
+    previous: 'subscriptionRecoveryPrevious',
+    next: 'subscriptionRecoveryNext',
+  },
+} as const;
+
 /** 读取由 Runtime 管理的原操作者恢复记录；UI 不保存请求或恢复 Key。 */
 export function OperationRecoveryPanel<T extends RecoveryOperation>({
   load,
   replay,
   label,
   resourceId,
-  quota = false,
-  plan = false,
+  kind = 'creation',
   locale,
   onView,
 }: {
@@ -34,8 +84,7 @@ export function OperationRecoveryPanel<T extends RecoveryOperation>({
   readonly replay: (operation: T, signal?: AbortSignal) => Promise<ConsoleApiResult<T>>;
   readonly label: (operation: T) => string;
   readonly resourceId: (operation: T) => string | undefined;
-  readonly quota?: boolean;
-  readonly plan?: boolean;
+  readonly kind?: 'creation' | 'quota' | 'plan' | 'subscription';
   readonly locale: SupportedLocale;
   readonly onView: (id: string) => void;
 }) {
@@ -45,6 +94,7 @@ export function OperationRecoveryPanel<T extends RecoveryOperation>({
     messages: shellMessages,
   });
   const t = translate.translate.bind(translate);
+  const messageKeys = recoveryMessageKeys[kind];
   const [result, setResult] = useState<ConsoleApiResult<RecoveryPage<T>>>();
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string>();
@@ -93,10 +143,8 @@ export function OperationRecoveryPanel<T extends RecoveryOperation>({
 
   return (
     <ContentPanel
-      title={t(plan ? 'planRecoveryTitle' : quota ? 'quotaRecoveryTitle' : 'creationRecoveryTitle')}
-      description={t(
-        plan ? 'planRecoveryHint' : quota ? 'quotaRecoveryHint' : 'creationRecoveryHint',
-      )}
+      title={t(messageKeys.title)}
+      description={t(messageKeys.hint)}
       actions={
         <Button
           disabled={busy}
@@ -104,32 +152,20 @@ export function OperationRecoveryPanel<T extends RecoveryOperation>({
             void read();
           }}
         >
-          {t(plan ? 'planRecoveryRead' : quota ? 'quotaRecoveryRead' : 'creationRecoveryRead')}
+          {t(messageKeys.read)}
         </Button>
       }
     >
       {busy ? <p role="status">{t('creationRecoveryPending')}</p> : null}
       {problem !== undefined || result?.ok === false ? (
-        <PersistentError
-          title={t(
-            plan
-              ? 'planRecoveryFailure'
-              : quota
-                ? 'quotaRecoveryFailure'
-                : 'creationRecoveryFailure',
-          )}
-        >
+        <PersistentError title={t(messageKeys.failure)}>
           <p>{problem ?? (result?.ok === false ? result.problem.code : '')}</p>
         </PersistentError>
       ) : null}
       {result?.ok ? (
         <>
           {result.value.items.length === 0 ? (
-            <p>
-              {t(
-                plan ? 'planRecoveryEmpty' : quota ? 'quotaRecoveryEmpty' : 'creationRecoveryEmpty',
-              )}
-            </p>
+            <p>{t(messageKeys.empty)}</p>
           ) : (
             <ul>
               {result.value.items.map((operation) => (
@@ -139,15 +175,7 @@ export function OperationRecoveryPanel<T extends RecoveryOperation>({
                   {!operation.canReplay &&
                   operation.state !== 'COMMITTED' &&
                   operation.state !== 'PROCESSING' ? (
-                    <p>
-                      {t(
-                        plan
-                          ? 'planRecoveryUnavailable'
-                          : quota
-                            ? 'quotaRecoveryUnavailable'
-                            : 'creationRecoveryExpired',
-                      )}
-                    </p>
+                    <p>{t(messageKeys.unavailable)}</p>
                   ) : null}
                   {operation.state === 'COMMITTED' && resourceId(operation) !== undefined ? (
                     <Button
@@ -156,13 +184,7 @@ export function OperationRecoveryPanel<T extends RecoveryOperation>({
                         if (id !== undefined) onView(id);
                       }}
                     >
-                      {t(
-                        plan
-                          ? 'planRecoveryView'
-                          : quota
-                            ? 'quotaRecoveryView'
-                            : 'creationRecoveryView',
-                      )}
+                      {t(messageKeys.view)}
                     </Button>
                   ) : null}
                   {operation.state === 'NOT_COMMITTED' && operation.canReplay ? (
@@ -172,13 +194,7 @@ export function OperationRecoveryPanel<T extends RecoveryOperation>({
                         void recover(operation);
                       }}
                     >
-                      {t(
-                        plan
-                          ? 'planRecoveryContinue'
-                          : quota
-                            ? 'quotaRecoveryContinue'
-                            : 'creationRecoveryContinue',
-                      )}
+                      {t(messageKeys.continue)}
                     </Button>
                   ) : null}
                 </li>
@@ -191,13 +207,7 @@ export function OperationRecoveryPanel<T extends RecoveryOperation>({
               void read(cursors.slice(0, -1));
             }}
           >
-            {t(
-              plan
-                ? 'planRecoveryPrevious'
-                : quota
-                  ? 'quotaRecoveryPrevious'
-                  : 'creationRecoveryPrevious',
-            )}
+            {t(messageKeys.previous)}
           </Button>
           <Button
             disabled={busy || !result.value.hasMore}
@@ -206,7 +216,7 @@ export function OperationRecoveryPanel<T extends RecoveryOperation>({
                 void read([...cursors, result.value.nextCursor]);
             }}
           >
-            {t(plan ? 'planRecoveryNext' : quota ? 'quotaRecoveryNext' : 'creationRecoveryNext')}
+            {t(messageKeys.next)}
           </Button>
         </>
       ) : null}

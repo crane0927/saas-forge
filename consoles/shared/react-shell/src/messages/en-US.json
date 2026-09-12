@@ -100,5 +100,16 @@
   "planRecoveryPrevious": "Previous operation records",
   "planRecoveryCreate": "Create Plan",
   "planRecoveryActivate": "Activate Plan",
-  "planRecoveryUnavailable": "The original operation cannot continue. Verify the existing plan and retention period."
+  "planRecoveryUnavailable": "The original operation cannot continue. Verify the existing plan and retention period.",
+  "subscriptionRecoveryTitle": "My subscription operations",
+  "subscriptionRecoveryHint": "Only your server records are shown. If a record is missing or expired, verify the outcome before submitting again.",
+  "subscriptionRecoveryRead": "Read operation records",
+  "subscriptionRecoveryContinue": "Continue original operation",
+  "subscriptionRecoveryView": "View subscription",
+  "subscriptionRecoveryEmpty": "No operation records found. This does not prove the request was not committed.",
+  "subscriptionRecoveryFailure": "Operation records unavailable",
+  "subscriptionRecoveryNext": "Next operation records",
+  "subscriptionRecoveryPrevious": "Previous operation records",
+  "subscriptionRecoveryCreate": "Create Subscription",
+  "subscriptionRecoveryUnavailable": "The original operation cannot continue. Verify the existing subscription and retention period."
 }

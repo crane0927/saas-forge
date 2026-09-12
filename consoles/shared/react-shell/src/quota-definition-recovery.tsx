@@ -19,7 +19,7 @@ export function QuotaDefinitionRecoveryPanel({
   });
   return (
     <OperationRecoveryPanel
-      quota
+      kind="quota"
       load={(input) => client.listQuotaDefinitionOperations(input)}
       replay={(operation, signal) => client.recoverQuotaDefinitionOperation(operation, signal)}
       label={(operation) =>

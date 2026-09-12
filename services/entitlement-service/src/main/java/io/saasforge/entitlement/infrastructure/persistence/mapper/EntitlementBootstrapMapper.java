@@ -35,6 +35,10 @@ public interface EntitlementBootstrapMapper {
 
     int activatePlan(@Param("id") UUID id, @Param("updatedAt") OffsetDateTime updatedAt);
 
+    SubscriptionRow findSubscription(@Param("tenantId") UUID tenantId);
+
+    int findSubscriptionUsage(@Param("tenantId") UUID tenantId, @Param("quotaDefinitionId") UUID quotaDefinitionId);
+
     int insertSubscription(@Param("row") SubscriptionRow row);
 
     int claimQuotaOperation(@Param("row") QuotaOperationRow row);

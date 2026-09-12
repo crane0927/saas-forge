@@ -5,6 +5,10 @@ import {
   OAuthClientsApi,
   PlatformTenantsApi,
   PlatformEntitlementBootstrapApi,
+  type Subscription,
+  type TenantSubscription,
+  type SubscriptionOperationRecovery,
+  type CreateInitialSubscriptionRequest,
   type Plan,
   type PlanPage,
   type PlanStatus,
@@ -204,6 +208,8 @@ export interface CreateOAuthClientInput {
 }
 
 export type {
+  Subscription,
+  TenantSubscription,
   CurrentSession,
   Tenant,
   TenantStatus,
@@ -258,7 +264,34 @@ export interface PlanOperationPage {
   readonly hasMore: boolean;
 }
 
+export type SubscriptionOperation = Omit<SubscriptionOperationRecovery, 'idempotencyKey'>;
+export interface SubscriptionOperationPage {
+  readonly items: readonly SubscriptionOperation[];
+  readonly nextCursor: string | null;
+  readonly hasMore: boolean;
+}
+
 export interface ConsoleApiClient {
+  getTenantSubscription(
+    tenantId: string,
+    signal?: AbortSignal,
+  ): Promise<ConsoleApiResult<TenantSubscription>>;
+  createInitialSubscription(input: {
+    readonly tenantId: string;
+    readonly request: CreateInitialSubscriptionRequest;
+    readonly signal?: AbortSignal;
+  }): Promise<IdempotentConsoleApiResult<Subscription>>;
+  listSubscriptionOperations(input: {
+    readonly tenantId: string;
+    readonly cursor?: string;
+    readonly limit?: number;
+    readonly signal?: AbortSignal;
+  }): Promise<ConsoleApiResult<SubscriptionOperationPage>>;
+  recoverSubscriptionOperation(
+    operation: SubscriptionOperation,
+    signal?: AbortSignal,
+  ): Promise<ConsoleApiResult<SubscriptionOperation>>;
+
   listQuotaDefinitions(
     input: ListQuotaDefinitionsInput,
   ): Promise<ConsoleApiResult<QuotaDefinitionPage>>;
@@ -579,6 +612,42 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
     const operation = Object.freeze(publicValue);
     if (value.canReplay && idempotencyKey !== undefined && UUID_V7.test(idempotencyKey)) {
       planRecoveryMaterials.set(operation, {
+        id: value.id,
+        key: idempotencyKey,
+        epoch: sessionEpoch,
+      });
+    } else if (value.canReplay) {
+      throw new Error('INVALID_SERVICE_RESPONSE');
+    }
+    return operation;
+  }
+
+  const subscriptionRecoveryMaterials = new WeakMap<
+    SubscriptionOperation,
+    { id: string; key: string; epoch: number }
+  >();
+
+  function rememberSubscriptionOperation(
+    value: SubscriptionOperationRecovery,
+  ): SubscriptionOperation {
+    if (
+      !UUID_V7.test(value.id) ||
+      !UUID_V7.test(value.tenantId) ||
+      !['COMMITTED', 'PROCESSING', 'NOT_COMMITTED', 'UNKNOWN'].includes(value.state) ||
+      typeof value.canReplay !== 'boolean' ||
+      !(value.createdAt instanceof Date) ||
+      !Number.isFinite(value.createdAt.getTime()) ||
+      !(value.replayUntil instanceof Date) ||
+      !Number.isFinite(value.replayUntil.getTime()) ||
+      (value.state === 'COMMITTED' &&
+        (value.subscriptionId === undefined || !UUID_V7.test(value.subscriptionId)))
+    ) {
+      throw new Error('INVALID_SERVICE_RESPONSE');
+    }
+    const { idempotencyKey, ...publicValue } = value;
+    const operation = Object.freeze(publicValue);
+    if (value.canReplay && idempotencyKey !== undefined && UUID_V7.test(idempotencyKey)) {
+      subscriptionRecoveryMaterials.set(operation, {
         id: value.id,
         key: idempotencyKey,
         epoch: sessionEpoch,
@@ -980,6 +1049,69 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
         signal,
       );
     },
+    listSubscriptionOperations: ({ signal, ...query }) =>
+      executeRead(async () => {
+        const page = await quotaApi.listSubscriptionOperations(query, { signal });
+        return {
+          items: page.items.map(rememberSubscriptionOperation),
+          nextCursor: page.nextCursor,
+          hasMore: page.hasMore,
+        };
+      }, signal),
+    recoverSubscriptionOperation: (operation, signal) => {
+      const material = subscriptionRecoveryMaterials.get(operation);
+      if (material === undefined || material.epoch !== sessionEpoch) {
+        return Promise.resolve({ ok: false, problem: { code: 'INVALID_OPERATION_HANDLE' } });
+      }
+      return executeRead(
+        async () =>
+          rememberSubscriptionOperation(
+            await quotaApi.recoverSubscriptionOperation(
+              { operationId: material.id, idempotencyKey: material.key, body: {} },
+              { signal },
+            ),
+          ),
+        signal,
+      );
+    },
+    getTenantSubscription: (tenantId, signal) =>
+      executeRead(async () => {
+        const value = await quotaApi.getTenantSubscription({ tenantId }, { signal });
+        const grant = value.subscription as
+          (Omit<Subscription, 'status'> & { status: unknown }) | null | undefined;
+        if (
+          !(value.observedAt instanceof Date) ||
+          !Number.isFinite(value.observedAt.getTime()) ||
+          typeof value.effective !== 'boolean' ||
+          (grant === null
+            ? value.effective || value.maxUsersLimit !== null || value.maxUsersUsed !== null
+            : grant === undefined ||
+              grant.tenantId !== tenantId ||
+              !UUID_V7.test(grant.id) ||
+              !UUID_V7.test(grant.planId) ||
+              grant.status !== 'ACTIVE' ||
+              !(grant.createdAt instanceof Date) ||
+              !Number.isFinite(grant.createdAt.getTime()) ||
+              (grant.endsAt !== null &&
+                (!(grant.endsAt instanceof Date) || !Number.isFinite(grant.endsAt.getTime()))) ||
+              !Number.isInteger(value.maxUsersLimit) ||
+              value.maxUsersLimit === null ||
+              value.maxUsersLimit < 0 ||
+              !Number.isInteger(value.maxUsersUsed) ||
+              value.maxUsersUsed === null ||
+              value.maxUsersUsed < 0)
+        ) {
+          throw new Error('INVALID_SERVICE_RESPONSE');
+        }
+        return value;
+      }, signal),
+    createInitialSubscription: ({ tenantId, request, signal }) =>
+      executeMutation(undefined, signal, (idempotencyKey) =>
+        quotaApi.createInitialSubscription(
+          { tenantId, idempotencyKey, createInitialSubscriptionRequest: request },
+          { signal },
+        ),
+      ),
 
     listTenants: ({ signal, ...query }) =>
       executeRead(() => tenantsApi.listPlatformTenants(query, { signal }), signal),
