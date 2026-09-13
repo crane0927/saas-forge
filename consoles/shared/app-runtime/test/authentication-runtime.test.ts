@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   createAuthenticationRuntimeAfterConfig,
@@ -7,7 +7,9 @@ import {
   type AuthenticationRuntimeCreationOptions,
 } from '../src';
 
-describe('createAuthenticationRuntime', () => {
+describe.each(['zh-CN', 'en-US'])('createAuthenticationRuntime %s', (locale) => {
+  beforeEach(() => vi.stubGlobal('navigator', { language: locale, languages: [locale] }));
+  afterEach(() => vi.unstubAllGlobals());
   it('correlates an unknown resend by its exact original Key instead of accepting a different latest record', async () => {
     const id = '019535d9-0000-7000-8000-000000000002';
     const key = '019535d9-0000-7000-8000-000000000004';

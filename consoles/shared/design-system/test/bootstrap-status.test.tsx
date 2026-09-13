@@ -68,6 +68,10 @@ describe('Design System 启动状态', () => {
     expect(screen.getByRole('heading', { name: 'Platform Console cannot continue' })).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'Retry' })).toHaveLength(1);
     expect(screen.getAllByRole('button', { name: 'Reload' })).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
+    expect(retry).toHaveBeenCalledOnce();
+    expect(reload).toHaveBeenCalledOnce();
   });
 
   it('显示不暴露异常详情的致命错误恢复界面', () => {

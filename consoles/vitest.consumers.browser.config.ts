@@ -12,7 +12,7 @@ export default defineConfig({
       browserName === 'webkit' && process.platform === 'darwin',
     ),
     'import.meta.env.SF_VISUAL_SNAPSHOTS': JSON.stringify(
-      process.env.SF_VISUAL_SNAPSHOTS ?? 'true',
+      process.env.SF_VISUAL_SNAPSHOTS ?? 'false',
     ),
   },
   plugins: [react()],

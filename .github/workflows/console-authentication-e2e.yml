@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      # Chromium 的视觉基线目前是 macOS；Linux CI 的核心认证行为仍须全部执行。
+      # 视觉比较由固定镜像的 console-visual 门禁执行；本任务负责完整构建与 Chrome 产品验收。
       SF_VISUAL_SNAPSHOTS: "false"
     steps:
       - uses: actions/checkout@v6

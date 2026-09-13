@@ -23,7 +23,8 @@ const rows: readonly TenantRow[] = [
   { id: 'tenant-2', name: '云帆数据', status: '停用' },
 ];
 
-describe('Design System 服务端表格', () => {
+describe.each(['zh-CN', 'en-US'] as const)('Design System 服务端表格 %s', (locale) => {
+  const text = (zh: string, en: string) => (locale === 'zh-CN' ? zh : en);
   it('输入查询条件不连续请求，Enter 一次查询，重置恢复默认条件并重新查询', () => {
     const query = vi.fn();
     const reset = vi.fn();
@@ -36,7 +37,7 @@ describe('Design System 服务端表格', () => {
     fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
     expect(query).toHaveBeenCalledOnce();
 
-    fireEvent.click(screen.getByRole('button', { name: '重置' }));
+    fireEvent.click(screen.getByRole('button', { name: text('重置', 'Reset') }));
     expect(reset).toHaveBeenCalledOnce();
     expect(input.getAttribute('value')).toBe('');
   });
@@ -49,10 +50,14 @@ describe('Design System 服务端表格', () => {
     expect(statusHeader.getAttribute('aria-sort')).toBeNull();
 
     fireEvent.click(screen.getByRole('checkbox', { name: '选择 北辰科技' }));
-    expect(screen.getByRole('status').textContent).toContain('已选择 1 项');
+    expect(screen.getByRole('status').textContent).toContain(
+      text('已选择 1 项', '1 current-page item selected.'),
+    );
     fireEvent.click(screen.getByTitle('2'));
     expect(change).toHaveBeenLastCalledWith({ page: 2, pageSize: 2, sort: undefined }, 'paginate');
-    expect(screen.getByRole('status').textContent).toContain('已清除当前页选择');
+    expect(screen.getByRole('status').textContent).toContain(
+      text('已清除当前页选择', 'Current-page selection cleared.'),
+    );
 
     fireEvent.click(screen.getByRole('columnheader', { name: /租户名称/ }));
     expect(change).toHaveBeenLastCalledWith(
@@ -67,110 +72,114 @@ describe('Design System 服务端表格', () => {
     const { rerender } = render(
       <StateTable initialLoading onRetry={retry} onReset={reset} rows={[]} />,
     );
-    expect(screen.getByLabelText('正在加载租户列表')).toBeTruthy();
+    expect(screen.getByLabelText(text('正在加载租户列表', 'Loading 租户列表'))).toBeTruthy();
 
     rerender(
       <StateTable loadError="租户服务暂时不可用。" onRetry={retry} onReset={reset} rows={[]} />,
     );
-    expect(screen.getByRole('alert', { name: '加载失败' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '重试' }));
+    expect(screen.getByRole('alert', { name: text('加载失败', 'Loading failed') })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: text('重试', 'Retry') }));
     expect(retry).toHaveBeenCalledOnce();
 
     rerender(<StateTable onRetry={retry} onReset={reset} rows={[]} />);
-    expect(screen.getByRole('status', { name: '暂无数据' })).toBeTruthy();
+    expect(screen.getByRole('status', { name: text('暂无数据', 'No data') })).toBeTruthy();
 
     rerender(<StateTable filtered onRetry={retry} onReset={reset} rows={[]} />);
-    expect(screen.getByRole('status', { name: '未找到匹配结果' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '重置筛选条件' }));
+    expect(
+      screen.getByRole('status', { name: text('未找到匹配结果', 'No matching results') }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: text('重置筛选条件', 'Reset filters') }));
     expect(reset).toHaveBeenCalledOnce();
 
     rerender(<StateTable refreshing onRetry={retry} onReset={reset} rows={rows} />);
-    expect(screen.getByText('正在更新租户列表')).toBeTruthy();
+    expect(screen.getByText(text('正在更新租户列表', 'Updating 租户列表'))).toBeTruthy();
     expect(screen.getByText('北辰科技')).toBeTruthy();
   });
+
+  function TableHarness({
+    onQuery = () => undefined,
+    onReset = () => undefined,
+    onTableChange = () => undefined,
+    total = 2,
+  }: {
+    readonly onQuery?: () => void;
+    readonly onReset?: () => void;
+    readonly onTableChange?: (request: ServerTableRequest, reason: 'paginate' | 'sort') => void;
+    readonly total?: number;
+  }) {
+    const [name, setName] = useState('');
+    const [sort] = useState<ServerTableSort>();
+    return (
+      <DesignSystemProvider locale={locale}>
+        <ServerTable
+          ariaLabel="租户列表"
+          query={
+            <TextField id="tenant-name" label="租户名称" value={name} onValueChange={setName} />
+          }
+          onQuery={onQuery}
+          onReset={() => {
+            setName('');
+            onReset();
+          }}
+          rows={rows}
+          rowKey={(row) => row.id}
+          columns={[
+            {
+              key: 'name',
+              title: '租户名称',
+              render: (row) => row.name,
+              sortable: true,
+              fixed: 'left',
+            },
+            { key: 'status', title: '状态', render: (row) => row.status },
+          ]}
+          page={1}
+          pageSize={2}
+          total={total}
+          sort={sort}
+          selectionLabel={(row) => `选择 ${row.name}`}
+          onTableChange={onTableChange}
+        />
+      </DesignSystemProvider>
+    );
+  }
+
+  function StateTable({
+    rows: stateRows,
+    initialLoading = false,
+    refreshing = false,
+    filtered = false,
+    loadError,
+    onRetry,
+    onReset,
+  }: {
+    readonly rows: readonly TenantRow[];
+    readonly initialLoading?: boolean;
+    readonly refreshing?: boolean;
+    readonly filtered?: boolean;
+    readonly loadError?: string;
+    readonly onRetry: () => void;
+    readonly onReset: () => void;
+  }) {
+    return (
+      <DesignSystemProvider locale={locale}>
+        <ServerTable
+          ariaLabel="租户列表"
+          rows={stateRows}
+          rowKey={(row) => row.id}
+          columns={[{ key: 'name', title: '租户名称', render: (row) => row.name }]}
+          page={1}
+          pageSize={2}
+          total={stateRows.length}
+          onTableChange={() => undefined}
+          initialLoading={initialLoading}
+          refreshing={refreshing}
+          filtered={filtered}
+          loadError={loadError}
+          onRetry={onRetry}
+          onReset={onReset}
+        />
+      </DesignSystemProvider>
+    );
+  }
 });
-
-function TableHarness({
-  onQuery = () => undefined,
-  onReset = () => undefined,
-  onTableChange = () => undefined,
-  total = 2,
-}: {
-  readonly onQuery?: () => void;
-  readonly onReset?: () => void;
-  readonly onTableChange?: (request: ServerTableRequest, reason: 'paginate' | 'sort') => void;
-  readonly total?: number;
-}) {
-  const [name, setName] = useState('');
-  const [sort] = useState<ServerTableSort>();
-  return (
-    <DesignSystemProvider>
-      <ServerTable
-        ariaLabel="租户列表"
-        query={<TextField id="tenant-name" label="租户名称" value={name} onValueChange={setName} />}
-        onQuery={onQuery}
-        onReset={() => {
-          setName('');
-          onReset();
-        }}
-        rows={rows}
-        rowKey={(row) => row.id}
-        columns={[
-          {
-            key: 'name',
-            title: '租户名称',
-            render: (row) => row.name,
-            sortable: true,
-            fixed: 'left',
-          },
-          { key: 'status', title: '状态', render: (row) => row.status },
-        ]}
-        page={1}
-        pageSize={2}
-        total={total}
-        sort={sort}
-        selectionLabel={(row) => `选择 ${row.name}`}
-        onTableChange={onTableChange}
-      />
-    </DesignSystemProvider>
-  );
-}
-
-function StateTable({
-  rows: stateRows,
-  initialLoading = false,
-  refreshing = false,
-  filtered = false,
-  loadError,
-  onRetry,
-  onReset,
-}: {
-  readonly rows: readonly TenantRow[];
-  readonly initialLoading?: boolean;
-  readonly refreshing?: boolean;
-  readonly filtered?: boolean;
-  readonly loadError?: string;
-  readonly onRetry: () => void;
-  readonly onReset: () => void;
-}) {
-  return (
-    <DesignSystemProvider>
-      <ServerTable
-        ariaLabel="租户列表"
-        rows={stateRows}
-        rowKey={(row) => row.id}
-        columns={[{ key: 'name', title: '租户名称', render: (row) => row.name }]}
-        page={1}
-        pageSize={2}
-        total={stateRows.length}
-        onTableChange={() => undefined}
-        initialLoading={initialLoading}
-        refreshing={refreshing}
-        filtered={filtered}
-        loadError={loadError}
-        onRetry={onRetry}
-        onReset={onReset}
-      />
-    </DesignSystemProvider>
-  );
-}

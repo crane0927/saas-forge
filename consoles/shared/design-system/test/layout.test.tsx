@@ -13,81 +13,84 @@ import {
 
 afterEach(cleanup);
 
-describe('Design System 页面宽度与响应式内容栅格', () => {
-  it('PageLayout 未选择新能力时保持标准宽度，且可显式选择全宽', () => {
-    const { rerender } = render(
-      <DesignSystemProvider>
-        <PageLayout title={<PageTitle>标准页面</PageTitle>}>
-          <p>标准内容</p>
-        </PageLayout>
-      </DesignSystemProvider>,
-    );
+describe.each(['zh-CN', 'en-US'] as const)(
+  'Design System 页面宽度与响应式内容栅格 %s',
+  (locale) => {
+    it('PageLayout 未选择新能力时保持标准宽度，且可显式选择全宽', () => {
+      const { rerender } = render(
+        <DesignSystemProvider locale={locale}>
+          <PageLayout title={<PageTitle>标准页面</PageTitle>}>
+            <p>标准内容</p>
+          </PageLayout>
+        </DesignSystemProvider>,
+      );
 
-    expect(screen.getByRole('main').dataset.layoutWidth).toBe('standard');
-    expect(screen.getByText('标准内容')).toBeTruthy();
+      expect(screen.getByRole('main').dataset.layoutWidth).toBe('standard');
+      expect(screen.getByText('标准内容')).toBeTruthy();
 
-    rerender(
-      <DesignSystemProvider>
-        <PageLayout width="wide" title={<PageTitle>全宽页面</PageTitle>}>
-          <p>全宽内容</p>
-        </PageLayout>
-      </DesignSystemProvider>,
-    );
+      rerender(
+        <DesignSystemProvider locale={locale}>
+          <PageLayout width="wide" title={<PageTitle>全宽页面</PageTitle>}>
+            <p>全宽内容</p>
+          </PageLayout>
+        </DesignSystemProvider>,
+      );
 
-    expect(screen.getByRole('main').dataset.layoutWidth).toBe('wide');
-    expect(screen.getByText('全宽内容')).toBeTruthy();
-  });
+      expect(screen.getByRole('main').dataset.layoutWidth).toBe('wide');
+      expect(screen.getByText('全宽内容')).toBeTruthy();
+    });
 
-  it('两种栅格意图保留消费者提供的内容语义且不引入交互式 grid 角色', () => {
-    render(
-      <DesignSystemProvider>
-        <ResponsiveGrid intent="content">
-          <article>普通内容</article>
-        </ResponsiveGrid>
-        <ResponsiveGrid intent="compact-statistics">
-          <dl>
-            <dt>活跃租户</dt>
-            <dd>28</dd>
-          </dl>
-        </ResponsiveGrid>
-      </DesignSystemProvider>,
-    );
+    it('两种栅格意图保留消费者提供的内容语义且不引入交互式 grid 角色', () => {
+      render(
+        <DesignSystemProvider locale={locale}>
+          <ResponsiveGrid intent="content">
+            <article>普通内容</article>
+          </ResponsiveGrid>
+          <ResponsiveGrid intent="compact-statistics">
+            <dl>
+              <dt>活跃租户</dt>
+              <dd>28</dd>
+            </dl>
+          </ResponsiveGrid>
+        </DesignSystemProvider>,
+      );
 
-    expect(screen.getByText('普通内容').closest('article')).toBeTruthy();
-    expect(screen.getByText('活跃租户').closest('dl')).toBeTruthy();
-    expect(document.querySelector('[data-layout-intent="content"]')).toBeTruthy();
-    expect(document.querySelector('[data-layout-intent="compact-statistics"]')).toBeTruthy();
-    expect(screen.queryByRole('grid')).toBeNull();
-  });
+      expect(screen.getByText('普通内容').closest('article')).toBeTruthy();
+      expect(screen.getByText('活跃租户').closest('dl')).toBeTruthy();
+      expect(document.querySelector('[data-layout-intent="content"]')).toBeTruthy();
+      expect(document.querySelector('[data-layout-intent="compact-statistics"]')).toBeTruthy();
+      expect(screen.queryByRole('grid')).toBeNull();
+    });
 
-  it('既有表单继续使用 FormLayout 与受控双字段行', () => {
-    render(
-      <DesignSystemProvider>
-        <FormLayout ariaLabel="兼容表单" onSubmit={() => undefined}>
-          <FormRow>
-            <label>
-              名称
-              <input />
-            </label>
-            <label>
-              编码
-              <input />
-            </label>
-          </FormRow>
-        </FormLayout>
-      </DesignSystemProvider>,
-    );
+    it('既有表单继续使用 FormLayout 与受控双字段行', () => {
+      render(
+        <DesignSystemProvider locale={locale}>
+          <FormLayout ariaLabel="兼容表单" onSubmit={() => undefined}>
+            <FormRow>
+              <label>
+                名称
+                <input />
+              </label>
+              <label>
+                编码
+                <input />
+              </label>
+            </FormRow>
+          </FormLayout>
+        </DesignSystemProvider>,
+      );
 
-    const form = screen.getByRole('form', { name: '兼容表单' });
-    expect(form.children).toHaveLength(1);
-    expect(form.firstElementChild?.children).toHaveLength(2);
-  });
-});
+      const form = screen.getByRole('form', { name: '兼容表单' });
+      expect(form.children).toHaveLength(1);
+      expect(form.firstElementChild?.children).toHaveLength(2);
+    });
+  },
+);
 
-describe('Design System 语义化主辅分栏', () => {
+describe.each(['zh-CN', 'en-US'] as const)('Design System 语义化主辅分栏 %s', (locale) => {
   it('保持主内容在前，并通过直接名称标识辅助栏', () => {
     render(
-      <DesignSystemProvider>
+      <DesignSystemProvider locale={locale}>
         <PageLayout title={<PageTitle>成员详情</PageTitle>}>
           <SplitLayout
             primary={<section aria-label="成员资料">主内容</section>}
@@ -111,7 +114,7 @@ describe('Design System 语义化主辅分栏', () => {
 
   it('可以通过消费者提供的标题关联辅助栏名称', () => {
     render(
-      <DesignSystemProvider>
+      <DesignSystemProvider locale={locale}>
         <SplitLayout
           primary={<p>主内容</p>}
           auxiliary={
@@ -130,7 +133,7 @@ describe('Design System 语义化主辅分栏', () => {
 
   it('默认使用普通容器承载主内容，且不产生额外键盘交互', () => {
     render(
-      <DesignSystemProvider>
+      <DesignSystemProvider locale={locale}>
         <SplitLayout
           primary={<button type="button">主操作</button>}
           auxiliary={<a href="#details">查看详情</a>}
@@ -153,7 +156,7 @@ describe('Design System 语义化主辅分栏', () => {
 
     expect(() =>
       render(
-        <DesignSystemProvider>
+        <DesignSystemProvider locale={locale}>
           <SplitLayout {...invalidProps} />
         </DesignSystemProvider>,
       ),

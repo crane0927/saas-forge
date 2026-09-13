@@ -60,7 +60,7 @@ pnpm --dir consoles --workspace-concurrency=1 --filter '...@saas-forge/react-she
 | Flyway | 遵守迁移不可变规则；`java script/FlywayMigrationGenerator.java validate` 与对应数据库迁移/隔离集成测试 |
 | Nacos | 对应 revision 递增；`bash scripts/validate-nacos-config.sh` 与相关服务验证；权限、发布或恢复变更补相应专项入口 |
 | Design System 国际化资源新增或移动 | 更新资源校验入口；`pnpm --dir consoles run validate:i18n` 与 `pnpm --dir consoles run build:workspace`，保留 tree-shake 检查 |
-| 共享 UI/布局、浏览器行为 | 消费者包级验证与对应浏览器测试；日常使用 Chromium，必要的产品验收使用 Chrome |
+| 共享 UI/布局、浏览器行为 | 消费者包级验证与对应浏览器测试；日常使用 Chromium，稳定画面变化执行 `pnpm --dir consoles run test:visual` 的固定 Linux 比较，详见[共享测试基线](console-testing-baseline.md)；必要的产品验收使用 Chrome |
 | 具体 Issue / PRD 明确要求的本地、fresh 或端到端验收 | 除兼容矩阵按 ADR 0046 收缩外，原要求继续有效 |
 
 ## 完整复现与 CI 覆盖清单

@@ -53,7 +53,9 @@ export function ApplicationLoading({
           logoUrl={applicationLogoUrl}
           logoAlt={applicationLogoAlt}
         />
-        <Spin size="large" aria-label={translate.translate('applicationLoadingAriaLabel')} />
+        <span role="status" aria-label={translate.translate('applicationLoadingAriaLabel')}>
+          <Spin size="large" aria-hidden="true" />
+        </span>
         <h1 id={titleId}>{translate.translate('applicationLoadingTitle', { applicationName })}</h1>
         <p>{translate.translate('applicationLoadingDescription')}</p>
       </section>

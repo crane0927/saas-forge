@@ -13,11 +13,12 @@ import {
 
 afterEach(cleanup);
 
-describe('Design System 共享浮层', () => {
+describe.each(['zh-CN', 'en-US'] as const)('Design System 共享浮层 %s', (locale) => {
+  const text = (zh: string, en: string) => (locale === 'zh-CN' ? zh : en);
   it('菜单可由鼠标选择，并在关闭后把焦点恢复到触发按钮', async () => {
     const action = vi.fn();
     render(
-      <DesignSystemProvider>
+      <DesignSystemProvider locale={locale}>
         <ActionMenu
           label="更多操作"
           items={[
@@ -47,7 +48,7 @@ describe('Design System 共享浮层', () => {
     fireEvent.click(trigger);
 
     expect(await screen.findByRole('dialog', { name: '成员详情' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '关闭' }));
+    fireEvent.click(screen.getByRole('button', { name: text('关闭', 'Close') }));
 
     await waitFor(() => {
       expect(screen.getByText('普通弹窗状态：已关闭')).toBeTruthy();
@@ -59,7 +60,7 @@ describe('Design System 共享浮层', () => {
     const confirm = vi.fn();
     const cancel = vi.fn();
     render(
-      <DesignSystemProvider>
+      <DesignSystemProvider locale={locale}>
         <RecoverableDangerDialog
           open
           title="停用租户"
@@ -74,7 +75,7 @@ describe('Design System 共享浮层', () => {
 
     expect(screen.getByText('北辰科技')).toBeTruthy();
     expect(screen.getByText('停用后成员暂时无法登录，管理员可以恢复。')).toBeTruthy();
-    const cancelButton = screen.getByRole('button', { name: '取消' });
+    const cancelButton = screen.getByRole('button', { name: text('取消', 'Cancel') });
     await waitFor(() => {
       expect(document.activeElement).toBe(cancelButton);
     });
@@ -93,8 +94,10 @@ describe('Design System 共享浮层', () => {
     attemptClose.focus();
     fireEvent.click(attemptClose);
 
-    const continueButton = await screen.findByRole('button', { name: '继续编辑' });
-    const discardButton = screen.getByRole('button', { name: '放弃修改' });
+    const continueButton = await screen.findByRole('button', {
+      name: text('继续编辑', 'Continue editing'),
+    });
+    const discardButton = screen.getByRole('button', { name: text('放弃修改', 'Discard changes') });
     await waitFor(() => {
       expect(document.activeElement).toBe(continueButton);
     });
@@ -116,7 +119,7 @@ describe('Design System 共享浮层', () => {
   it('未保存确认的安全默认操作支持空格激活', async () => {
     const continueEditing = vi.fn();
     render(
-      <DesignSystemProvider>
+      <DesignSystemProvider locale={locale}>
         <UnsavedChangesDialog
           open
           onContinueEditing={continueEditing}
@@ -125,7 +128,9 @@ describe('Design System 共享浮层', () => {
       </DesignSystemProvider>,
     );
 
-    const continueButton = screen.getByRole('button', { name: '继续编辑' });
+    const continueButton = screen.getByRole('button', {
+      name: text('继续编辑', 'Continue editing'),
+    });
     await waitFor(() => {
       expect(document.activeElement).toBe(continueButton);
     });
@@ -143,7 +148,9 @@ describe('Design System 共享浮层', () => {
     firstDelete.focus();
     fireEvent.click(firstDelete);
 
-    const confirmation = await screen.findByRole('textbox', { name: '输入对象名称确认' });
+    const confirmation = await screen.findByRole('textbox', {
+      name: text('输入对象名称确认', 'Enter the object name to confirm'),
+    });
     const confirmButton = screen.getByRole('button', { name: '永久删除' });
     expect(confirmButton.hasAttribute('disabled')).toBe(true);
 
@@ -163,141 +170,141 @@ describe('Design System 共享浮层', () => {
       );
     });
   });
-});
 
-function StandardDialogHarness() {
-  const [open, setOpen] = useState(false);
-  return (
-    <DesignSystemProvider>
-      <button
-        type="button"
-        onClick={() => {
-          setOpen(true);
-        }}
-      >
-        打开普通弹窗
-      </button>
-      <p>普通弹窗状态：{open ? '已打开' : '已关闭'}</p>
-      <StandardDialog
-        open={open}
-        title="成员详情"
-        onClose={() => {
-          setOpen(false);
-        }}
-      >
-        <p>成员状态正常。</p>
-      </StandardDialog>
-    </DesignSystemProvider>
-  );
-}
-
-function LayeredDialogHarness() {
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [leaveOpen, setLeaveOpen] = useState(false);
-  return (
-    <DesignSystemProvider>
-      <button
-        type="button"
-        onClick={() => {
-          setEditorOpen(true);
-        }}
-      >
-        编辑资料
-      </button>
-      <p>保护层状态：{leaveOpen ? '已打开' : '已关闭'}</p>
-      <StandardDialog
-        open={editorOpen}
-        title="编辑成员资料"
-        onClose={() => {
-          setEditorOpen(false);
-        }}
-      >
+  function StandardDialogHarness() {
+    const [open, setOpen] = useState(false);
+    return (
+      <DesignSystemProvider locale={locale}>
         <button
           type="button"
           onClick={() => {
-            setLeaveOpen(true);
+            setOpen(true);
           }}
         >
-          尝试关闭
+          打开普通弹窗
         </button>
-      </StandardDialog>
-      <UnsavedChangesDialog
-        open={leaveOpen}
-        onContinueEditing={() => {
-          setLeaveOpen(false);
-        }}
-        onDiscard={() => {
-          setLeaveOpen(false);
-          setEditorOpen(false);
-        }}
-      />
-    </DesignSystemProvider>
-  );
-}
+        <p>普通弹窗状态：{open ? '已打开' : '已关闭'}</p>
+        <StandardDialog
+          open={open}
+          title="成员详情"
+          onClose={() => {
+            setOpen(false);
+          }}
+        >
+          <p>成员状态正常。</p>
+        </StandardDialog>
+      </DesignSystemProvider>
+    );
+  }
 
-function RemovalHarness() {
-  const [rows, setRows] = useState(['北辰科技', '云帆数据']);
-  const [target, setTarget] = useState<string | null>(null);
-  const [result, setResult] = useState('尚未执行');
-  const rowButtons = useRef(new Map<string, HTMLButtonElement>());
-  const headingRef = useRef<HTMLHeadingElement>(null);
-  const emptyRef = useRef<HTMLParagraphElement>(null);
-  const targetIndex = target === null ? -1 : rows.indexOf(target);
-  const nextName = targetIndex < 0 ? undefined : rows[targetIndex + 1];
-
-  return (
-    <DesignSystemProvider>
-      <h2 ref={headingRef} tabIndex={-1}>
-        租户列表
-      </h2>
-      {rows.length === 0 ? (
-        <p ref={emptyRef} tabIndex={-1}>
-          暂无租户
-        </p>
-      ) : (
-        rows.map((name) => (
+  function LayeredDialogHarness() {
+    const [editorOpen, setEditorOpen] = useState(false);
+    const [leaveOpen, setLeaveOpen] = useState(false);
+    return (
+      <DesignSystemProvider locale={locale}>
+        <button
+          type="button"
+          onClick={() => {
+            setEditorOpen(true);
+          }}
+        >
+          编辑资料
+        </button>
+        <p>保护层状态：{leaveOpen ? '已打开' : '已关闭'}</p>
+        <StandardDialog
+          open={editorOpen}
+          title="编辑成员资料"
+          onClose={() => {
+            setEditorOpen(false);
+          }}
+        >
           <button
-            key={name}
-            ref={(element) => {
-              if (element === null) {
-                rowButtons.current.delete(name);
-              } else {
-                rowButtons.current.set(name, element);
-              }
-            }}
             type="button"
             onClick={() => {
-              setTarget(name);
+              setLeaveOpen(true);
             }}
           >
-            永久删除 {name}
+            尝试关闭
           </button>
-        ))
-      )}
-      <p aria-live="polite">结果：{result}</p>
-      <IrreversibleDangerDialog
-        open={target !== null}
-        title="永久删除租户"
-        objectName={target ?? ''}
-        consequence="租户和全部配置将永久删除，此操作不可恢复。"
-        actionLabel="永久删除"
-        onCancel={() => {
-          setTarget(null);
-        }}
-        onConfirm={() => {
-          if (target !== null) {
-            setRows((current) => current.filter((name) => name !== target));
-            setResult(`已永久删除${target}`);
-          }
-          setTarget(null);
-        }}
-        removedObjectFocus={{
-          nextRow: () =>
-            nextName === undefined ? null : (rowButtons.current.get(nextName) ?? null),
-          tableHeading: () => headingRef.current,
-          emptyState: () => emptyRef.current,
-        }}
-      />
-    </DesignSystemProvider>
-  );
-}
+        </StandardDialog>
+        <UnsavedChangesDialog
+          open={leaveOpen}
+          onContinueEditing={() => {
+            setLeaveOpen(false);
+          }}
+          onDiscard={() => {
+            setLeaveOpen(false);
+            setEditorOpen(false);
+          }}
+        />
+      </DesignSystemProvider>
+    );
+  }
+
+  function RemovalHarness() {
+    const [rows, setRows] = useState(['北辰科技', '云帆数据']);
+    const [target, setTarget] = useState<string | null>(null);
+    const [result, setResult] = useState('尚未执行');
+    const rowButtons = useRef(new Map<string, HTMLButtonElement>());
+    const headingRef = useRef<HTMLHeadingElement>(null);
+    const emptyRef = useRef<HTMLParagraphElement>(null);
+    const targetIndex = target === null ? -1 : rows.indexOf(target);
+    const nextName = targetIndex < 0 ? undefined : rows[targetIndex + 1];
+
+    return (
+      <DesignSystemProvider locale={locale}>
+        <h2 ref={headingRef} tabIndex={-1}>
+          租户列表
+        </h2>
+        {rows.length === 0 ? (
+          <p ref={emptyRef} tabIndex={-1}>
+            暂无租户
+          </p>
+        ) : (
+          rows.map((name) => (
+            <button
+              key={name}
+              ref={(element) => {
+                if (element === null) {
+                  rowButtons.current.delete(name);
+                } else {
+                  rowButtons.current.set(name, element);
+                }
+              }}
+              type="button"
+              onClick={() => {
+                setTarget(name);
+              }}
+            >
+              永久删除 {name}
+            </button>
+          ))
+        )}
+        <p aria-live="polite">结果：{result}</p>
+        <IrreversibleDangerDialog
+          open={target !== null}
+          title="永久删除租户"
+          objectName={target ?? ''}
+          consequence="租户和全部配置将永久删除，此操作不可恢复。"
+          actionLabel="永久删除"
+          onCancel={() => {
+            setTarget(null);
+          }}
+          onConfirm={() => {
+            if (target !== null) {
+              setRows((current) => current.filter((name) => name !== target));
+              setResult(`已永久删除${target}`);
+            }
+            setTarget(null);
+          }}
+          removedObjectFocus={{
+            nextRow: () =>
+              nextName === undefined ? null : (rowButtons.current.get(nextName) ?? null),
+            tableHeading: () => headingRef.current,
+            emptyState: () => emptyRef.current,
+          }}
+        />
+      </DesignSystemProvider>
+    );
+  }
+});

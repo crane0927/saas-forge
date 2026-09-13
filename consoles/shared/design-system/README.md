@@ -42,7 +42,7 @@ Tenant Logo 与 favicon 仅接受无查询、无片段的 `/brands/` 根相对�
 pnpm --filter @saas-forge/design-system run verify
 ```
 
-其中浏览器验证通过真实 Chromium 执行 axe 无障碍检查、键盘流程、减少动画和 `1440px`、`1280px`、`768px`、`390px`、`360px` 稳定状态快照。工作区另提供 Chrome、Edge、Firefox 与 WebKit（Safari 引擎约定）的 CI 入口；视觉差异只能在评审后通过 `--update` 更新基线。
+其中浏览器验证通过真实 Chromium 执行 axe 无障碍检查、键盘流程、减少动画和响应式布局。视觉比较通过独立的 `pnpm --dir consoles run test:visual` 入口执行，固定 Linux ARM64 镜像、Chromium 和字体；默认本机浏览器入口不比较 macOS 图片。工作区另提供 Chrome、Edge、Firefox 与 WebKit（Safari 引擎约定）的 CI 入口；视觉差异只能在评审后更新基线，具体命令与覆盖矩阵见[共享前端测试基线](../../../docs/console-testing-baseline.md)。
 
 私有组件展示入口可通过以下命令启动：
 

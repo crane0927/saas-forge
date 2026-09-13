@@ -66,7 +66,9 @@ export function InitialContentLoading({ label }: InitialContentLoadingProps) {
     <section className="sf-initial-loading" aria-busy="true" aria-label={visibleLabel}>
       <Spin aria-hidden="true" />
       <span>{visibleLabel}</span>
-      <Skeleton active title paragraph={{ rows: 4 }} />
+      <div aria-hidden="true">
+        <Skeleton active title paragraph={{ rows: 4 }} />
+      </div>
     </section>
   );
 }

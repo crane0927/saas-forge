@@ -116,6 +116,15 @@ export function DesignSystemProvider({
       },
       components: {
         Button: {
+          // 所有交互状态沿用已验证的颜色对，底层默认提亮会使恢复按钮白字对比度不足。
+          colorPrimary: primary,
+          colorPrimaryHover: primary,
+          colorPrimaryActive: primary,
+          primaryColor: primaryForeground,
+          colorError: semanticTokens.color.status.danger,
+          colorErrorHover: semanticTokens.color.status.danger,
+          colorErrorActive: semanticTokens.color.status.danger,
+          dangerColor: semanticTokens.color.light.surface,
           defaultHoverColor: palette.text,
           defaultActiveColor: palette.text,
         },
@@ -127,7 +136,7 @@ export function DesignSystemProvider({
         },
       },
     }),
-    [colorScheme, palette, primary],
+    [colorScheme, palette, primary, primaryForeground],
   );
   const rootStyle = {
     ...sharedRootStyle,

@@ -41,3 +41,8 @@ application-local.yml
 application-local.yaml
 application-*.local.yml
 application-*.local.yaml
+
+# 共享视觉验收的临时报告、依赖缓存与失败附件
+.scratch/issue-180-visual/
+.scratch/console-visual-store/
+.vitest-attachments/
