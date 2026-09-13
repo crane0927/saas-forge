@@ -101,6 +101,7 @@ public class CreateInitialSubscriptionService {
         if (plan.status() != PlanStatus.ACTIVE) {
             throw new PlanNotActiveException();
         }
+        plan.requireNewGrantEligible();
         requireEligible(tenantEligibility.checkInitialSubscription(tenantId));
         subscriptions.setOperationTarget(tenantId);
         Subscription subscription = Subscription.active(subscriptionId, tenantId, planId, endsAt, now);

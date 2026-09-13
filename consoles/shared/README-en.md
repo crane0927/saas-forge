@@ -79,7 +79,7 @@ Shared changes also require consumer verification. With the client already gener
 pnpm run verify:workspace
 ```
 
-This pipeline covers strict types, linting, formatting, workspace boundaries, package tests, Chromium browser tests, and production artifact checks. If the client has not been generated, use `pnpm run verify` instead. See [workspace verification](../README-en.md#commands-and-verification) for Chrome, Edge, Firefox, and WebKit commands.
+This pipeline covers strict types, linting, formatting, workspace boundaries, package tests, Chromium browser tests, and production artifact checks. If the client has not been generated, use `pnpm run verify` instead. See [workspace verification](../README-en.md#commands-and-verification) for the Chrome consumer compatibility command.
 
 > [!IMPORTANT]
 > Passing package tests does not establish that both Consoles and the Remote fixture pass integration checks. Workspace verification does not replace product acceptance against real services and trusted TLS. Successful client generation or builds are not proof of completed business functionality.

@@ -5,6 +5,8 @@ import io.saasforge.iam.application.client.OAuthClientManagementService;
 import io.saasforge.iam.contract.api.OAuthClientsApi;
 import io.saasforge.iam.contract.model.CreateOAuthClientRequest;
 import io.saasforge.iam.contract.model.OAuthClientDetail;
+import io.saasforge.iam.contract.model.OAuthClientPage;
+import io.saasforge.iam.application.client.OAuthClientQueries;
 import io.saasforge.iam.contract.model.OAuthClientSecretResult;
 import io.saasforge.iam.contract.model.OAuthClientStatus;
 import io.saasforge.iam.contract.model.OAuthClientType;
@@ -39,12 +41,14 @@ public class OAuthClientsController implements OAuthClientsApi {
 
     private final OAuthClientManagementAuthorizer authorizer;
     private final OAuthClientManagementService management;
+    private final OAuthClientQueries queries;
 
     public OAuthClientsController(
             OAuthClientManagementAuthorizer authorizer,
-            OAuthClientManagementService management) {
+            OAuthClientManagementService management, OAuthClientQueries queries) {
         this.authorizer = authorizer;
         this.management = management;
+        this.queries = queries;
     }
 
     @Override
@@ -60,9 +64,22 @@ public class OAuthClientsController implements OAuthClientsApi {
     }
 
     @Override
+    public ResponseEntity<OAuthClientPage> listOAuthClients(
+            String cursor, Integer limit, String name, OAuthClientType clientType, OAuthClientStatus status) {
+        authorizer.authorize(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
+        var page = queries.list(name, clientType == null ? null
+                        : io.saasforge.iam.domain.client.OAuthClientType.valueOf(clientType.name()),
+                status == null ? null : io.saasforge.iam.domain.client.OAuthClientStatus.valueOf(status.name()),
+                cursor, limit);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new OAuthClientPage(
+                page.items().stream().map(OAuthClientsController::toDetail).toList(),
+                page.nextCursor(), page.hasMore()));
+    }
+
+    @Override
     public ResponseEntity<OAuthClientDetail> getOAuthClient(UUID clientId) {
         authorizer.authorize(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
-        return ResponseEntity.ok(toDetail(management.get(clientId)));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(toDetail(management.get(clientId)));
     }
 
     @Override

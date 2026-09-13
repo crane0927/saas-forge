@@ -82,6 +82,19 @@
     <build>
         <plugins>
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <!-- IDE 资源复制保留个人配置，发布 JAR 排除个人文件和模板。 -->
+                <configuration>
+                    <excludes>
+                        <exclude>application-local.yml</exclude>
+                        <exclude>application-local.yaml</exclude>
+                        <exclude>application-local.yml.example</exclude>
+                        <exclude>application-local.yaml.example</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+            <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>

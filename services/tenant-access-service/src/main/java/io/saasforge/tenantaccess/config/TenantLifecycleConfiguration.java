@@ -16,16 +16,17 @@ import java.time.Duration;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.grpc.client.GrpcChannelFactory;
+import io.grpc.Channel;
+import org.springframework.beans.factory.annotation.Qualifier;
 import tools.jackson.databind.ObjectMapper;
 
 @Configuration
 public class TenantLifecycleConfiguration {
     @Bean
     SessionRevocationGateway sessionRevocationGateway(
-            GrpcChannelFactory channels, IamServiceAccessTokenProvider tokens) {
+            @Qualifier("iamServiceChannel") Channel iamChannel, IamServiceAccessTokenProvider tokens) {
         return new GrpcSessionRevocationGateway(
-                UserSessionRevocationServiceGrpc.newBlockingStub(channels.createChannel("iam")),
+                UserSessionRevocationServiceGrpc.newBlockingStub(iamChannel),
                 tokens::sessionWriteToken);
     }
 

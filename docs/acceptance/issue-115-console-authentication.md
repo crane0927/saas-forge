@@ -1,5 +1,7 @@
 # Issue #115：Console 真实产品聚合验收
 
+> 当前阶段范围已由 [ADR 0046](../adr/0046-development-supports-chrome-and-jdk17.md) 调整为桌面 Chrome 当前稳定版与 JDK 17；Chromium 保留日常功能与视觉测试。本文旧矩阵的执行结果属于历史证据，不作为当前多浏览器或 JDK 21 要求。现行复现入口见 [本地验证说明](../local-verification.md)。
+
 状态：**2026-09-03，提交 `5023f24` 的 Verify 与完整五渠道产品聚合均已通过。** CI 使用已获批准的 `saasforge.example.com` 对照根域；本地仍使用 `saasforge.test`。远端 Issue 原有固定域名条款尚未调整，#115 / #108 及 MVP 完成状态未变更。
 
 | 最新门禁 | 当前直接结果 |
@@ -24,15 +26,15 @@
 
 ## 入口与环境约束
 
-- `scripts/verify-console-authentication-e2e.sh --preflight`：检查固定 Node/pnpm、Docker、证书材料、DNS、443 监听冲突与当前执行环境要求的浏览器渠道，并以回环临时 HTTPS 验证三个 Host 的浏览器证书信任。`SF_ACCEPTANCE_TARGET=local`（默认）要求 Chromium/Chrome/WebKit；`ci` 要求全部五个渠道。
+- `scripts/verify-console-authentication-e2e.sh --preflight`：检查固定 Node/pnpm、Docker、证书材料、DNS、443 监听冲突与当前执行环境要求的浏览器渠道，并以回环临时 HTTPS 验证四个 Host 的浏览器证书信任。`SF_ACCEPTANCE_TARGET=local`（默认）与 `ci` 均只要求 Chrome。
 - `scripts/verify-console-authentication-e2e.sh --product`：用于 TDD 重跑当前产品切片及当前环境的浏览器门禁，复用已有 JAR/dist，不重跑 Maven/workspace 门禁；不能作为完整聚合命令的成功证据。
-- 本地 TDD 可设置 `SF_PRODUCT_CHANNEL=chromium|webkit|chrome` 并使用 `--product`，仅执行所选产品渠道，跳过其他渠道和兼容门禁；该选项禁止用于 CI 或完整入口。用例通过时返回 0，并明确列出未执行的门禁。
-- `scripts/verify-console-authentication-e2e.sh`：预检成功后才执行 Maven/Console 验证、构建独立应用镜像、创建全新随机 Compose 项目、初始化 Signing Key/引导账户、启动三个 TLS Origin 并运行现有产品切片。
-- 当前聚合脚本按实际命令范围返回结果：聚焦产品、环境产品/兼容、完整 Maven/workspace/Fresh Compose 分别记账。`local` 明确保留 Firefox/Edge 的 CI 待执行状态；任何用例或门禁失败仍返回非零。
+- 产品渠道已固定为 Chrome，无需设置 `SF_PRODUCT_CHANNEL`；旧变量仅接受 `chrome` 且不再跳过 Chrome 消费者门禁，其他值在环境初始化前失败。
+- `scripts/verify-console-authentication-e2e.sh`：预检成功后才执行 Maven/Console 验证、构建独立应用镜像、创建全新随机 Compose 项目、初始化 Signing Key/引导账户、启动四个 TLS Origin 并运行现有产品切片。
+- 当前聚合脚本按实际命令范围返回结果：环境产品/兼容、完整 Maven/workspace/Fresh Compose 分别记账；任何用例或门禁失败仍返回非零。
 - `deploy/compose/console-authentication.override.yaml`：后端端口不向宿主发布；两个 Console 分别挂载生产 `dist`；Node 使用 workspace 已固定的 `24.14.1` 版本；TLS 只发布 `127.0.0.1:443`。
 - `deploy/compose/console-authentication/serve.mjs`：仅供验收的静态服务及固定 Host 代理，不是生产部署通用代理。API 请求的 Origin、Cookie、Fetch Metadata 原样转发，不补造浏览器安全头。
 - 所有数据卷、网络及应用镜像属于本次随机项目；不使用开发 `.env` 或开发凭据，不覆盖已有本地应用镜像。结束时只清理该项目的资源。
-- 每个产品浏览器渠道开始前重新创建本次项目的数据卷并重新引导账户，确保每个渠道都从 Initial Credential Session 验证首次改密；渠道间只复用构建镜像和 TLS 材料，不复用已修改的密码或会话数据。
+- 每次 Chrome 产品验收使用全新随机项目数据卷并重新引导账户，从 Initial Credential Session 验证首次改密，不复用已修改的密码或会话数据。
 - 不自动修改系统 hosts、信任库或安装浏览器；不使用 `ignoreHTTPSErrors`、HTTP 降级或模拟 API 代替正常产品路径。
 - `.github/workflows/console-authentication-e2e.yml`：独立的真实产品任务，在临时 Ubuntu runner 上安装全部浏览器、建立本次专属 CA、系统/NSS/Firefox 信任、固定 hosts 和 Fresh Compose 环境。仅上传或保留脱敏结果，不上传证书私钥。
 - 本地验证和 CI 分开记账：用户已确认 Firefox/Edge 只在 CI 执行。本地成功不能代替这两个渠道的远端运行结果。既有 `verify.yml` 中的 Design System/模拟服务浏览器任务也不代替真实产品任务。

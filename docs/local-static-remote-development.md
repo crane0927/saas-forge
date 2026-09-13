@@ -1,5 +1,7 @@
 # 第四域开发静态资源验收（Issue #156）
 
+日常运行两个 Console 请使用 [Console 原生本地开发](native-console-development.md)。本页保留第四域静态资源专项验收与旧环境升级说明。
+
 本切片遵循 ADR 0009、0038、0039，补齐 Local Browser Topology 的 `remote.saasforge.test`。它不实现 Manifest、业务 Remote、Remote HMR，也不修改认证 API、Browser Session Slot 或数据库。静态文件是公开制品；CORS 是浏览器读取许可，不是私有下载鉴权。
 
 ## 准备与升级
@@ -72,10 +74,10 @@ Chromium 使用系统正常信任与真实域名，不启动替代 Console 或�
 - Fresh Compose 验收由 `scripts/verify-console-authentication-e2e.sh` 追加静态 Remote 验证：使用验收 Tenant 构建中的 `/acceptance/static-remote` 路由、同一 HTTP handler 和同一只读制品目录。
 - `consoles/integration-test/static-remote-acceptance.mjs` 的呈现断言可复用，但开发 WSS 检查只属于开发证据，不能用于静态 E2E Console。
 
-Fresh Compose 输出的 `EVIDENCE:` 目录在清理后保留。Chromium、Chrome、Edge 分别写入 `static-remote-chromium.json`、`static-remote-chrome.json`、`static-remote-msedge.json`，记录静态 Remote 子测试的通过/失败状态、固定资源请求/响应元数据、模块/CSS/图片呈现结果和控制台错误类别。该记录只代表此子测试，不代表整轮验收；不包含凭据值、响应正文或原始控制台文本。可通过 `SF_BRAND_EVIDENCE_DIRECTORY` 指定目录；尚未观测到的请求信息不会当作无凭据或成功响应。
+Fresh Compose 输出的 `EVIDENCE:` 目录在清理后保留。Chrome 写入 `static-remote-chrome.json`，记录静态 Remote 子测试的通过/失败状态、固定资源请求/响应元数据、模块/CSS/图片呈现结果和控制台错误类别。该记录只代表此子测试，不代表整轮验收；不包含凭据值、响应正文或原始控制台文本。可通过 `SF_BRAND_EVIDENCE_DIRECTORY` 指定目录；尚未观测到的请求信息不会当作无凭据或成功响应。
 
-本说明中的开发证据不声称本地其他浏览器、CI 五浏览器、父规格 #155 或 MVP 四域条目整体完成；这些需要各自环境的直接证据。
+本说明中的开发证据不代表 Chrome Fresh Compose、CI、父规格 #155 或 MVP 四域条目整体完成；这些需要各自环境的直接证据。
 
 ## 跨浏览器聚合入口
 
-Issue #159 的开发三浏览器入口为 `bash scripts/verify-console-authentication-e2e.sh --development`；Fresh Compose 沿用同一脚本原有参数。两套环境共用静态资源、安全探针与冻结制品 SHA-256 检查，分别留存直接证据。依赖、凭据文件、Edge 观测与 CI 结果判定见 [四域聚合验收说明](acceptance/issue-159-four-domain-matrix.md)。历史 #156/#157/#158 结果不能替代本次矩阵。
+当前 Chrome 开发验收入口为 `bash scripts/verify-console-authentication-e2e.sh --development`；Fresh Compose 沿用同一脚本原有参数。两套环境共用静态资源、安全探针与冻结制品 SHA-256 检查，分别留存直接证据。依赖、凭据文件、Edge 观测与 CI 结果判定见 [四域聚合验收说明](acceptance/issue-159-four-domain-matrix.md)。历史 #156/#157/#158 结果不能替代当前验收。

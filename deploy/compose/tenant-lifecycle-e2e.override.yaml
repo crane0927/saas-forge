@@ -102,7 +102,8 @@ services:
     depends_on:
       kafka-audit-acl-init:
         condition: service_completed_successfully
-    ports: !reset []
+    ports: !override
+      - "127.0.0.1::9090"
   audit-service:
     build: !reset null
     environment:

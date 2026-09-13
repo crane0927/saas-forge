@@ -4,8 +4,6 @@ spring:
   jackson:
     deserialization:
       fail-on-unknown-properties: true
-  config:
-    import: nacos:tenant-access-service.yaml?group=SAAS_FORGE&refreshEnabled=false
   cloud:
     nacos:
       username: ${NACOS_TENANT_ACCESS_USERNAME:?NACOS_TENANT_ACCESS_USERNAME is required}
@@ -48,3 +46,10 @@ saasforge:
 mybatis:
   mapper-locations: classpath*:mapper/**/*Mapper.xml
   type-handlers-package: io.saasforge.tenantaccess.infrastructure.persistence.type
+
+---
+spring:
+  config:
+    activate:
+      on-profile: "!local"
+    import: nacos:tenant-access-service.yaml?group=SAAS_FORGE&refreshEnabled=false

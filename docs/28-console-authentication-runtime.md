@@ -194,9 +194,26 @@ Tenant Context Switch 是单一不可回滚的客户端转换：
 - 根错误、路由错误和请求 Problem 分层验证，同时覆盖键盘、焦点、读屏状态与窄屏布局；
 - 从全新 Compose 数据卷执行最终产品路径，不以 Mock、curl、生成 Client 或单一应用构建代替。
 
-Chromium、Firefox 与 Playwright WebKit 均阻塞核心认证行为，视觉快照只由 Chromium 维护；Chrome 与 Microsoft Edge 实机渠道作为发布兼容门禁。浏览器缺少原子锁或跨标签页消息能力时，必须验证服务端 Lease 回退，不得静默跳过。
+当前开发阶段仅承诺桌面 Chrome 当前稳定版，真实产品验收使用 Chrome；Chromium 保留日常功能与视觉快照检查，不形成独立产品兼容承诺。浏览器缺少原子锁或跨标签页消息能力时，必须验证服务端 Lease 回退，不得静默跳过。
 
 ## 12. 交付顺序与完成边界
+
+### Platform Current Session（Issue #171）
+
+`GET /api/v1/auth/session` 使用 Platform User Access Token，返回 IAM 当前权威
+`identityId`、`email`、可选 `displayName` 和 `platformAdmin` 授权事实。响应禁止缓存，
+不设置 Cookie，也不读取或轮换 Refresh Token Family；读取成功不保证未来刷新成功。
+Tenant/Service Token 不能用该接口冒充 Platform 当前身份。角色撤销后，尚有效的
+Platform Access Token 可读取 `platformAdmin=false`，后续业务 operation 仍独立授权。
+
+Platform 总览通过同一 Runtime 的 `ConsoleApiClient.getCurrentSession()` 读取并展示，
+支持中英文与失败重试。读取沿用共享刷新/重放规则，并在响应及 Problem 正文解析后隔离
+会话变化产生的迟到结果。Tenant Context 与 Accessible Memberships 继续使用原正式契约。
+
+原生开发环境已通过真实 Chrome 当前身份、刷新、浏览器重启及双 Console 安全验收；
+首次改密与 Fresh Compose Chrome 验收也已通过，范围及证据见 [Issue #171 验收记录](acceptance/issue-171-current-session.md)。
+
+### 完成条件
 
 交付按以下依赖顺序拆分：
 

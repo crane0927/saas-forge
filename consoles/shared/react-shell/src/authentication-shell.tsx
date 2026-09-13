@@ -10,7 +10,9 @@ import {
   ApplicationFatalError,
   ApplicationShell,
   ApplicationIdentity,
+  LoginLayout,
   Button,
+  type DesignIconName,
   FormLayout,
   FormRow,
   PageLayout,
@@ -33,13 +35,16 @@ import {
 } from 'react';
 import { matchPath, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
 
+import { useRequestFormExit } from './form-exit-guard';
 import { shellMessages } from './messages';
-import { useConsoleLocale } from './console-locale';
+import { ConsoleLocaleSelectorSlot, useConsoleLocale } from './console-locale';
 import { BrandApplicationContext } from './brand-application';
 
 export interface AuthenticationShellRoute {
   readonly path: string;
+  readonly navigationPath?: string;
   readonly label: string;
+  readonly icon?: DesignIconName;
   readonly element: ReactNode;
 }
 
@@ -109,6 +114,7 @@ export function AuthenticationShell({
   defaultPath,
   routes,
 }: AuthenticationShellProps) {
+  const requestFormExit = useRequestFormExit();
   const brand = useContext(BrandApplicationContext);
   const resolvedApplicationName = brand?.applicationName ?? applicationName;
   if (resolvedApplicationName === undefined) {
@@ -252,8 +258,9 @@ export function AuthenticationShell({
           applicationName: resolvedApplicationName,
         })}
         navigationItems={routes.map((route) => ({
-          href: route.path,
+          href: route.navigationPath ?? route.path,
           label: route.label,
+          icon: route.icon,
           current: matchPath({ path: route.path, end: true }, location.pathname) !== null,
         }))}
         onNavigate={(href) => {
@@ -261,6 +268,7 @@ export function AuthenticationShell({
         }}
         actions={
           <>
+            <ConsoleLocaleSelectorSlot />
             {runtime.intent === 'TENANT' &&
             state.tenantContext !== undefined &&
             state.tenantContext.accessibleMemberships.length > 1 ? (
@@ -279,8 +287,10 @@ export function AuthenticationShell({
               loading={state.transition === 'logout'}
               loadingLabel={translate.translate('logoutLoading')}
               onClick={() => {
-                logoutRequested.current = true;
-                void runtime.logout();
+                requestFormExit(() => {
+                  logoutRequested.current = true;
+                  void runtime.logout();
+                });
               }}
             >
               {translate.translate('logout')}
@@ -679,6 +689,8 @@ function LoginPage({
   readonly tenantSessionEnded: boolean;
   readonly translate: ShellTranslator;
 }) {
+  const brand = useContext(BrandApplicationContext);
+  const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [problem, setProblem] = useState<AuthenticationProblem>();
@@ -692,12 +704,25 @@ function LoginPage({
   );
 
   return (
-    <PageLayout
+    <LoginLayout
+      applicationName={applicationName}
+      logoUrl={brand?.resolvedBrand.profile.logoUrl}
+      logoAlt={brand?.logoAlt}
+      entryLabel={translate.translate(
+        runtime.intent === 'PLATFORM' ? 'platformLoginEntry' : 'tenantLoginEntry',
+      )}
+      tools={<ConsoleLocaleSelectorSlot />}
       title={
-        <ShellPageTitle
-          headingId="login-title"
-          title={translate.translate('loginTitle', { applicationName })}
-        />
+        <>
+          <RouteFocusAnnouncement
+            routeKey={location.key}
+            pageTitle={translate.translate('loginTitle', { applicationName })}
+            focusTargetId="login-title"
+          />
+          <PageTitle headingId="login-title">
+            {translate.translate('loginTitle', { applicationName })}
+          </PageTitle>
+        </>
       }
     >
       {passwordChanged ? (
@@ -796,7 +821,7 @@ function LoginPage({
           {translate.translate('signIn')}
         </Button>
       </FormLayout>
-    </PageLayout>
+    </LoginLayout>
   );
 }
 

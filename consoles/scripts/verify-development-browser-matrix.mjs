@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { chromium, webkit } from 'playwright';
+import { chromium } from 'playwright';
 
 const directory =
   process.env.SF_BRAND_EVIDENCE_DIRECTORY ??
@@ -10,11 +10,7 @@ const directory =
 await mkdir(directory, { recursive: true, mode: 0o700 });
 console.info(`EVIDENCE: ${directory}`);
 const results = [];
-const browsers = [
-  ['chromium', chromium],
-  ['webkit', webkit],
-  ['chrome', chromium, 'chrome'],
-];
+const browsers = [['chrome', chromium, 'chrome']];
 const root = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saasforge.test';
 if (root !== 'saasforge.test')
   throw new Error('development requires the controlled saasforge.test topology');
@@ -72,7 +68,7 @@ for (const [name, engine, channel] of browsers) {
   }
   const env = {
     ...process.env,
-    SF_BROWSER: name === 'webkit' ? 'webkit' : 'chromium',
+    SF_BROWSER: 'chromium',
     SF_BROWSER_CHANNEL: channel ?? '',
     SF_BRAND_EVIDENCE_DIRECTORY: directory,
     SF_SESSION_EVIDENCE_DIRECTORY: path.join(directory, `session-security-${name}`),

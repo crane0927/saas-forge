@@ -6,6 +6,13 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup;
+
 
 import io.saasforge.tenantaccess.application.administrator.IdentityCredentialDisposition;
 import io.saasforge.tenantaccess.application.administrator.AdministratorPasswordSetupRepository;
@@ -128,6 +135,9 @@ class TenantCreationPostgreSqlIT {
     private CreatePendingTenantService service;
 
     @Autowired
+    private TenantQueryService tenantQueries;
+
+    @Autowired
     private InitialSubscriptionEligibilityService eligibility;
 
     @Autowired
@@ -159,8 +169,435 @@ class TenantCreationPostgreSqlIT {
 
     @BeforeEach
     void clean() throws SQLException {
-        executeAsMigrator("TRUNCATE tenant_access_outbox_events, tenant_creation_idempotency, memberships, tenants CASCADE");
+        executeAsMigrator("TRUNCATE tenant_creation_recovery, tenant_access_outbox_events, tenant_creation_idempotency, memberships, tenants CASCADE");
         sessionRevocations.reset();
+    }
+
+    @Autowired
+    private RecoverableTenantCreationService recoverableCreation;
+
+    @Autowired
+    private TenantCreationRecoveryRepository creationRecoveryRepository;
+
+    @Autowired
+    private io.saasforge.tenantaccess.application.administrator.AdministratorInitializationQueries initializationQueries;
+
+    @Autowired
+    private io.saasforge.tenantaccess.application.administrator.AdministratorPasswordSetupQueries notificationQueries;
+
+    @Test
+    void readsPasswordNotificationIndependentlyBeforeInitialization() throws Exception {
+        UUID actor = uuidV7(880);
+        var tenant = service.create(actor, uuidV7(881), "Notification status", null, null);
+        var mvc = standaloneSetup(new io.saasforge.tenantaccess.api.TenantCreationController(
+                authorization -> actor, recoverableCreation, null, null, null, tenantQueries, null,
+                new io.saasforge.tenantaccess.application.administrator.AdministratorPasswordSetupQueryService(notificationQueries,
+                        new io.saasforge.tenantaccess.application.administrator.PasswordSetupDeliveryGateway() {
+                            public void deliver(UUID requestId, UUID identityId) { throw new AssertionError("Read must not send"); }
+                            public NotificationState notification(UUID requestId, UUID identityId) { return NotificationState.PENDING; }
+                        }, null, Clock.systemUTC())))
+                .setControllerAdvice(new io.saasforge.tenantaccess.api.TenantCreationExceptionHandler()).build();
+        mvc.perform(get("/api/v1/platform/tenants/" + tenant.id() + "/administrator-password-setup"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.state").value("NOT_APPLICABLE"))
+                .andExpect(jsonPath("$.canResend").value(false))
+                .andExpect(jsonPath("$.canContinue").value(false))
+                .andExpect(jsonPath("$.idempotencyKey").doesNotExist());
+    }
+
+    @Test
+    void activatedTenantNotificationRemainsIndependentWhenMailIsPending() throws Exception {
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+        UUID actor = uuidV7(882);
+        UUID identity = uuidV7(883);
+        var tenant = service.create(actor, uuidV7(884), "Pending notification", null, null);
+        var prepared = administratorInitialization.prepare(workflow(tenant.id(), actor, uuidV7(885), "b".repeat(64)), now);
+        var claimed = administratorInitialization.claim(prepared.workflowId(), "test", now, now.plusSeconds(30)).orElseThrow();
+        var ready = administratorInitialization.completeIdentity(claimed, identity, IdentityCredentialDisposition.SETUP_ALLOWED, now);
+        var quota = administratorInitialization.completeQuotaConsumption(ready, now);
+        var activating = administratorInitialization.beginActivation(quota, now);
+        administratorInitialization.activate(activating, identity, IdentityCredentialDisposition.SETUP_ALLOWED, now);
+        var delivered = new java.util.concurrent.atomic.AtomicBoolean();
+        var requestIds = new java.util.ArrayList<UUID>();
+        var gateway = new io.saasforge.tenantaccess.application.administrator.PasswordSetupDeliveryGateway() {
+            public void deliver(UUID requestId, UUID identityId) {
+                requestIds.add(requestId);
+                if (!delivered.get()) throw new io.saasforge.tenantaccess.application.administrator.RemoteWorkflowUnavailableException(new IllegalStateException("mail unavailable"));
+            }
+            public NotificationState notification(UUID requestId, UUID identityId) {
+                return delivered.get() ? NotificationState.MAIL_SERVICE_ACCEPTED : NotificationState.PENDING;
+            }
+        };
+        var clock = Clock.fixed(now.plusSeconds(31), java.time.ZoneOffset.UTC);
+        var resends = new io.saasforge.tenantaccess.application.administrator.ResendAdministratorPasswordSetupService(
+                administratorPasswordSetups, gateway, new UuidV7Generator(clock, new java.security.SecureRandom()), clock,
+                new io.saasforge.tenantaccess.application.administrator.InitializationRecoveryPolicy(
+                        java.time.Duration.ofSeconds(10), java.time.Duration.ofSeconds(1), java.time.Duration.ofSeconds(1), 1), "notification-test");
+        var query = new io.saasforge.tenantaccess.application.administrator.AdministratorPasswordSetupQueryService(
+                notificationQueries, gateway, resends, clock);
+        assertEquals("PENDING", query.get(actor, tenant.id()).state().name());
+        assertEquals("ACTIVE", tenantQueries.get(tenant.id()).status().name());
+        var membership = initializationQueries.get(tenant.id()).initialMembershipId();
+        assertThrows(io.saasforge.tenantaccess.application.administrator.AdministratorPasswordSetupException.class,
+                () -> resends.resend(actor, uuidV7(886), tenant.id(), null));
+        // 另一管理员可从旧页面并发提交；它不能遮蔽原操作者的未决记录。
+        administratorPasswordSetups.prepare(passwordSetupWorkflow(tenant.id(), uuidV7(888), uuidV7(889),
+                uuidV7(878), uuidV7(879), now.plusSeconds(32)), now.plusSeconds(32));
+        var progress = query.get(actor, tenant.id());
+        assertEquals("UNKNOWN", query.get(actor, tenant.id(), uuidV7(877), null).operationState().name());
+        assertFalse(query.get(actor, tenant.id(), uuidV7(877), null).canResend());
+        assertEquals("PENDING", progress.operationState().name());
+        assertEquals("PENDING", progress.state().name());
+        assertTrue(progress.canContinue());
+        assertFalse(progress.canResend());
+        assertFalse(query.get(uuidV7(887), tenant.id()).canContinue());
+        assertEquals(null, query.get(uuidV7(887), tenant.id()).resendId());
+        var denied = assertThrows(io.saasforge.tenantaccess.application.administrator.AdministratorPasswordSetupException.class,
+                () -> query.recover(uuidV7(887), tenant.id(), progress.resendId(), null));
+        assertEquals("PASSWORD_SETUP_RESEND_NOT_FOUND", denied.code());
+        var currentActor = new java.util.concurrent.atomic.AtomicReference<UUID>(actor);
+        var mvc = standaloneSetup(new io.saasforge.tenantaccess.api.TenantCreationController(
+                authorization -> {
+                    if (currentActor.get() == null) throw new io.saasforge.sdk.auth.PlatformAuthorizationDeniedException();
+                    return currentActor.get();
+                }, recoverableCreation, null, resends, null, tenantQueries, null, query))
+                .setControllerAdvice(new io.saasforge.tenantaccess.api.TenantCreationExceptionHandler()).build();
+        String readPath = "/api/v1/platform/tenants/" + tenant.id() + "/administrator-password-setup";
+        String recoveryPath = "/api/v1/platform/tenants/" + tenant.id() + "/administrator-password-setups/" + progress.resendId() + "/recovery";
+        currentActor.set(uuidV7(887));
+        mvc.perform(get(readPath)).andExpect(status().isOk()).andExpect(jsonPath("$.canContinue").value(false))
+                .andExpect(jsonPath("$.resendId").doesNotExist());
+        mvc.perform(post(recoveryPath).contentType("application/json").content("{}")).andExpect(status().isNotFound());
+        currentActor.set(null);
+        mvc.perform(get(readPath)).andExpect(status().isForbidden());
+        mvc.perform(post(recoveryPath).contentType("application/json").content("{}")).andExpect(status().isForbidden());
+        currentActor.set(actor);
+        delivered.set(true);
+        mvc.perform(post(recoveryPath).contentType("application/json").content("{}")).andExpect(status().isNoContent());
+        query.recover(actor, tenant.id(), progress.resendId(), null);
+        assertEquals(2, requestIds.size());
+        assertEquals(requestIds.get(0), requestIds.get(1));
+        assertEquals("MAIL_SERVICE_ACCEPTED", query.get(actor, tenant.id()).state().name());
+        assertEquals("ACTIVE", tenantQueries.get(tenant.id()).status().name());
+        assertEquals(membership, initializationQueries.get(tenant.id()).initialMembershipId());
+        assertEquals("COMPLETED", query.get(actor, tenant.id(), uuidV7(886), null).operationState().name());
+        assertEquals("UNKNOWN", query.get(uuidV7(887), tenant.id(), uuidV7(886), null).operationState().name());
+        assertFalse(query.get(actor, tenant.id()).canResend());
+        var expired = new io.saasforge.tenantaccess.application.administrator.AdministratorPasswordSetupQueryService(
+                notificationQueries, gateway, resends, Clock.fixed(now.plusSeconds(31 + 86400), java.time.ZoneOffset.UTC));
+        assertThrows(io.saasforge.tenantaccess.application.administrator.AdministratorPasswordSetupException.class,
+                () -> expired.recover(actor, tenant.id(), progress.resendId(), null));
+        assertEquals(2, requestIds.size());
+    }
+
+    @Test
+    void exposesInitializationBusinessProgressWithoutRecoveryMaterials() throws Exception {
+        UUID actor = uuidV7(890);
+        var tenant = service.create(actor, uuidV7(891), "Initialization progress", null, null);
+        var mvc = standaloneSetup(
+                new io.saasforge.tenantaccess.api.TenantCreationController(
+                        authorization -> actor, recoverableCreation, null, null, null, tenantQueries,
+                        new io.saasforge.tenantaccess.application.administrator.AdministratorInitializationQueryService(
+                                initializationQueries, null, Clock.systemUTC())))
+                .setControllerAdvice(new io.saasforge.tenantaccess.api.TenantCreationExceptionHandler()).build();
+        mvc.perform(get("/api/v1/platform/tenants/" + tenant.id() + "/administrator-initialization"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.state").value("NOT_STARTED"))
+                .andExpect(jsonPath("$.canStart").value(true))
+                .andExpect(jsonPath("$.idempotencyKey").doesNotExist())
+                .andExpect(jsonPath("$.administratorEmail").doesNotExist());
+    }
+
+    @Test
+    void originalActorRecoversDurableInitializationAndReadsHistoricalMembershipAfterLostResponse() throws Exception {
+        UUID actor = uuidV7(893);
+        UUID key = uuidV7(894);
+        var tenant = service.create(actor, uuidV7(895), "Durable initialization", null, null);
+        var available = new java.util.concurrent.atomic.AtomicBoolean(false);
+        var consumed = new java.util.concurrent.atomic.AtomicInteger();
+        Instant started = Instant.now().minus(Duration.ofDays(2));
+        Clock oldClock = Clock.fixed(started, java.time.ZoneOffset.UTC);
+        var ids = new UuidV7Generator(oldClock, new SecureRandom());
+        var initializer = new InitializeTenantAdministratorService(administratorInitialization,
+                (request, email, name) -> {
+                    if (!available.get()) throw new RemoteWorkflowUnavailableException(new IllegalStateException("Dependency unavailable"));
+                    return new IdentityProvisioningGateway.Result(uuidV7(896), IdentityCredentialDisposition.SETUP_ALLOWED);
+                },
+                new InitializationQuotaGateway() {
+                    public void consume(UUID tenantId, UUID operationId) { consumed.incrementAndGet(); }
+                    public void release(UUID tenantId, UUID operationId) { consumed.decrementAndGet(); }
+                },
+                (request, identity) -> { throw new RemoteWorkflowUnavailableException(new IllegalStateException("Notification unavailable")); },
+                ids, oldClock,
+                new InitializationRecoveryPolicy(Duration.ofSeconds(30), Duration.ofSeconds(1), Duration.ofMinutes(1), 1),
+                "http-recovery-it");
+        assertThrows(RemoteWorkflowUnavailableException.class,
+                () -> initializer.initialize(actor, key, tenant.id(), "owner@example.test", null, null));
+        var query = new io.saasforge.tenantaccess.application.administrator.AdministratorInitializationQueryService(
+                initializationQueries, initializer, Clock.systemUTC());
+        var currentActor = new java.util.concurrent.atomic.AtomicReference<>(actor);
+        var allowed = new java.util.concurrent.atomic.AtomicBoolean(true);
+        var mvc = standaloneSetup(new io.saasforge.tenantaccess.api.TenantCreationController(
+                authorization -> {
+                    if (!allowed.get()) throw new io.saasforge.sdk.auth.PlatformAuthorizationDeniedException();
+                    return currentActor.get();
+                }, recoverableCreation, initializer, null, null, tenantQueries, query))
+                .setControllerAdvice(new io.saasforge.tenantaccess.api.TenantCreationExceptionHandler()).build();
+        String progressPath = "/api/v1/platform/tenants/" + tenant.id() + "/administrator-initialization";
+        var progress = query.get(actor, tenant.id());
+        String recoveryPath = "/api/v1/platform/tenants/" + tenant.id()
+                + "/administrator-initializations/" + progress.initializationId() + "/recovery";
+        mvc.perform(get(progressPath)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("RECOVERY_REQUIRED"))
+                .andExpect(jsonPath("$.canContinue").value(true))
+                .andExpect(jsonPath("$.administratorEmail").doesNotExist())
+                .andExpect(jsonPath("$.idempotencyKey").doesNotExist())
+                .andExpect(jsonPath("$.leaseUntil").doesNotExist());
+        currentActor.set(uuidV7(897));
+        mvc.perform(get(progressPath)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("RECOVERY_REQUIRED"))
+                .andExpect(jsonPath("$.canContinue").value(false));
+        mvc.perform(post(recoveryPath).contentType("application/json").content("{}"))
+                .andExpect(status().isNotFound());
+        currentActor.set(actor);
+        allowed.set(false);
+        mvc.perform(post(recoveryPath).contentType("application/json").content("{}"))
+                .andExpect(status().isForbidden());
+        allowed.set(true);
+        available.set(true);
+        mvc.perform(post(recoveryPath).contentType("application/json").content("{}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ACTIVE"));
+        mvc.perform(post(recoveryPath).contentType("application/json").content("{}"))
+                .andExpect(status().isOk());
+        mvc.perform(get(progressPath)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("SUCCEEDED"))
+                .andExpect(jsonPath("$.initialAdministratorMembershipId").isString())
+                .andExpect(jsonPath("$.canContinue").value(false));
+        assertEquals(TenantStatus.ACTIVE, tenantQueries.get(tenant.id()).status());
+        assertEquals(1, consumed.get());
+        // 超过普通保留期的稳定结果仍指向原根，邮件失败不会逆转初始化。
+        assertEquals(progress.initializationId(), query.get(actor, tenant.id()).initializationId());
+    }
+
+    @Test
+    void exposesAuthoritativeTenantAndRecoveryThroughPublishedHttpOperations() throws Exception {
+        UUID actor = uuidV7(870);
+        UUID key = uuidV7(871);
+        var mvc = standaloneSetup(
+                new io.saasforge.tenantaccess.api.TenantCreationController(
+                        authorization -> actor, recoverableCreation, null, null, null, tenantQueries))
+                .setControllerAdvice(new io.saasforge.tenantaccess.api.TenantCreationExceptionHandler()).build();
+        mvc.perform(post("/api/v1/platform/tenants")
+                        .header("Idempotency-Key", key).contentType("application/json")
+                        .content("{\"displayName\":\"HTTP recovery\"}"))
+                .andExpect(status().isCreated());
+        var record = recoverableCreation.list(actor, null, 50).items().get(0);
+        mvc.perform(get("/api/v1/platform/tenants")
+                        .param("name", "HTTP recovery").param("status", "PENDING").param("limit", "1"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.items[0].id").value(record.tenantId().toString()))
+                .andExpect(jsonPath("$.hasMore").value(false));
+        mvc.perform(get("/api/v1/platform/tenants/" + record.tenantId()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.status").value("PENDING"));
+        mvc.perform(get("/api/v1/platform/tenant-creations"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.items[0].id").value(record.id().toString()));
+        mvc.perform(get("/api/v1/platform/tenant-creations/" + record.id()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("COMMITTED"));
+        mvc.perform(post("/api/v1/platform/tenant-creations/" + record.id() + "/recovery")
+                        .header("Idempotency-Key", key).contentType("application/json").content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.tenantId").value(record.tenantId().toString()));
+        assertEquals(1, tenantQueries.list("HTTP recovery", null, null, 50).items().size());
+    }
+
+    @Test
+    void reportsProcessingWhileAnotherTransactionOwnsTheCreation() throws Exception {
+        UUID actor = uuidV7(860);
+        UUID key = uuidV7(861);
+        var saved = creationRecoveryRepository.prepare(actor, key, "Processing recovery", null, Instant.now());
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        CountDownLatch locked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        try {
+            Future<?> owner = executor.submit(() -> creationRecoveryRepository.locked(actor, saved.id(), entry -> {
+                locked.countDown();
+                try {
+                    assertTrue(release.await(10, java.util.concurrent.TimeUnit.SECONDS));
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(interrupted);
+                }
+                return null;
+            }));
+            assertTrue(locked.await(10, java.util.concurrent.TimeUnit.SECONDS));
+            var processing = recoverableCreation.get(actor, saved.id());
+            assertEquals(TenantCreationRecovery.State.PROCESSING, processing.state());
+            assertFalse(processing.canReplay());
+            assertEquals("IDEMPOTENCY_REQUEST_IN_PROGRESS", assertThrows(TenantLifecycleException.class,
+                    () -> recoverableCreation.recover(actor, saved.id(), key, null)).code());
+            release.countDown();
+            owner.get(10, java.util.concurrent.TimeUnit.SECONDS);
+            assertEquals(TenantCreationRecovery.State.NOT_COMMITTED,
+                    recoverableCreation.get(actor, saved.id()).state());
+        } finally {
+            release.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void concurrentDuplicateCreatesHaveOneAuthoritativeTenant() throws Exception {
+        UUID actor = uuidV7(850);
+        UUID key = uuidV7(851);
+        ExecutorService executor = Executors.newFixedThreadPool(4);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            List<Future<UUID>> attempts = new ArrayList<>();
+            for (int i = 0; i < 4; i++) {
+                attempts.add(executor.submit(() -> {
+                    start.await();
+                    try {
+                        return recoverableCreation.create(actor, key, "Concurrent recovery", null, null).id();
+                    } catch (TenantLifecycleException pending) {
+                        assertEquals("IDEMPOTENCY_REQUEST_IN_PROGRESS", pending.code());
+                        return null;
+                    }
+                }));
+            }
+            start.countDown();
+            Set<UUID> ids = new java.util.HashSet<>();
+            for (Future<UUID> attempt : attempts) {
+                UUID id = attempt.get();
+                if (id != null) ids.add(id);
+            }
+            assertEquals(1, ids.size());
+            var records = recoverableCreation.list(actor, null, 50).items();
+            assertEquals(1, records.size());
+            assertTrue(ids.contains(records.get(0).tenantId()));
+            assertEquals(1, tenantQueries.list("Concurrent recovery", null, null, 50).items().size());
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void preservesExactExpiryForOriginalRequestFingerprintAndReplay() {
+        UUID actor = uuidV7(840);
+        UUID key = uuidV7(841);
+        Instant expiry = Instant.parse("2030-01-01T00:00:00.123456789Z");
+        var created = recoverableCreation.create(actor, key, "Precise expiry", expiry, null);
+        assertEquals(expiry, created.expiresAt());
+        assertEquals(created, recoverableCreation.create(actor, key, "Precise expiry", expiry, null));
+        var attempt = recoverableCreation.list(actor, null, 50).items().get(0);
+        assertEquals(created.id(), recoverableCreation.recover(actor, attempt.id(), key, null).tenantId());
+        assertThrows(IdempotencyKeyReusedException.class,
+                () -> recoverableCreation.create(actor, key, "Precise expiry", expiry.plusNanos(1), null));
+    }
+
+    @Test
+    void retainsKnownResultsButNeverRestartsUnknownCreationsAtThe24HourBoundary() throws SQLException {
+        UUID actor = uuidV7(820);
+        UUID committedKey = uuidV7(821);
+        UUID unknownKey = uuidV7(822);
+        var created = recoverableCreation.create(actor, committedKey, "Boundary", null, null);
+        executeAsMigrator("REVOKE INSERT ON tenants FROM tenant_access_app");
+        try {
+            assertThrows(RuntimeException.class,
+                    () -> recoverableCreation.create(actor, unknownKey, "Boundary", null, null));
+        } finally {
+            executeAsMigrator("GRANT INSERT ON tenants TO tenant_access_app");
+        }
+        var records = recoverableCreation.list(actor, null, 50).items();
+        var committed = records.stream().filter(item -> item.state() == TenantCreationRecovery.State.COMMITTED)
+                .findFirst().orElseThrow();
+        var uncommitted = records.stream().filter(item -> item.state() == TenantCreationRecovery.State.NOT_COMMITTED)
+                .findFirst().orElseThrow();
+        var before = new RecoverableTenantCreationService(service, creationRecoveryRepository,
+                Clock.fixed(committed.replayUntil().minusMillis(1), ZoneOffset.UTC));
+        assertEquals(created.id(), before.recover(actor, committed.id(), committedKey, null).tenantId());
+        var atBoundary = new RecoverableTenantCreationService(service, creationRecoveryRepository,
+                Clock.fixed(committed.replayUntil(), ZoneOffset.UTC));
+        assertEquals(TenantCreationRecovery.State.COMMITTED, atBoundary.get(actor, committed.id()).state());
+        assertFalse(atBoundary.get(actor, committed.id()).canReplay());
+        assertNull(atBoundary.get(actor, committed.id()).idempotencyKey());
+        assertThrows(TenantLifecycleException.class,
+                () -> atBoundary.recover(actor, committed.id(), committedKey, null));
+        var expired = new RecoverableTenantCreationService(service, creationRecoveryRepository,
+                Clock.fixed(uncommitted.replayUntil(), ZoneOffset.UTC));
+        assertEquals(TenantCreationRecovery.State.UNKNOWN, expired.get(actor, uncommitted.id()).state());
+        assertFalse(expired.get(actor, uncommitted.id()).canReplay());
+        assertThrows(TenantLifecycleException.class,
+                () -> expired.recover(actor, uncommitted.id(), unknownKey, null));
+        assertEquals(1, tenantQueries.list("Boundary", null, null, 50).items().size());
+    }
+
+    @Test
+    void permitsCorrectingInvalidExpiryWithTheSameKeyAndRecoversATransactionRollback() throws SQLException {
+        UUID actor = uuidV7(830);
+        UUID key = uuidV7(831);
+        assertThrows(io.saasforge.tenantaccess.domain.tenant.TenantExpiryInvalidException.class,
+                () -> recoverableCreation.create(actor, key, "Corrected", Instant.EPOCH, null));
+        assertTrue(recoverableCreation.list(actor, null, 50).items().isEmpty());
+        executeAsMigrator("REVOKE INSERT ON tenants FROM tenant_access_app");
+        try {
+            assertThrows(RuntimeException.class,
+                    () -> recoverableCreation.create(actor, key, "Corrected", null, null));
+        } finally {
+            executeAsMigrator("GRANT INSERT ON tenants TO tenant_access_app");
+        }
+        var attempt = recoverableCreation.list(actor, null, 50).items().get(0);
+        assertEquals(TenantCreationRecovery.State.NOT_COMMITTED, attempt.state());
+        var result = recoverableCreation.recover(actor, attempt.id(), key, null);
+        assertEquals(TenantCreationRecovery.State.COMMITTED, result.state());
+        assertEquals("Corrected", tenantQueries.get(result.tenantId()).displayName());
+        assertEquals(1, tenantQueries.list("Corrected", null, null, 50).items().size());
+    }
+
+    @Test
+    void recoversOnlyOriginalActorsCommittedCreationWithoutMatchingByName() {
+        UUID actor = uuidV7(810);
+        TenantCreationResult created = recoverableCreation.create(actor, uuidV7(811), "Same", null, null);
+        TenantCreationResult other = recoverableCreation.create(actor, uuidV7(812), "Same", null, null);
+        var attempts = recoverableCreation.list(actor, null, 50);
+        assertEquals(2, attempts.items().size());
+        var attempt = attempts.items().stream().filter(item -> created.id().equals(item.tenantId())).findFirst().orElseThrow();
+        assertEquals("COMMITTED", attempt.state().name());
+        assertEquals(created.id(), recoverableCreation.recover(actor, attempt.id(), uuidV7(811), null).tenantId());
+        assertNotEquals(other.id(), attempt.tenantId());
+        assertTrue(recoverableCreation.list(uuidV7(813), null, 50).items().isEmpty());
+        assertThrows(TenantLifecycleException.class,
+                () -> recoverableCreation.get(uuidV7(813), attempt.id()));
+    }
+
+    @Test
+    void listsSameNameTenantsWithBoundCursorsAndReadsAuthoritativeDetails() {
+        UUID actor = uuidV7(800);
+        TenantCreationResult first = service.create(actor, uuidV7(801), "Same name", null, null);
+        TenantCreationResult second = service.create(actor, uuidV7(802), "Same name", null, null);
+        service.create(actor, uuidV7(803), "Other", null, null);
+
+        var page = tenantQueries.list("Same", TenantStatus.PENDING, null, 1);
+        assertEquals(1, page.items().size());
+        assertTrue(page.hasMore());
+        var last = tenantQueries.list("Same", TenantStatus.PENDING, page.nextCursor(), 1);
+        assertEquals(1, last.items().size());
+        assertFalse(last.hasMore());
+        assertNull(last.nextCursor());
+        assertNotEquals(page.items().get(0).id(), last.items().get(0).id());
+        assertEquals(Set.of(first.id(), second.id()),
+                Set.of(page.items().get(0).id(), last.items().get(0).id()));
+        assertEquals(first.id(), tenantQueries.get(first.id()).id());
+        assertThrows(IllegalArgumentException.class,
+                () -> tenantQueries.list("Other", TenantStatus.PENDING, page.nextCursor(), 1));
     }
 
     @Test
@@ -463,6 +900,9 @@ class TenantCreationPostgreSqlIT {
         InitializationWorkflow replay = administratorInitialization.prepare(prepared, Instant.now());
 
         assertEquals("QUOTA_EXCEEDED", replay.outcomeCode());
+        InitializationWorkflow laterReplay = administratorInitialization.prepare(prepared, Instant.now().plus(Duration.ofDays(3)));
+        assertEquals(prepared.workflowId(), laterReplay.workflowId());
+        assertEquals("QUOTA_EXCEEDED", laterReplay.outcomeCode());
         assertEquals("409", scalar("SELECT response_status::text FROM tenant_administrator_initialization_workflows"));
         assertEquals("true", scalar("SELECT relforcerowsecurity::text FROM pg_class "
                 + "WHERE relname = 'tenant_administrator_initialization_workflows'"));
@@ -927,11 +1367,13 @@ class TenantCreationPostgreSqlIT {
     @MapperScan(
             basePackages = "io.saasforge.tenantaccess.infrastructure.persistence.mapper",
             sqlSessionFactoryRef = "tenantAccessSqlSessionFactory")
-    @Import({MyBatisTenantRepository.class, MyBatisTenantCreationIdempotency.class,
+    @Import({io.saasforge.tenantaccess.infrastructure.persistence.MyBatisAdministratorPasswordSetupQueries.class, io.saasforge.tenantaccess.infrastructure.persistence.MyBatisAdministratorInitializationQueries.class, MyBatisTenantRepository.class, MyBatisTenantCreationIdempotency.class,
             MyBatisTenantAccessOutboxEventRepository.class,
             MyBatisTenantAdministratorInitializationRepository.class,
             MyBatisAdministratorPasswordSetupRepository.class,
-            MyBatisTenantLifecycleRepository.class})
+            MyBatisTenantLifecycleRepository.class, TenantQueryService.class, RecoverableTenantCreationService.class,
+            io.saasforge.tenantaccess.infrastructure.persistence.MyBatisTenantCreationRecovery.class,
+            io.saasforge.tenantaccess.infrastructure.persistence.MyBatisTenantQueries.class})
     static class PersistenceConfiguration {
         @Bean
         DataSource dataSource() {

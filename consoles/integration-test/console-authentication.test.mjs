@@ -6,6 +6,13 @@ import path from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { chromium, firefox, webkit } from 'playwright';
+import { verifyPlan } from './plan-acceptance.mjs';
+import { verifySubscription } from './subscription-acceptance.mjs';
+import { verifyPasswordSetupNotification } from './password-setup-notification-acceptance.mjs';
+import { verifyAdministratorInitialization } from './administrator-initialization-acceptance.mjs';
+import { verifyQuotaDefinition } from './quota-definition-acceptance.mjs';
+import { verifyTenantCreation } from './tenant-creation-acceptance.mjs';
+import { verifyOAuthClients } from './oauth-client-acceptance.mjs';
 import { verifyClientRecovery } from './console-client-acceptance.mjs';
 import { verifyRequestProblemSurfaces } from './console-problem-acceptance.mjs';
 import { verifyBrandRemoteInheritance } from './brand-remote-acceptance.mjs';
@@ -18,12 +25,7 @@ const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saasforge.test';
 
 async function captureBrandEvidence(page, scenario) {
   const directory = process.env.SF_BRAND_EVIDENCE_DIRECTORY;
-  if (
-    !directory ||
-    (process.env.SF_BROWSER ?? 'chromium') !== 'chromium' ||
-    process.env.SF_BROWSER_CHANNEL
-  )
-    return;
+  if (!directory) return;
   await mkdir(directory, { recursive: true });
   await page.screenshot({
     path: path.join(directory, `${scenario}.png`),
@@ -179,21 +181,25 @@ test('Platform and Tenant sessions survive independent recovery and logout after
   const password = `Acceptance-${randomBytes(24).toString('hex')}`;
 
   await platform.goto(`https://platform.${rootDomain}/`);
-  const initial = await login(platform, email, initialPassword, 'en-US');
+  await expectRouteAccessibility(platform, 'Sign in to SaaS Forge');
+  await selectConsoleLocale(platform, '简体中文');
+  const initial = await login(platform, email, initialPassword, 'zh-CN', {
+    focusedElementId: 'console-locale',
+  });
   assert.equal(initial.contextState, 'PASSWORD_CHANGE_REQUIRED');
   assert.equal(Object.hasOwn(initial, 'accessToken'), false);
   const initialCookieStored = (await context.cookies(`https://api.${rootDomain}`)).some(
     (cookie) => cookie.name === '__Host-sf_platform_refresh',
   );
-  await expectRouteAccessibility(platform, 'Set a new password');
+  await expectRouteAccessibility(platform, '设置新密码');
   await platform
-    .getByLabel(/^New password/)
+    .getByLabel(/^新密码/)
     .fill(password)
     .catch(() => {
       throw new Error('new password field unavailable');
     });
   const changed = platform.waitForResponse(isAuthResponse('password-changes'));
-  await platform.getByRole('button', { name: 'Update password', exact: true }).press('Enter');
+  await platform.getByRole('button', { name: '更新密码', exact: true }).press('Enter');
   const changedResponse = await changed;
   platform.off('response', observeCookie);
   const initialCookieEvents = await Promise.all(cookieEvents);
@@ -221,16 +227,136 @@ test('Platform and Tenant sessions survive independent recovery and logout after
     changeDiagnostic += `\n${initialCookieEvents.join('\n')}`;
   }
   assert.equal(changedResponse.status(), 204, changeDiagnostic);
-  await platform.getByRole('heading', { name: 'Sign in to SaaS Forge', exact: true }).waitFor();
-  const platformLogin = await login(platform, email, password, 'en-US');
+  await platform.getByRole('heading', { name: '登录 SaaS Forge', exact: true }).waitFor();
+  const platformLogin = await login(platform, email, password, 'zh-CN');
   assert.equal(platformLogin.contextState, 'ACCESS_TOKEN_ISSUED');
-  await expectRouteAccessibility(platform, 'Platform overview');
+  await expectRouteAccessibility(platform, 'Platform 总览');
+  await platform.getByText(email, { exact: true }).waitFor();
+  await platform.getByText('平台管理员', { exact: true }).waitFor();
+  await selectConsoleLocale(platform, 'English');
+  await platform.getByRole('heading', { name: 'Current identity', exact: true }).waitFor();
+  const reread = platform.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === '/api/v1/auth/session' &&
+      response.request().method() === 'GET',
+  );
+  await platform.getByRole('button', { name: 'Reload identity', exact: true }).click();
+  assert.equal((await reread).status(), 200);
+  await platform.getByText(email, { exact: true }).waitFor();
   await selectConsoleLocale(platform, '简体中文');
   await platform.getByRole('heading', { name: 'Platform 总览', exact: true }).waitFor();
 
+  await t.test('OAuth Client list filters, cursor paging and detail reload', async () => {
+    await verifyOAuthClients({
+      browser,
+      rootDomain,
+      email,
+      password,
+      login,
+      selectLocale: selectConsoleLocale,
+      accessibility: expectRouteAccessibility,
+      safeStorage: expectSafeStorage,
+      capture: captureBrandEvidence,
+    });
+  });
+
+  await t.test(
+    'Tenant creation survives lost response, refresh, browser restart and re-login',
+    async () => {
+      await verifyTenantCreation({
+        rootDomain,
+        email,
+        password,
+        login,
+        selectLocale: selectConsoleLocale,
+        accessibility: expectRouteAccessibility,
+        safeStorage: expectSafeStorage,
+        capture: captureBrandEvidence,
+      });
+    },
+  );
+
   // Node 侧正式 API 只用于准备 Tenant；浏览器认证断言仍由生产页面发起请求。
   // 使用同一 Identity 验证两个槽位，避免把不同账号误当成槽位隔离。
-  const firstTenant = await prepareTenant(platformLogin.accessToken, email);
+  let quotaDefinitionId;
+  await t.test(
+    'Quota Definition creation, activation, reuse and response-loss recovery',
+    async () => {
+      quotaDefinitionId = await verifyQuotaDefinition({
+        rootDomain,
+        email,
+        password,
+        login,
+        selectLocale: selectConsoleLocale,
+        accessibility: expectRouteAccessibility,
+        safeStorage: expectSafeStorage,
+        capture: captureBrandEvidence,
+      });
+    },
+  );
+  assert.ok(quotaDefinitionId, 'Quota acceptance must finish before dependent Tenant setup');
+  await t.test(
+    'Plan positive grants, historical zero reads and response-loss recovery',
+    async () => {
+      await verifyPlan({
+        rootDomain,
+        email,
+        password,
+        login,
+        quotaDefinitionId,
+        selectLocale: selectConsoleLocale,
+        accessibility: expectRouteAccessibility,
+        safeStorage: expectSafeStorage,
+        capture: captureBrandEvidence,
+      });
+    },
+  );
+  await t.test(
+    'Tenant initial Subscription authoritative reads and response-loss recovery',
+    async () => {
+      await verifySubscription({
+        rootDomain,
+        email,
+        password,
+        login,
+        selectLocale: selectConsoleLocale,
+        accessibility: expectRouteAccessibility,
+        safeStorage: expectSafeStorage,
+        capture: captureBrandEvidence,
+      });
+    },
+  );
+  await t.test(
+    'Tenant administrator initialization, authoritative Quota, recovery and compensation',
+    async () => {
+      await verifyAdministratorInitialization({
+        rootDomain,
+        email,
+        password,
+        login,
+        selectLocale: selectConsoleLocale,
+        accessibility: expectRouteAccessibility,
+        safeStorage: expectSafeStorage,
+        capture: captureBrandEvidence,
+      });
+    },
+  );
+  await t.test(
+    'Independent notification SMTP failure, original resend recovery and authoritative refresh',
+    async () => {
+      await verifyPasswordSetupNotification({
+        rootDomain,
+        email,
+        password,
+        login,
+        selectLocale: selectConsoleLocale,
+        accessibility: expectRouteAccessibility,
+        safeStorage: expectSafeStorage,
+        capture: captureBrandEvidence,
+      });
+    },
+  );
+  const firstTenant = await prepareTenant(platformLogin.accessToken, email, { quotaDefinitionId });
   {
     await t.test(
       'four-domain authenticated CSRF refusals preserve both browser sessions',
@@ -286,6 +412,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
   }
 
   await assertOtherSessionUnchanged(context, 'PLATFORM', () => recover(platform, 'Platform 总览'));
+  await platform.getByText(email, { exact: true }).waitFor();
   await assertOtherSessionUnchanged(context, 'TENANT', () => recover(tenant, 'Tenant workspace'));
   await assertOtherSessionUnchanged(context, 'PLATFORM', () =>
     logout(platform, 'Platform Console'),
@@ -356,28 +483,13 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       assert.equal(body.tenantContext.tenantId, firstTenant.tenantId);
       await tenant.getByRole('heading', { name: 'Tenant workspace', exact: true }).waitFor();
       assert.equal(new URL(tenant.url()).pathname, '/');
-      await tenant
-        .getByRole('navigation', {
-          name: 'SaaS Forge global navigation',
-          exact: true,
-        })
-        .waitFor();
-      assert.equal(
-        await tenant
-          .getByRole('navigation', {
-            name: 'Second Acceptance Tenant global navigation',
-            exact: true,
-          })
-          .count(),
-        0,
+      await expectGlobalNavigation(
+        tenant,
+        'SaaS Forge global navigation',
+        'Second Acceptance Tenant global navigation',
       );
       await recover(tenant, 'Tenant workspace');
-      await tenant
-        .getByRole('navigation', {
-          name: 'SaaS Forge global navigation',
-          exact: true,
-        })
-        .waitFor();
+      await expectGlobalNavigation(tenant, 'SaaS Forge global navigation');
       await recover(platform, 'Platform 总览');
     },
   );
@@ -450,12 +562,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       assert.equal(body.tenantContext.tenantDisplayName, 'Second Acceptance Tenant');
       assert.ok(body.accessToken !== beforeSwitch.accessToken, 'recovery must issue a new token');
       await tenant.getByRole('heading', { name: 'Tenant workspace', exact: true }).waitFor();
-      await tenant
-        .getByRole('navigation', {
-          name: 'SaaS Forge global navigation',
-          exact: true,
-        })
-        .waitFor();
+      await expectGlobalNavigation(tenant, 'SaaS Forge global navigation');
       assert.equal(await tenant.evaluate(() => localStorage.getItem('sf:ui:locale')), 'en-US');
       const reloadRefresh = tenant.waitForResponse(isAuthResponse('refresh'));
       await tenant.reload();
@@ -490,9 +597,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
           });
           await outcome.waitFor();
           assert.equal(await outcome.textContent(), 'Tenant 工作台');
-          await page
-            .getByRole('navigation', { name: 'SaaS Forge 全局导航', exact: true })
-            .waitFor();
+          await expectGlobalNavigation(page, 'SaaS Forge 全局导航');
         }
         tenant.off('response', observe);
         peer.off('response', observe);
@@ -704,21 +809,22 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       await tenant
         .getByRole('button', { name: '进入 Console Acceptance Tenant', exact: true })
         .press('Enter');
-      async function expectBrand(name, color, accent, asset) {
+      async function expectBrand(name, colors, accent, asset) {
         await tenant.getByRole('heading', { name: 'Tenant 工作台', exact: true }).waitFor();
-        await tenant.getByRole('navigation', { name: `${name} 全局导航`, exact: true }).waitFor();
+        await expectGlobalNavigation(tenant, `${name} 全局导航`);
         assert.equal(new URL(tenant.url()).pathname, '/');
         assert.equal(await tenant.title(), `${name} · SaaS Forge Tenant Console`);
         const logo = tenant.getByRole('img', { name: `${name} Logo`, exact: true });
         await logo.waitFor({ state: 'visible' });
-        const navigationBounds = await tenant
-          .getByRole('navigation', { name: `${name} 全局导航`, exact: true })
-          .boundingBox();
+        const brandBounds = await tenant.locator('.sf-application-compact-brand').boundingBox();
         const localeBounds = await tenant.locator('.sf-console-locale-control').boundingBox();
-        assert.ok(navigationBounds && localeBounds);
+        assert.ok(brandBounds && localeBounds);
         assert.ok(
-          localeBounds.y + localeBounds.height <= navigationBounds.y,
-          'Narrow-screen language control must not overlap the brand navigation',
+          localeBounds.x + localeBounds.width <= brandBounds.x ||
+            brandBounds.x + brandBounds.width <= localeBounds.x ||
+            localeBounds.y + localeBounds.height <= brandBounds.y ||
+            brandBounds.y + brandBounds.height <= localeBounds.y,
+          'Narrow-screen language control must not overlap the visible brand',
         );
         assert.equal(await logo.getAttribute('src'), `/brands/acceptance-${asset}.svg`);
         assert.equal(
@@ -742,7 +848,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
               .evaluate((root) =>
                 globalThis.getComputedStyle(root).getPropertyValue('--sf-color-primary').trim(),
               ),
-            color,
+            colors[scheme],
           );
           assert.equal(
             await tenant
@@ -774,7 +880,13 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         });
         await captureBrandEvidence(tenant, `tenant-${asset}`);
       }
-      await expectBrand('Acceptance Blue Brand', '#155EEF', '#7A5AF8', 'blue');
+      await expectBrand(
+        'Acceptance Blue Brand',
+        { light: '#155EEF', dark: '#155EEF' },
+        '#7A5AF8',
+        'blue',
+      );
+      await openCompactNavigation(tenant);
       await verifyBrandRemoteInheritance(tenant);
       const refreshPath = '**/api/v1/auth/refresh';
       const stalledRefresh = Promise.withResolvers();
@@ -818,17 +930,29 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       const refreshed = tenant.waitForResponse(isAuthResponse('refresh'));
       await tenant.getByRole('button', { name: '重试完成切换', exact: true }).click();
       assert.equal((await refreshed).status(), 200);
-      await expectBrand('Acceptance Violet Brand', '#7C3AED', '#C026D3', 'violet');
+      // ADR 0042 resolves separate theme tokens; the dark violet must meet 3:1 against #1A202A.
+      await expectBrand(
+        'Acceptance Violet Brand',
+        { light: '#7C3AED', dark: '#8344EE' },
+        '#C026D3',
+        'violet',
+      );
+      await openCompactNavigation(tenant);
       await verifyBrandRemoteInheritance(tenant);
-      assert.equal(
-        await tenant
-          .getByRole('navigation', { name: 'Acceptance Blue Brand 全局导航', exact: true })
-          .count(),
-        0,
+      await expectGlobalNavigation(
+        tenant,
+        'Acceptance Violet Brand 全局导航',
+        'Acceptance Blue Brand 全局导航',
       );
       console.info('BRAND: switched Remote verified; starting cold recovery');
       await recover(tenant, 'Tenant 工作台');
-      await expectBrand('Acceptance Violet Brand', '#7C3AED', '#C026D3', 'violet');
+      // ADR 0042 resolves separate theme tokens; the dark violet must meet 3:1 against #1A202A.
+      await expectBrand(
+        'Acceptance Violet Brand',
+        { light: '#7C3AED', dark: '#8344EE' },
+        '#C026D3',
+        'violet',
+      );
       console.info('BRAND: cold recovery verified');
       function writeBrandFault(assignment, scenario) {
         try {
@@ -873,9 +997,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
           ),
           true,
         );
-        await tenant
-          .getByRole('navigation', { name: 'SaaS Forge 全局导航', exact: true })
-          .waitFor();
+        await expectGlobalNavigation(tenant, 'SaaS Forge 全局导航');
         assert.equal(await tenant.title(), 'SaaS Forge Tenant Console');
         const logo = tenant.getByRole('img', { name: 'SaaS Forge Logo', exact: true });
         await logo.waitFor({ state: 'visible' });
@@ -909,6 +1031,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         async () => {
           await verifyLatestBrandRead(context, `https://console.${rootDomain}/`, {
             source: tenant,
+            openNavigation: openCompactNavigation,
             publishLatest: () =>
               writeBrandFault("display_name = 'Acceptance Newest Brand'", 'latest'),
             restore: () => writeBrandFault("display_name = 'Acceptance Violet Brand'", 'restore'),
@@ -1072,12 +1195,13 @@ test('Platform and Tenant sessions survive independent recovery and logout after
   await t.test(
     'protected navigation and a route failure retain the authenticated Shell',
     async () => {
+      await openCompactNavigation(platform);
       const navigation = platform.getByRole('link', { name: 'OAuth Client', exact: true });
       await navigation.focus();
       await navigation.press('Enter');
-      await expectRouteAccessibility(platform, 'OAuth Client 管理');
+      await expectRouteAccessibility(platform, 'OAuth Clients');
       assert.equal(new URL(platform.url()).pathname, '/oauth-clients');
-      await recover(platform, 'OAuth Client 管理');
+      await recover(platform, 'OAuth Clients');
       const page = await context.newPage();
       const marker = `private-route-error-${randomUUID()}`;
       let leaked = false;
@@ -1092,14 +1216,14 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         Object.defineProperty(globalThis.Node.prototype, 'textContent', {
           ...descriptor,
           set(value) {
-            if (this.nodeName === 'H1' && value === 'OAuth Client 管理') throw new Error(marker);
+            if (this.nodeName === 'H1' && value === 'OAuth Clients') throw new Error(marker);
             descriptor.set.call(this, value);
           },
         });
       }, marker);
       await page.goto(`https://platform.${rootDomain}/oauth-clients`);
       await expectRouteAccessibility(page, '当前页面出现错误');
-      await page.getByRole('navigation', { name: 'SaaS Forge 全局导航', exact: true }).waitFor();
+      await expectGlobalNavigation(page, 'SaaS Forge 全局导航');
       assert.equal((await page.locator('body').innerText()).includes(marker), false);
       const home = page.getByRole('button', { name: '返回首页', exact: true });
       await home.focus();
@@ -1117,6 +1241,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
   await t.test(
     'Platform Locale switching retains the protected route without an API request and persists through reload and logout',
     async () => {
+      await openCompactNavigation(platform);
       const home = platform.getByRole('link', { name: '首页', exact: true });
       await home.focus();
       await home.press('Enter');
@@ -1130,9 +1255,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       platform.on('request', observe);
       await selectConsoleLocale(platform, 'English');
       await platform.getByRole('heading', { name: 'Platform overview', exact: true }).waitFor();
-      await platform
-        .getByRole('navigation', { name: 'SaaS Forge global navigation', exact: true })
-        .waitFor();
+      await expectGlobalNavigation(platform, 'SaaS Forge global navigation');
       assert.deepEqual(requests, []);
       platform.off('request', observe);
 
@@ -1144,10 +1267,11 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         'Locale reload keeps the real session recoverable',
       );
       await expectRouteAccessibility(platform, 'Platform overview');
+      await openCompactNavigation(platform);
       const navigation = platform.getByRole('link', { name: 'OAuth Client', exact: true });
       await navigation.focus();
       await navigation.press('Enter');
-      await expectRouteAccessibility(platform, 'OAuth Client management');
+      await expectRouteAccessibility(platform, 'OAuth Clients');
 
       const signedOut = platform.waitForResponse(isAuthResponse('logout'));
       const signOut = platform.getByRole('button', { name: 'Sign out', exact: true });
@@ -1410,7 +1534,7 @@ test('request Problems, malformed responses and unknown network results stay wit
 });
 
 async function expectRouteAccessibility(page, title, { focusedElementId } = {}) {
-  await page.getByRole('heading', { name: title, exact: true }).waitFor();
+  await page.getByRole('heading', { name: title, exact: true, level: 1 }).waitFor();
   await page.waitForFunction(
     ({ expectedTitle, expectedId }) =>
       expectedId === undefined
@@ -1536,6 +1660,26 @@ function isAuthResponse(operation) {
     response.request().method() === 'POST';
 }
 
+// The shared session fixture deliberately stays at 390px to cover the compact Shell.
+// Its navigation is rendered inside a closed drawer until opened through the product UI.
+async function openCompactNavigation(page) {
+  const open = page.getByRole('button', { name: /^(打开导航|Open navigation)$/ });
+  if ((await open.count()) && (await open.getAttribute('aria-expanded')) !== 'true')
+    await open.press('Enter');
+}
+
+async function expectGlobalNavigation(page, name, previousName) {
+  await openCompactNavigation(page);
+  await page.getByRole('navigation', { name, exact: true }).waitFor();
+  if (previousName !== undefined)
+    assert.equal(
+      await page.getByRole('navigation', { name: previousName, exact: true }).count(),
+      0,
+    );
+  const close = page.getByRole('button', { name: /^(关闭导航|Close navigation)$/ });
+  if (await close.isVisible()) await close.press('Enter');
+}
+
 async function login(page, email, password, locale = 'zh-CN', { focusedElementId } = {}) {
   const labels =
     locale === 'en-US'
@@ -1574,7 +1718,7 @@ async function selectConsoleLocale(page, name) {
     'true',
     'locale selector opens by keyboard',
   );
-  await page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)').waitFor();
+  // 页面可同时存在筛选下拉层的退出动画；只等待目标语言选项。
   const target = page.locator('.ant-select-item-option', { hasText: name });
   await target.waitFor();
   let targetActive = false;
@@ -1673,8 +1817,12 @@ async function prepareTenant(token, email, options = {}) {
   }
   let planId = options.planId;
   if (planId === undefined) {
-    const quota = await post('quota-definitions', { code: 'max_users' }, 201);
-    await post(`quota-definitions/${quota.id}/activations`, undefined, 200);
+    const quota =
+      options.quotaDefinitionId === undefined
+        ? await post('quota-definitions', { code: 'max_users' }, 201)
+        : { id: options.quotaDefinitionId };
+    if (options.quotaDefinitionId === undefined)
+      await post(`quota-definitions/${quota.id}/activations`, undefined, 200);
     const plan = await post(
       'plans',
       {

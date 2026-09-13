@@ -136,6 +136,45 @@ class EntitlementBootstrapControllerTest {
                         .header("Idempotency-Key", KEY))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("ACTIVE"));
+        mvc.perform(post("/api/v1/platform/quota-definitions/{id}/activations", DEFINITION)
+                        .header("Authorization", "Bearer platform-token")
+                        .header("Idempotency-Key", KEY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
+    }
+
+    @Test
+    void rejectsNonEmptyActivationBodyBeforeInvokingBusinessOperation() throws Exception {
+        EntitlementBootstrapService bootstrap = Mockito.mock(EntitlementBootstrapService.class);
+        MockMvc mvc = mvc(authorization -> KEY, bootstrap);
+        mvc.perform(post("/api/v1/platform/quota-definitions/{id}/activations", DEFINITION)
+                        .header("Authorization", "Bearer platform-token")
+                        .header("Idempotency-Key", KEY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"unexpected\":true}"))
+                .andExpect(status().isBadRequest());
+        Mockito.verifyNoInteractions(bootstrap);
+    }
+
+    @Test
+    void rejectsNonEmptyOrNonObjectRecoveryBodyBeforeInvokingBusinessOperation() throws Exception {
+        var recovery = Mockito.mock(
+                io.saasforge.entitlement.application.bootstrap.RecoverableQuotaDefinitionService.class);
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(
+                        new EntitlementBootstrapController(authorization -> KEY, null, null, null, recovery, null, null))
+                .setControllerAdvice(new EntitlementBootstrapExceptionHandler())
+                .build();
+        for (String body : List.of("{\"unexpected\":true}", "[]", "42", "null")) {
+            mvc.perform(post("/api/v1/platform/quota-definition-operations/{id}/recovery", DEFINITION)
+                            .header("Authorization", "Bearer platform-token")
+                            .header("Idempotency-Key", KEY)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andExpect(status().isBadRequest());
+        }
+        Mockito.verifyNoInteractions(recovery);
     }
 
     @Test
@@ -160,7 +199,28 @@ class EntitlementBootstrapControllerTest {
             EntitlementBootstrapService bootstrap,
             CreateInitialSubscriptionService subscriptions) {
         return MockMvcBuilders.standaloneSetup(
-                        new EntitlementBootstrapController(authorizer, bootstrap, subscriptions))
+                        new EntitlementBootstrapController(authorizer,
+                            new io.saasforge.entitlement.application.bootstrap.RecoverablePlanService(bootstrap, null, null) {
+                                @Override public PlanResult create(UUID actor, UUID key, io.saasforge.entitlement.application.bootstrap.PlanDraft draft, String trace) {
+                                    return bootstrap.createPlan(actor, key, draft.code(), draft.displayName(), draft.quotaDefinitionId(), draft.limit(), trace);
+                                }
+                                @Override public PlanResult activate(UUID actor, UUID key, UUID id, String trace) {
+                                    return bootstrap.activatePlan(actor, key, id, trace);
+                                }
+                            }, null, new io.saasforge.entitlement.application.subscription.RecoverableSubscriptionService(subscriptions, null, null) {
+                                @Override public io.saasforge.entitlement.application.subscription.InitialSubscriptionResult create(
+                                        UUID actor, UUID key, UUID tenant, UUID plan, java.time.Instant endsAt, String trace) {
+                                    return subscriptions.create(actor, key, tenant, plan, endsAt, trace);
+                                }
+                            },
+                            new io.saasforge.entitlement.application.bootstrap.RecoverableQuotaDefinitionService(bootstrap, null, null) {
+                                @Override public QuotaDefinitionResult create(UUID actor, UUID key, String code, String trace) {
+                                    return bootstrap.createQuotaDefinition(actor, key, code, trace);
+                                }
+                                @Override public QuotaDefinitionResult activate(UUID actor, UUID key, UUID id, String trace) {
+                                    return bootstrap.activateQuotaDefinition(actor, key, id, trace);
+                                }
+                            }, null, null))
                 .setControllerAdvice(new EntitlementBootstrapExceptionHandler())
                 .build();
     }

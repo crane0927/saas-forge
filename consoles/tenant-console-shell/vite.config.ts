@@ -8,6 +8,13 @@ function controlledDevelopmentRuntimeConfig(): Plugin {
     name: 'controlled-development-runtime-config',
     apply: 'serve',
     configureServer(server) {
+      // 浏览器必须经受信 HTTPS Edge 访问；默认 Local URL 仅供内部转发。
+      server.printUrls = () => {
+        server.config.logger.info('  ➜  浏览器入口: https://console.saasforge.test/');
+        for (const url of server.resolvedUrls?.local ?? []) {
+          server.config.logger.info(`  ➜  内部监听（非浏览器入口）: ${new URL(url).host}`);
+        }
+      };
       server.middlewares.use((request, response, next) => {
         const pathname = new URL(request.url ?? '/', 'http://vite.local').pathname;
         if (pathname !== '/runtime-config.json') {

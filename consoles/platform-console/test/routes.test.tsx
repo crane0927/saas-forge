@@ -2,7 +2,23 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MemoryRouter } from 'react-router';
 
-import { createPlatformAuthenticationRoutes, platformAuthenticationRoutes } from '../src/routes';
+import {
+  createAuthenticationRuntimeAfterConfig,
+  parseRuntimeConfig,
+} from '@saas-forge/app-runtime';
+import { createPlatformAuthenticationRoutes } from '../src/routes';
+
+const result = createAuthenticationRuntimeAfterConfig(
+  parseRuntimeConfig({ schemaVersion: 1, apiBaseUrl: 'https://api.example.test' }),
+  {
+    realm: {},
+    intent: 'PLATFORM',
+    fetch: () => Promise.resolve(new Response(null, { status: 401 })),
+  },
+);
+if (!result.ok) throw new Error('Invalid test configuration');
+const client = result.runtime.client;
+const platformAuthenticationRoutes = createPlatformAuthenticationRoutes('zh-CN', client);
 
 afterEach(cleanup);
 
@@ -10,7 +26,10 @@ describe('Platform route tree', () => {
   it('registers only the Platform local routes consumed by the shared shell', () => {
     expect(platformAuthenticationRoutes.map(({ path, label }) => ({ path, label }))).toEqual([
       { path: '/', label: '首页' },
-      { path: '/oauth-clients', label: 'OAuth Client' },
+      { path: '/tenants/*', label: 'Tenant' },
+      { path: '/quota-definitions/*', label: '额度定义' },
+      { path: '/plans/*', label: '套餐' },
+      { path: '/oauth-clients/*', label: 'OAuth Client' },
     ]);
   });
 
@@ -29,10 +48,13 @@ describe('Platform route tree', () => {
   });
 
   it('uses the active Locale for Platform navigation, routes, and accessibility announcements', async () => {
-    const routes = createPlatformAuthenticationRoutes('en-US');
+    const routes = createPlatformAuthenticationRoutes('en-US', client);
     expect(routes.map(({ path, label }) => ({ path, label }))).toEqual([
       { path: '/', label: 'Home' },
-      { path: '/oauth-clients', label: 'OAuth Client' },
+      { path: '/tenants/*', label: 'Tenants' },
+      { path: '/quota-definitions/*', label: 'Quota definitions' },
+      { path: '/plans/*', label: 'Plans' },
+      { path: '/oauth-clients/*', label: 'OAuth Client' },
     ]);
 
     render(<MemoryRouter initialEntries={['/']}>{routes[0]?.element}</MemoryRouter>);

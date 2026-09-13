@@ -19,6 +19,7 @@
     </properties>
 
     <modules>
+        <module>service-discovery</module>
         <module>iam-service</module>
         <module>tenant-access-service</module>
         <module>entitlement-service</module>

@@ -9,6 +9,11 @@ import org.apache.ibatis.annotations.Param;
 
 public interface OAuthClientMapper {
 
+    List<OAuthClientRow> listClients(ClientQuery query);
+
+    record ClientQuery(String name, String type, String status, UUID afterId, int limit) { }
+
+
     OAuthClientRow insertClient(@Param("row") OAuthClientRow row);
 
     OAuthClientRow insertClientWithId(@Param("row") OAuthClientRow row);

@@ -53,6 +53,7 @@
                         </goals>
                         <configuration>
                             <executable>bash</executable>
+                            <skip>${saasforge.frontend.skip}</skip>
                             <arguments>
                                 <argument>${maven.multiModuleProjectDirectory}/scripts/verify-frontend-workspace.sh</argument>
                             </arguments>

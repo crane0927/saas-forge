@@ -1,5 +1,7 @@
 # 共享响应式布局消费与浏览器验证记录
 
+> 当前阶段范围已由 [ADR 0046](adr/0046-development-supports-chrome-and-jdk17.md) 调整为桌面 Chrome 当前稳定版与 JDK 17；Chromium 保留日常功能与视觉测试。本文旧矩阵的执行结果属于历史证据，不作为当前多浏览器或 JDK 21 要求。现行复现入口见 [本地验证说明](local-verification.md)。
+
 **状态：Issue #106 的代表性 Remote 消费、静态边界门禁、四浏览器 CI 行为与 Chromium 视觉证据已建立；本机 Darwin/Chromium 抗锯齿基线已独立校准，两个 Console 尚无最终产品业务路由消费。**
 
 ## 1. 验证边界
@@ -48,7 +50,7 @@ pnpm run test:browser:compatibility
 pnpm run verify:workspace
 ```
 
-跨浏览器入口覆盖真实 Chrome、Microsoft Edge、Firefox 与 Playwright WebKit。WebKit 是现代 Safari 引擎的项目约定入口，不等同于原生 Safari 应用验证。
+当前兼容入口仅覆盖真实 Chrome；Chromium 保留为日常功能与视觉测试工具。
 
 工作区聚合验证继续覆盖 Design System、Platform Console、Tenant Console Shell、Remote 消费夹具的类型检查、格式、Lint、单元测试、Chromium 浏览器测试与代表性生产构建。既有 Console 启动状态、路由标题焦点，以及 Design System 表单、表格、危险确认和焦点恢复行为仍由原有测试集回归。
 

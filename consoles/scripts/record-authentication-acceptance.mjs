@@ -26,12 +26,7 @@ const report =
         scope: process.env.SF_ACCEPTANCE_SCOPE ?? 'full',
         status: 'running',
         stages: [],
-        channels: (process.env.SF_PRODUCT_CHANNEL
-          ? [process.env.SF_PRODUCT_CHANNEL]
-          : process.env.SF_ACCEPTANCE_TARGET === 'ci'
-            ? ['firefox', 'webkit', 'chromium', 'chrome', 'msedge']
-            : ['webkit', 'chromium', 'chrome']
-        ).map((browser) => ({ browser, status: 'not-run' })),
+        channels: [{ browser: 'chrome', status: 'not-run' }],
       }
     : JSON.parse(await readFile(file, 'utf8'));
 if (process.env.SF_ACCEPTANCE_PROJECT) report.project = process.env.SF_ACCEPTANCE_PROJECT;

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.saasforge.entitlement.infrastructure.persistence.mapper.SubscriptionRecoveryMapper">
+    <sql id="columns">
+        id, actor_identity_id AS actor, idempotency_key AS key, tenant_id AS tenantId,
+        plan_id AS planId, ends_at AS endsAt, created_at AS createdAt, replay_until AS replayUntil,
+        response_body::TEXT AS responseBody
+    </sql>
+    <insert id="prepare">
+        INSERT INTO subscription_recovery(actor_identity_id, idempotency_key, tenant_id, plan_id, ends_at, created_at, replay_until)
+        VALUES (#{actor}, #{key}, #{tenantId}, #{planId}, #{endsAt}, #{createdAt}, #{replayUntil})
+        ON CONFLICT (actor_identity_id, idempotency_key) DO NOTHING
+    </insert>
+    <select id="findByKey" resultType="io.saasforge.entitlement.infrastructure.persistence.record.SubscriptionRecoveryRow">
+        SELECT <include refid="columns"/> FROM subscription_recovery
+        WHERE actor_identity_id = #{actor} AND idempotency_key = #{key}
+    </select>
+    <!-- 获锁后重新读取，避免同一 SqlSession 的旧快照。 -->
+    <select id="find" flushCache="true" resultType="io.saasforge.entitlement.infrastructure.persistence.record.SubscriptionRecoveryRow">
+        SELECT <include refid="columns"/> FROM subscription_recovery WHERE actor_identity_id = #{actor} AND id = #{id}
+    </select>
+    <select id="tryLock" resultType="boolean">
+        SELECT pg_try_advisory_xact_lock(hashtextextended('subscription-operation:' || CAST(#{id} AS TEXT), 0))
+    </select>
+    <select id="setTenant" resultType="string">
+        SELECT set_config('app.tenant_id', CAST(#{tenantId} AS TEXT), true)
+    </select>
+    <!-- 只判定本领域可知条件；恢复执行时仍通过正式跨服务契约复核 Tenant 资格。 -->
+    <select id="canExecute" resultType="boolean">
+        SELECT NOT EXISTS (SELECT 1 FROM subscriptions s WHERE s.tenant_id = r.tenant_id)
+            AND (r.ends_at IS NULL OR r.ends_at::TIMESTAMPTZ &gt; CURRENT_TIMESTAMP)
+            AND EXISTS (SELECT 1 FROM plans p JOIN plan_quotas q ON q.plan_id = p.id
+                WHERE p.id = r.plan_id AND p.plan_status = 'ACTIVE' AND q.quota_limit &gt;= 1)
+        FROM subscription_recovery r WHERE r.id = #{id}
+    </select>
+    <update id="complete">
+        UPDATE subscription_recovery SET response_body = CAST(#{responseBody} AS JSONB), replay_until = #{replayUntil}
+        WHERE id = #{id} AND actor_identity_id = #{actor} AND response_body IS NULL
+    </update>
+    <select id="list" resultType="java.util.UUID">
+        SELECT id FROM subscription_recovery WHERE actor_identity_id = #{actor} AND tenant_id = #{tenantId}
+        <if test="after != null">AND id &gt; #{after}</if>
+        ORDER BY id LIMIT #{limit}
+    </select>
+</mapper>

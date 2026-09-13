@@ -8,6 +8,593 @@ import {
 } from '../src';
 
 describe('createAuthenticationRuntime', () => {
+  it('correlates an unknown resend by its exact original Key instead of accepting a different latest record', async () => {
+    const id = '019535d9-0000-7000-8000-000000000002';
+    const key = '019535d9-0000-7000-8000-000000000004';
+    const fetch = vi
+      .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      )
+      .mockRejectedValueOnce(new TypeError('Lost response'))
+      .mockResolvedValueOnce(
+        Response.json({
+          tenantId: id,
+          state: 'MAIL_SERVICE_ACCEPTED',
+          operationState: 'UNKNOWN',
+          canResend: false,
+          canContinue: false,
+        }),
+      );
+    const runtime = createRuntime({
+      realm: {},
+      intent: 'PLATFORM',
+      fetch,
+      createIdempotencyKey: () => key,
+    });
+    await runtime.login({ email: 'admin@example.test', password: 'secret' });
+    expect((await runtime.client.resendTenantAdministratorPasswordSetup(id)).ok).toBe(false);
+    const read = await runtime.client.getTenantAdministratorPasswordSetup(id);
+    expect(read).toMatchObject({
+      ok: true,
+      value: { operationState: 'UNKNOWN', canResend: false },
+    });
+    expect(new Headers(fetch.mock.calls[1][1]?.headers).get('Idempotency-Key')).toBe(key);
+    expect(new Headers(fetch.mock.calls[1][1]?.headers).get('Content-Type')).toBe(
+      'application/json',
+    );
+    expect(new Headers(fetch.mock.calls[1][1]?.headers).get('Authorization')).toBe('Bearer token');
+    expect(new URL(requestUrl(fetch.mock.calls[2][0])).searchParams.get('idempotencyKey')).toBe(
+      key,
+    );
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('reads and recovers a notification through its original server handle, rejecting copied handles', async () => {
+    const id = '019535d9-0000-7000-8000-000000000002';
+    const fetch = vi
+      .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          tenantId: id,
+          resendId: id,
+          state: 'ACTION_REQUIRED',
+          operationState: 'PENDING',
+          canResend: false,
+          canContinue: true,
+        }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const runtime = createRuntime({ realm: {}, intent: 'PLATFORM', fetch });
+    await runtime.login({ email: 'admin@example.test', password: 'secret' });
+    const progress = await runtime.client.getTenantAdministratorPasswordSetup(id);
+    if (!progress.ok) throw new Error('Expected notification state');
+    expect(
+      await runtime.client.recoverTenantAdministratorPasswordSetup(progress.value),
+    ).toMatchObject({ ok: true });
+    expect(fetch.mock.calls[2][0]).toEqual(
+      expect.stringContaining(`/administrator-password-setups/${id}/recovery`),
+    );
+    expect(fetch.mock.calls[2][1]?.body).toBe('{}');
+    expect(new Headers(fetch.mock.calls[2][1]?.headers).has('Idempotency-Key')).toBe(false);
+    expect(
+      await runtime.client.recoverTenantAdministratorPasswordSetup({ ...progress.value }),
+    ).toMatchObject({ ok: false, problem: { code: 'INVALID_OPERATION_HANDLE' } });
+  });
+
+  it('continues a durable initialization by its server identity without retaining administrator email or inventing a new Key', async () => {
+    const id = '019535d9-0000-7000-8000-000000000002';
+    const initializationId = '019535d9-0000-7000-8000-000000000003';
+    const fetch = vi
+      .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          tenantId: id,
+          initializationId,
+          state: 'RECOVERY_REQUIRED',
+          canStart: false,
+          canContinue: true,
+          initialAdministratorMembershipId: null,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          id,
+          displayName: 'Recovered',
+          status: 'ACTIVE',
+          expiresAt: null,
+          createdAt: '2026-09-12T00:00:00Z',
+          updatedAt: '2026-09-12T00:00:00Z',
+        }),
+      );
+    const runtime = createRuntime({ realm: {}, intent: 'PLATFORM', fetch });
+    await runtime.login({ email: 'admin@example.test', password: 'secret' });
+    const progress = await runtime.client.getTenantAdministratorInitialization(id);
+    if (!progress.ok) throw new Error('Expected progress');
+    expect(
+      await runtime.client.recoverTenantAdministratorInitialization(progress.value),
+    ).toMatchObject({
+      ok: true,
+      value: { status: 'ACTIVE' },
+    });
+    expect(fetch.mock.calls[2][0]).toEqual(
+      expect.stringContaining(`/administrator-initializations/${initializationId}/recovery`),
+    );
+    expect(fetch.mock.calls[2][1]?.body).toBe('{}');
+    expect(new Headers(fetch.mock.calls[2][1]?.headers).has('Idempotency-Key')).toBe(false);
+    expect(
+      await runtime.client.recoverTenantAdministratorInitialization({ ...progress.value }),
+    ).toMatchObject({
+      ok: false,
+      problem: { code: 'INVALID_OPERATION_HANDLE' },
+    });
+  });
+
+  it('restores creation recovery after a new Realm without exposing or replacing its original Key', async () => {
+    const key = '019535d9-0000-7000-8000-000000000001';
+    const id = '019535d9-0000-7000-8000-000000000002';
+    const operation = {
+      id,
+      displayName: 'Same name',
+      state: 'NOT_COMMITTED',
+      createdAt: '2026-09-11T00:00:00.000Z',
+      replayUntil: '2026-09-12T00:00:00.000Z',
+      canReplay: true,
+      idempotencyKey: key,
+    };
+    const fetch = vi
+      .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ items: [operation], nextCursor: null, hasMore: false }),
+      )
+      .mockResolvedValueOnce(Response.json({ ...operation, state: 'COMMITTED', tenantId: id }));
+    const runtime = createRuntime({ realm: {}, intent: 'PLATFORM', fetch });
+    await runtime.login({ email: 'admin@example.test', password: 'secret' });
+    const page = await runtime.client.listTenantCreations({});
+    expect(page.ok).toBe(true);
+    if (!page.ok) throw new Error('Expected own recovery records');
+    const restored = page.value.items[0];
+    expect(restored).not.toHaveProperty('idempotencyKey');
+    expect(await runtime.client.recoverTenantCreation(restored)).toMatchObject({
+      ok: true,
+      value: { state: 'COMMITTED', tenantId: id },
+    });
+    expect(new Headers(fetch.mock.calls[2]?.[1]?.headers).get('Idempotency-Key')).toBe(key);
+    expect(await runtime.client.recoverTenantCreation({ ...restored })).toMatchObject({
+      ok: false,
+      problem: { code: 'INVALID_OPERATION_HANDLE' },
+    });
+  });
+
+  it('sends quota activation as JSON through the generated client for the browser security boundary', async () => {
+    const id = '019535d9-0000-7000-8000-000000000002';
+    const fetch = vi
+      .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({ id, code: 'max_users', status: 'ACTIVE' }));
+    const runtime = createRuntime({ realm: {}, intent: 'PLATFORM', fetch });
+    await runtime.login({ email: 'admin@example.test', password: 'secret' });
+    expect(await runtime.client.activateQuotaDefinition({ id })).toMatchObject({ ok: true });
+    const [url, request] = fetch.mock.calls[1];
+    expect(url).toEqual(expect.stringContaining(`/quota-definitions/${id}/activations`));
+    expect(new Headers(request?.headers).get('Content-Type')).toBe('application/json');
+    expect(request?.body).toBe('{}');
+  });
+
+  it('sends plan activation as JSON through the generated client for the browser security boundary', async () => {
+    const id = '019535d9-0000-7000-8000-000000000002';
+    const fetch = vi
+      .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          id,
+          code: 'starter',
+          displayName: 'Starter',
+          status: 'ACTIVE',
+          quotaLimits: [{ quotaDefinitionId: id, limit: 1 }],
+          createdAt: '2026-09-12T00:00:00Z',
+          updatedAt: '2026-09-12T00:00:00Z',
+        }),
+      );
+    const runtime = createRuntime({ realm: {}, intent: 'PLATFORM', fetch });
+    await runtime.login({ email: 'admin@example.test', password: 'secret' });
+    expect(await runtime.client.activatePlan({ id })).toMatchObject({ ok: true });
+    const [url, request] = fetch.mock.calls[1];
+    expect(url).toEqual(expect.stringContaining(`/plans/${id}/activations`));
+    expect(new Headers(request?.headers).get('Content-Type')).toBe('application/json');
+    expect(request?.body).toBe('{}');
+  });
+
+  it.each(['CREATE', 'ACTIVATE'])('restores quota %s with only its original Key', async (kind) => {
+    const key = '019535d9-0000-7000-8000-000000000001';
+    const id = '019535d9-0000-7000-8000-000000000002';
+    const operation = {
+      id,
+      operation: kind,
+      state: 'NOT_COMMITTED',
+      createdAt: '2026-09-11T00:00:00.000Z',
+      replayUntil: '2026-09-12T00:00:00.000Z',
+      canReplay: true,
+      idempotencyKey: key,
+    };
+    const fetch = vi
+      .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ items: [operation], nextCursor: null, hasMore: false }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ ...operation, state: 'COMMITTED', quotaDefinitionId: id }),
+      );
+    const runtime = createRuntime({ realm: {}, intent: 'PLATFORM', fetch });
+    await runtime.login({ email: 'admin@example.test', password: 'secret' });
+    const page = await runtime.client.listQuotaDefinitionOperations({});
+    expect(page.ok).toBe(true);
+    if (!page.ok) throw new Error('Expected own recovery records');
+    const restored = page.value.items[0];
+    expect(restored).not.toHaveProperty('idempotencyKey');
+    expect(await runtime.client.recoverQuotaDefinitionOperation(restored)).toMatchObject({
+      ok: true,
+      value: { state: 'COMMITTED', quotaDefinitionId: id },
+    });
+    expect(new Headers(fetch.mock.calls[2]?.[1]?.headers).get('Idempotency-Key')).toBe(key);
+    expect(await runtime.client.recoverQuotaDefinitionOperation({ ...restored })).toMatchObject({
+      ok: false,
+      problem: { code: 'INVALID_OPERATION_HANDLE' },
+    });
+  });
+  it.each([
+    {},
+    {
+      observedAt: '2026-09-11T00:00:00Z',
+      subscription: null,
+      effective: false,
+      maxUsersLimit: 0,
+      maxUsersUsed: 0,
+    },
+    {
+      observedAt: '2026-09-11T00:00:00Z',
+      effective: false,
+      maxUsersLimit: null,
+      maxUsersUsed: null,
+    },
+  ])(
+    'rejects incomplete or inconsistent subscription reads instead of inventing empty entitlements',
+    async (value) => {
+      const fetch = vi
+        .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+        .mockResolvedValueOnce(
+          Response.json({
+            contextState: 'ACCESS_TOKEN_ISSUED',
+            accessToken: 'token',
+            tokenType: 'Bearer',
+            expiresIn: 120,
+          }),
+        )
+        .mockResolvedValueOnce(Response.json(value));
+      const runtime = createRuntime({ realm: {}, intent: 'PLATFORM', fetch });
+      await runtime.login({ email: 'admin@example.test', password: 'secret' });
+      expect(
+        (await runtime.client.getTenantSubscription('019535d9-0000-7000-8000-000000000002')).ok,
+      ).toBe(false);
+    },
+  );
+  it('restores subscriptions with only the original Key', async () => {
+    const key = '019535d9-0000-7000-8000-000000000001';
+    const id = '019535d9-0000-7000-8000-000000000002';
+    const operation = {
+      id,
+      tenantId: id,
+      state: 'NOT_COMMITTED',
+      createdAt: '2026-09-11T00:00:00.000Z',
+      replayUntil: '2026-09-12T00:00:00.000Z',
+      canReplay: true,
+      idempotencyKey: key,
+    };
+    const fetch = vi
+      .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ items: [operation], nextCursor: null, hasMore: false }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ ...operation, state: 'COMMITTED', subscriptionId: id }),
+      );
+    const runtime = createRuntime({ realm: {}, intent: 'PLATFORM', fetch });
+    await runtime.login({ email: 'admin@example.test', password: 'secret' });
+    const page = await runtime.client.listSubscriptionOperations({ tenantId: id });
+    expect(page.ok).toBe(true);
+    if (!page.ok) throw new Error('Expected own recovery records');
+    const restored = page.value.items[0];
+    expect(restored).not.toHaveProperty('idempotencyKey');
+    expect(await runtime.client.recoverSubscriptionOperation(restored)).toMatchObject({
+      ok: true,
+      value: { state: 'COMMITTED', subscriptionId: id },
+    });
+    expect(new Headers(fetch.mock.calls[2]?.[1]?.headers).get('Idempotency-Key')).toBe(key);
+    expect(await runtime.client.recoverSubscriptionOperation({ ...restored })).toMatchObject({
+      ok: false,
+      problem: { code: 'INVALID_OPERATION_HANDLE' },
+    });
+  });
+  it.each(['CREATE', 'ACTIVATE'])('restores plan %s with only its original Key', async (kind) => {
+    const key = '019535d9-0000-7000-8000-000000000001';
+    const id = '019535d9-0000-7000-8000-000000000002';
+    const operation = {
+      id,
+      operation: kind,
+      state: 'NOT_COMMITTED',
+      createdAt: '2026-09-11T00:00:00.000Z',
+      replayUntil: '2026-09-12T00:00:00.000Z',
+      canReplay: true,
+      idempotencyKey: key,
+    };
+    const fetch = vi
+      .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ items: [operation], nextCursor: null, hasMore: false }),
+      )
+      .mockResolvedValueOnce(Response.json({ ...operation, state: 'COMMITTED', planId: id }));
+    const runtime = createRuntime({ realm: {}, intent: 'PLATFORM', fetch });
+    await runtime.login({ email: 'admin@example.test', password: 'secret' });
+    const page = await runtime.client.listPlanOperations({});
+    expect(page.ok).toBe(true);
+    if (!page.ok) throw new Error('Expected own recovery records');
+    const restored = page.value.items[0];
+    expect(restored).not.toHaveProperty('idempotencyKey');
+    expect(await runtime.client.recoverPlanOperation(restored)).toMatchObject({
+      ok: true,
+      value: { state: 'COMMITTED', planId: id },
+    });
+    expect(new Headers(fetch.mock.calls[2]?.[1]?.headers).get('Idempotency-Key')).toBe(key);
+    expect(await runtime.client.recoverPlanOperation({ ...restored })).toMatchObject({
+      ok: false,
+      problem: { code: 'INVALID_OPERATION_HANDLE' },
+    });
+  });
+
+  it.each([
+    {},
+    {
+      identityId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6071',
+      email: 'admin@example.test',
+      platformAdmin: 'false',
+    },
+  ])(
+    'rejects an incomplete or malformed Current Session instead of inventing authorization',
+    async (snapshot) => {
+      const fetch = vi
+        .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+        .mockResolvedValueOnce(
+          Response.json({
+            contextState: 'ACCESS_TOKEN_ISSUED',
+            accessToken: 'memory-token',
+            tokenType: 'Bearer',
+            expiresIn: 120,
+          }),
+        )
+        .mockResolvedValueOnce(Response.json(snapshot));
+      const runtime = createRuntime({ realm: {}, intent: 'PLATFORM', fetch });
+      await runtime.login({ email: 'admin@example.test', password: 'secret' });
+      expect(await runtime.client.getCurrentSession()).toEqual({
+        ok: false,
+        problem: { code: 'INVALID_SERVICE_RESPONSE' },
+      });
+    },
+  );
+
+  it.each([403, 503])(
+    'isolates a late Current Session Problem body (%s) after logout',
+    async (status) => {
+      let release!: () => void;
+      let parsing = false;
+      const response = problemResponse(status, 'PLATFORM_ACCESS_DENIED');
+      const readJson: () => Promise<unknown> = response.json.bind(response);
+      response.json = async () => {
+        parsing = true;
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        return readJson();
+      };
+      const fetch = vi
+        .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+        .mockResolvedValueOnce(
+          Response.json({
+            contextState: 'ACCESS_TOKEN_ISSUED',
+            accessToken: 'old-token',
+            tokenType: 'Bearer',
+            expiresIn: 120,
+          }),
+        )
+        .mockResolvedValueOnce(response)
+        .mockResolvedValueOnce(new Response(null, { status: 204 }));
+      const runtime = createRuntime({ realm: {}, intent: 'PLATFORM', fetch });
+      await runtime.login({ email: 'old@example.test', password: 'secret' });
+      const pending = runtime.client.getCurrentSession();
+      await vi.waitFor(() => {
+        expect(parsing).toBe(true);
+      });
+      await runtime.logout();
+      release();
+      expect(await pending).toEqual({ ok: false, problem: { code: 'SESSION_CHANGED' } });
+    },
+  );
+
+  it.each([false, true])(
+    'isolates late Current Session responses after logout (failure=%s)',
+    async (failure) => {
+      let complete!: (response: Response) => void;
+      const fetch = vi
+        .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+        .mockResolvedValueOnce(
+          Response.json({
+            contextState: 'ACCESS_TOKEN_ISSUED',
+            accessToken: 'old-token',
+            tokenType: 'Bearer',
+            expiresIn: 120,
+          }),
+        )
+        .mockImplementationOnce(
+          () =>
+            new Promise<Response>((resolve) => {
+              complete = resolve;
+            }),
+        )
+        .mockResolvedValueOnce(new Response(null, { status: 204 }));
+      const runtime = createRuntime({ realm: {}, intent: 'PLATFORM', fetch });
+      await runtime.login({ email: 'old@example.test', password: 'secret' });
+      const pending = runtime.client.getCurrentSession();
+      await vi.waitFor(() => {
+        expect(fetch).toHaveBeenCalledTimes(2);
+      });
+      await runtime.logout();
+      complete(
+        failure
+          ? problemResponse(401, 'ACCESS_TOKEN_INVALID')
+          : Response.json({
+              identityId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6071',
+              email: 'old@example.test',
+              platformAdmin: true,
+            }),
+      );
+      expect(await pending).toEqual({ ok: false, problem: { code: 'SESSION_CHANGED' } });
+      expect(runtime.getState().status).toBe('anonymous');
+      expect(fetch).toHaveBeenCalledTimes(3);
+    },
+  );
+
+  it('refreshes and replays Current Session once while preserving independent business denial', async () => {
+    const snapshot = {
+      identityId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6071',
+      email: 'admin@example.test',
+      platformAdmin: false,
+    };
+    const issued = (accessToken: string) =>
+      Response.json({
+        contextState: 'ACCESS_TOKEN_ISSUED',
+        accessToken,
+        tokenType: 'Bearer',
+        expiresIn: 120,
+      });
+    const fetch = vi
+      .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+      .mockResolvedValueOnce(issued('old-token'))
+      .mockResolvedValueOnce(problemResponse(401, 'ACCESS_TOKEN_INVALID'))
+      .mockResolvedValueOnce(issued('fresh-token'))
+      .mockResolvedValueOnce(Response.json(snapshot))
+      .mockResolvedValueOnce(problemResponse(403, 'PLATFORM_ACCESS_DENIED'));
+    const runtime = createRuntime({
+      realm: {},
+      intent: 'PLATFORM',
+      fetch,
+      createIdempotencyKey: () => '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6073',
+    });
+    await runtime.login({ email: 'admin@example.test', password: 'secret' });
+    expect(await runtime.client.getCurrentSession()).toEqual({ ok: true, value: snapshot });
+    const business = await runtime.client.getOAuthClient({
+      clientId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6072',
+    });
+    expect(business).toMatchObject({ ok: false, problem: { status: 403 } });
+    expect(runtime.getState().status).toBe('authenticated');
+    expect(
+      fetch.mock.calls.filter(([url]) => requestUrl(url).endsWith('/auth/refresh')),
+    ).toHaveLength(1);
+  });
+
+  it('reads authoritative Current Session through the shared authenticated client', async () => {
+    const currentSession = {
+      identityId: '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6071',
+      email: 'admin@example.test',
+      displayName: 'Platform administrator',
+      platformAdmin: true,
+    };
+    const fetch = vi
+      .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'memory-token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      )
+      .mockResolvedValueOnce(Response.json(currentSession));
+    const runtime = createRuntime({ realm: {}, intent: 'PLATFORM', fetch });
+    await runtime.login({ email: 'admin@example.test', password: 'secret' });
+    expect(await runtime.client.getCurrentSession()).toEqual({ ok: true, value: currentSession });
+    expect(requestUrl(fetch.mock.calls[1][0])).toBe('https://api.example.test/api/v1/auth/session');
+    expect(new Headers(fetch.mock.calls[1][1]?.headers).get('Authorization')).toBe(
+      'Bearer memory-token',
+    );
+  });
+
   it.each(['displayName', 'logoUrl', 'faviconUrl', 'primaryColor', 'accentColor'] as const)(
     'keeps an authoritative Tenant context when brand field %s is missing',
     async (missingField) => {
@@ -600,6 +1187,51 @@ describe('createAuthenticationRuntime', () => {
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(fetch.mock.calls[1]?.[0]).toBe('https://api.example.test/api/v1/auth/logout');
     expect(fetch.mock.calls[1]?.[1]?.body).toBe(JSON.stringify({ sessionSlot: 'PLATFORM' }));
+  });
+
+  it('discards an OAuth Client list response after logout changes the session', async () => {
+    let resolveRead: ((response: Response) => void) | undefined;
+    const fetch = vi
+      .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveRead = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const runtime = createRuntime({ realm: {}, intent: 'PLATFORM', fetch });
+    await runtime.login({ email: 'admin@example.test', password: 'secret' });
+    const pending = runtime.client.listOAuthClients({
+      name: 'worker',
+      clientType: 'RESERVED_SERVICE',
+      status: 'ACTIVE',
+      limit: 2,
+    });
+    await vi.waitFor(() => {
+      expect(resolveRead).toBeDefined();
+    });
+    const request = new URL(requestUrl(fetch.mock.calls[1][0]));
+    expect(request.searchParams.get('name')).toBe('worker');
+    expect(request.searchParams.get('clientType')).toBe('RESERVED_SERVICE');
+    expect(request.searchParams.get('status')).toBe('ACTIVE');
+    await runtime.logout();
+    resolveRead?.(
+      Response.json({
+        items: [oauthClientDetail('018f1f2e-7b5a-7c42-8c91-2b3d4e5f6076')],
+        nextCursor: null,
+        hasMore: false,
+      }),
+    );
+    await expect(pending).resolves.toEqual({ ok: false, problem: { code: 'SESSION_CHANGED' } });
   });
 
   it('refreshes at the 30 second boundary before a typed read operation', async () => {

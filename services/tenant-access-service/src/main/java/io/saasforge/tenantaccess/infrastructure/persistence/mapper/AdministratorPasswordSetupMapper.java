@@ -7,6 +7,18 @@ import java.util.UUID;
 import org.apache.ibatis.annotations.Param;
 
 public interface AdministratorPasswordSetupMapper {
+    boolean hasPending(@Param("tenantId") UUID tenantId);
+
+    AdministratorPasswordSetupWorkflowRow findPendingActor(@Param("actor") UUID actor, @Param("tenantId") UUID tenantId);
+
+    AdministratorPasswordSetupWorkflowRow findByKey(@Param("actor") UUID actor, @Param("tenantId") UUID tenantId,
+            @Param("key") UUID key, @Param("now") OffsetDateTime now);
+
+    AdministratorPasswordSetupWorkflowRow findLatest(@Param("tenantId") UUID tenantId);
+
+    AdministratorPasswordSetupWorkflowRow findRecoverable(@Param("actor") UUID actor,
+            @Param("tenantId") UUID tenantId, @Param("resendId") UUID resendId, @Param("now") OffsetDateTime now);
+
     String setOperationTarget(@Param("tenantId") UUID tenantId);
 
     TenantRow lockTenant(@Param("tenantId") UUID tenantId);

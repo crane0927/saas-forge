@@ -18,7 +18,8 @@ import java.time.Clock;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.grpc.client.GrpcChannelFactory;
+import io.grpc.Channel;
+import org.springframework.beans.factory.annotation.Qualifier;
 import tools.jackson.databind.ObjectMapper;
 
 @Configuration
@@ -56,9 +57,9 @@ public class EntitlementBootstrapConfiguration {
 
     @Bean
     TenantEligibilityGateway tenantEligibilityGateway(
-            GrpcChannelFactory channels, IamServiceAccessTokenProvider serviceTokens) {
+            @Qualifier("tenantAccessServiceChannel") Channel tenantAccessChannel, IamServiceAccessTokenProvider serviceTokens) {
         return new GrpcTenantEligibilityGateway(
-                TenantProvisioningQueryServiceGrpc.newBlockingStub(channels.createChannel("tenant-access")),
+                TenantProvisioningQueryServiceGrpc.newBlockingStub(tenantAccessChannel),
                 serviceTokens::tenantReadToken);
     }
 

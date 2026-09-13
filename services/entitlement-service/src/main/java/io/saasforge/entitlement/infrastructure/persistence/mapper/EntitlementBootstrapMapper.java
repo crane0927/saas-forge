@@ -13,6 +13,10 @@ import java.util.UUID;
 import org.apache.ibatis.annotations.Param;
 
 public interface EntitlementBootstrapMapper {
+    java.util.List<UUID> listPlans(QuotaQuery query);
+    java.util.List<QuotaDefinitionRow> listQuotaDefinitions(QuotaQuery query);
+    record QuotaQuery(String code, String status, UUID after, int limit) { }
+
     String setOperationTarget(@Param("tenantId") UUID tenantId);
 
     int insertQuotaDefinition(@Param("row") QuotaDefinitionRow row);
@@ -30,6 +34,10 @@ public interface EntitlementBootstrapMapper {
     List<PlanQuotaLimitRow> findPlanQuotaLimits(@Param("planId") UUID planId);
 
     int activatePlan(@Param("id") UUID id, @Param("updatedAt") OffsetDateTime updatedAt);
+
+    SubscriptionRow findSubscription(@Param("tenantId") UUID tenantId);
+
+    int findSubscriptionUsage(@Param("tenantId") UUID tenantId, @Param("quotaDefinitionId") UUID quotaDefinitionId);
 
     int insertSubscription(@Param("row") SubscriptionRow row);
 

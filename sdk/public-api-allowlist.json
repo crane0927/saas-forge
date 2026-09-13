@@ -44,6 +44,7 @@
         "io.saasforge.sdk.core.rest.model.Jwk$UseEnum",
         "io.saasforge.sdk.core.rest.model.Jwks",
         "io.saasforge.sdk.core.rest.model.MembershipCandidate",
+        "io.saasforge.sdk.core.rest.model.NewPlanQuotaLimit",
         "io.saasforge.sdk.core.rest.model.OAuthClientDetail",
         "io.saasforge.sdk.core.rest.model.OAuthClientSecretResult",
         "io.saasforge.sdk.core.rest.model.OAuthClientStatus",

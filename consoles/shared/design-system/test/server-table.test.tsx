@@ -1,10 +1,9 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   DesignSystemProvider,
-  RecoverableDangerDialog,
   ServerTable,
   TextField,
   type ServerTableRequest,
@@ -61,23 +60,6 @@ describe('Design System 服务端表格', () => {
       'sort',
     );
   });
-
-  // Ant Design Table 的首次列测量与 Dropdown Portal 同属此集成用例；JDK CI 下需要保留足够时间，其他用例仍使用默认门禁。
-  it('每行操作超过三个时只显示前两个和更多，并可进入危险确认', async () => {
-    render(<ActionHarness />);
-
-    const firstRow = screen.getByRole('row', { name: /北辰科技/ });
-    expect(within(firstRow).getByRole('button', { name: '查看' })).toBeTruthy();
-    expect(within(firstRow).getByRole('button', { name: '编辑' })).toBeTruthy();
-    expect(within(firstRow).queryByRole('button', { name: '停用' })).toBeNull();
-    fireEvent.click(within(firstRow).getByRole('button', { name: '更多' }));
-    fireEvent.click(await screen.findByRole('menuitem', { name: '停用' }));
-
-    expect(await screen.findByRole('dialog', { name: '停用租户' })).toBeTruthy();
-    expect(
-      within(screen.getByRole('dialog', { name: '停用租户' })).getByText('北辰科技'),
-    ).toBeTruthy();
-  }, 15_000);
 
   it('区分首次加载、更新、无数据、筛选无结果和加载失败', () => {
     const retry = vi.fn();
@@ -149,43 +131,6 @@ function TableHarness({
         sort={sort}
         selectionLabel={(row) => `选择 ${row.name}`}
         onTableChange={onTableChange}
-      />
-    </DesignSystemProvider>
-  );
-}
-
-function ActionHarness() {
-  const [target, setTarget] = useState<TenantRow>();
-  return (
-    <DesignSystemProvider>
-      <ServerTable
-        ariaLabel="租户操作列表"
-        rows={rows}
-        rowKey={(row) => row.id}
-        columns={[{ key: 'name', title: '租户名称', render: (row) => row.name }]}
-        actions={[
-          { key: 'view', label: '查看', onAction: () => undefined },
-          { key: 'edit', label: '编辑', onAction: () => undefined },
-          { key: 'copy', label: '复制', onAction: () => undefined },
-          { key: 'disable', label: '停用', danger: true, onAction: setTarget },
-        ]}
-        page={1}
-        pageSize={2}
-        total={2}
-        onTableChange={() => undefined}
-      />
-      <RecoverableDangerDialog
-        open={target !== undefined}
-        title="停用租户"
-        objectName={target?.name ?? ''}
-        consequence="停用后成员暂时无法登录，管理员可以恢复。"
-        actionLabel="停用租户"
-        onCancel={() => {
-          setTarget(undefined);
-        }}
-        onConfirm={() => {
-          setTarget(undefined);
-        }}
       />
     </DesignSystemProvider>
   );

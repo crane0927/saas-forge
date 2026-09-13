@@ -1,5 +1,7 @@
 # Design System 消费与浏览器验证记录
 
+> 当前阶段范围已由 [ADR 0046](adr/0046-development-supports-chrome-and-jdk17.md) 调整为桌面 Chrome 当前稳定版与 JDK 17；Chromium 保留日常功能与视觉测试。本文旧矩阵的执行结果属于历史证据，不作为当前多浏览器或 JDK 21 要求。现行复现入口见 [本地验证说明](local-verification.md)。
+
 **状态：Issue #102 的仓库实现与本地 Chromium 证据已建立；Chrome、Edge、Firefox 与 WebKit 由 CI 矩阵在每次 push/PR 重放。**
 
 ## 1. 验证边界
@@ -28,16 +30,13 @@ pnpm run test:browser:chromium
 pnpm run build:workspace
 ```
 
-跨浏览器入口：
+Chrome 消费者入口：
 
 ```bash
 pnpm run test:browser:chrome
-pnpm run test:browser:edge
-pnpm run test:browser:firefox
-pnpm run test:browser:webkit
 ```
 
-CI 使用真实 Chrome、Microsoft Edge、Firefox 和 Playwright WebKit。WebKit 是现代 Safari 引擎的可复现兼容约定，不等同于已在原生 Safari 应用中执行；原生 Safari 无法在当前 Linux CI 执行，因此没有被静默记为通过。
+当前 CI 使用 Chromium 执行日常功能检查，真实 Chrome 执行产品及消费者验收；本机 Chromium 继续维护视觉基线。
 
 ## 3. 浏览器证据
 

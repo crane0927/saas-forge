@@ -1,14 +1,20 @@
+import type { ConsoleApiClient } from '@saas-forge/app-runtime';
 import { RouteFocusAnnouncement } from '@saas-forge/design-system';
 import { createTranslator, type SupportedLocale } from '@saas-forge/i18n';
 import type { AuthenticationShellRoute } from '@saas-forge/react-shell';
 import { useLocation } from 'react-router';
 
-import { platformMessages } from './messages';
+import { OAuthClientRoutes } from './oauth-clients';
+import { PlanRoutes } from './plans';
+import { QuotaDefinitionRoutes } from './quota-definitions';
+import { TenantRoutes } from './tenants';
 
-export const platformAuthenticationRoutes = createPlatformAuthenticationRoutes('zh-CN');
+import { CurrentSessionPanel } from './current-session';
+import { platformMessages } from './messages';
 
 export function createPlatformAuthenticationRoutes(
   locale: SupportedLocale,
+  client: ConsoleApiClient,
 ): readonly AuthenticationShellRoute[] {
   const translate = createTranslator({
     namespace: '@saas-forge/platform-console',
@@ -17,19 +23,48 @@ export function createPlatformAuthenticationRoutes(
   });
   const overviewTitle = translate.translate('platformOverviewTitle');
   const overviewDescription = translate.translate('platformOverviewDescription');
-  const oauthClientsTitle = translate.translate('oauthClientsTitle');
-  const oauthClientsDescription = translate.translate('oauthClientsDescription');
 
   return [
     {
       path: '/',
+      icon: 'home',
       label: translate.translate('navigationHome'),
-      element: <PlatformOverview title={overviewTitle} description={overviewDescription} />,
+      element: (
+        <PlatformOverview
+          title={overviewTitle}
+          description={overviewDescription}
+          client={client}
+          locale={locale}
+        />
+      ),
     },
     {
-      path: '/oauth-clients',
+      path: '/tenants/*',
+      icon: 'building',
+      navigationPath: '/tenants',
+      label: translate.translate('tenantsTitle'),
+      element: <TenantRoutes client={client} locale={locale} />,
+    },
+    {
+      path: '/quota-definitions/*',
+      icon: 'building',
+      navigationPath: '/quota-definitions',
+      label: translate.translate('quotaDefinitionsTitle'),
+      element: <QuotaDefinitionRoutes client={client} locale={locale} />,
+    },
+    {
+      path: '/plans/*',
+      icon: 'building',
+      navigationPath: '/plans',
+      label: translate.translate('planDefinitionsTitle'),
+      element: <PlanRoutes client={client} locale={locale} />,
+    },
+    {
+      path: '/oauth-clients/*',
+      navigationPath: '/oauth-clients',
+      icon: 'key',
       label: 'OAuth Client',
-      element: <OAuthClientsPage title={oauthClientsTitle} description={oauthClientsDescription} />,
+      element: <OAuthClientRoutes client={client} locale={locale} />,
     },
   ];
 }
@@ -37,9 +72,13 @@ export function createPlatformAuthenticationRoutes(
 function PlatformOverview({
   title,
   description,
+  client,
+  locale,
 }: {
   readonly title: string;
   readonly description: string;
+  readonly client: ConsoleApiClient;
+  readonly locale: SupportedLocale;
 }) {
   const location = useLocation();
   return (
@@ -53,29 +92,7 @@ function PlatformOverview({
         {title}
       </h1>
       <p>{description}</p>
-    </section>
-  );
-}
-
-function OAuthClientsPage({
-  title,
-  description,
-}: {
-  readonly title: string;
-  readonly description: string;
-}) {
-  const location = useLocation();
-  return (
-    <section aria-labelledby="oauth-clients-title">
-      <RouteFocusAnnouncement
-        routeKey={location.key}
-        pageTitle={title}
-        focusTargetId="oauth-clients-title"
-      />
-      <h1 id="oauth-clients-title" tabIndex={-1}>
-        {title}
-      </h1>
-      <p>{description}</p>
+      <CurrentSessionPanel client={client} locale={locale} />
     </section>
   );
 }

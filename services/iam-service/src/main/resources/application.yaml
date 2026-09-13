@@ -4,8 +4,6 @@ spring:
   jackson:
     deserialization:
       fail-on-unknown-properties: true
-  config:
-    import: nacos:iam-service.yaml?group=SAAS_FORGE&refreshEnabled=false
   cloud:
     nacos:
       username: ${NACOS_IAM_USERNAME:?NACOS_IAM_USERNAME is required}
@@ -41,7 +39,6 @@ browser:
 saasforge:
   environment: ${SAASFORGE_ENVIRONMENT:dev}
   iam:
-    http-base-url: ${IAM_HTTP_BASE_URL:http://iam-service:8080}
     service-client-id-file: ${SAASFORGE_SERVICE_CLIENT_ID_FILE:?SAASFORGE_SERVICE_CLIENT_ID_FILE is required}
     service-client-secret-file: ${SAASFORGE_SERVICE_CLIENT_SECRET_FILE:?SAASFORGE_SERVICE_CLIENT_SECRET_FILE is required}
     tenant-access-grpc-target: tenant-access
@@ -58,3 +55,10 @@ saasforge:
 mybatis:
   mapper-locations: classpath*:mapper/**/*Mapper.xml
   type-handlers-package: io.saasforge.iam.infrastructure.persistence.type
+
+---
+spring:
+  config:
+    activate:
+      on-profile: "!local"
+    import: nacos:iam-service.yaml?group=SAAS_FORGE&refreshEnabled=false

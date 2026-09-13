@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="io.saasforge.entitlement.infrastructure.persistence.mapper.EntitlementBootstrapMapper">
+    <select id="listPlans" resultType="java.util.UUID">
+        SELECT id FROM plans WHERE strpos(code, #{code}) &gt; 0
+        <if test="status != null">AND plan_status = #{status}</if>
+        <if test="after != null">AND id &gt; #{after}</if>
+        ORDER BY id LIMIT #{limit}
+    </select>
     <select id="setOperationTarget" resultType="string">
         SELECT set_config('app.tenant_id', CAST(#{tenantId} AS TEXT), true)
     </select>
@@ -24,6 +30,14 @@
         WHERE id = #{id}
     </select>
 
+    <select id="listQuotaDefinitions" resultType="io.saasforge.entitlement.infrastructure.persistence.record.QuotaDefinitionRow">
+        SELECT id, code, quota_definition_status AS status, created_at AS createdAt, updated_at AS updatedAt
+        FROM quota_definitions
+        WHERE strpos(lower(code), lower(#{code})) &gt; 0
+        <if test="status != null">AND quota_definition_status = #{status}</if>
+        <if test="after != null">AND id &gt; #{after}</if>
+        ORDER BY id LIMIT #{limit}
+    </select>
     <update id="activateQuotaDefinition">
         UPDATE quota_definitions
         SET quota_definition_status = 'ACTIVE',
@@ -73,6 +87,15 @@
           AND plan_status = 'DRAFT'
     </update>
 
+    <select id="findSubscription" resultType="io.saasforge.entitlement.infrastructure.persistence.record.SubscriptionRow">
+        SELECT id, tenant_id AS tenantId, plan_id AS planId, subscription_status AS status,
+               ends_at AS endsAt, created_at AS createdAt FROM subscriptions WHERE tenant_id = #{tenantId}
+    </select>
+    <!-- 未发生过计量操作时没有 Usage 行；这是领域初始值，不是读取失败的回退。 -->
+    <select id="findSubscriptionUsage" resultType="int">
+        SELECT COALESCE((SELECT used FROM quota_usages
+            WHERE tenant_id = #{tenantId} AND quota_definition_id = #{quotaDefinitionId}), 0)
+    </select>
     <insert id="insertSubscription">
         INSERT INTO subscriptions
             (id, tenant_id, plan_id, subscription_status, ends_at, created_at)

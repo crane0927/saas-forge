@@ -4,7 +4,7 @@
 
 | 领域 | 选型 | 约束与用途 |
 |---|---|---|
-| JVM | JDK 17 | 源码与最低运行版本为 JDK 17；统一以 `release=17` 编译；JDK 17、JDK 21均为正式支持的构建和运行环境，CI 在两者上执行完整 `verify` |
+| JVM | JDK 17 | 当前仅支持 JDK 17 构建与运行，统一以 `release=17` 编译；CI 执行 JDK 17 完整 `verify` |
 | 服务端 | Spring Boot 4.1.x、Spring Security | 固定至 4.1 系列最新补丁；Spring Boot 4.1 要求 Java 17 及以上，满足运行时基线（[官方系统要求](https://docs.spring.io/spring-boot/system-requirements.html)） |
 | 构建 | Maven、Maven Wrapper | 所有服务、SDK 与 Starter 统一入口 |
 | 持久化 | MyBatis 3 | 需要精确控制 PostgreSQL RLS 上下文、UUIDv7、游标分页和原子配额更新；不使用 MyBatis-Plus 或 JPA |

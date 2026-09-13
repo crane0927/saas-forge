@@ -21,8 +21,6 @@ spring:
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
     listener:
       ack-mode: manual_immediate
-  config:
-    import: nacos:audit-service.yaml?group=SAAS_FORGE&refreshEnabled=false
   cloud:
     nacos:
       username: ${NACOS_AUDIT_USERNAME:?NACOS_AUDIT_USERNAME is required}
@@ -46,3 +44,10 @@ saasforge:
     tenant-access-topic: saasforge.${saasforge.environment}.tenant-access-service.events
     iam-session-isolation-topic: saasforge.${saasforge.environment}.audit-service.iam-session-isolations
     tenant-isolation-topic: saasforge.${saasforge.environment}.audit-service.tenant-isolations
+
+---
+spring:
+  config:
+    activate:
+      on-profile: "!local"
+    import: nacos:audit-service.yaml?group=SAAS_FORGE&refreshEnabled=false

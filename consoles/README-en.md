@@ -15,23 +15,23 @@ The SaaS Forge frontend workspace: two independently deployed React consoles sha
 
 ### Prerequisites
 
-| Tool                | Requirement                          | Purpose                                        |
-| ------------------- | ------------------------------------ | ---------------------------------------------- |
-| Node.js             | `24.14.1`                            | Frontend development and verification          |
-| pnpm                | `11.22.0`, enabled through Corepack  | The workspace's only package manager           |
-| JDK                 | `17`; repository CI also checks `21` | TypeScript API client generation through Maven |
-| Playwright Chromium | Install before browser verification  | Required by `verify`                           |
+| Tool                | Requirement                                  | Purpose                                        |
+| ------------------- | -------------------------------------------- | ---------------------------------------------- |
+| Node.js             | `24.14.1`                                    | Frontend development and verification          |
+| pnpm                | `11.22.0`, enabled through Corepack          | The workspace's only package manager           |
+| JDK                 | `17`; product browser: desktop Chrome stable | TypeScript API client generation through Maven |
+| Playwright Chromium | Install before browser verification          | Required by `verify`                           |
 
 This directory is the only pnpm workspace root. Dependencies use the [default Catalog](pnpm-workspace.yaml), with resolved versions locked in `pnpm-lock.yaml`. The repository includes a Maven Wrapper; no separate Maven installation is required.
 
-From the repository root, install dependencies and run frontend verification:
+From the repository root, prepare dependencies and the formal API client:
 
 ```bash
 cd consoles
 corepack enable
 pnpm install --frozen-lockfile
 pnpm exec playwright install chromium
-pnpm run verify
+pnpm run generate:api
 ```
 
 Linux CI uses `pnpm exec playwright install --with-deps chromium` to prepare browser system dependencies. Initial installation and API client generation require access to the relevant dependency repositories.
@@ -48,16 +48,24 @@ pnpm run dev:platform
 pnpm run dev:tenant
 ```
 
-Both commands generate the API client before starting the corresponding Vite server. Use the address printed in the terminal. To explore shared components separately, start the Design System showcase:
+Both commands delegate to the application’s `pnpm run dev`. Startup checks that the generated client is complete and matches its formal inputs; it does not run Maven. Run `pnpm run generate:api` again after contract changes. Logs stay in the current terminal; Ctrl+C stops that application independently. Open the trusted HTTPS entry printed in the terminal. To explore shared components separately, start the Design System showcase:
 
 ```bash
 pnpm --filter @saas-forge/design-system run dev:showcase
 ```
 
 > [!IMPORTANT]
-> Development servers serve only the frontend; they do not start Gateway, IAM, or databases. Their `/runtime-config.json` supplies the fixed API Origin `https://api.saasforge.test`. Real authentication also requires trusted HTTPS, correct DNS resolution, Gateway security configuration, and provisioned accounts. Default HTTP localhost pages are not a substitute for controlled browser Origins. See the [Compose deployment guide](../deploy/compose/README-en.md) for environment setup.
+> Development servers serve only the frontend; they do not start Gateway, IAM, or databases. Their `/runtime-config.json` supplies the fixed API Origin `https://api.saasforge.test`. Real authentication also requires trusted HTTPS, correct DNS resolution, Gateway security configuration, and provisioned accounts. Default HTTP localhost pages are not a substitute for controlled browser Origins. See the [native development guide](../docs/native-local-development.md) and [Console / independent HTTPS Edge guide](../docs/native-console-development.md) for environment setup.
 
-### Controlled HTTPS Console development entrypoint
+### Native HTTPS development
+
+Follow the [native Console guide](../docs/native-console-development.md) to prepare certificates, hosts and CA trust once, then independently run `bash scripts/local-https-development.sh start edge`. Run `pnpm run dev` in separate terminals in `platform-console/` and `tenant-console-shell/`. Open `https://platform.saasforge.test` and `https://console.saasforge.test`; HMR uses their WSS origins. Managed-tool status does not describe native processes.
+
+Use [scoped verification](../docs/local-verification.md) for daily changes. Browser installation and full frontend `pnpm run verify` belong to verification preparation or execution, not every application startup.
+
+## Legacy managed tools: integration acceptance and recovery
+
+The following procedures preserve existing integration acceptance and reproduction tools. They are not the daily startup path and must not run alongside native processes on the same ports.
 
 On macOS Docker Desktop, run setup once from the repository root, then choose a Console explicitly:
 
@@ -80,7 +88,7 @@ bash scripts/local-development.sh frontend stop all
 
 Every `frontend` invocation requires `start|status|stop` and `platform|tenant|all`. Platform Vite binds to `127.0.0.1:5173` and Tenant to `127.0.0.1:5174`, with strict ports, their respective controlled Hosts, and HMR over each HTTPS Origin's WSS port 443. Edge reaches both loopback Vite servers through `host.docker.internal`, forwards API traffic to the current Gateway, and preserves browser security headers. Unknown Hosts are rejected. Do not widen Vite listeners to all interfaces to work around Docker Desktop connectivity failures.
 
-Start uses Node `24.14.1`, pnpm `11.22.0`, and existing dependencies, reusing a healthy compatible Edge. Daily start/stop never generates certificates, changes hosts/trust, installs dependencies, generates the API client, starts backend services, or resets accounts. An incompatible Edge occupying 443 blocks start; stop both Consoles before upgrading an old Edge and restarting.
+Start uses Node `24.14.1`, pnpm `11.22.0`, and existing dependencies, reusing a healthy compatible Edge. These managed start/stop operations never generate certificates, change hosts/trust, install dependencies, generate the API client, start backend services, or reset accounts. An incompatible Edge occupying 443 blocks start; stop both Consoles before upgrading an old Edge and restarting.
 
 `start all` snapshots both Consoles and Edge and runs preflight before starting resources; it succeeds only after both formal HTTPS Hosts are ready. Healthy processes and a compatible Edge are reused without restart. A failed step rolls back only processes and Edge started by that invocation. `stop all` checks both targets before stopping managed Vite processes and the current project Edge; unknown PIDs, port ownership, or invalid Edge configuration block changes.
 
@@ -134,7 +142,7 @@ pnpm --filter @saas-forge/platform-console run dev
 pnpm --filter @saas-forge/tenant-console-shell run dev
 ```
 
-Package commands do not generate the API Client; workspace `dev:platform`/`dev:tenant` generate it before starting. Neither participates in managed PID lifecycle; end each with Ctrl-C in its original terminal. A rendered HTTP localhost page proves only frontend rendering, not login, Cookie, CSRF, or TLS security acceptance.
+Package commands and workspace `dev:platform`/`dev:tenant` only check the generated API client; neither runs Maven. Neither participates in managed PID lifecycle; end each with Ctrl-C in its original terminal. A rendered HTTP localhost page proves only frontend rendering, not login, Cookie, CSRF, or TLS security acceptance.
 
 #### Dual-Console product-path acceptance and restoration
 
@@ -179,17 +187,17 @@ Run all commands below from `consoles/`.
 | `pnpm run lint` / `pnpm run format:check` | ESLint / Prettier checks for handwritten sources and documentation, excluding generated output                   |
 | `pnpm run test`                           | Static workspace boundaries and package tests, excluding the root browser suite                                  |
 | `pnpm run test:browser:chromium`          | Chromium tests for the Design System, consumers, and cross-tab sessions                                          |
-| `pnpm run test:browser:compatibility`     | Chrome, Edge, Firefox, and WebKit compatibility tests, in sequence                                               |
+| `pnpm run test:browser:compatibility`     | Chrome consumer compatibility tests                                                                              |
 | `pnpm run build`                          | Generate the client, build workspace packages, and verify Design System artifact boundaries                      |
 | `pnpm run verify`                         | Generate the client, then run the complete frontend verification pipeline                                        |
 | `pnpm run verify:workspace`               | The same frontend pipeline without generation, reused by Maven and other flows that already generated the client |
 
 The pipeline runs type checks → ESLint → Prettier → boundary and package tests → Chromium browser tests → production builds and artifact checks. Standalone `typecheck`, `test`, and browser commands do not generate the client; run `pnpm run generate:api` first.
 
-Compatibility tests require their browser installations. Individual commands are also available: `test:browser:chrome`, `test:browser:edge`, `test:browser:firefox`, and `test:browser:webkit`.
+Only the current stable desktop Google Chrome is supported during development. Chromium remains the daily functional and visual test tool. Run `test:browser:chrome` for Chrome consumer checks.
 
 ```bash
-pnpm exec playwright install chrome msedge firefox webkit
+pnpm exec playwright install chromium chrome
 pnpm run generate:api
 pnpm run test:browser:compatibility
 ```
@@ -198,7 +206,7 @@ Each application's package-level `dev`, `typecheck`, `lint`, `format:check`, `te
 
 ### Verification scope
 
-Workspace checks cover shared package boundaries, UI interactions, session coordination, and static artifact consistency. They are not equivalent to real backend login or deployment acceptance. WebKit provides reproducible Safari-engine compatibility testing, not native Safari testing.
+Workspace checks cover shared package boundaries, UI interactions, session coordination, and static artifact consistency. They are not equivalent to real backend login or deployment acceptance. Product acceptance uses actual Chrome; Chromium as a test tool is not a separate product compatibility commitment.
 
 Real Console authentication uses the separate [`verify-console-authentication-e2e.sh`](../scripts/verify-console-authentication-e2e.sh), involving a fresh Compose environment, trusted TLS, and actual service requests. It is not part of `pnpm run verify`. Read the [product acceptance guide and prerequisites](../docs/acceptance/issue-115-console-authentication.md) before running it; historical results there do not establish that your current environment passes.
 
@@ -231,7 +239,7 @@ Static hosting must provide SPA fallback for client-side routes while serving `/
 | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ERR_PNPM_VERIFY_DEPS_BEFORE_RUN`                 | Check Node/pnpm versions and the lockfile, then run a frozen install from `consoles/`. Do not disable `verifyDepsBeforeRun: error` or switch package managers |
 | Missing generated client or API types             | Run `pnpm run generate:api` from the workspace root and check JDK/Maven dependency access                                                                     |
-| Playwright cannot find a browser executable       | Install the engine or Chrome/Edge channel required by the selected test                                                                                       |
+| Playwright cannot find a browser executable       | Install the Chromium runtime or Chrome channel required by the selected test                                                                                  |
 | Application stays on the configuration error page | Inspect the `/runtime-config.json` HTTP response, its two-field JSON contract, and the HTTPS Origin; replace production templates                             |
 | Page loads but authentication requests fail       | Check API reachability, certificate trust, entry-point domains, and Gateway security boundaries; a visible page does not prove authentication works           |
 

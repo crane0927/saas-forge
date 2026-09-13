@@ -73,6 +73,19 @@
 
     <build>
         <plugins>
+            <!-- 保留 IDE 编译输出中的个人配置，只在发布 JAR 边界排除；资源复制阶段排除会破坏 IDE 加载。 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>application-local.yml</exclude>
+                        <exclude>application-local.yaml</exclude>
+                        <exclude>application-local.yml.example</exclude>
+                        <exclude>application-local.yaml.example</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>

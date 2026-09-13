@@ -3,9 +3,36 @@ import {
   Configuration,
   FetchError,
   OAuthClientsApi,
+  PlatformTenantsApi,
+  PlatformEntitlementBootstrapApi,
+  type Subscription,
+  type TenantSubscription,
+  type TenantAdministratorPasswordSetup,
+  type TenantAdministratorInitialization,
+  type AdministratorInitializationRequest,
+  type SubscriptionOperationRecovery,
+  type CreateInitialSubscriptionRequest,
+  type Plan,
+  type PlanPage,
+  type PlanStatus,
+  type PlanOperationRecovery,
+  type CreatePlanRequest,
+  type QuotaDefinition,
+  type QuotaDefinitionPage,
+  type QuotaDefinitionStatus,
+  type QuotaDefinitionOperationRecovery,
+  type CreateTenantRequest,
+  type Tenant,
+  type TenantPage,
+  type TenantStatus,
+  type TenantCreationRecovery,
   ResponseError,
   type CreateOAuthClientRequest,
+  type CurrentSession,
   type OAuthClientDetail,
+  type OAuthClientPage,
+  type OAuthClientType,
+  type OAuthClientStatus,
   type OAuthClientSecretResult,
 } from '@saas-forge/api-client';
 
@@ -175,6 +202,15 @@ export type IdempotentConsoleApiResult<T> =
       readonly operationHandle: IdempotentOperationHandle;
     };
 
+export interface ListOAuthClientsInput {
+  readonly name?: string;
+  readonly clientType?: OAuthClientType;
+  readonly status?: OAuthClientStatus;
+  readonly cursor?: string;
+  readonly limit?: number;
+  readonly signal?: AbortSignal;
+}
+
 export interface GetOAuthClientInput {
   readonly clientId: string;
   readonly signal?: AbortSignal;
@@ -186,7 +222,180 @@ export interface CreateOAuthClientInput {
   readonly signal?: AbortSignal;
 }
 
+export type {
+  OAuthClientDetail,
+  OAuthClientType,
+  OAuthClientStatus,
+  TenantAdministratorPasswordSetup,
+  TenantAdministratorInitialization,
+  Subscription,
+  TenantSubscription,
+  CurrentSession,
+  Tenant,
+  TenantStatus,
+  Plan,
+  PlanStatus,
+  QuotaDefinition,
+  QuotaDefinitionStatus,
+} from '@saas-forge/api-client';
+
+export interface ListTenantsInput {
+  readonly name?: string;
+  readonly status?: TenantStatus;
+  readonly cursor?: string;
+  readonly limit?: number;
+  readonly signal?: AbortSignal;
+}
+
+export type TenantCreationOperation = Omit<TenantCreationRecovery, 'idempotencyKey'>;
+export interface TenantCreationOperationPage {
+  readonly items: readonly TenantCreationOperation[];
+  readonly nextCursor: string | null;
+  readonly hasMore: boolean;
+}
+
+export interface ListQuotaDefinitionsInput {
+  readonly code?: string;
+  readonly status?: QuotaDefinitionStatus;
+  readonly cursor?: string;
+  readonly limit?: number;
+  readonly signal?: AbortSignal;
+}
+
+export type QuotaDefinitionOperation = Omit<QuotaDefinitionOperationRecovery, 'idempotencyKey'>;
+export interface QuotaDefinitionOperationPage {
+  readonly items: readonly QuotaDefinitionOperation[];
+  readonly nextCursor: string | null;
+  readonly hasMore: boolean;
+}
+
+export interface ListPlansInput {
+  readonly code?: string;
+  readonly status?: PlanStatus;
+  readonly cursor?: string;
+  readonly limit?: number;
+  readonly signal?: AbortSignal;
+}
+
+export type PlanOperation = Omit<PlanOperationRecovery, 'idempotencyKey'>;
+export interface PlanOperationPage {
+  readonly items: readonly PlanOperation[];
+  readonly nextCursor: string | null;
+  readonly hasMore: boolean;
+}
+
+export type SubscriptionOperation = Omit<SubscriptionOperationRecovery, 'idempotencyKey'>;
+export interface SubscriptionOperationPage {
+  readonly items: readonly SubscriptionOperation[];
+  readonly nextCursor: string | null;
+  readonly hasMore: boolean;
+}
+
 export interface ConsoleApiClient {
+  getTenantAdministratorPasswordSetup(
+    tenantId: string,
+    signal?: AbortSignal,
+  ): Promise<ConsoleApiResult<TenantAdministratorPasswordSetup>>;
+  resendTenantAdministratorPasswordSetup(
+    tenantId: string,
+    signal?: AbortSignal,
+  ): Promise<IdempotentConsoleApiResult<void>>;
+  recoverTenantAdministratorPasswordSetup(
+    progress: TenantAdministratorPasswordSetup,
+    signal?: AbortSignal,
+  ): Promise<ConsoleApiResult<void>>;
+
+  getTenantAdministratorInitialization(
+    tenantId: string,
+    signal?: AbortSignal,
+  ): Promise<ConsoleApiResult<TenantAdministratorInitialization>>;
+  initializeTenantAdministrator(input: {
+    readonly tenantId: string;
+    readonly request: AdministratorInitializationRequest;
+    readonly signal?: AbortSignal;
+  }): Promise<IdempotentConsoleApiResult<Tenant>>;
+  recoverTenantAdministratorInitialization(
+    progress: TenantAdministratorInitialization,
+    signal?: AbortSignal,
+  ): Promise<ConsoleApiResult<Tenant>>;
+
+  getTenantSubscription(
+    tenantId: string,
+    signal?: AbortSignal,
+  ): Promise<ConsoleApiResult<TenantSubscription>>;
+  createInitialSubscription(input: {
+    readonly tenantId: string;
+    readonly request: CreateInitialSubscriptionRequest;
+    readonly signal?: AbortSignal;
+  }): Promise<IdempotentConsoleApiResult<Subscription>>;
+  listSubscriptionOperations(input: {
+    readonly tenantId: string;
+    readonly cursor?: string;
+    readonly limit?: number;
+    readonly signal?: AbortSignal;
+  }): Promise<ConsoleApiResult<SubscriptionOperationPage>>;
+  recoverSubscriptionOperation(
+    operation: SubscriptionOperation,
+    signal?: AbortSignal,
+  ): Promise<ConsoleApiResult<SubscriptionOperation>>;
+
+  listQuotaDefinitions(
+    input: ListQuotaDefinitionsInput,
+  ): Promise<ConsoleApiResult<QuotaDefinitionPage>>;
+  getQuotaDefinition(id: string, signal?: AbortSignal): Promise<ConsoleApiResult<QuotaDefinition>>;
+  createQuotaDefinition(input: {
+    readonly signal?: AbortSignal;
+  }): Promise<IdempotentConsoleApiResult<QuotaDefinition>>;
+  activateQuotaDefinition(input: {
+    readonly id: string;
+    readonly signal?: AbortSignal;
+  }): Promise<IdempotentConsoleApiResult<QuotaDefinition>>;
+  listQuotaDefinitionOperations(input: {
+    readonly cursor?: string;
+    readonly limit?: number;
+    readonly signal?: AbortSignal;
+  }): Promise<ConsoleApiResult<QuotaDefinitionOperationPage>>;
+  recoverQuotaDefinitionOperation(
+    operation: QuotaDefinitionOperation,
+    signal?: AbortSignal,
+  ): Promise<ConsoleApiResult<QuotaDefinitionOperation>>;
+  listPlans(input: ListPlansInput): Promise<ConsoleApiResult<PlanPage>>;
+  getPlan(id: string, signal?: AbortSignal): Promise<ConsoleApiResult<Plan>>;
+  createPlan(input: {
+    readonly request: CreatePlanRequest;
+    readonly signal?: AbortSignal;
+  }): Promise<IdempotentConsoleApiResult<Plan>>;
+  activatePlan(input: {
+    readonly id: string;
+    readonly signal?: AbortSignal;
+  }): Promise<IdempotentConsoleApiResult<Plan>>;
+  listPlanOperations(input: {
+    readonly cursor?: string;
+    readonly limit?: number;
+    readonly signal?: AbortSignal;
+  }): Promise<ConsoleApiResult<PlanOperationPage>>;
+  recoverPlanOperation(
+    operation: PlanOperation,
+    signal?: AbortSignal,
+  ): Promise<ConsoleApiResult<PlanOperation>>;
+  listTenants(input: ListTenantsInput): Promise<ConsoleApiResult<TenantPage>>;
+  getTenant(tenantId: string, signal?: AbortSignal): Promise<ConsoleApiResult<Tenant>>;
+  createTenant(input: {
+    readonly request: CreateTenantRequest;
+    readonly operationHandle?: IdempotentOperationHandle;
+    readonly signal?: AbortSignal;
+  }): Promise<IdempotentConsoleApiResult<Tenant>>;
+  listTenantCreations(input: {
+    readonly cursor?: string;
+    readonly limit?: number;
+    readonly signal?: AbortSignal;
+  }): Promise<ConsoleApiResult<TenantCreationOperationPage>>;
+  recoverTenantCreation(
+    operation: TenantCreationOperation,
+    signal?: AbortSignal,
+  ): Promise<ConsoleApiResult<TenantCreationOperation>>;
+  getCurrentSession(signal?: AbortSignal): Promise<ConsoleApiResult<CurrentSession>>;
+  listOAuthClients(input: ListOAuthClientsInput): Promise<ConsoleApiResult<OAuthClientPage>>;
   getOAuthClient(input: GetOAuthClientInput): Promise<ConsoleApiResult<OAuthClientDetail>>;
   createOAuthClient(
     input: CreateOAuthClientInput,
@@ -341,6 +550,161 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
       fetchApi: generatedFetch,
     }),
   );
+
+  const tenantsApi = new PlatformTenantsApi(
+    new Configuration({
+      basePath: options.config.apiBaseUrl,
+      credentials: 'include',
+      accessToken: () => accessToken ?? '',
+      fetchApi: generatedFetch,
+    }),
+  );
+  const tenantRecoveryMaterials = new WeakMap<
+    TenantCreationOperation,
+    { id: string; key: string; epoch: number }
+  >();
+
+  function rememberTenantCreation(value: TenantCreationRecovery): TenantCreationOperation {
+    if (
+      !UUID_V7.test(value.id) ||
+      typeof value.displayName !== 'string' ||
+      !['COMMITTED', 'PROCESSING', 'NOT_COMMITTED', 'UNKNOWN'].includes(value.state) ||
+      typeof value.canReplay !== 'boolean' ||
+      !(value.createdAt instanceof Date) ||
+      !Number.isFinite(value.createdAt.getTime()) ||
+      !(value.replayUntil instanceof Date) ||
+      !Number.isFinite(value.replayUntil.getTime()) ||
+      (value.state === 'COMMITTED' &&
+        (value.tenantId === undefined || !UUID_V7.test(value.tenantId)))
+    ) {
+      throw new Error('INVALID_SERVICE_RESPONSE');
+    }
+    const { idempotencyKey, ...publicValue } = value;
+    const operation = Object.freeze(publicValue);
+    if (value.canReplay && idempotencyKey !== undefined && UUID_V7.test(idempotencyKey)) {
+      tenantRecoveryMaterials.set(operation, {
+        id: value.id,
+        key: idempotencyKey,
+        epoch: sessionEpoch,
+      });
+    } else if (value.canReplay) {
+      throw new Error('INVALID_SERVICE_RESPONSE');
+    }
+    return operation;
+  }
+
+  const quotaApi = new PlatformEntitlementBootstrapApi(
+    new Configuration({
+      basePath: options.config.apiBaseUrl,
+      credentials: 'include',
+      accessToken: () => accessToken ?? '',
+      fetchApi: generatedFetch,
+    }),
+  );
+  const quotaRecoveryMaterials = new WeakMap<
+    QuotaDefinitionOperation,
+    { id: string; key: string; epoch: number }
+  >();
+
+  function rememberQuotaOperation(
+    value: QuotaDefinitionOperationRecovery,
+  ): QuotaDefinitionOperation {
+    if (
+      !UUID_V7.test(value.id) ||
+      !['CREATE', 'ACTIVATE'].includes(value.operation) ||
+      !['COMMITTED', 'PROCESSING', 'NOT_COMMITTED', 'UNKNOWN'].includes(value.state) ||
+      typeof value.canReplay !== 'boolean' ||
+      !(value.createdAt instanceof Date) ||
+      !Number.isFinite(value.createdAt.getTime()) ||
+      !(value.replayUntil instanceof Date) ||
+      !Number.isFinite(value.replayUntil.getTime()) ||
+      (value.state === 'COMMITTED' &&
+        (value.quotaDefinitionId === undefined || !UUID_V7.test(value.quotaDefinitionId)))
+    ) {
+      throw new Error('INVALID_SERVICE_RESPONSE');
+    }
+    const { idempotencyKey, ...publicValue } = value;
+    const operation = Object.freeze(publicValue);
+    if (value.canReplay && idempotencyKey !== undefined && UUID_V7.test(idempotencyKey)) {
+      quotaRecoveryMaterials.set(operation, {
+        id: value.id,
+        key: idempotencyKey,
+        epoch: sessionEpoch,
+      });
+    } else if (value.canReplay) {
+      throw new Error('INVALID_SERVICE_RESPONSE');
+    }
+    return operation;
+  }
+
+  const planRecoveryMaterials = new WeakMap<
+    PlanOperation,
+    { id: string; key: string; epoch: number }
+  >();
+
+  function rememberPlanOperation(value: PlanOperationRecovery): PlanOperation {
+    if (
+      !UUID_V7.test(value.id) ||
+      !['CREATE', 'ACTIVATE'].includes(value.operation) ||
+      !['COMMITTED', 'PROCESSING', 'NOT_COMMITTED', 'UNKNOWN'].includes(value.state) ||
+      typeof value.canReplay !== 'boolean' ||
+      !(value.createdAt instanceof Date) ||
+      !Number.isFinite(value.createdAt.getTime()) ||
+      !(value.replayUntil instanceof Date) ||
+      !Number.isFinite(value.replayUntil.getTime()) ||
+      (value.state === 'COMMITTED' && (value.planId === undefined || !UUID_V7.test(value.planId)))
+    ) {
+      throw new Error('INVALID_SERVICE_RESPONSE');
+    }
+    const { idempotencyKey, ...publicValue } = value;
+    const operation = Object.freeze(publicValue);
+    if (value.canReplay && idempotencyKey !== undefined && UUID_V7.test(idempotencyKey)) {
+      planRecoveryMaterials.set(operation, {
+        id: value.id,
+        key: idempotencyKey,
+        epoch: sessionEpoch,
+      });
+    } else if (value.canReplay) {
+      throw new Error('INVALID_SERVICE_RESPONSE');
+    }
+    return operation;
+  }
+
+  const subscriptionRecoveryMaterials = new WeakMap<
+    SubscriptionOperation,
+    { id: string; key: string; epoch: number }
+  >();
+
+  function rememberSubscriptionOperation(
+    value: SubscriptionOperationRecovery,
+  ): SubscriptionOperation {
+    if (
+      !UUID_V7.test(value.id) ||
+      !UUID_V7.test(value.tenantId) ||
+      !['COMMITTED', 'PROCESSING', 'NOT_COMMITTED', 'UNKNOWN'].includes(value.state) ||
+      typeof value.canReplay !== 'boolean' ||
+      !(value.createdAt instanceof Date) ||
+      !Number.isFinite(value.createdAt.getTime()) ||
+      !(value.replayUntil instanceof Date) ||
+      !Number.isFinite(value.replayUntil.getTime()) ||
+      (value.state === 'COMMITTED' &&
+        (value.subscriptionId === undefined || !UUID_V7.test(value.subscriptionId)))
+    ) {
+      throw new Error('INVALID_SERVICE_RESPONSE');
+    }
+    const { idempotencyKey, ...publicValue } = value;
+    const operation = Object.freeze(publicValue);
+    if (value.canReplay && idempotencyKey !== undefined && UUID_V7.test(idempotencyKey)) {
+      subscriptionRecoveryMaterials.set(operation, {
+        id: value.id,
+        key: idempotencyKey,
+        epoch: sessionEpoch,
+      });
+    } else if (value.canReplay) {
+      throw new Error('INVALID_SERVICE_RESPONSE');
+    }
+    return operation;
+  }
 
   async function synchronizeTenantContext(
     epoch: number,
@@ -593,57 +957,415 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
     }
   }
 
-  const client: ConsoleApiClient = {
-    getOAuthClient: async ({ clientId, signal }) => {
-      if (
-        session.isLogoutPending() ||
-        state.status !== 'authenticated' ||
-        (state.transition !== null && state.transition !== 'refresh') ||
-        accessToken === undefined ||
-        expiresAt === undefined
-      ) {
-        return { ok: false, problem: { code: 'INVALID_AUTHENTICATION_TRANSITION' } };
+  async function executeRead<T>(
+    execute: () => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<ConsoleApiResult<T>> {
+    if (
+      session.isLogoutPending() ||
+      state.status !== 'authenticated' ||
+      (state.transition !== null && state.transition !== 'refresh') ||
+      accessToken === undefined ||
+      expiresAt === undefined
+    ) {
+      return { ok: false, problem: { code: 'INVALID_AUTHENTICATION_TRANSITION' } };
+    }
+    if (expiresAt - now() <= 30_000) {
+      const problem = await refreshForBusinessRequest(signal);
+      if (problem !== undefined) {
+        return { ok: false, problem };
       }
-      if (expiresAt - now() <= 30_000) {
-        const problem = await refreshForBusinessRequest(signal);
-        if (problem !== undefined) {
+    }
+    let requestEpoch = sessionEpoch;
+    try {
+      const value = await execute();
+      if (requestEpoch !== sessionEpoch) return { ok: false, problem: { code: 'SESSION_CHANGED' } };
+      return { ok: true, value };
+    } catch (error) {
+      if (requestEpoch !== sessionEpoch) return { ok: false, problem: { code: 'SESSION_CHANGED' } };
+      if (error instanceof ResponseError && error.response.status === 401) {
+        const refreshProblem = await refreshForBusinessRequest(signal);
+        if (refreshProblem !== undefined) {
+          return { ok: false, problem: refreshProblem };
+        }
+        const replayToken = accessToken;
+        requestEpoch = sessionEpoch;
+        try {
+          const value = await execute();
+          if (requestEpoch !== sessionEpoch)
+            return { ok: false, problem: { code: 'SESSION_CHANGED' } };
+          return { ok: true, value };
+        } catch (replayError) {
+          if (requestEpoch !== sessionEpoch)
+            return { ok: false, problem: { code: 'SESSION_CHANGED' } };
+          if (replayError instanceof ResponseError && replayError.response.status === 401) {
+            await invalidateRejectedToken(replayToken);
+            return { ok: false, problem: { code: 'SESSION_ENDED' } };
+          }
+          const problem = await normalizeOperationError(replayError);
+          if (requestEpoch !== sessionEpoch)
+            return { ok: false, problem: { code: 'SESSION_CHANGED' } };
           return { ok: false, problem };
         }
       }
-      let requestEpoch = sessionEpoch;
-      try {
-        const value = await oauthClientsApi.getOAuthClient({ clientId }, { signal });
-        if (requestEpoch !== sessionEpoch)
-          return { ok: false, problem: { code: 'SESSION_CHANGED' } };
-        return { ok: true, value };
-      } catch (error) {
-        if (requestEpoch !== sessionEpoch)
-          return { ok: false, problem: { code: 'SESSION_CHANGED' } };
-        if (error instanceof ResponseError && error.response.status === 401) {
-          const refreshProblem = await refreshForBusinessRequest(signal);
-          if (refreshProblem !== undefined) {
-            return { ok: false, problem: refreshProblem };
-          }
-          const replayToken = accessToken;
-          requestEpoch = sessionEpoch;
-          try {
-            const value = await oauthClientsApi.getOAuthClient({ clientId }, { signal });
-            if (requestEpoch !== sessionEpoch)
-              return { ok: false, problem: { code: 'SESSION_CHANGED' } };
-            return { ok: true, value };
-          } catch (replayError) {
-            if (requestEpoch !== sessionEpoch)
-              return { ok: false, problem: { code: 'SESSION_CHANGED' } };
-            if (replayError instanceof ResponseError && replayError.response.status === 401) {
-              await invalidateRejectedToken(replayToken);
-              return { ok: false, problem: { code: 'SESSION_ENDED' } };
-            }
-            return { ok: false, problem: await normalizeOperationError(replayError) };
-          }
+      // Problem 正文也可能延迟到会话变化后才完成，必须在解析后再次隔离。
+      const problem = await normalizeOperationError(error);
+      if (requestEpoch !== sessionEpoch) return { ok: false, problem: { code: 'SESSION_CHANGED' } };
+      return { ok: false, problem };
+    }
+  }
+
+  const notificationSelectors = new Map<
+    string,
+    { idempotencyKey?: string; resendId?: string; epoch: number }
+  >();
+  const notificationHandles = new WeakMap<
+    TenantAdministratorPasswordSetup,
+    { tenantId: string; resendId: string; epoch: number }
+  >();
+
+  const initializationHandles = new WeakMap<
+    TenantAdministratorInitialization,
+    { tenantId: string; initializationId: string; epoch: number }
+  >();
+
+  const client: ConsoleApiClient = {
+    getTenantAdministratorPasswordSetup: (tenantId, signal) =>
+      executeRead(async () => {
+        const selected = notificationSelectors.get(tenantId);
+        const selector = selected?.epoch === sessionEpoch ? selected : undefined;
+        const value = await tenantsApi.getTenantAdministratorPasswordSetup(
+          { tenantId, idempotencyKey: selector?.idempotencyKey, resendId: selector?.resendId },
+          { signal },
+        );
+        if (
+          value.tenantId !== tenantId ||
+          ![
+            'NOT_APPLICABLE',
+            'PENDING',
+            'MAIL_SERVICE_ACCEPTED',
+            'PASSWORD_READY',
+            'ACTION_REQUIRED',
+          ].includes(value.state) ||
+          !['NONE', 'PENDING', 'COMPLETED', 'UNKNOWN'].includes(value.operationState) ||
+          typeof value.canResend !== 'boolean' ||
+          typeof value.canContinue !== 'boolean' ||
+          (value.resendId !== undefined && !UUID_V7.test(value.resendId)) ||
+          (value.canContinue && (value.resendId === undefined || value.canResend))
+        ) {
+          throw new Error('INVALID_SERVICE_RESPONSE');
         }
-        return { ok: false, problem: await normalizeOperationError(error) };
-      }
+        if (value.canContinue && value.resendId !== undefined)
+          notificationHandles.set(value, {
+            tenantId,
+            resendId: value.resendId,
+            epoch: sessionEpoch,
+          });
+        return value;
+      }, signal),
+    resendTenantAdministratorPasswordSetup: (tenantId, signal) =>
+      executeMutation(undefined, signal, (idempotencyKey) => {
+        notificationSelectors.set(tenantId, { idempotencyKey, epoch: sessionEpoch });
+        return tenantsApi.resendTenantAdministratorPasswordSetup(
+          { tenantId, idempotencyKey },
+          // 无请求体的正式 operation 仍须满足浏览器写请求的 JSON 协议边界。
+          ({ init }) => {
+            const headers = new Headers(init.headers);
+            headers.set('Content-Type', 'application/json');
+            return Promise.resolve({ ...init, signal, headers });
+          },
+        );
+      }),
+    recoverTenantAdministratorPasswordSetup: (progress, signal) => {
+      const material = notificationHandles.get(progress);
+      if (material === undefined || material.epoch !== sessionEpoch)
+        return Promise.resolve({ ok: false, problem: { code: 'INVALID_OPERATION_HANDLE' } });
+      notificationSelectors.set(material.tenantId, {
+        resendId: material.resendId,
+        epoch: material.epoch,
+      });
+      return executeRead(
+        () =>
+          tenantsApi.recoverTenantAdministratorPasswordSetup(
+            { tenantId: material.tenantId, resendId: material.resendId, body: {} },
+            { signal },
+          ),
+        signal,
+      );
     },
+
+    getTenantAdministratorInitialization: (tenantId, signal) =>
+      executeRead(async () => {
+        const value = await tenantsApi.getTenantAdministratorInitialization(
+          { tenantId },
+          { signal },
+        );
+        if (
+          value.tenantId !== tenantId ||
+          ![
+            'NOT_STARTED',
+            'PROCESSING',
+            'RECOVERY_REQUIRED',
+            'COMPENSATING',
+            'RETRY_REQUIRED',
+            'SUCCEEDED',
+            'FAILED',
+          ].includes(value.state) ||
+          typeof value.canStart !== 'boolean' ||
+          typeof value.canContinue !== 'boolean' ||
+          (value.initialAdministratorMembershipId !== null &&
+            !UUID_V7.test(value.initialAdministratorMembershipId)) ||
+          (value.initializationId !== undefined && !UUID_V7.test(value.initializationId)) ||
+          (value.canContinue &&
+            (value.state !== 'RECOVERY_REQUIRED' || value.initializationId === undefined)) ||
+          (value.canStart && !['NOT_STARTED', 'RETRY_REQUIRED'].includes(value.state))
+        ) {
+          throw new Error('INVALID_SERVICE_RESPONSE');
+        }
+        if (value.canContinue && value.initializationId !== undefined) {
+          initializationHandles.set(value, {
+            tenantId,
+            initializationId: value.initializationId,
+            epoch: sessionEpoch,
+          });
+        }
+        return value;
+      }, signal),
+    initializeTenantAdministrator: ({ tenantId, request, signal }) =>
+      executeMutation(undefined, signal, (idempotencyKey) =>
+        tenantsApi.initializeTenantAdministrator(
+          { tenantId, idempotencyKey, administratorInitializationRequest: request },
+          { signal },
+        ),
+      ),
+    recoverTenantAdministratorInitialization: (progress, signal) => {
+      const material = initializationHandles.get(progress);
+      if (material === undefined || material.epoch !== sessionEpoch) {
+        return Promise.resolve({ ok: false, problem: { code: 'INVALID_OPERATION_HANDLE' } });
+      }
+      return executeRead(
+        () =>
+          tenantsApi.recoverTenantAdministratorInitialization(
+            { tenantId: material.tenantId, initializationId: material.initializationId, body: {} },
+            { signal },
+          ),
+        signal,
+      );
+    },
+
+    listQuotaDefinitions: ({ signal, ...query }) =>
+      executeRead(() => quotaApi.listQuotaDefinitions(query, { signal }), signal),
+    getQuotaDefinition: (quotaDefinitionId, signal) =>
+      executeRead(() => quotaApi.getQuotaDefinition({ quotaDefinitionId }, { signal }), signal),
+    createQuotaDefinition: ({ signal }) =>
+      executeMutation(undefined, signal, (idempotencyKey) =>
+        quotaApi.createQuotaDefinition(
+          { idempotencyKey, createQuotaDefinitionRequest: { code: 'max_users' } },
+          { signal },
+        ),
+      ),
+    activateQuotaDefinition: ({ id, signal }) =>
+      executeMutation(undefined, signal, (idempotencyKey) =>
+        quotaApi.activateQuotaDefinition(
+          { quotaDefinitionId: id, idempotencyKey, requestBody: {} },
+          { signal },
+        ),
+      ),
+    listQuotaDefinitionOperations: ({ signal, ...query }) =>
+      executeRead(async () => {
+        const page = await quotaApi.listQuotaDefinitionOperations(query, { signal });
+        return {
+          items: page.items.map(rememberQuotaOperation),
+          nextCursor: page.nextCursor,
+          hasMore: page.hasMore,
+        };
+      }, signal),
+    recoverQuotaDefinitionOperation: (operation, signal) => {
+      const material = quotaRecoveryMaterials.get(operation);
+      if (material === undefined || material.epoch !== sessionEpoch) {
+        return Promise.resolve({ ok: false, problem: { code: 'INVALID_OPERATION_HANDLE' } });
+      }
+      return executeRead(
+        async () =>
+          rememberQuotaOperation(
+            await quotaApi.recoverQuotaDefinitionOperation(
+              { operationId: material.id, idempotencyKey: material.key, body: {} },
+              { signal },
+            ),
+          ),
+        signal,
+      );
+    },
+
+    listPlans: ({ signal, ...query }) =>
+      executeRead(() => quotaApi.listPlans(query, { signal }), signal),
+    getPlan: (planId, signal) =>
+      executeRead(() => quotaApi.getPlan({ planId }, { signal }), signal),
+    createPlan: ({ request, signal }) =>
+      executeMutation(undefined, signal, (idempotencyKey) =>
+        quotaApi.createPlan({ idempotencyKey, createPlanRequest: request }, { signal }),
+      ),
+    activatePlan: ({ id, signal }) =>
+      executeMutation(undefined, signal, (idempotencyKey) =>
+        quotaApi.activatePlan({ planId: id, idempotencyKey, body: {} }, { signal }),
+      ),
+    listPlanOperations: ({ signal, ...query }) =>
+      executeRead(async () => {
+        const page = await quotaApi.listPlanOperations(query, { signal });
+        return {
+          items: page.items.map(rememberPlanOperation),
+          nextCursor: page.nextCursor,
+          hasMore: page.hasMore,
+        };
+      }, signal),
+    recoverPlanOperation: (operation, signal) => {
+      const material = planRecoveryMaterials.get(operation);
+      if (material === undefined || material.epoch !== sessionEpoch) {
+        return Promise.resolve({ ok: false, problem: { code: 'INVALID_OPERATION_HANDLE' } });
+      }
+      return executeRead(
+        async () =>
+          rememberPlanOperation(
+            await quotaApi.recoverPlanOperation(
+              { operationId: material.id, idempotencyKey: material.key, body: {} },
+              { signal },
+            ),
+          ),
+        signal,
+      );
+    },
+    listSubscriptionOperations: ({ signal, ...query }) =>
+      executeRead(async () => {
+        const page = await quotaApi.listSubscriptionOperations(query, { signal });
+        return {
+          items: page.items.map(rememberSubscriptionOperation),
+          nextCursor: page.nextCursor,
+          hasMore: page.hasMore,
+        };
+      }, signal),
+    recoverSubscriptionOperation: (operation, signal) => {
+      const material = subscriptionRecoveryMaterials.get(operation);
+      if (material === undefined || material.epoch !== sessionEpoch) {
+        return Promise.resolve({ ok: false, problem: { code: 'INVALID_OPERATION_HANDLE' } });
+      }
+      return executeRead(
+        async () =>
+          rememberSubscriptionOperation(
+            await quotaApi.recoverSubscriptionOperation(
+              { operationId: material.id, idempotencyKey: material.key, body: {} },
+              { signal },
+            ),
+          ),
+        signal,
+      );
+    },
+    getTenantSubscription: (tenantId, signal) =>
+      executeRead(async () => {
+        const value = await quotaApi.getTenantSubscription({ tenantId }, { signal });
+        const grant = value.subscription as
+          (Omit<Subscription, 'status'> & { status: unknown }) | null | undefined;
+        if (
+          !(value.observedAt instanceof Date) ||
+          !Number.isFinite(value.observedAt.getTime()) ||
+          typeof value.effective !== 'boolean' ||
+          (grant === null
+            ? value.effective || value.maxUsersLimit !== null || value.maxUsersUsed !== null
+            : grant === undefined ||
+              grant.tenantId !== tenantId ||
+              !UUID_V7.test(grant.id) ||
+              !UUID_V7.test(grant.planId) ||
+              grant.status !== 'ACTIVE' ||
+              !(grant.createdAt instanceof Date) ||
+              !Number.isFinite(grant.createdAt.getTime()) ||
+              (grant.endsAt !== null &&
+                (!(grant.endsAt instanceof Date) || !Number.isFinite(grant.endsAt.getTime()))) ||
+              !Number.isInteger(value.maxUsersLimit) ||
+              value.maxUsersLimit === null ||
+              value.maxUsersLimit < 0 ||
+              !Number.isInteger(value.maxUsersUsed) ||
+              value.maxUsersUsed === null ||
+              value.maxUsersUsed < 0)
+        ) {
+          throw new Error('INVALID_SERVICE_RESPONSE');
+        }
+        return value;
+      }, signal),
+    createInitialSubscription: ({ tenantId, request, signal }) =>
+      executeMutation(undefined, signal, (idempotencyKey) =>
+        quotaApi.createInitialSubscription(
+          { tenantId, idempotencyKey, createInitialSubscriptionRequest: request },
+          { signal },
+        ),
+      ),
+
+    listTenants: ({ signal, ...query }) =>
+      executeRead(() => tenantsApi.listPlatformTenants(query, { signal }), signal),
+    getTenant: (tenantId, signal) =>
+      executeRead(() => tenantsApi.getPlatformTenant({ tenantId }, { signal }), signal),
+    createTenant: ({ request, operationHandle, signal }) =>
+      executeMutation(operationHandle, signal, (idempotencyKey) =>
+        tenantsApi.createPlatformTenant(
+          { idempotencyKey, createTenantRequest: request },
+          { signal },
+        ),
+      ),
+    listTenantCreations: ({ signal, ...query }) =>
+      executeRead(async () => {
+        const page = await tenantsApi.listTenantCreations(query, { signal });
+        return {
+          items: page.items.map(rememberTenantCreation),
+          nextCursor: page.nextCursor,
+          hasMore: page.hasMore,
+        };
+      }, signal),
+    recoverTenantCreation: (operation, signal) => {
+      const material = tenantRecoveryMaterials.get(operation);
+      if (material === undefined || material.epoch !== sessionEpoch) {
+        return Promise.resolve({ ok: false, problem: { code: 'INVALID_OPERATION_HANDLE' } });
+      }
+      return executeRead(
+        async () =>
+          rememberTenantCreation(
+            await tenantsApi.recoverTenantCreation(
+              { creationId: material.id, idempotencyKey: material.key, requestBody: {} },
+              { signal },
+            ),
+          ),
+        signal,
+      );
+    },
+    getCurrentSession: (signal) =>
+      executeRead(async () => {
+        const response: unknown = await authenticationApi.getCurrentSession({ signal });
+        if (typeof response !== 'object' || response === null) {
+          throw new Error('INVALID_SERVICE_RESPONSE');
+        }
+        const value = response as Record<string, unknown>;
+        // 生成 Client 只转换字段；缺失或错误类型的授权不能被页面当成 true/false。
+        if (
+          typeof value.identityId !== 'string' ||
+          !UUID_V7.test(value.identityId) ||
+          typeof value.email !== 'string' ||
+          value.email.length === 0 ||
+          typeof value.platformAdmin !== 'boolean' ||
+          (value.displayName !== undefined &&
+            (typeof value.displayName !== 'string' ||
+              value.displayName.length === 0 ||
+              value.displayName.length > 200))
+        ) {
+          throw new Error('INVALID_SERVICE_RESPONSE');
+        }
+        return {
+          identityId: value.identityId,
+          email: value.email,
+          platformAdmin: value.platformAdmin,
+          ...(value.displayName === undefined ? {} : { displayName: value.displayName }),
+        };
+      }, signal),
+    listOAuthClients: ({ signal, ...query }) =>
+      executeRead(() => oauthClientsApi.listOAuthClients(query, { signal }), signal),
+    getOAuthClient: ({ clientId, signal }) =>
+      executeRead(() => oauthClientsApi.getOAuthClient({ clientId }, { signal }), signal),
     createOAuthClient: ({ request, operationHandle, signal }) =>
       executeMutation(operationHandle, signal, (idempotencyKey) =>
         oauthClientsApi.createOAuthClient(

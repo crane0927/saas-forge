@@ -153,13 +153,11 @@ import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.web.WebAppConfiguration;
-import org.springframework.test.web.client.MockMvcClientHttpRequestFactory;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
-import org.springframework.web.client.RestClient;
 import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -214,6 +212,7 @@ class AuthenticationHttpIT {
             "iam-service-client-secret", IAM_SERVICE_CLIENT_SECRET);
     private static final RSAKey SIGNING_KEY = signingKey();
     private static final Set<UUID> TENANT_ACCESS_FAILURES = ConcurrentHashMap.newKeySet();
+    private static final AtomicReference<Boolean> SERVICE_SIGNING_TRANSACTION = new AtomicReference<>();
     private static final AtomicBoolean SIGNING_FAILURE = new AtomicBoolean();
     private static final AtomicReference<ConcurrencyGate> MEMBERSHIP_VALIDATION_GATE = new AtomicReference<>();
     private static final AtomicReference<ConcurrencyGate> SIGNING_GATE = new AtomicReference<>();
@@ -344,14 +343,7 @@ class AuthenticationHttpIT {
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
-        SERVICE_TOKENS.set(new ReservedIamServiceAccessTokenProvider(
-                RestClient.builder()
-                        .baseUrl("https://iam.test.saasforge.invalid")
-                        .requestFactory(new MockMvcClientHttpRequestFactory(mockMvc))
-                        .build(),
-                IAM_SERVICE_CLIENT_ID_FILE,
-                IAM_SERVICE_CLIENT_SECRET_FILE,
-                java.time.Clock.systemUTC()));
+        SERVICE_TOKENS.set(webApplicationContext.getBean(ReservedIamServiceAccessTokenProvider.class));
         jdbc = new JdbcTemplate(dataSource);
         Set<String> keys = redis.keys("sf:test:iam-service:login-*:v1:*");
         if (keys != null && !keys.isEmpty()) {
@@ -439,6 +431,61 @@ class AuthenticationHttpIT {
             assertEquals("USER_PLATFORM", eventJson.at("/data/purpose").asString());
             assertEquals("ACCESS_TOKEN_ISSUED", eventJson.at("/data/result").asString());
         }
+    }
+
+    @Test
+    @Order(2)
+    void listsOAuthClientsWithFiltersAndBoundPaginationWithoutSecrets() throws Exception {
+        createUser("client-list@example.test", "correct-password", true, Credential.REGULAR);
+        String token = accessToken(login("client-list@example.test", "correct-password", "PLATFORM").andReturn());
+        for (int i = 0; i < 3; i++) {
+            mockMvc.perform(post("/api/v1/platform/oauth-clients")
+                            .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                            .header("Idempotency-Key", uuidV7(96_001 + i).toString())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(new ObjectMapper().writeValueAsBytes(Map.of(
+                                    "displayName", "list%_worker-" + i, "allowedScopes", List.of("runtime:read")))))
+                    .andExpect(status().isCreated());
+        }
+        var first = mockMvc.perform(get("/api/v1/platform/oauth-clients")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .param("name", "list%_worker").param("clientType", "RUNTIME_SERVICE")
+                        .param("status", "ACTIVE").param("limit", "2"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].clientType").value("RUNTIME_SERVICE"))
+                .andExpect(jsonPath("$.items[0].clientSecret").doesNotExist())
+                .andExpect(jsonPath("$.items[0].secretDigest").doesNotExist())
+                .andExpect(jsonPath("$.hasMore").value(true)).andReturn();
+        String cursor = json(first.getResponse().getContentAsByteArray()).get("nextCursor").asString();
+        mockMvc.perform(get("/api/v1/platform/oauth-clients")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .param("name", "list%_worker").param("clientType", "RUNTIME_SERVICE")
+                        .param("status", "ACTIVE").param("limit", "2").param("cursor", cursor))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.hasMore").value(false));
+        mockMvc.perform(get("/api/v1/platform/oauth-clients")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token).param("cursor", cursor))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/v1/platform/oauth-clients")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .param("name", "list%_worker").param("status", "REVOKED"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(0));
+        for (String invalid : List.of("invalid", "", Base64.getUrlEncoder().withoutPadding().encodeToString(
+                ("oauth-clients:list%_worker:RUNTIME_SERVICE:ACTIVE\n2000-01-01T00:00:00Z\n"
+                        + uuidV7(96_999)).getBytes(java.nio.charset.StandardCharsets.UTF_8)))) {
+            mockMvc.perform(get("/api/v1/platform/oauth-clients")
+                            .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                            .param("name", "list%_worker").param("clientType", "RUNTIME_SERVICE")
+                            .param("status", "ACTIVE").param("cursor", invalid))
+                    .andExpect(status().isBadRequest());
+        }
+        mockMvc.perform(get("/api/v1/platform/oauth-clients")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token).param("limit", "101"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/v1/platform/oauth-clients"))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -552,6 +599,10 @@ class AuthenticationHttpIT {
                 "oauth-client-stale-role@example.test", "correct-password", "PLATFORM").andReturn());
         jdbc.update("UPDATE iam_platform_role_assignments SET revoked_at = now() WHERE identity_id = ?",
                 staleRole.identity().id());
+        mockMvc.perform(get("/api/v1/platform/oauth-clients")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + staleRoleToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("PLATFORM_ADMIN_REQUIRED"));
         mockMvc.perform(get(location).header(HttpHeaders.AUTHORIZATION, "Bearer " + staleRoleToken))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("PLATFORM_ADMIN_REQUIRED"));
@@ -975,6 +1026,79 @@ class AuthenticationHttpIT {
                 .andExpect(jsonPath("$.code").value("ACCESS_CONTEXT_UNAVAILABLE"))
                 .andExpect(header().doesNotExist("Set-Cookie"));
         assertEquals(0, sessionFactCount(user.identity().id()));
+    }
+
+    @Test
+    @Order(5)
+    void readsCurrentPlatformSessionFromAuthoritativeIdentityAndAuthorization() throws Exception {
+        TestUser user = createUser("current-platform@example.test", "correct-password", true, Credential.REGULAR);
+        MvcResult login = login("current-platform@example.test", "correct-password", "PLATFORM")
+                .andExpect(status().isOk()).andReturn();
+        String bearer = "Bearer " + accessToken(login);
+        mockMvc.perform(get("/api/v1/auth/session").header(HttpHeaders.AUTHORIZATION, bearer))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(header().doesNotExist("Set-Cookie"))
+                .andExpect(jsonPath("$.identityId").value(user.identity().id().toString()))
+                .andExpect(jsonPath("$.email").value("current-platform@example.test"))
+                .andExpect(jsonPath("$.platformAdmin").value(true))
+                .andExpect(jsonPath("$.accessToken").doesNotExist())
+                .andExpect(jsonPath("$.expiresIn").doesNotExist());
+        // 读取成功并不冻结授权；业务操作必须再次检查当前 Role。
+        jdbc.update("UPDATE iam_platform_role_assignments SET revoked_at = now() WHERE identity_id = ?",
+                user.identity().id());
+        mockMvc.perform(get("/api/v1/auth/session").header(HttpHeaders.AUTHORIZATION, bearer))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.platformAdmin").value(false));
+        mockMvc.perform(get("/api/v1/platform/oauth-clients/{clientId}", uuidV7(69_001))
+                        .header(HttpHeaders.AUTHORIZATION, bearer))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @Order(5)
+    void currentSessionRejectsWrongCredentialsAndTenantContextWithoutChangingCookies() throws Exception {
+        mockMvc.perform(get("/api/v1/auth/session")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/auth/session").header(HttpHeaders.AUTHORIZATION, "Bearer malformed"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/auth/session")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + SERVICE_TOKENS.get().membershipReadToken()))
+                .andExpect(status().isUnauthorized());
+        TestUser tenant = createUser("current-tenant@example.test", "correct-password", true, Credential.REGULAR);
+        accessibleMemberships(tenant.identity().id(), membership(uuidV7(69_011), uuidV7(69_012), "Tenant"));
+        MvcResult login = login("current-tenant@example.test", "correct-password", "TENANT")
+                .andExpect(status().isOk()).andReturn();
+        mockMvc.perform(get("/api/v1/auth/session")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken(login)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_CONTEXT_UNAVAILABLE"))
+                .andExpect(header().doesNotExist("Set-Cookie"));
+        mockMvc.perform(get("/api/v1/auth/session")
+                        .cookie(new Cookie("__Host-sf_tenant_refresh", refreshToken(login))))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @Order(5)
+    void currentSessionDoesNotPromiseRefreshAndFailsClosedForRevocation() throws Exception {
+        TestUser user = createUser("current-revocation@example.test", "correct-password", true, Credential.REGULAR);
+        MvcResult login = login("current-revocation@example.test", "correct-password", "PLATFORM")
+                .andExpect(status().isOk()).andReturn();
+        String token = accessToken(login);
+        // 仅终止 Refresh Family，保留短期 Access Token，证明读取不是未来刷新的保证。
+        jdbc.update("UPDATE iam_refresh_token_families SET revoked_at = now() WHERE identity_id = ?",
+                user.identity().id());
+        mockMvc.perform(get("/api/v1/auth/session").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk());
+        refresh(refreshToken(login), UUID.randomUUID()).andExpect(status().isUnauthorized());
+        revocationIndex.markNotReady();
+        try {
+            mockMvc.perform(get("/api/v1/auth/session").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.code").value("TOKEN_REVOCATION_STATUS_UNAVAILABLE"))
+                    .andExpect(header().doesNotExist("Set-Cookie"));
+        } finally {
+            revocationIndexRecovery.recover();
+        }
     }
 
     @Test
@@ -1944,6 +2068,25 @@ class AuthenticationHttpIT {
         assertEquals(null, jdbc.queryForObject(
                 "SELECT revoked_at FROM iam_refresh_token_families WHERE identity_id = ?",
                 Object.class, differentKeyUser.identity().id()));
+    }
+
+    @Test
+    @Order(0)
+    void internalServiceTokenSigningCommitsBeforeOuterTransactionRollback() {
+        SERVICE_SIGNING_TRANSACTION.set(null);
+        var transactions = new org.springframework.transaction.support.TransactionTemplate(
+                webApplicationContext.getBean(PlatformTransactionManager.class));
+        String token = transactions.execute(status -> {
+            String issued = SERVICE_TOKENS.get().membershipReadToken();
+            assertTrue(org.springframework.transaction.support.TransactionSynchronizationManager
+                    .isActualTransactionActive());
+            status.setRollbackOnly();
+            return issued;
+        });
+        assertNotNull(token);
+        assertEquals(Boolean.FALSE, SERVICE_SIGNING_TRANSACTION.get());
+        assertTrue(jdbc.queryForObject("SELECT max_issued_token_ttl_seconds FROM iam_signing_keys "
+                + "WHERE key_status = 'ACTIVE'", Long.class) >= 300L);
     }
 
     @Test
@@ -3834,10 +3977,20 @@ class AuthenticationHttpIT {
             MyBatisIdentityRepository.class,
             AuthenticationController.class,
             OutboxPublisher.class
-    })
+    }, excludeFilters = @ComponentScan.Filter(
+            type = org.springframework.context.annotation.FilterType.ANNOTATION,
+            classes = org.springframework.boot.test.context.TestConfiguration.class))
     @Import({AuthenticationConfiguration.class, PasswordSetupMailConfiguration.class,
             io.saasforge.iam.config.OAuthClientManagementConfiguration.class})
     static class TestConfiguration {
+        @Bean
+        @org.springframework.context.annotation.Scope("prototype")
+        ReservedIamServiceAccessTokenProvider reservedServiceTokens(
+                io.saasforge.iam.application.authentication.ClientCredentialsTokenService tokens) {
+            return new ReservedIamServiceAccessTokenProvider(tokens, IAM_SERVICE_CLIENT_ID_FILE,
+                    IAM_SERVICE_CLIENT_SECRET_FILE, java.time.Clock.systemUTC());
+        }
+
         @Bean
         static ConversionService conversionService() {
             return ApplicationConversionService.getSharedInstance();
@@ -3925,6 +4078,8 @@ class AuthenticationHttpIT {
         JwtSigningPort jwtSigningPort() {
             return (keyReference, algorithm, signingInput) -> {
                 try {
+                    SERVICE_SIGNING_TRANSACTION.set(org.springframework.transaction.support.TransactionSynchronizationManager
+                            .isActualTransactionActive());
                     if (SIGNING_FAILURE.get()) {
                         throw new IllegalStateException("injected signing failure");
                     }

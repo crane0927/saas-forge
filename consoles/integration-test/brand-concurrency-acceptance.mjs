@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 export async function verifyLatestBrandRead(
   context,
   url,
-  { source, publishLatest, restore, capture },
+  { source, publishLatest, restore, capture, openNavigation },
 ) {
   const peer = await context.newPage();
   peer.setDefaultTimeout(15_000);
@@ -17,6 +17,8 @@ export async function verifyLatestBrandRead(
   let reads = 0;
   try {
     await peer.goto(url);
+    await peer.getByRole('heading', { name: 'Tenant 工作台', exact: true }).waitFor();
+    await openNavigation(peer);
     await peer
       .getByRole('navigation', { name: 'Acceptance Violet Brand 全局导航', exact: true })
       .waitFor();
@@ -62,6 +64,8 @@ export async function verifyLatestBrandRead(
     await newestResponse;
     assert.equal(await retry, true);
     console.info('BRAND: late-context newer authoritative response applied');
+    await peer.getByRole('heading', { name: 'Tenant 工作台', exact: true }).waitFor();
+    await openNavigation(peer);
     const latest = peer.getByRole('navigation', {
       name: 'Acceptance Newest Brand 全局导航',
       exact: true,

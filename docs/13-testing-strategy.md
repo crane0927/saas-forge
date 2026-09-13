@@ -6,6 +6,8 @@
 
 ## 测试层级
 
+日常按影响范围选择检查、边界升级条件、结果记录与完整复现入口见 [本地分层验证](local-verification.md)。局部通过不等于完整验收通过。
+
 | 层级 | 工具与环境 | 覆盖重点 |
 |---|---|---|
 | 单元测试 | JUnit 5 | 领域状态、RBAC、Plan / Subscription、错误映射、Token 与缓存策略 |
@@ -53,7 +55,7 @@ Tenant Suspension 安全闭环的最高集成接缝必须从 Gateway 公网请�
 - 全仓库行覆盖率不低于 80%，分支覆盖率不低于 70%。
 - IAM、Tenant Context、RLS、授权和配额关键模块行覆盖率不低于 90%。
 - Maven 单元测试使用 `*Test`，集成与契约测试使用 `*IT`；JaCoCo 聚合两类测试后执行覆盖率门禁，具体模块清单与命令见 [Maven 构建与制品发布](21-maven-build-and-release.md)。
-- `quality-gates` 的默认 `verify` 使用 Testcontainers 运行 PostgreSQL 18 数据边界门禁，并验证 Redis 的读写/TTL 和 Kafka 的生产消费基础语义；它们在 GitHub Actions 的 JDK 17、21 矩阵中均为强制检查。
+- `quality-gates` 的默认 `verify` 使用 Testcontainers 运行 PostgreSQL 18 数据边界门禁，并验证 Redis 的读写/TTL 和 Kafka 的生产消费基础语义；它们在 GitHub Actions 的 JDK 17 门禁中均为强制检查。
 - `main` 仅能通过 Pull Request 合并，且必须通过测试、契约、覆盖率、漏洞、镜像和 ZAP 门禁。单人开发阶段不强制独立批准；团队出现第二位开发者后，要求至少一名独立审查者批准。
 - 版本标签触发可追溯的制品和 Helm Chart 发布。
 

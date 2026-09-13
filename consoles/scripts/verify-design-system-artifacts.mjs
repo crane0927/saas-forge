@@ -8,7 +8,8 @@ import { designSystemDependencyReport } from './check-design-system-boundaries.m
 
 const consoleRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const consumerArtifacts = [
-  { name: 'Platform Console', directory: 'platform-console/dist' },
+  // Tenant 页面正式使用表格、筛选空态和草稿离开确认；其余消费者仍禁止这些模块。
+  { name: 'Platform Console', directory: 'platform-console/dist', usesTenantForms: true },
   { name: 'Tenant Console Shell', directory: 'tenant-console-shell/dist' },
   {
     name: 'Remote 消费夹具',
@@ -46,7 +47,7 @@ for (const artifact of consumerArtifacts) {
     assets.filter((file) => file.endsWith('.js')).map((file) => readFile(file, 'utf8')),
   );
   const script = scripts.join('\n');
-  for (const marker of unusedAdvancedComponentMarkers) {
+  for (const marker of artifact.usesTenantForms ? [] : unusedAdvancedComponentMarkers) {
     if (script.includes(marker)) {
       throw new Error(`${artifact.name} 首屏包含未使用高级公共组件标记：${marker}`);
     }
@@ -70,7 +71,7 @@ for (const row of rows) {
   console.log(`${row.name} | ${String(row.rawBytes)} | ${String(row.gzipBytes)}`);
 }
 console.log('三个消费者均只有一个、且内容完全相同的全局 CSS 入口。');
-console.log('三个消费者首屏均未包含未使用的表格、危险确认或筛选空态实现。');
+console.log('Tenant Console 与 Remote 制品未包含未使用的表格、离开确认或筛选空态实现。');
 console.log('Design System 已发布版本化 Platform Logo 与 favicon。');
 
 async function artifactSizeRow(name, files) {

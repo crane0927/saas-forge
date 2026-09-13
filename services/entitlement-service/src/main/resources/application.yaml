@@ -4,8 +4,6 @@ spring:
   jackson:
     deserialization:
       fail-on-unknown-properties: true
-  config:
-    import: nacos:entitlement-service.yaml?group=SAAS_FORGE&refreshEnabled=false
   cloud:
     nacos:
       username: ${NACOS_ENTITLEMENT_USERNAME:?NACOS_ENTITLEMENT_USERNAME is required}
@@ -41,3 +39,10 @@ saasforge:
 mybatis:
   mapper-locations: classpath*:mapper/**/*Mapper.xml
   type-handlers-package: io.saasforge.entitlement.infrastructure.persistence.type
+
+---
+spring:
+  config:
+    activate:
+      on-profile: "!local"
+    import: nacos:entitlement-service.yaml?group=SAAS_FORGE&refreshEnabled=false

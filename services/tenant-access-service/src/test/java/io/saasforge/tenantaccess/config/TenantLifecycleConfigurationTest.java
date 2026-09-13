@@ -18,7 +18,6 @@ import io.saasforge.tenantaccess.infrastructure.security.IamServiceAccessTokenPr
 import java.time.Clock;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
-import org.springframework.grpc.client.GrpcChannelFactory;
 import tools.jackson.databind.ObjectMapper;
 
 class TenantLifecycleConfigurationTest {
@@ -26,10 +25,9 @@ class TenantLifecycleConfigurationTest {
 
     @Test
     void wiresSessionRevocationLifecycleAndWorkerBoundaries() {
-        GrpcChannelFactory channels = mock(GrpcChannelFactory.class);
-        when(channels.createChannel("iam")).thenReturn(mock(ManagedChannel.class));
+        ManagedChannel channel = mock(ManagedChannel.class);
         IamServiceAccessTokenProvider tokens = mock(IamServiceAccessTokenProvider.class);
-        SessionRevocationGateway gateway = configuration.sessionRevocationGateway(channels, tokens);
+        SessionRevocationGateway gateway = configuration.sessionRevocationGateway(channel, tokens);
         UuidV7Generator ids = mock(UuidV7Generator.class);
         TenantSuspendedEventFactory events = configuration.tenantSuspendedEventFactory(
                 new ObjectMapper(), ids, "tenant-events");

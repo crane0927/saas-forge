@@ -1,74 +1,92 @@
 package io.saasforge.iam.infrastructure.security;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
-import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
-import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.util.UUID;
+import io.saasforge.iam.application.authentication.*;
+import io.saasforge.iam.application.signing.*;
+import io.saasforge.iam.domain.client.*;
+import io.saasforge.iam.domain.signing.*;
+import io.saasforge.iam.support.StubSigningKeyRepository;
+import java.nio.file.*;
+import java.security.SecureRandom;
+import java.time.*;
+import java.util.*;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.springframework.http.MediaType;
-import org.springframework.test.web.client.MockRestServiceServer;
-import org.springframework.web.client.RestClient;
+import tools.jackson.databind.ObjectMapper;
 
 class ReservedIamServiceAccessTokenProviderTest {
-    private static final String CLIENT_ID = "019535d9-0000-7000-8000-000000000001";
-    private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-08-24T00:00:00Z"), ZoneOffset.UTC);
+    private static final UUID CLIENT_ID = UUID.fromString("019535d9-0000-7000-8000-000000000001");
+    private static final String SECRET = Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[32]);
+    private static final Instant NOW = Instant.parse("2026-08-24T00:00:00Z");
+    private final Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
+    private final OAuthClientRepository clients = mock(OAuthClientRepository.class);
+    private final RevocationIndex revocations = mock(RevocationIndex.class);
+    @TempDir Path directory;
+    private ClientCredentialsTokenService tokens;
 
-    @TempDir
-    Path directory;
-
-    @Test
-    void obtainsExactMembershipReadScopeAndCachesOnlyTheToken() throws Exception {
-        RestClient.Builder builder = RestClient.builder().baseUrl("http://iam");
-        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        ReservedIamServiceAccessTokenProvider provider = provider(builder, CLIENT_ID, "secret");
-        server.expect(requestTo("http://iam/oauth2/token"))
-                .andExpect(content().string(
-                        "grant_type=client_credentials&scope=tenant-access%3Amembership%3Aread"))
-                .andRespond(withSuccess(
-                        "{\"access_token\":\"token\",\"expires_in\":60,"
-                                + "\"scope\":\"tenant-access:membership:read\"}",
-                        MediaType.APPLICATION_JSON));
-
-        assertEquals("token", provider.membershipReadToken());
-        assertEquals("token", provider.membershipReadToken());
-        server.verify();
+    @BeforeEach
+    void setUp() {
+        var client = OAuthClient.register("iam-service", Set.of(OAuthScope.TENANT_ACCESS_MEMBERSHIP_READ),
+                NOW.minusSeconds(60)).identifiedBy(CLIENT_ID);
+        when(clients.findActiveBySecretDigest(ClientSecretDigest.fromPlaintext(SECRET), NOW))
+                .thenReturn(Optional.of(client));
+        when(revocations.isReady()).thenReturn(true);
+        var keys = new StubSigningKeyRepository();
+        keys.activeKeys(List.of(SigningKey.restore(UUID.randomUUID(), "active-kid", "kms/key/1",
+                "modulus", "AQAB", SigningKeyStatus.ACTIVE, NOW.minusSeconds(600),
+                NOW.minusSeconds(300), null, null, null)));
+        var signing = new JwtSigningService(new ActiveSigningKeyResolver(keys),
+                (reference, algorithm, input) -> new byte[32]);
+        tokens = new ClientCredentialsTokenService(clients, new ServiceAccessTokenIssuer(signing,
+                new ObjectMapper(), new UuidV7Generator(clock, new SecureRandom()), clock,
+                "https://iam.test", Duration.ofMinutes(5)), revocations, clock);
     }
 
     @Test
-    void rejectsInvalidCredentialsAndTokenResponses() throws Exception {
-        assertThrows(IllegalStateException.class,
-                () -> provider(RestClient.builder(), UUID.randomUUID().toString(), "secret")
-                        .membershipReadToken());
-        assertThrows(IllegalStateException.class,
-                () -> provider(RestClient.builder(), CLIENT_ID.toUpperCase(), "secret")
-                        .membershipReadToken());
-        assertThrows(IllegalStateException.class,
-                () -> provider(RestClient.builder(), CLIENT_ID, " ").membershipReadToken());
-
-        RestClient.Builder builder = RestClient.builder().baseUrl("http://iam");
-        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        ReservedIamServiceAccessTokenProvider provider = provider(builder, CLIENT_ID, "secret");
-        server.expect(requestTo("http://iam/oauth2/token"))
-                .andRespond(withSuccess(
-                        "{\"access_token\":\"token\",\"expires_in\":60,\"scope\":\"wrong\"}",
-                        MediaType.APPLICATION_JSON));
-        assertThrows(IllegalStateException.class, provider::membershipReadToken);
+    void issuesExactServiceIdentityAndScopeWithoutHttpAndCachesTheToken() throws Exception {
+        var provider = provider(CLIENT_ID.toString(), SECRET);
+        String token = provider.membershipReadToken();
+        var claims = new ObjectMapper().readTree(Base64.getUrlDecoder().decode(token.split("\\.")[1]));
+        assertEquals(CLIENT_ID.toString(), claims.path("client_id").asText());
+        assertEquals("tenant-access:membership:read", claims.path("scope").asText());
+        assertFalse(claims.has("tenant_id"));
+        assertEquals(token, provider.membershipReadToken());
     }
 
-    private ReservedIamServiceAccessTokenProvider provider(
-            RestClient.Builder builder, String clientId, String secret) throws Exception {
-        Path idFile = Files.writeString(directory.resolve("id-" + directory.toFile().list().length), clientId);
-        Path secretFile = Files.writeString(
-                directory.resolve("secret-" + directory.toFile().list().length), secret);
-        return new ReservedIamServiceAccessTokenProvider(builder.build(), idFile, secretFile, CLOCK);
+    @Test
+    void failsClosedForInvalidCredentialsAndUnavailableRevocationState() throws Exception {
+        assertThrows(TenantAccessUnavailableException.class,
+                () -> provider(CLIENT_ID.toString(), "wrong-secret").membershipReadToken());
+        assertThrows(TenantAccessUnavailableException.class,
+                () -> provider(UUID.randomUUID().toString(), SECRET).membershipReadToken());
+        when(revocations.isReady()).thenReturn(false);
+        assertThrows(TenantAccessUnavailableException.class,
+                () -> provider(CLIENT_ID.toString(), SECRET).membershipReadToken());
+        when(revocations.isReady()).thenReturn(true);
+        when(revocations.isClientRevoked(CLIENT_ID)).thenReturn(true);
+        assertThrows(TenantAccessUnavailableException.class,
+                () -> provider(CLIENT_ID.toString(), SECRET).membershipReadToken());
+    }
+
+    @Test
+    void rejectsMissingMembershipGrantAndUnreadableCredentials() throws Exception {
+        var wrongScope = OAuthClient.register("iam-service", Set.of(OAuthScope.RUNTIME_READ),
+                NOW.minusSeconds(60)).identifiedBy(CLIENT_ID);
+        when(clients.findActiveBySecretDigest(any(), any())).thenReturn(Optional.of(wrongScope));
+        assertThrows(TenantAccessUnavailableException.class,
+                () -> provider(CLIENT_ID.toString(), SECRET).membershipReadToken());
+        var provider = provider(CLIENT_ID.toString(), SECRET);
+        Files.delete(directory.resolve("secret"));
+        assertThrows(TenantAccessUnavailableException.class, provider::membershipReadToken);
+    }
+
+    private ReservedIamServiceAccessTokenProvider provider(String id, String secret) throws Exception {
+        Path idFile = Files.writeString(directory.resolve("id"), id);
+        Path secretFile = Files.writeString(directory.resolve("secret"), secret);
+        return new ReservedIamServiceAccessTokenProvider(tokens, idFile, secretFile, clock);
     }
 }

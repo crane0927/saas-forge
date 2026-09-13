@@ -1172,7 +1172,7 @@ async function runConsoleLifecycle(command, repositoryRoot, paths, target) {
 
 function usage() {
   console.error(
-    "用法：bash scripts/local-https-development.sh <start|status|stop> platform|tenant|all\n" +
+    "用法：bash scripts/local-https-development.sh <start|status|stop> edge|platform|tenant|all\n" +
       "      bash scripts/local-https-development.sh <setup|hosts|trust-ca|doctor>",
   );
 }
@@ -1187,7 +1187,8 @@ export function localHttpsDevelopmentCommand(arguments_) {
   if (
     arguments_.length === 2 &&
     ["start", "status", "stop"].includes(arguments_[0]) &&
-    (arguments_[1] === "all" || Object.hasOwn(frontendTargets, arguments_[1]))
+    (["all", "edge"].includes(arguments_[1]) ||
+      Object.hasOwn(frontendTargets, arguments_[1]))
   ) {
     return { command: arguments_[0], target: arguments_[1] };
   }
@@ -1231,6 +1232,30 @@ async function main(arguments_) {
       case "start":
       case "status":
       case "stop":
+        if (request.target === "edge") {
+          const edge = createHttpsEdgeLifecycle({ repositoryRoot, paths });
+          if (command === "start") {
+            // Edge 只依赖环境准备，不检查或启动 Vite，也不需要生成 API Client。
+            for (const check of [
+              await doctorCertificate(paths),
+              await doctorHosts(),
+              doctorTrust(),
+              doctorDocker(),
+            ]) {
+              if (!check.ok)
+                throw new Error(`${check.message} ${check.recovery}`);
+            }
+            await ensureApiTarget(paths.apiTarget);
+            await edge.ensure(() => {});
+          } else if (command === "stop") {
+            const initial = await edge.status();
+            await edge.stop(initial.identity);
+          }
+          const status = await edge.status();
+          console.log(`EDGE: ${status.state} | 127.0.0.1:443`);
+          process.exitCode = status.exitCode;
+          break;
+        }
         await runConsoleLifecycle(
           command,
           repositoryRoot,

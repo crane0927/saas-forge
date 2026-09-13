@@ -11,10 +11,7 @@ public interface TenantAdministratorInitializationMapper {
 
     TenantRow lockTenant(@Param("tenantId") UUID tenantId);
 
-    int deleteExpiredWorkflow(
-            @Param("actorIdentityId") UUID actorIdentityId,
-            @Param("idempotencyKey") UUID idempotencyKey,
-            @Param("now") OffsetDateTime now);
+    TenantAdministratorInitializationRow findAuthoritativeWorkflow(@Param("tenantId") UUID tenantId);
 
     int insertWorkflow(@Param("row") TenantAdministratorInitializationRow row);
 

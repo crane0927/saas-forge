@@ -4,7 +4,11 @@ import io.saasforge.tenantaccess.application.authorization.PlatformAdminAuthoriz
 import io.saasforge.tenantaccess.application.administrator.InitializeTenantAdministratorService;
 import io.saasforge.tenantaccess.application.administrator.ResendAdministratorPasswordSetupService;
 import io.saasforge.tenantaccess.application.administrator.TenantAdministratorInitializationResult;
-import io.saasforge.tenantaccess.application.tenant.CreatePendingTenantService;
+import io.saasforge.tenantaccess.application.tenant.RecoverableTenantCreationService;
+import io.saasforge.tenantaccess.application.tenant.TenantQueryService;
+import io.saasforge.tenantaccess.contract.model.TenantPage;
+import io.saasforge.tenantaccess.contract.model.TenantCreationRecovery;
+import io.saasforge.tenantaccess.contract.model.TenantCreationPage;
 import io.saasforge.tenantaccess.application.tenant.TenantCreationResult;
 import io.saasforge.tenantaccess.application.tenant.TenantLifecycleResult;
 import io.saasforge.tenantaccess.application.tenant.TenantLifecycleService;
@@ -33,31 +37,170 @@ public class TenantCreationController implements PlatformTenantsApi {
             "^[0-9a-f]{2}-((?!0{32})[0-9a-f]{32})-(?!0{16})[0-9a-f]{16}-[0-9a-f]{2}$");
 
     private final PlatformAdminAuthorizer authorizer;
-    private final CreatePendingTenantService tenantCreation;
+    private final RecoverableTenantCreationService tenantCreation;
     private final InitializeTenantAdministratorService administratorInitialization;
     private final ResendAdministratorPasswordSetupService administratorPasswordSetup;
     private final TenantLifecycleService tenantLifecycle;
+    private final TenantQueryService tenantQueries;
+    private final io.saasforge.tenantaccess.application.administrator.AdministratorInitializationQueryService initializationQueries;
+
+    private final io.saasforge.tenantaccess.application.administrator.AdministratorPasswordSetupQueryService notificationQueries;
 
     @Autowired
     public TenantCreationController(
             PlatformAdminAuthorizer authorizer,
-            CreatePendingTenantService tenantCreation,
+            RecoverableTenantCreationService tenantCreation,
             InitializeTenantAdministratorService administratorInitialization,
             ResendAdministratorPasswordSetupService administratorPasswordSetup,
-            TenantLifecycleService tenantLifecycle) {
+            TenantLifecycleService tenantLifecycle,
+            TenantQueryService tenantQueries,
+            io.saasforge.tenantaccess.application.administrator.AdministratorInitializationQueryService initializationQueries,
+            io.saasforge.tenantaccess.application.administrator.AdministratorPasswordSetupQueryService notificationQueries) {
         this.authorizer = authorizer;
         this.tenantCreation = tenantCreation;
         this.administratorInitialization = administratorInitialization;
         this.administratorPasswordSetup = administratorPasswordSetup;
         this.tenantLifecycle = tenantLifecycle;
+        this.tenantQueries = tenantQueries;
+        this.initializationQueries = initializationQueries;
+        this.notificationQueries = notificationQueries;
+    }
+
+    public TenantCreationController(
+            PlatformAdminAuthorizer authorizer, RecoverableTenantCreationService tenantCreation,
+            InitializeTenantAdministratorService administratorInitialization,
+            ResendAdministratorPasswordSetupService administratorPasswordSetup,
+            TenantLifecycleService tenantLifecycle, TenantQueryService tenantQueries,
+            io.saasforge.tenantaccess.application.administrator.AdministratorInitializationQueryService initializationQueries) {
+        this(authorizer, tenantCreation, administratorInitialization, administratorPasswordSetup,
+                tenantLifecycle, tenantQueries, initializationQueries, null);
+    }
+
+    @Override
+    public ResponseEntity<Void> recoverTenantAdministratorPasswordSetup(UUID tenantId, UUID resendId, Object body) {
+        var request = currentRequest();
+        UUID actor = authorizer.authorize(request.getHeader(HttpHeaders.AUTHORIZATION));
+        notificationQueries.recover(actor, tenantId, resendId, traceId(request));
+        return ResponseEntity.noContent().cacheControl(org.springframework.http.CacheControl.noStore()).build();
+    }
+
+    @Override
+    public ResponseEntity<io.saasforge.tenantaccess.contract.model.TenantAdministratorPasswordSetup>
+            getTenantAdministratorPasswordSetup(UUID tenantId, UUID idempotencyKey, UUID resendId) {
+        UUID actor = authorizer.authorize(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
+        var result = notificationQueries.get(actor, tenantId, idempotencyKey, resendId);
+        var body = new io.saasforge.tenantaccess.contract.model.TenantAdministratorPasswordSetup(
+                result.tenantId(),
+                io.saasforge.tenantaccess.contract.model.TenantAdministratorPasswordSetup.StateEnum.valueOf(result.state().name()),
+                io.saasforge.tenantaccess.contract.model.TenantAdministratorPasswordSetup.OperationStateEnum.valueOf(result.operationState().name()),
+                result.canResend(), result.canContinue()).resendId(result.resendId());
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore()).body(body);
+    }
+
+    public TenantCreationController(
+            PlatformAdminAuthorizer authorizer, RecoverableTenantCreationService tenantCreation,
+            InitializeTenantAdministratorService administratorInitialization,
+            ResendAdministratorPasswordSetupService administratorPasswordSetup,
+            TenantLifecycleService tenantLifecycle, TenantQueryService tenantQueries) {
+        this(authorizer, tenantCreation, administratorInitialization, administratorPasswordSetup,
+                tenantLifecycle, tenantQueries, null);
+    }
+
+    @Override
+    public ResponseEntity<io.saasforge.tenantaccess.contract.model.TenantAdministratorInitialization>
+            getTenantAdministratorInitialization(UUID tenantId) {
+        UUID actor = authorizer.authorize(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
+        var result = initializationQueries.get(actor, tenantId);
+        var body = new io.saasforge.tenantaccess.contract.model.TenantAdministratorInitialization(
+                result.tenantId(),
+                io.saasforge.tenantaccess.contract.model.TenantAdministratorInitialization.StateEnum.valueOf(result.state().name()),
+                result.canStart(), result.canContinue(), result.initialAdministratorMembershipId())
+                .initializationId(result.initializationId()).failureCode(result.failureCode());
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore()).body(body);
+    }
+
+    @Override
+    public ResponseEntity<Tenant> recoverTenantAdministratorInitialization(
+            UUID tenantId, UUID initializationId, Object body) {
+        var request = currentRequest();
+        UUID actor = authorizer.authorize(request.getHeader(HttpHeaders.AUTHORIZATION));
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(toResponse(initializationQueries.recover(actor, tenantId, initializationId, traceId(request))));
     }
 
     TenantCreationController(
             PlatformAdminAuthorizer authorizer,
-            CreatePendingTenantService tenantCreation,
+            RecoverableTenantCreationService tenantCreation,
+            InitializeTenantAdministratorService administratorInitialization,
+            ResendAdministratorPasswordSetupService administratorPasswordSetup,
+            TenantLifecycleService tenantLifecycle) {
+        this(authorizer, tenantCreation, administratorInitialization, administratorPasswordSetup, tenantLifecycle, null);
+    }
+
+    TenantCreationController(
+            PlatformAdminAuthorizer authorizer,
+            RecoverableTenantCreationService tenantCreation,
             InitializeTenantAdministratorService administratorInitialization,
             ResendAdministratorPasswordSetupService administratorPasswordSetup) {
         this(authorizer, tenantCreation, administratorInitialization, administratorPasswordSetup, null);
+    }
+
+    @Override
+    public ResponseEntity<TenantCreationPage> listTenantCreations(String cursor, Integer limit) {
+        UUID actor = authorizer.authorize(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
+        var page = tenantCreation.list(actor, cursor, limit);
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore()).body(
+                new TenantCreationPage(page.items().stream().map(TenantCreationController::toResponse).toList(),
+                        page.nextCursor(), page.hasMore()));
+    }
+
+    @Override
+    public ResponseEntity<TenantCreationRecovery> getTenantCreation(UUID creationId) {
+        UUID actor = authorizer.authorize(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
+        return recoveryResponse(tenantCreation.get(actor, creationId));
+    }
+
+    @Override
+    public ResponseEntity<TenantCreationRecovery> recoverTenantCreation(UUID creationId, UUID idempotencyKey, java.util.Map<String, Object> requestBody) {
+        HttpServletRequest request = currentRequest();
+        UUID actor = authorizer.authorize(request.getHeader(HttpHeaders.AUTHORIZATION));
+        return recoveryResponse(tenantCreation.recover(actor, creationId, idempotencyKey, traceId(request)));
+    }
+
+    private static ResponseEntity<TenantCreationRecovery> recoveryResponse(
+            io.saasforge.tenantaccess.application.tenant.TenantCreationRecovery result) {
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore()).body(toResponse(result));
+    }
+
+    private static TenantCreationRecovery toResponse(
+            io.saasforge.tenantaccess.application.tenant.TenantCreationRecovery result) {
+        return new TenantCreationRecovery(result.id(), result.displayName(),
+                TenantCreationRecovery.StateEnum.valueOf(result.state().name()),
+                asUtc(result.createdAt()), asUtc(result.replayUntil()), result.canReplay())
+                .tenantId(result.tenantId()).idempotencyKey(result.idempotencyKey());
+    }
+
+    @Override
+    public ResponseEntity<TenantPage> listPlatformTenants(String cursor, Integer limit, String name, TenantStatus status) {
+        authorizer.authorize(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
+        var page = tenantQueries.list(name,
+                status == null ? null : io.saasforge.tenantaccess.domain.tenant.TenantStatus.valueOf(status.name()),
+                cursor, limit);
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore()).body(
+                new TenantPage(page.items().stream().map(TenantCreationController::toResponse).toList(),
+                        page.nextCursor(), page.hasMore()));
+    }
+
+    @Override
+    public ResponseEntity<Tenant> getPlatformTenant(UUID tenantId) {
+        authorizer.authorize(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(toResponse(tenantQueries.get(tenantId)));
+    }
+
+    private static Tenant toResponse(io.saasforge.tenantaccess.domain.tenant.Tenant tenant) {
+        return new Tenant(tenant.id(), tenant.displayName(), TenantStatus.valueOf(tenant.status().name()),
+                asUtc(tenant.expiresAt()), asUtc(tenant.createdAt()), asUtc(tenant.updatedAt()));
     }
 
     @Override

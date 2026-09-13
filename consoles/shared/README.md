@@ -79,7 +79,7 @@ pnpm --filter @saas-forge/design-system run verify
 pnpm run verify:workspace
 ```
 
-该门禁覆盖严格类型、Lint、格式、工作区边界、包测试、Chromium 浏览器测试和生产制品检查。从未生成 Client 的状态开始时，直接运行 `pnpm run verify`。Chrome、Edge、Firefox、WebKit 兼容命令见 [工作区验证说明](../README.md#常用命令与验证)。
+该门禁覆盖严格类型、Lint、格式、工作区边界、包测试、Chromium 浏览器测试和生产制品检查。从未生成 Client 的状态开始时，直接运行 `pnpm run verify`。Chrome 消费者兼容命令见 [工作区验证说明](../README.md#常用命令与验证)。
 
 > [!IMPORTANT]
 > 包级测试通过不等于两个 Console 和 Remote 夹具均已通过集成验证，工作区门禁也不替代真实后端与受信 TLS 的产品验收。不要将生成 Client 或构建成功作为业务功能完成的依据。

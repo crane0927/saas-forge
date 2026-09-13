@@ -11,9 +11,45 @@ readonly acceptance_target="${SF_ACCEPTANCE_TARGET:-local}"
   exit 2
 }
 
+# 旧聚焦变量不能重新启用已退出当前支持范围的产品渠道。
+if [[ -n "${SF_PRODUCT_CHANNEL:-}" && "$SF_PRODUCT_CHANNEL" != chrome ]]; then
+  echo 'SF_PRODUCT_CHANNEL 当前仅接受 chrome；产品验收仅支持 Google Chrome' >&2
+  exit 2
+fi
+
 if [[ "${1:-}" != "" && "${1:-}" != "--preflight" && "${1:-}" != "--product" && "${1:-}" != "--development" ]] || [[ "$#" -gt 1 ]]; then
   echo '用法：bash scripts/verify-console-authentication-e2e.sh [--preflight|--product|--development]' >&2
   exit 2
+fi
+runtime_jar() {
+  local module="$1" candidate
+  local -a jars=()
+  for candidate in "$repository_root/$module/target/"*.jar; do
+    [[ -f "$candidate" && "$candidate" != *-test-fixture.jar ]] && jars+=("$candidate")
+  done
+  [[ "${#jars[@]}" -eq 1 ]] || {
+    echo "BLOCKED: $module 必须恰有一个运行 JAR，请先执行完整 Maven verify 并检查旧制品" >&2
+    return 1
+  }
+  printf '%s\n' "${jars[0]}"
+}
+
+# CI 在同一 job 先执行完整 verify；复用入口必须在环境初始化前拒绝缺失或歧义制品。
+# 此处只验证存在性，实际构建、镜像启动和浏览器门禁仍负责验证制品可用性。
+if [[ "${1:-}" == '--product' ]]; then
+  for application in platform-console tenant-console-shell; do
+    [[ -f "$repository_root/consoles/$application/dist/index.html" ]] || {
+      echo "BLOCKED: 缺少 $application 生产构建，请先执行完整 Maven verify" >&2
+      exit 1
+    }
+  done
+  [[ -f "$repository_root/consoles/dist/static-remote-acceptance/v1/remote.js" ]] || {
+    echo 'BLOCKED: 缺少 Remote 静态构建，请先执行完整 Maven verify' >&2
+    exit 1
+  }
+  for module in gateway services/iam-service services/tenant-access-service services/entitlement-service services/audit-service; do
+    runtime_jar "$module" >/dev/null
+  done
 fi
 # Node 与浏览器均使用系统信任；不忽略证书错误。
 export NODE_USE_SYSTEM_CA=1
@@ -172,14 +208,10 @@ write_environment() {
 build_runtime_image() {
   local service="$1" module="$2"
   local image_directory="$work_directory/images/$service"
-  local candidate
-  local -a jars=()
+  local application_jar
+  application_jar="$(runtime_jar "$module")" || return 1
   mkdir -p "$image_directory"
-  for candidate in "$repository_root/$module/target/"*.jar; do
-    [[ -f "$candidate" && "$candidate" != *-test-fixture.jar ]] && jars+=("$candidate")
-  done
-  [[ "${#jars[@]}" -eq 1 ]] || return 1
-  cp "${jars[0]}" "$image_directory/application.jar"
+  cp "$application_jar" "$image_directory/application.jar"
   docker build --pull=false --quiet --tag "$project_name/$service:acceptance" \
     --file "$compose_directory/Dockerfile.prebuilt" "$image_directory" >/dev/null
 }
@@ -203,19 +235,6 @@ if [[ "${1:-}" != '--product' ]]; then
     --batch-mode --no-transfer-progress verify
 else
   echo 'SCOPE: 重跑产品与浏览器门禁，复用已构建的工件；本次没有执行 Maven/workspace 质量门禁。'
-  for application in platform-console tenant-console-shell; do
-    [[ -f "$repository_root/consoles/$application/dist/index.html" ]] || {
-      echo 'BLOCKED: 缺少生产构建，请先执行完整验收入口' >&2
-      exit 1
-    }
-  done
-  [[ -f "$repository_root/consoles/dist/static-remote-acceptance/v1/remote.js" ]] || {
-    echo 'BLOCKED: 缺少 Remote 静态构建，请先执行完整验收入口' >&2
-    exit 1
-  }
-fi
-if [[ "${1:-}" != '--product' ]]; then
-  stage static-remote-build node "$repository_root/consoles/scripts/build-static-remote-acceptance.mjs"
 fi
 stage acceptance-client-build node "$repository_root/consoles/scripts/build-authentication-acceptance-client.mjs"
 for service in gateway iam-service tenant-access-service entitlement-service audit-service; do
@@ -248,7 +267,7 @@ const urls = [
 // Compose health 与宿主端口转发异步收敛；仍要求四入口在浏览器正常证书校验下均返回 200。
 const deadline = Date.now() + 180_000;
 const observations = new Map();
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ headless: true, channel: 'chrome' });
 try {
   const context = await browser.newContext({ ignoreHTTPSErrors: false });
   let ready = false;
@@ -292,53 +311,15 @@ try {
 JS
 }
 
-# 各渠道使用独立数据卷；CI 优先验证本次补齐证书信任的 Firefox。
-engines=(webkit chromium)
-channels=(chrome)
-if [[ "$acceptance_target" == ci ]]; then
-  engines=(firefox webkit chromium)
-  channels+=(msedge)
-fi
-if [[ -n "${SF_PRODUCT_CHANNEL:-}" ]]; then
-  [[ "${1:-}" == '--product' && "$acceptance_target" == local ]] || {
-    echo 'SF_PRODUCT_CHANNEL 仅用于本地 --product 聚焦验证' >&2
-    exit 2
-  }
-  case "$SF_PRODUCT_CHANNEL" in
-    chromium|webkit) engines=("$SF_PRODUCT_CHANNEL"); channels=() ;;
-    chrome) engines=(); channels=(chrome) ;;
-    *) echo 'SF_PRODUCT_CHANNEL 必须是 chromium、webkit 或 chrome' >&2; exit 2 ;;
-  esac
-  printf 'SCOPE: 仅执行 %s 产品切片；不执行其他渠道或兼容门禁。\n' "$SF_PRODUCT_CHANNEL"
-fi
-for engine in "${engines[@]}"; do
-  start_fresh_environment
-  stage "product-$engine" env SF_BROWSER="$engine" SF_BROWSER_CHANNEL= \
-    node --test --test-reporter=tap "$repository_root/consoles/integration-test/console-authentication.test.mjs"
-  stage compose-reset compose down --volumes --remove-orphans
-done
-for channel in "${channels[@]}"; do
-  start_fresh_environment
-  stage "product-$channel" env SF_BROWSER=chromium SF_BROWSER_CHANNEL="$channel" \
-    node --test --test-reporter=tap "$repository_root/consoles/integration-test/console-authentication.test.mjs"
-  stage compose-reset compose down --volumes --remove-orphans
-done
-if [[ -n "${SF_PRODUCT_CHANNEL:-}" ]]; then
-  echo 'PASS: 聚焦产品用例通过；本命令不包含其他渠道或 Maven/workspace 门禁。'
-  exit 0
-fi
+# 产品验收仅运行 Chrome；Chromium 的日常功能与视觉检查由 workspace 承担。
+start_fresh_environment
+stage product-chrome env SF_BROWSER=chromium SF_BROWSER_CHANNEL=chrome \
+  node --test --test-reporter=tap "$repository_root/consoles/integration-test/console-authentication.test.mjs"
+stage compose-reset compose down --volumes --remove-orphans
 # Corepack 根据 cwd 选择 packageManager；pnpm --dir 不会改变 Corepack 的版本解析目录。
 (
   cd "$repository_root/consoles"
-  if [[ "$acceptance_target" == ci ]]; then
-    for channel in chrome edge firefox webkit; do
-      stage "console-browser-$channel" pnpm run "test:browser:$channel"
-    done
-  else
-    stage console-browser-chrome pnpm run test:browser:chrome
-    stage console-browser-webkit pnpm run test:browser:webkit
-    echo 'PENDING: Firefox 与 Edge 的真实产品证据由 GitHub CI 提供。'
-  fi
+  stage console-browser-chrome pnpm run test:browser:chrome
 )
 
 if [[ "${1:-}" == '--product' ]]; then

@@ -17,6 +17,35 @@ tags:
   - name: Platform entitlement bootstrap
   - name: OAuth clients
 paths:
+  /api/v1/auth/session:
+    get:
+      tags: [Authentication]
+      operationId: getCurrentSession
+      x-saasforge-service: iam-service
+      summary: Read the current Platform Identity and authorization
+      description: |
+        Uses only a verified Platform User Access Token. Reads authoritative IAM
+        Identity and current PLATFORM_ADMIN authorization, independently of future
+        business authorization. Tenant and Service Access Tokens are rejected.
+        Does not consume, validate or rotate a Refresh Token Family and does not
+        promise that future refresh will succeed. Never sets cookies.
+      security: [{ UserBearerAuth: [] }]
+      responses:
+        '200':
+          description: Current request identity and authorization; never cached.
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CurrentSession' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
   /api/v1/auth/context:
     get:
       tags: [Authentication]
@@ -370,6 +399,40 @@ paths:
         '504': { $ref: './common.yaml#/components/responses/Problem' }
 
   /api/v1/platform/tenants:
+    get:
+      tags: [Platform tenants]
+      operationId: listPlatformTenants
+      x-saasforge-service: tenant-access-service
+      summary: List Tenants by literal name substring and lifecycle status
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: cursor
+          in: query
+          schema: { type: string, maxLength: 2048 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: name
+          in: query
+          schema: { type: string, maxLength: 200 }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/TenantStatus' }
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantPage' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
     post:
       tags: [Platform tenants]
       operationId: createPlatformTenant
@@ -400,6 +463,207 @@ paths:
         '409': { $ref: './common.yaml#/components/responses/Problem' }
         '404': { $ref: './common.yaml#/components/responses/Problem' }
         '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/tenants/{tenantId}:
+    get:
+      tags: [Platform tenants]
+      operationId: getPlatformTenant
+      x-saasforge-service: tenant-access-service
+      summary: Read authoritative Tenant detail
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tenant' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/tenant-creations:
+    get:
+      tags: [Platform tenants]
+      operationId: listTenantCreations
+      x-saasforge-service: tenant-access-service
+      summary: Find only the current actor creation attempts after losing an in-memory handle
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: cursor
+          in: query
+          schema: { type: string, maxLength: 2048 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantCreationPage' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/tenant-creations/{creationId}:
+    get:
+      tags: [Platform tenants]
+      operationId: getTenantCreation
+      x-saasforge-service: tenant-access-service
+      summary: Read own creation result; missing or expired records never authorize a new creation
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: creationId
+          in: path
+          required: true
+          schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantCreationRecovery' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/tenant-creations/{creationId}/recovery:
+    post:
+      tags: [Platform tenants]
+      operationId: recoverTenantCreation
+      x-saasforge-service: tenant-access-service
+      summary: Continue the original creation with its server-stored actor, Key and request; never starts a new operation
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: creationId
+          in: path
+          required: true
+          schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              maxProperties: 0
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantCreationRecovery' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/tenants/{tenantId}/administrator-initialization:
+    get:
+      tags: [Platform tenants]
+      operationId: getTenantAdministratorInitialization
+      x-saasforge-service: tenant-access-service
+      summary: Read initialization business progress and the historical initial Membership
+      description: |
+        Requires current Platform Admin authorization. Does not expose administrator email,
+        internal execution state, leases or recovery keys. canContinue is true only for
+        the original actor when explicit recovery is available. No 24 hour expiration.
+        canStart does not certify Subscription or Quota eligibility.
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: Authoritative Tenant Access observation.
+          headers:
+            Cache-Control:
+              schema: { type: string, enum: [no-store] }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantAdministratorInitialization' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/tenants/{tenantId}/administrator-initializations/{initializationId}/recovery:
+    post:
+      tags: [Platform tenants]
+      operationId: recoverTenantAdministratorInitialization
+      x-saasforge-service: tenant-access-service
+      summary: Continue the original actor's durable initialization
+      description: |
+        Rechecks current Platform Admin authorization and original actor ownership.
+        The server restores the original Key and request from its durable root record.
+        The initialization ID identifies exactly one attempt; it never starts a new attempt.
+        An active or scheduled automatic recovery must be observed rather than resubmitted.
+        Cancellation does not revoke server work. Successful initialization is independent
+        of password setup notification delivery.
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: initializationId
+          in: path
+          required: true
+          schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, maxProperties: 0 }
+      responses:
+        '200':
+          description: Initialization completed; re-read Tenant and Quota independently.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tenant' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '503':
+          description: Initialization is pending or a dependency is unavailable.
+          headers:
+            Retry-After:
+              required: true
+              schema: { type: integer, minimum: 1 }
+          content:
+            application/problem+json:
+              schema: { $ref: './common.yaml#/components/schemas/ProblemDetails' }
         '502': { $ref: './common.yaml#/components/responses/Problem' }
         '504': { $ref: './common.yaml#/components/responses/Problem' }
 
@@ -435,8 +699,86 @@ paths:
         '404': { $ref: './common.yaml#/components/responses/Problem' }
         '409': { $ref: './common.yaml#/components/responses/Problem' }
         '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '503':
+          description: Initialization is compensating or a dependency is unavailable.
+          headers:
+            Retry-After:
+              required: true
+              schema: { type: integer, minimum: 1 }
+          content:
+            application/problem+json:
+              schema: { $ref: './common.yaml#/components/schemas/ProblemDetails' }
         '502': { $ref: './common.yaml#/components/responses/Problem' }
         '504': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/tenants/{tenantId}/administrator-password-setup:
+    get:
+      tags: [Platform tenants]
+      operationId: getTenantAdministratorPasswordSetup
+      x-saasforge-service: tenant-access-service
+      summary: Read authoritative initial administrator notification status
+      description: Requires a Platform Admin. Mail service acceptance never proves inbox delivery. Recovery actions belong only to the original resend actor.
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: idempotencyKey
+          in: query
+          description: Optional exact original resend Key, held only by the shared Runtime in memory. Lookup is restricted to the current actor and never creates a record.
+          schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        - name: resendId
+          in: query
+          description: Optional exact original resend ID. Mutually exclusive with idempotencyKey. With neither selector, read the current actor's oldest pending resend.
+          schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+      responses:
+        '200':
+          description: Independent notification status, without email, credentials or recovery keys.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantAdministratorPasswordSetup' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/tenants/{tenantId}/administrator-password-setups/{resendId}/recovery:
+    post:
+      tags: [Platform tenants]
+      operationId: recoverTenantAdministratorPasswordSetup
+      x-saasforge-service: tenant-access-service
+      summary: Continue the original pending notification resend
+      description: Reauthorizes the original actor and uses only the persisted original Key. Missing or expired records never create a new resend.
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: resendId
+          in: path
+          required: true
+          schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, maxProperties: 0 }
+      responses:
+        '204':
+          description: The original operation completed. Read notification state separately.
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '503':
+          description: The original notification resend remains pending.
+          headers:
+            Retry-After:
+              required: true
+              schema: { type: integer, minimum: 1 }
+          content:
+            application/problem+json:
+              schema: { $ref: './common.yaml#/components/schemas/ProblemDetails' }
 
   /api/v1/platform/tenants/{tenantId}/administrator-password-setups:
     post:
@@ -580,13 +922,143 @@ paths:
             application/problem+json:
               schema: { $ref: './common.yaml#/components/schemas/ProblemDetails' }
 
+  /api/v1/platform/quota-definition-operations:
+    get:
+      tags: [Platform entitlement bootstrap]
+      operationId: listQuotaDefinitionOperations
+      x-saasforge-service: entitlement-service
+      summary: Find only the current actor quota definition operation attempts after losing an in-memory handle
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: cursor
+          in: query
+          schema: { type: string, maxLength: 2048 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuotaDefinitionOperationPage' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/quota-definition-operations/{operationId}:
+    get:
+      tags: [Platform entitlement bootstrap]
+      operationId: getQuotaDefinitionOperation
+      x-saasforge-service: entitlement-service
+      summary: Read own quota definition operation result; missing or expired records never authorize a new quota definition operation
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: operationId
+          in: path
+          required: true
+          schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuotaDefinitionOperationRecovery' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/quota-definition-operations/{operationId}/recovery:
+    post:
+      tags: [Platform entitlement bootstrap]
+      operationId: recoverQuotaDefinitionOperation
+      x-saasforge-service: entitlement-service
+      summary: Continue the original quota definition operation with its server-stored actor, Key and request; never starts a new operation
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: operationId
+          in: path
+          required: true
+          schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              maxProperties: 0
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuotaDefinitionOperationRecovery' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
   /api/v1/platform/quota-definitions:
+    get:
+      tags: [Platform entitlement bootstrap]
+      operationId: listQuotaDefinitions
+      x-saasforge-service: entitlement-service
+      summary: List Quota Definitions by literal code substring and status
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: cursor
+          in: query
+          schema: { type: string, maxLength: 2048 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: code
+          in: query
+          schema: { type: string, maxLength: 100 }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/QuotaDefinitionStatus' }
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuotaDefinitionPage' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
     post:
       tags: [Platform entitlement bootstrap]
       operationId: createQuotaDefinition
       x-saasforge-service: entitlement-service
       x-saasforge-java-sdk: true
       summary: Create the max_users Quota Definition in DRAFT state
+      description: Once registered, the actor and Key identify the original operation. After its 24-hour replay window, this entrypoint also rejects that Key with QUOTA_DEFINITION_RECOVERY_EXPIRED; read the actor-private operation record to verify the result instead of starting again.
       security: [{ UserBearerAuth: [] }]
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -612,6 +1084,34 @@ paths:
         '502': { $ref: './common.yaml#/components/responses/Problem' }
         '504': { $ref: './common.yaml#/components/responses/Problem' }
 
+  /api/v1/platform/quota-definitions/{quotaDefinitionId}:
+    get:
+      tags: [Platform entitlement bootstrap]
+      operationId: getQuotaDefinition
+      x-saasforge-service: entitlement-service
+      summary: Read authoritative Quota Definition detail
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: quotaDefinitionId
+          in: path
+          required: true
+          schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuotaDefinition' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
   /api/v1/platform/quota-definitions/{quotaDefinitionId}/activations:
     post:
       tags: [Platform entitlement bootstrap]
@@ -619,10 +1119,20 @@ paths:
       x-saasforge-service: entitlement-service
       x-saasforge-java-sdk: true
       summary: Activate a DRAFT Quota Definition
+      description: Once registered, the actor and Key identify the original operation. After its 24-hour replay window, this entrypoint also rejects that Key with QUOTA_DEFINITION_RECOVERY_EXPIRED; read the actor-private operation record to verify the result instead of starting again.
       security: [{ UserBearerAuth: [] }]
       parameters:
         - $ref: '#/components/parameters/QuotaDefinitionId'
         - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        description: Browser clients send an empty JSON object to satisfy the browser request media-type boundary.
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              maxProperties: 0
       responses:
         '200':
           description: The Quota Definition is ACTIVE.
@@ -638,13 +1148,267 @@ paths:
         '502': { $ref: './common.yaml#/components/responses/Problem' }
         '504': { $ref: './common.yaml#/components/responses/Problem' }
 
+  /api/v1/platform/tenants/{tenantId}/subscription-operations:
+    get:
+      tags: [Platform entitlement bootstrap]
+      operationId: listSubscriptionOperations
+      x-saasforge-service: entitlement-service
+      summary: Find only the current actor Subscription operation attempts after losing an in-memory handle
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: cursor
+          in: query
+          schema: { type: string, maxLength: 2048 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SubscriptionOperationPage' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/subscription-operations/{operationId}:
+    get:
+      tags: [Platform entitlement bootstrap]
+      operationId: getSubscriptionOperation
+      x-saasforge-service: entitlement-service
+      summary: Read own Subscription operation result; missing or expired records never authorize a new Subscription operation
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: operationId
+          in: path
+          required: true
+          schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SubscriptionOperationRecovery' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/subscription-operations/{operationId}/recovery:
+    post:
+      tags: [Platform entitlement bootstrap]
+      operationId: recoverSubscriptionOperation
+      x-saasforge-service: entitlement-service
+      summary: Continue the original Subscription operation with its server-stored actor, Key and request; never starts a new operation
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: operationId
+          in: path
+          required: true
+          schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              maxProperties: 0
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SubscriptionOperationRecovery' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/plan-operations:
+    get:
+      tags: [Platform entitlement bootstrap]
+      operationId: listPlanOperations
+      x-saasforge-service: entitlement-service
+      summary: Find only the current actor Plan operation attempts after losing an in-memory handle
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: cursor
+          in: query
+          schema: { type: string, maxLength: 2048 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlanOperationPage' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/plan-operations/{operationId}:
+    get:
+      tags: [Platform entitlement bootstrap]
+      operationId: getPlanOperation
+      x-saasforge-service: entitlement-service
+      summary: Read own Plan operation result; missing or expired records never authorize a new Plan operation
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: operationId
+          in: path
+          required: true
+          schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlanOperationRecovery' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/plan-operations/{operationId}/recovery:
+    post:
+      tags: [Platform entitlement bootstrap]
+      operationId: recoverPlanOperation
+      x-saasforge-service: entitlement-service
+      summary: Continue the original Plan operation with its server-stored actor, Key and request; never starts a new operation
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: operationId
+          in: path
+          required: true
+          schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              maxProperties: 0
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlanOperationRecovery' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
+  /api/v1/platform/plans/{planId}:
+    get:
+      tags: [Platform entitlement bootstrap]
+      operationId: getPlan
+      x-saasforge-service: entitlement-service
+      summary: Read authoritative Plan detail
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Plan' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
   /api/v1/platform/plans:
+    get:
+      tags: [Platform entitlement bootstrap]
+      operationId: listPlans
+      x-saasforge-service: entitlement-service
+      summary: List Plans by literal code substring and status
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: cursor
+          in: query
+          schema: { type: string, maxLength: 2048 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: code
+          in: query
+          schema: { type: string, maxLength: 100 }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/PlanStatus' }
+      responses:
+        '200':
+          description: Authoritative result; requires current Platform Admin authorization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlanPage' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
     post:
       tags: [Platform entitlement bootstrap]
       operationId: createPlan
       x-saasforge-service: entitlement-service
       x-saasforge-java-sdk: true
       summary: Create a DRAFT Plan with its max_users limit
+      description: New requests require max_users at least 1. Original actor/Key and exact fields may replay a retained historical zero result without granting again. Registered operations cannot restart after their 24-hour replay deadline; stable results remain readable through plan-operations.
       security: [{ UserBearerAuth: [] }]
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -677,10 +1441,20 @@ paths:
       x-saasforge-service: entitlement-service
       x-saasforge-java-sdk: true
       summary: Activate a DRAFT Plan
+      description: New activations require max_users at least 1. Retained historical operation results replay unchanged; no automatic increase is performed.
       security: [{ UserBearerAuth: [] }]
       parameters:
         - $ref: '#/components/parameters/PlanId'
         - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        description: Browser clients send an empty JSON object to satisfy the browser request media-type boundary.
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              maxProperties: 0
       responses:
         '200':
           description: The Plan is ACTIVE.
@@ -696,6 +1470,32 @@ paths:
         '502': { $ref: './common.yaml#/components/responses/Problem' }
         '504': { $ref: './common.yaml#/components/responses/Problem' }
 
+  /api/v1/platform/tenants/{tenantId}/subscription:
+    get:
+      tags: [Platform entitlement bootstrap]
+      operationId: getTenantSubscription
+      x-saasforge-service: entitlement-service
+      summary: Read the Tenant subscription and authoritative max_users usage
+      description: Entitlement-owned read. Null subscription means no grant; failures never mean absent subscription or zero usage. Effectiveness is evaluated at observedAt separately from persisted ACTIVE. No Tenant lifecycle facts are inferred.
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: Authoritative subscription and quota observation.
+          headers:
+            Cache-Control: { schema: { type: string, const: no-store } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantSubscription' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
+
   /api/v1/platform/tenants/{tenantId}/subscriptions:
     post:
       tags: [Platform entitlement bootstrap]
@@ -703,7 +1503,7 @@ paths:
       x-saasforge-service: entitlement-service
       x-saasforge-java-sdk: true
       summary: Create the first active Subscription for a Tenant
-      description: Requires a Platform Admin and an ACTIVE Plan. This batch supports only immediate ACTIVE Subscriptions.
+      description: Requires a Platform Admin and an ACTIVE Plan with max_users at least 1 for new grants. Retained original-operation replays and existing zero-quota entitlements are unchanged. This batch supports only immediate ACTIVE Subscriptions.
       security: [{ UserBearerAuth: [] }]
       parameters:
         - $ref: '#/components/parameters/TenantId'
@@ -731,6 +1531,42 @@ paths:
         '504': { $ref: './common.yaml#/components/responses/Problem' }
 
   /api/v1/platform/oauth-clients:
+    get:
+      tags: [OAuth clients]
+      operationId: listOAuthClients
+      x-saasforge-service: iam-service
+      summary: List non-sensitive OAuth Client details
+      description: Requires current Platform Admin authorization. Literal case-sensitive name substring, type and status filters; fixed ID ascending order. Opaque cursors bind the resource and filters and expire after 24 hours. No Secret material is returned.
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: cursor
+          in: query
+          schema: { type: string, maxLength: 2048 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: name
+          in: query
+          schema: { type: string, maxLength: 200 }
+        - name: clientType
+          in: query
+          schema: { $ref: '#/components/schemas/OAuthClientType' }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/OAuthClientStatus' }
+      responses:
+        '200':
+          description: Authoritative non-sensitive OAuth Clients.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OAuthClientPage' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
     post:
       tags: [OAuth clients]
       operationId: createOAuthClient
@@ -989,6 +1825,17 @@ components:
       required: true
       schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
   schemas:
+    CurrentSession:
+      type: object
+      additionalProperties: false
+      required: [identityId, email, platformAdmin]
+      properties:
+        identityId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        email: { type: string, format: email }
+        displayName: { type: string, minLength: 1, maxLength: 200 }
+        platformAdmin:
+          type: boolean
+          description: Current active PLATFORM_ADMIN assignment; not a grant for any later operation.
     Timestamp:
       type: string
       format: date-time
@@ -1168,6 +2015,174 @@ components:
           minItems: 1
           items: { $ref: '#/components/schemas/Jwk' }
       additionalProperties: false
+    PlanPage:
+      allOf:
+        - $ref: './common.yaml#/components/schemas/Page'
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/Plan' }
+            nextCursor:
+              oneOf:
+                - type: string
+                - type: 'null'
+            hasMore: { type: boolean }
+    TenantSubscription:
+      type: object
+      required: [observedAt, subscription, effective, maxUsersLimit, maxUsersUsed]
+      properties:
+        observedAt: { $ref: '#/components/schemas/Timestamp' }
+        subscription:
+          oneOf:
+            - $ref: '#/components/schemas/Subscription'
+            - type: 'null'
+        effective: { type: boolean, description: Subscription validity at observedAt; does not certify Tenant eligibility. }
+        maxUsersLimit:
+          type: [integer, 'null']
+          minimum: 0
+          description: Granted limit including historical zero; null only without Subscription.
+        maxUsersUsed:
+          type: [integer, 'null']
+          minimum: 0
+          description: Authoritative cumulative usage; an absent usage row is zero under Entitlement rules. Null only without Subscription.
+      additionalProperties: false
+    SubscriptionOperationPage:
+      allOf:
+        - $ref: './common.yaml#/components/schemas/Page'
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/SubscriptionOperationRecovery' }
+            nextCursor:
+              oneOf:
+                - type: string
+                - type: 'null'
+            hasMore: { type: boolean }
+    SubscriptionOperationRecovery:
+      type: object
+      description: Actor-private recovery material. Shared Runtime owns idempotencyKey. NOT_COMMITTED is a point-in-time observation, never authorization to create with a new key. UNKNOWN requires manual verification. Committed result remains known after replay retention ends.
+      required: [id, tenantId, state, createdAt, replayUntil, canReplay]
+      properties:
+        id: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        tenantId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        state: { type: string, enum: [COMMITTED, PROCESSING, NOT_COMMITTED, UNKNOWN] }
+        createdAt: { $ref: '#/components/schemas/Timestamp' }
+        replayUntil: { $ref: '#/components/schemas/Timestamp' }
+        canReplay: { type: boolean }
+        subscriptionId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        idempotencyKey: { $ref: './common.yaml#/components/schemas/UuidV7' }
+      additionalProperties: false
+    PlanOperationPage:
+      allOf:
+        - $ref: './common.yaml#/components/schemas/Page'
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/PlanOperationRecovery' }
+            nextCursor:
+              oneOf:
+                - type: string
+                - type: 'null'
+            hasMore: { type: boolean }
+    PlanOperationRecovery:
+      type: object
+      description: Actor-private recovery material. Shared Runtime owns idempotencyKey. NOT_COMMITTED is a point-in-time observation, never authorization to create with a new key. UNKNOWN requires manual verification. Committed result remains known after replay retention ends.
+      required: [id, operation, state, createdAt, replayUntil, canReplay]
+      properties:
+        id: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        operation: { type: string, enum: [CREATE, ACTIVATE] }
+        state: { type: string, enum: [COMMITTED, PROCESSING, NOT_COMMITTED, UNKNOWN] }
+        createdAt: { $ref: '#/components/schemas/Timestamp' }
+        replayUntil: { $ref: '#/components/schemas/Timestamp' }
+        canReplay: { type: boolean }
+        code: { type: string, description: Original Plan code for CREATE; used to guard only that logical creation. }
+        planId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        result: { $ref: '#/components/schemas/Plan' }
+        idempotencyKey: { $ref: './common.yaml#/components/schemas/UuidV7' }
+      additionalProperties: false
+    QuotaDefinitionPage:
+      allOf:
+        - $ref: './common.yaml#/components/schemas/Page'
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/QuotaDefinition' }
+            nextCursor:
+              oneOf:
+                - type: string
+                - type: 'null'
+            hasMore: { type: boolean }
+    QuotaDefinitionOperationPage:
+      allOf:
+        - $ref: './common.yaml#/components/schemas/Page'
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/QuotaDefinitionOperationRecovery' }
+            nextCursor:
+              oneOf:
+                - type: string
+                - type: 'null'
+            hasMore: { type: boolean }
+    QuotaDefinitionOperationRecovery:
+      type: object
+      description: Actor-private recovery material. Shared Runtime owns idempotencyKey. NOT_COMMITTED is a point-in-time observation, never authorization to create with a new key. UNKNOWN requires manual verification. Committed result remains known after replay retention ends.
+      required: [id, operation, state, createdAt, replayUntil, canReplay]
+      properties:
+        id: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        operation: { type: string, enum: [CREATE, ACTIVATE] }
+        state: { type: string, enum: [COMMITTED, PROCESSING, NOT_COMMITTED, UNKNOWN] }
+        createdAt: { $ref: '#/components/schemas/Timestamp' }
+        replayUntil: { $ref: '#/components/schemas/Timestamp' }
+        canReplay: { type: boolean }
+        quotaDefinitionId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        idempotencyKey: { $ref: './common.yaml#/components/schemas/UuidV7' }
+      additionalProperties: false
+    TenantPage:
+      allOf:
+        - $ref: './common.yaml#/components/schemas/Page'
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/Tenant' }
+            nextCursor:
+              oneOf:
+                - type: string
+                - type: 'null'
+            hasMore: { type: boolean }
+    TenantCreationPage:
+      allOf:
+        - $ref: './common.yaml#/components/schemas/Page'
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/TenantCreationRecovery' }
+            nextCursor:
+              oneOf:
+                - type: string
+                - type: 'null'
+            hasMore: { type: boolean }
+    TenantCreationRecovery:
+      type: object
+      description: Actor-private recovery material. Shared Runtime owns idempotencyKey. NOT_COMMITTED is a point-in-time observation, never authorization to create with a new key. UNKNOWN requires manual verification. Committed result remains known after replay retention ends.
+      required: [id, displayName, state, createdAt, replayUntil, canReplay]
+      properties:
+        id: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        displayName: { type: string, minLength: 1, maxLength: 200 }
+        state: { type: string, enum: [COMMITTED, PROCESSING, NOT_COMMITTED, UNKNOWN] }
+        createdAt: { $ref: '#/components/schemas/Timestamp' }
+        replayUntil: { $ref: '#/components/schemas/Timestamp' }
+        canReplay: { type: boolean }
+        tenantId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        idempotencyKey: { $ref: './common.yaml#/components/schemas/UuidV7' }
+      additionalProperties: false
     TenantStatus:
       type: string
       enum: [PENDING, ACTIVE, SUSPENDED, CLOSED]
@@ -1196,6 +2211,53 @@ components:
               format: date-time
             - type: 'null'
       additionalProperties: false
+    TenantAdministratorPasswordSetup:
+      type: object
+      additionalProperties: false
+      required: [tenantId, state, operationState, canResend, canContinue]
+      properties:
+        tenantId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        state:
+          type: string
+          enum: [NOT_APPLICABLE, PENDING, MAIL_SERVICE_ACCEPTED, PASSWORD_READY, ACTION_REQUIRED]
+        operationState:
+          type: string
+          enum: [NONE, PENDING, COMPLETED, UNKNOWN]
+          description: Original actor operation result, independent of latest mail status. UNKNOWN never authorizes a new operation.
+        canResend:
+          type: boolean
+          description: An independent new notification request is applicable; never an initialization action.
+        canContinue:
+          type: boolean
+          description: The original actor can continue a pending resend whose automatic recovery is exhausted.
+        resendId:
+          $ref: './common.yaml#/components/schemas/UuidV7'
+
+    TenantAdministratorInitialization:
+      type: object
+      additionalProperties: false
+      required: [tenantId, state, canStart, canContinue, initialAdministratorMembershipId]
+      properties:
+        tenantId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        initializationId:
+          $ref: './common.yaml#/components/schemas/UuidV7'
+        state:
+          type: string
+          enum: [NOT_STARTED, PROCESSING, RECOVERY_REQUIRED, COMPENSATING, RETRY_REQUIRED, SUCCEEDED, FAILED]
+        canStart:
+          type: boolean
+          description: A first attempt or a new attempt after completed compensation is allowed.
+        canContinue:
+          type: boolean
+          description: Only the original actor may explicitly continue this exact attempt.
+        initialAdministratorMembershipId:
+          type: [string, 'null']
+          format: uuid
+          description: Immutable historical Membership relationship, not the current administrator set.
+        failureCode:
+          type: string
+          description: Stable business rejection code; never internal diagnostics.
+
     AdministratorInitializationRequest:
       type: object
       required: [administratorEmail]
@@ -1253,6 +2315,14 @@ components:
         createdAt: { $ref: '#/components/schemas/Timestamp' }
         updatedAt: { $ref: '#/components/schemas/Timestamp' }
       additionalProperties: false
+    NewPlanQuotaLimit:
+      type: object
+      description: New grants require max_users of at least 1. Historical Plan responses retain the zero-capable PlanQuotaLimit schema.
+      required: [quotaDefinitionId, limit]
+      properties:
+        quotaDefinitionId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        limit: { type: integer, minimum: 1 }
+      additionalProperties: false
     CreatePlanRequest:
       type: object
       required: [code, displayName, quotaLimits]
@@ -1265,7 +2335,7 @@ components:
           type: array
           minItems: 1
           maxItems: 1
-          items: { $ref: '#/components/schemas/PlanQuotaLimit' }
+          items: { $ref: '#/components/schemas/NewPlanQuotaLimit' }
       additionalProperties: false
     Subscription:
       type: object
@@ -1365,6 +2435,19 @@ components:
           writeOnly: true
           description: Returned exactly once. Store it in a controlled secret manager.
       additionalProperties: false
+    OAuthClientPage:
+      allOf:
+        - $ref: './common.yaml#/components/schemas/Page'
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/OAuthClientDetail' }
+            nextCursor:
+              oneOf:
+                - type: string
+                - type: 'null'
+            hasMore: { type: boolean }
     OAuthClientDetail:
       type: object
       required: [clientId, displayName, clientType, allowedScopes, status, createdAt, updatedAt]
