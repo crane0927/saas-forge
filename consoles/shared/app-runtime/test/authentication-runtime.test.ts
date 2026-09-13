@@ -8,6 +8,62 @@ import {
 } from '../src';
 
 describe('createAuthenticationRuntime', () => {
+  it('continues a durable initialization by its server identity without retaining administrator email or inventing a new Key', async () => {
+    const id = '019535d9-0000-7000-8000-000000000002';
+    const initializationId = '019535d9-0000-7000-8000-000000000003';
+    const fetch = vi
+      .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          tenantId: id,
+          initializationId,
+          state: 'RECOVERY_REQUIRED',
+          canStart: false,
+          canContinue: true,
+          initialAdministratorMembershipId: null,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          id,
+          displayName: 'Recovered',
+          status: 'ACTIVE',
+          expiresAt: null,
+          createdAt: '2026-09-12T00:00:00Z',
+          updatedAt: '2026-09-12T00:00:00Z',
+        }),
+      );
+    const runtime = createRuntime({ realm: {}, intent: 'PLATFORM', fetch });
+    await runtime.login({ email: 'admin@example.test', password: 'secret' });
+    const progress = await runtime.client.getTenantAdministratorInitialization(id);
+    if (!progress.ok) throw new Error('Expected progress');
+    expect(
+      await runtime.client.recoverTenantAdministratorInitialization(progress.value),
+    ).toMatchObject({
+      ok: true,
+      value: { status: 'ACTIVE' },
+    });
+    expect(fetch.mock.calls[2][0]).toEqual(
+      expect.stringContaining(`/administrator-initializations/${initializationId}/recovery`),
+    );
+    expect(fetch.mock.calls[2][1]?.body).toBe('{}');
+    expect(new Headers(fetch.mock.calls[2][1]?.headers).has('Idempotency-Key')).toBe(false);
+    expect(
+      await runtime.client.recoverTenantAdministratorInitialization({ ...progress.value }),
+    ).toMatchObject({
+      ok: false,
+      problem: { code: 'INVALID_OPERATION_HANDLE' },
+    });
+  });
+
   it('restores creation recovery after a new Realm without exposing or replacing its original Key', async () => {
     const key = '019535d9-0000-7000-8000-000000000001';
     const id = '019535d9-0000-7000-8000-000000000002';

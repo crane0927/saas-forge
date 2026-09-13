@@ -8,6 +8,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { chromium, firefox, webkit } from 'playwright';
 import { verifyPlan } from './plan-acceptance.mjs';
 import { verifySubscription } from './subscription-acceptance.mjs';
+import { verifyAdministratorInitialization } from './administrator-initialization-acceptance.mjs';
 import { verifyQuotaDefinition } from './quota-definition-acceptance.mjs';
 import { verifyTenantCreation } from './tenant-creation-acceptance.mjs';
 import { verifyClientRecovery } from './console-client-acceptance.mjs';
@@ -298,6 +299,21 @@ test('Platform and Tenant sessions survive independent recovery and logout after
     'Tenant initial Subscription authoritative reads and response-loss recovery',
     async () => {
       await verifySubscription({
+        rootDomain,
+        email,
+        password,
+        login,
+        selectLocale: selectConsoleLocale,
+        accessibility: expectRouteAccessibility,
+        safeStorage: expectSafeStorage,
+        capture: captureBrandEvidence,
+      });
+    },
+  );
+  await t.test(
+    'Tenant administrator initialization, authoritative Quota, recovery and compensation',
+    async () => {
+      await verifyAdministratorInitialization({
         rootDomain,
         email,
         password,

@@ -7,6 +7,8 @@ import {
   PlatformEntitlementBootstrapApi,
   type Subscription,
   type TenantSubscription,
+  type TenantAdministratorInitialization,
+  type AdministratorInitializationRequest,
   type SubscriptionOperationRecovery,
   type CreateInitialSubscriptionRequest,
   type Plan,
@@ -208,6 +210,7 @@ export interface CreateOAuthClientInput {
 }
 
 export type {
+  TenantAdministratorInitialization,
   Subscription,
   TenantSubscription,
   CurrentSession,
@@ -272,6 +275,20 @@ export interface SubscriptionOperationPage {
 }
 
 export interface ConsoleApiClient {
+  getTenantAdministratorInitialization(
+    tenantId: string,
+    signal?: AbortSignal,
+  ): Promise<ConsoleApiResult<TenantAdministratorInitialization>>;
+  initializeTenantAdministrator(input: {
+    readonly tenantId: string;
+    readonly request: AdministratorInitializationRequest;
+    readonly signal?: AbortSignal;
+  }): Promise<IdempotentConsoleApiResult<Tenant>>;
+  recoverTenantAdministratorInitialization(
+    progress: TenantAdministratorInitialization,
+    signal?: AbortSignal,
+  ): Promise<ConsoleApiResult<Tenant>>;
+
   getTenantSubscription(
     tenantId: string,
     signal?: AbortSignal,
@@ -967,7 +984,71 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
     }
   }
 
+  const initializationHandles = new WeakMap<
+    TenantAdministratorInitialization,
+    { tenantId: string; initializationId: string; epoch: number }
+  >();
+
   const client: ConsoleApiClient = {
+    getTenantAdministratorInitialization: (tenantId, signal) =>
+      executeRead(async () => {
+        const value = await tenantsApi.getTenantAdministratorInitialization(
+          { tenantId },
+          { signal },
+        );
+        if (
+          value.tenantId !== tenantId ||
+          ![
+            'NOT_STARTED',
+            'PROCESSING',
+            'RECOVERY_REQUIRED',
+            'COMPENSATING',
+            'RETRY_REQUIRED',
+            'SUCCEEDED',
+            'FAILED',
+          ].includes(value.state) ||
+          typeof value.canStart !== 'boolean' ||
+          typeof value.canContinue !== 'boolean' ||
+          (value.initialAdministratorMembershipId !== null &&
+            !UUID_V7.test(value.initialAdministratorMembershipId)) ||
+          (value.initializationId !== undefined && !UUID_V7.test(value.initializationId)) ||
+          (value.canContinue &&
+            (value.state !== 'RECOVERY_REQUIRED' || value.initializationId === undefined)) ||
+          (value.canStart && !['NOT_STARTED', 'RETRY_REQUIRED'].includes(value.state))
+        ) {
+          throw new Error('INVALID_SERVICE_RESPONSE');
+        }
+        if (value.canContinue && value.initializationId !== undefined) {
+          initializationHandles.set(value, {
+            tenantId,
+            initializationId: value.initializationId,
+            epoch: sessionEpoch,
+          });
+        }
+        return value;
+      }, signal),
+    initializeTenantAdministrator: ({ tenantId, request, signal }) =>
+      executeMutation(undefined, signal, (idempotencyKey) =>
+        tenantsApi.initializeTenantAdministrator(
+          { tenantId, idempotencyKey, administratorInitializationRequest: request },
+          { signal },
+        ),
+      ),
+    recoverTenantAdministratorInitialization: (progress, signal) => {
+      const material = initializationHandles.get(progress);
+      if (material === undefined || material.epoch !== sessionEpoch) {
+        return Promise.resolve({ ok: false, problem: { code: 'INVALID_OPERATION_HANDLE' } });
+      }
+      return executeRead(
+        () =>
+          tenantsApi.recoverTenantAdministratorInitialization(
+            { tenantId: material.tenantId, initializationId: material.initializationId, body: {} },
+            { signal },
+          ),
+        signal,
+      );
+    },
+
     listQuotaDefinitions: ({ signal, ...query }) =>
       executeRead(() => quotaApi.listQuotaDefinitions(query, { signal }), signal),
     getQuotaDefinition: (quotaDefinitionId, signal) =>

@@ -179,6 +179,99 @@ class TenantCreationPostgreSqlIT {
     @Autowired
     private TenantCreationRecoveryRepository creationRecoveryRepository;
 
+    @Autowired
+    private io.saasforge.tenantaccess.application.administrator.AdministratorInitializationQueries initializationQueries;
+
+    @Test
+    void exposesInitializationBusinessProgressWithoutRecoveryMaterials() throws Exception {
+        UUID actor = uuidV7(890);
+        var tenant = service.create(actor, uuidV7(891), "Initialization progress", null, null);
+        var mvc = standaloneSetup(
+                new io.saasforge.tenantaccess.api.TenantCreationController(
+                        authorization -> actor, recoverableCreation, null, null, null, tenantQueries,
+                        new io.saasforge.tenantaccess.application.administrator.AdministratorInitializationQueryService(
+                                initializationQueries, null, Clock.systemUTC())))
+                .setControllerAdvice(new io.saasforge.tenantaccess.api.TenantCreationExceptionHandler()).build();
+        mvc.perform(get("/api/v1/platform/tenants/" + tenant.id() + "/administrator-initialization"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.state").value("NOT_STARTED"))
+                .andExpect(jsonPath("$.canStart").value(true))
+                .andExpect(jsonPath("$.idempotencyKey").doesNotExist())
+                .andExpect(jsonPath("$.administratorEmail").doesNotExist());
+    }
+
+    @Test
+    void originalActorRecoversDurableInitializationAndReadsHistoricalMembershipAfterLostResponse() throws Exception {
+        UUID actor = uuidV7(893);
+        UUID key = uuidV7(894);
+        var tenant = service.create(actor, uuidV7(895), "Durable initialization", null, null);
+        var available = new java.util.concurrent.atomic.AtomicBoolean(false);
+        var consumed = new java.util.concurrent.atomic.AtomicInteger();
+        Instant started = Instant.now().minus(Duration.ofDays(2));
+        Clock oldClock = Clock.fixed(started, java.time.ZoneOffset.UTC);
+        var ids = new UuidV7Generator(oldClock, new SecureRandom());
+        var initializer = new InitializeTenantAdministratorService(administratorInitialization,
+                (request, email, name) -> {
+                    if (!available.get()) throw new RemoteWorkflowUnavailableException(new IllegalStateException("Dependency unavailable"));
+                    return new IdentityProvisioningGateway.Result(uuidV7(896), IdentityCredentialDisposition.SETUP_ALLOWED);
+                },
+                new InitializationQuotaGateway() {
+                    public void consume(UUID tenantId, UUID operationId) { consumed.incrementAndGet(); }
+                    public void release(UUID tenantId, UUID operationId) { consumed.decrementAndGet(); }
+                },
+                (request, identity) -> { throw new RemoteWorkflowUnavailableException(new IllegalStateException("Notification unavailable")); },
+                ids, oldClock,
+                new InitializationRecoveryPolicy(Duration.ofSeconds(30), Duration.ofSeconds(1), Duration.ofMinutes(1), 1),
+                "http-recovery-it");
+        assertThrows(RemoteWorkflowUnavailableException.class,
+                () -> initializer.initialize(actor, key, tenant.id(), "owner@example.test", null, null));
+        var query = new io.saasforge.tenantaccess.application.administrator.AdministratorInitializationQueryService(
+                initializationQueries, initializer, Clock.systemUTC());
+        var currentActor = new java.util.concurrent.atomic.AtomicReference<>(actor);
+        var allowed = new java.util.concurrent.atomic.AtomicBoolean(true);
+        var mvc = standaloneSetup(new io.saasforge.tenantaccess.api.TenantCreationController(
+                authorization -> {
+                    if (!allowed.get()) throw new io.saasforge.sdk.auth.PlatformAuthorizationDeniedException();
+                    return currentActor.get();
+                }, recoverableCreation, initializer, null, null, tenantQueries, query))
+                .setControllerAdvice(new io.saasforge.tenantaccess.api.TenantCreationExceptionHandler()).build();
+        String progressPath = "/api/v1/platform/tenants/" + tenant.id() + "/administrator-initialization";
+        var progress = query.get(actor, tenant.id());
+        String recoveryPath = "/api/v1/platform/tenants/" + tenant.id()
+                + "/administrator-initializations/" + progress.initializationId() + "/recovery";
+        mvc.perform(get(progressPath)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("RECOVERY_REQUIRED"))
+                .andExpect(jsonPath("$.canContinue").value(true))
+                .andExpect(jsonPath("$.administratorEmail").doesNotExist())
+                .andExpect(jsonPath("$.idempotencyKey").doesNotExist())
+                .andExpect(jsonPath("$.leaseUntil").doesNotExist());
+        currentActor.set(uuidV7(897));
+        mvc.perform(get(progressPath)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("RECOVERY_REQUIRED"))
+                .andExpect(jsonPath("$.canContinue").value(false));
+        mvc.perform(post(recoveryPath).contentType("application/json").content("{}"))
+                .andExpect(status().isNotFound());
+        currentActor.set(actor);
+        allowed.set(false);
+        mvc.perform(post(recoveryPath).contentType("application/json").content("{}"))
+                .andExpect(status().isForbidden());
+        allowed.set(true);
+        available.set(true);
+        mvc.perform(post(recoveryPath).contentType("application/json").content("{}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ACTIVE"));
+        mvc.perform(post(recoveryPath).contentType("application/json").content("{}"))
+                .andExpect(status().isOk());
+        mvc.perform(get(progressPath)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("SUCCEEDED"))
+                .andExpect(jsonPath("$.initialAdministratorMembershipId").isString())
+                .andExpect(jsonPath("$.canContinue").value(false));
+        assertEquals(TenantStatus.ACTIVE, tenantQueries.get(tenant.id()).status());
+        assertEquals(1, consumed.get());
+        // 超过普通保留期的稳定结果仍指向原根，邮件失败不会逆转初始化。
+        assertEquals(progress.initializationId(), query.get(actor, tenant.id()).initializationId());
+    }
+
     @Test
     void exposesAuthoritativeTenantAndRecoveryThroughPublishedHttpOperations() throws Exception {
         UUID actor = uuidV7(870);
@@ -698,6 +791,9 @@ class TenantCreationPostgreSqlIT {
         InitializationWorkflow replay = administratorInitialization.prepare(prepared, Instant.now());
 
         assertEquals("QUOTA_EXCEEDED", replay.outcomeCode());
+        InitializationWorkflow laterReplay = administratorInitialization.prepare(prepared, Instant.now().plus(Duration.ofDays(3)));
+        assertEquals(prepared.workflowId(), laterReplay.workflowId());
+        assertEquals("QUOTA_EXCEEDED", laterReplay.outcomeCode());
         assertEquals("409", scalar("SELECT response_status::text FROM tenant_administrator_initialization_workflows"));
         assertEquals("true", scalar("SELECT relforcerowsecurity::text FROM pg_class "
                 + "WHERE relname = 'tenant_administrator_initialization_workflows'"));
@@ -1162,7 +1258,7 @@ class TenantCreationPostgreSqlIT {
     @MapperScan(
             basePackages = "io.saasforge.tenantaccess.infrastructure.persistence.mapper",
             sqlSessionFactoryRef = "tenantAccessSqlSessionFactory")
-    @Import({MyBatisTenantRepository.class, MyBatisTenantCreationIdempotency.class,
+    @Import({io.saasforge.tenantaccess.infrastructure.persistence.MyBatisAdministratorInitializationQueries.class, MyBatisTenantRepository.class, MyBatisTenantCreationIdempotency.class,
             MyBatisTenantAccessOutboxEventRepository.class,
             MyBatisTenantAdministratorInitializationRepository.class,
             MyBatisAdministratorPasswordSetupRepository.class,

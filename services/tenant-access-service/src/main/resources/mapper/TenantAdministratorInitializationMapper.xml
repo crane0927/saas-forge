@@ -11,16 +11,6 @@
         FROM tenants WHERE id = #{tenantId} FOR UPDATE
     </select>
 
-    <delete id="deleteExpiredWorkflow">
-        DELETE FROM tenant_administrator_initialization_workflows
-        WHERE actor_identity_id = #{actorIdentityId} AND idempotency_key = #{idempotencyKey}
-          AND completed_at IS NOT NULL AND expires_at &lt;= #{now}
-          AND NOT EXISTS (
-              SELECT 1 FROM password_setup_delivery_work_items
-              WHERE password_setup_delivery_work_items.workflow_id = tenant_administrator_initialization_workflows.workflow_id
-                AND work_status = 'PENDING')
-    </delete>
-
     <insert id="insertWorkflow">
         INSERT INTO tenant_administrator_initialization_workflows
             (workflow_id, tenant_id, actor_identity_id, idempotency_key, request_fingerprint,
@@ -58,6 +48,32 @@
                          AND work.work_status = 'PENDING') AS passwordDeliveryPending
         FROM tenant_administrator_initialization_workflows
         WHERE actor_identity_id = #{actorIdentityId} AND idempotency_key = #{idempotencyKey}
+    </select>
+
+    <!-- 未完成根优先；已成功的历史根不能被后来被拒绝的新 Key 遮蔽。 -->
+    <select id="findAuthoritativeWorkflow" resultType="io.saasforge.tenantaccess.infrastructure.persistence.record.TenantAdministratorInitializationRow">
+        SELECT workflow_id AS workflowId, tenant_id AS tenantId, actor_identity_id AS actorIdentityId,
+               idempotency_key AS idempotencyKey, request_fingerprint AS requestFingerprint,
+               administrator_email AS administratorEmail,
+               administrator_display_name AS administratorDisplayName,
+               identity_request_id AS identityRequestId, consume_operation_id AS consumeOperationId,
+               release_operation_id AS releaseOperationId,
+               password_delivery_request_id AS passwordDeliveryRequestId, trace_id AS traceId,
+               outcome_code AS outcomeCode, response_status AS responseStatus,
+               response_body::TEXT AS responseBody,
+               created_at AS createdAt, completed_at AS completedAt, expires_at AS expiresAt,
+               workflow_state AS workflowState, administrator_identity_id AS administratorIdentityId,
+               credential_disposition AS credentialDisposition, attempt_count AS attemptCount,
+               next_attempt_at AS nextAttemptAt, lease_owner AS leaseOwner, lease_until AS leaseUntil,
+               recovery_exhausted_at AS recoveryExhaustedAt, last_failure AS lastFailure,
+               EXISTS (SELECT 1 FROM password_setup_delivery_work_items work
+                       WHERE work.workflow_id = tenant_administrator_initialization_workflows.workflow_id
+                         AND work.work_status = 'PENDING') AS passwordDeliveryPending
+        FROM tenant_administrator_initialization_workflows
+        WHERE tenant_id = #{tenantId}
+        ORDER BY (outcome_code IS NULL) DESC, (outcome_code = 'SUCCESS') DESC NULLS LAST,
+                 created_at DESC, workflow_id DESC
+        LIMIT 1
     </select>
 
     <select id="lockWorkflow" resultType="io.saasforge.tenantaccess.infrastructure.persistence.record.TenantAdministratorInitializationRow">

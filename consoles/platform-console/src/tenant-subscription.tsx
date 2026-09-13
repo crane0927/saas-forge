@@ -1,5 +1,6 @@
 import type {
   ConsoleApiClient,
+  AuthenticationProblem,
   ConsoleApiResult,
   Plan,
   Tenant,
@@ -14,34 +15,48 @@ import {
   SelectField,
   StatusTag,
   TextField,
-  UnsavedChangesDialog,
   WarningFeedback,
 } from '@saas-forge/design-system';
 import { createTranslator, type SupportedLocale } from '@saas-forge/i18n';
-import { SubscriptionRecoveryPanel, useFormExitGuard } from '@saas-forge/react-shell';
+import { SubscriptionRecoveryPanel } from '@saas-forge/react-shell';
 import { useEffect, useRef, useState } from 'react';
-import { useBlocker } from 'react-router';
 import { platformMessages } from './messages';
 
 type Props = {
   readonly client: ConsoleApiClient;
   readonly locale: SupportedLocale;
   readonly tenant: Tenant;
+  readonly refreshVersion: number;
+  readonly read: ConsoleApiResult<TenantSubscription> | undefined;
+  readonly readProblem: AuthenticationProblem | undefined;
+  readonly busy: boolean;
+  readonly tenantKnown: boolean;
+  readonly onRead: (value: ConsoleApiResult<TenantSubscription> | undefined) => void;
+  readonly onDirtyChange: (dirty: boolean) => void;
 };
 
 /** Tenant 信息与 Entitlement 分区独立读取；失败不会转换成无订阅或用量零。 */
-export function TenantSubscriptionSection({ client, locale, tenant }: Props) {
+export function TenantSubscriptionSection({
+  client,
+  locale,
+  tenant,
+  refreshVersion,
+  read,
+  readProblem,
+  busy,
+  tenantKnown,
+  onRead,
+  onDirtyChange,
+}: Props) {
   const translator = createTranslator({
     namespace: '@saas-forge/platform-console',
     locale,
     messages: platformMessages,
   });
   const t = translator.translate.bind(translator);
-  const [read, setRead] = useState<ConsoleApiResult<TenantSubscription>>();
   const [plans, setPlans] = useState<ConsoleApiResult<readonly Plan[]>>();
   const [guard, setGuard] = useState<'loading' | 'clear' | 'pending' | 'failed'>('loading');
   const [revision, setRevision] = useState(0);
-  const [busy, setBusy] = useState(true);
   const [planId, setPlanId] = useState('');
   const [endsAt, setEndsAt] = useState('');
   const [invalid, setInvalid] = useState(false);
@@ -49,8 +64,9 @@ export function TenantSubscriptionSection({ client, locale, tenant }: Props) {
   const [problem, setProblem] = useState<string>();
   const pending = useRef<AbortController | null>(null);
   const dirty = phase === 'editing' && (planId !== '' || endsAt !== '');
-  useFormExitGuard(dirty);
-  const blocker = useBlocker(dirty);
+  useEffect(() => {
+    onDirtyChange(dirty);
+  }, [dirty, onDirtyChange]);
   useEffect(
     () => () => {
       pending.current?.abort();
@@ -59,10 +75,10 @@ export function TenantSubscriptionSection({ client, locale, tenant }: Props) {
   );
   useEffect(() => {
     const controller = new AbortController();
+    onRead(undefined);
     void client.getTenantSubscription(tenant.id, controller.signal).then((value) => {
       if (!controller.signal.aborted) {
-        setRead(value);
-        setBusy(false);
+        onRead(value);
       }
     });
     async function readPlans() {
@@ -130,19 +146,21 @@ export function TenantSubscriptionSection({ client, locale, tenant }: Props) {
     return () => {
       controller.abort();
     };
-  }, [client, tenant.id, revision]);
+  }, [client, tenant.id, revision, refreshVersion, onRead]);
 
   function refresh() {
-    setBusy(true);
+    onRead(undefined);
     setPlans(undefined);
     setGuard('loading');
     setRevision((value) => value + 1);
   }
   const eligible =
+    tenantKnown &&
     tenant.status === 'PENDING' &&
     (tenant.expiresAt === null || tenant.expiresAt.getTime() > Date.now());
   const canCreate =
     !busy &&
+    readProblem === undefined &&
     read?.ok === true &&
     read.value.subscription === null &&
     eligible &&
@@ -160,6 +178,11 @@ export function TenantSubscriptionSection({ client, locale, tenant }: Props) {
           </Button>
         }
       >
+        {readProblem && read?.ok ? (
+          <PersistentError title={t('subscriptionReadFailed')}>
+            <p>{readProblem.code}</p>
+          </PersistentError>
+        ) : null}
         {read === undefined ? (
           <p role="status">{t('tenantLoading')}</p>
         ) : !read.ok ? (
@@ -312,15 +335,6 @@ export function TenantSubscriptionSection({ client, locale, tenant }: Props) {
           setEndsAt('');
           setProblem(undefined);
           refresh();
-        }}
-      />
-      <UnsavedChangesDialog
-        open={blocker.state === 'blocked'}
-        onContinueEditing={() => {
-          if (blocker.state === 'blocked') blocker.reset();
-        }}
-        onDiscard={() => {
-          if (blocker.state === 'blocked') blocker.proceed();
         }}
       />
     </>

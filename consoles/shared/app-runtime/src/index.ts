@@ -33,6 +33,7 @@ export {
   type AuthenticationStateAction,
   type AuthenticationTransition,
   type ConsoleApiClient,
+  type TenantAdministratorInitialization,
   type CurrentSession,
   type Subscription,
   type TenantSubscription,

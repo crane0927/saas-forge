@@ -1,9 +1,11 @@
 import type {
   ConsoleApiClient,
+  AuthenticationProblem,
   ConsoleApiResult,
   ListTenantsInput,
   Tenant,
   TenantStatus,
+  TenantSubscription,
 } from '@saas-forge/app-runtime';
 import {
   Button,
@@ -24,10 +26,11 @@ import {
 } from '@saas-forge/design-system';
 import { createTranslator, type SupportedLocale } from '@saas-forge/i18n';
 import { TenantCreationRecoveryPanel, useFormExitGuard } from '@saas-forge/react-shell';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Route, Routes, useBlocker, useLocation, useNavigate, useParams } from 'react-router';
 import { platformMessages } from './messages';
 import { TenantSubscriptionSection } from './tenant-subscription';
+import { TenantInitializationSection } from './tenant-initialization';
 
 type Props = { readonly client: ConsoleApiClient; readonly locale: SupportedLocale };
 function translator(locale: SupportedLocale) {
@@ -347,13 +350,37 @@ function TenantDetailContent({ client, locale, tenantId }: Props & { readonly te
   const t = translate.translate.bind(translate);
   const navigate = useNavigate();
   const [result, setResult] = useState<ConsoleApiResult<Tenant>>();
+  const [tenantProblem, setTenantProblem] = useState<AuthenticationProblem>();
   const [attempt, setAttempt] = useState(0);
   const [busy, setBusy] = useState(true);
+  const [subscription, setSubscription] = useState<ConsoleApiResult<TenantSubscription>>();
+  const [subscriptionProblem, setSubscriptionProblem] = useState<AuthenticationProblem>();
+  const [subscriptionLoading, setSubscriptionLoading] = useState(true);
+  const receiveSubscription = useCallback(
+    (next: ConsoleApiResult<TenantSubscription> | undefined) => {
+      setSubscriptionLoading(next === undefined);
+      if (next === undefined) return;
+      setSubscriptionProblem(next.ok ? undefined : next.problem);
+      setSubscription((previous) => (next.ok || previous?.ok !== true ? next : previous));
+    },
+    [],
+  );
+  const [subscriptionDirty, setSubscriptionDirty] = useState(false);
+  const [initializationDirty, setInitializationDirty] = useState(false);
+  useFormExitGuard(subscriptionDirty || initializationDirty);
+  const blocker = useBlocker(subscriptionDirty || initializationDirty);
+  const refreshAll = useCallback(() => {
+    setSubscriptionLoading(true);
+    setBusy(true);
+    setAttempt((value) => value + 1);
+  }, []);
+
   useEffect(() => {
     const controller = new AbortController();
     void client.getTenant(tenantId, controller.signal).then((next) => {
       if (!controller.signal.aborted) {
-        setResult(next);
+        setTenantProblem(next.ok ? undefined : next.problem);
+        setResult((previous) => (next.ok || previous?.ok !== true ? next : previous));
         setBusy(false);
       }
     });
@@ -364,6 +391,11 @@ function TenantDetailContent({ client, locale, tenantId }: Props & { readonly te
   return (
     <PageLayout as="section" width="wide" title={<Heading title={t('tenantDetail')} />}>
       <ContentPanel title={t('tenantBasicInformation')}>
+        {tenantProblem && result?.ok ? (
+          <PersistentError title={t('tenantReadFailed')}>
+            <p>{tenantProblem.code}</p>
+          </PersistentError>
+        ) : null}
         {result === undefined ? (
           <p role="status">{t('tenantLoading')}</p>
         ) : result.ok ? (
@@ -413,8 +445,45 @@ function TenantDetailContent({ client, locale, tenantId }: Props & { readonly te
         </Button>
       </ContentPanel>
       {result?.ok ? (
-        <TenantSubscriptionSection client={client} locale={locale} tenant={result.value} />
+        <>
+          <TenantSubscriptionSection
+            client={client}
+            locale={locale}
+            tenant={result.value}
+            refreshVersion={attempt}
+            read={subscription}
+            readProblem={subscriptionProblem}
+            busy={subscriptionLoading}
+            tenantKnown={!busy && tenantProblem === undefined}
+            onRead={receiveSubscription}
+            onDirtyChange={setSubscriptionDirty}
+          />
+          <TenantInitializationSection
+            client={client}
+            locale={locale}
+            tenantId={tenantId}
+            subscriptionEffective={
+              subscription?.ok === true &&
+              subscription.value.effective &&
+              !subscriptionLoading &&
+              subscriptionProblem === undefined &&
+              !busy &&
+              tenantProblem === undefined
+            }
+            onChanged={refreshAll}
+            onDirtyChange={setInitializationDirty}
+          />
+        </>
       ) : null}
+      <UnsavedChangesDialog
+        open={blocker.state === 'blocked'}
+        onContinueEditing={() => {
+          if (blocker.state === 'blocked') blocker.reset();
+        }}
+        onDiscard={() => {
+          if (blocker.state === 'blocked') blocker.proceed();
+        }}
+      />
     </PageLayout>
   );
 }

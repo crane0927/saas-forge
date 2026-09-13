@@ -164,6 +164,7 @@ flowchart TD
 - [ ] Platform Console 完成“登录 → 首次密码修改 → Refresh → Logout”，并显示稳定的登录保护、凭据错误、会话失效和恢复反馈。
   - Issue #171 已补充 Current Session 正式读取、共享 Client 和双语页面，复用既有认证 Runtime；原生环境真实 HTTPS 当前身份、刷新、浏览器重启及双 Console 安全验收通过。首次改密与 Fresh Compose Chrome 产品测试 33/33 及浏览器门禁通过；本阶段仍有其他验收，本项保持未勾选，见 [验收记录](acceptance/issue-171-current-session.md)。
 - [ ] Platform Console 完成“Quota Definition/Plan → Tenant → Subscription → Tenant Administrator 初始化”产品路径，读取结果必须来自真实服务权威状态。
+  - Issue #176 已补充初始化业务进度、原发起人恢复、Tenant 详情入口与独立 Quota 回读；相关服务集成验证通过，真实 Chrome/Fresh 因证书与 443 环境条件尚未执行，本项保持未勾选，见[验证记录](acceptance/issue-176-administrator-initialization.md)。
   - Issue #175 已实现 Tenant 详情的首个 Subscription 创建、权威有效期/额度读取及原操作者持久恢复；完整验收结果见 [验收记录](acceptance/issue-175-subscription.md)。本阶段初始化等剩余范围保持未勾选。
   - Issue #172 已实现 Tenant 列表/详情/创建和原操作者服务端恢复；前端完整门禁、后端测试及质量门禁复验通过，Fresh Compose 产品测试 34/34 与重置后 Chrome 浏览器门禁通过。当前子项验收完成，不代表父规格其他业务闭环完成，详见含关闭前复核与历史失败的[验收记录](acceptance/issue-172-tenant-creation-recovery.md)。
   - Issue #173 已完成 Quota Definition 正式读取、创建/激活恢复及独立页面；前后端门禁通过，真实 Chrome/Fresh Compose 产品 35/35 通过，原生环境 V4→V5 升级及操作记录读取也已复核，交付状态见[验收记录](acceptance/issue-173-quota-definition-recovery.md)。

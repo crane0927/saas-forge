@@ -146,8 +146,7 @@ public class MyBatisTenantAdministratorInitializationRepository
         if (tenant == null) {
             throw failure("TENANT_NOT_FOUND");
         }
-        mapper.deleteExpiredWorkflow(candidate.actorIdentityId(), candidate.idempotencyKey(),
-                TenantAccessTime.asOffsetDateTime(now));
+        // 根工作流不适用普通 24 小时幂等回收；原 Key 永远指向原尝试。
 
         String terminalOutcome = null;
         if (!"PENDING".equals(tenant.status())) {
@@ -310,6 +309,10 @@ public class MyBatisTenantAdministratorInitializationRepository
     }
 
     private InitializationWorkflow fromRow(TenantAdministratorInitializationRow row) {
+        return fromRow(row, objectMapper);
+    }
+
+    static InitializationWorkflow fromRow(TenantAdministratorInitializationRow row, ObjectMapper objectMapper) {
         return new InitializationWorkflow(
                 row.workflowId(), row.tenantId(), row.actorIdentityId(), row.idempotencyKey(),
                 row.requestFingerprint(), row.administratorEmail(), row.administratorDisplayName(),

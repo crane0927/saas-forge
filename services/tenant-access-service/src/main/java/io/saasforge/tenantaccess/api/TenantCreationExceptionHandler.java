@@ -84,7 +84,7 @@ public class TenantCreationExceptionHandler {
     ResponseEntity<Problem> initializationFailure(
             TenantAdministratorInitializationException exception, HttpServletRequest request) {
         HttpStatus status = switch (exception.code()) {
-            case "TENANT_NOT_FOUND" -> HttpStatus.NOT_FOUND;
+            case "TENANT_NOT_FOUND", "TENANT_ADMIN_INITIALIZATION_NOT_FOUND" -> HttpStatus.NOT_FOUND;
             case "TENANT_ADMIN_INITIALIZATION_COMPENSATING" -> HttpStatus.SERVICE_UNAVAILABLE;
             default -> HttpStatus.CONFLICT;
         };
