@@ -4,6 +4,7 @@ import { createTranslator, type SupportedLocale } from '@saas-forge/i18n';
 import type { AuthenticationShellRoute } from '@saas-forge/react-shell';
 import { useLocation } from 'react-router';
 
+import { OAuthClientRoutes } from './oauth-clients';
 import { PlanRoutes } from './plans';
 import { QuotaDefinitionRoutes } from './quota-definitions';
 import { TenantRoutes } from './tenants';
@@ -22,8 +23,6 @@ export function createPlatformAuthenticationRoutes(
   });
   const overviewTitle = translate.translate('platformOverviewTitle');
   const overviewDescription = translate.translate('platformOverviewDescription');
-  const oauthClientsTitle = translate.translate('oauthClientsTitle');
-  const oauthClientsDescription = translate.translate('oauthClientsDescription');
 
   return [
     {
@@ -61,10 +60,11 @@ export function createPlatformAuthenticationRoutes(
       element: <PlanRoutes client={client} locale={locale} />,
     },
     {
-      path: '/oauth-clients',
+      path: '/oauth-clients/*',
+      navigationPath: '/oauth-clients',
       icon: 'key',
       label: 'OAuth Client',
-      element: <OAuthClientsPage title={oauthClientsTitle} description={oauthClientsDescription} />,
+      element: <OAuthClientRoutes client={client} locale={locale} />,
     },
   ];
 }
@@ -93,29 +93,6 @@ function PlatformOverview({
       </h1>
       <p>{description}</p>
       <CurrentSessionPanel client={client} locale={locale} />
-    </section>
-  );
-}
-
-function OAuthClientsPage({
-  title,
-  description,
-}: {
-  readonly title: string;
-  readonly description: string;
-}) {
-  const location = useLocation();
-  return (
-    <section aria-labelledby="oauth-clients-title">
-      <RouteFocusAnnouncement
-        routeKey={location.key}
-        pageTitle={title}
-        focusTargetId="oauth-clients-title"
-      />
-      <h1 id="oauth-clients-title" tabIndex={-1}>
-        {title}
-      </h1>
-      <p>{description}</p>
     </section>
   );
 }

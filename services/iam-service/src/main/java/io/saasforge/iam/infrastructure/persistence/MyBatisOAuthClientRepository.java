@@ -190,7 +190,7 @@ public class MyBatisOAuthClientRepository implements OAuthClientRepository {
         return row;
     }
 
-    private static OAuthClient toDomain(OAuthClientRow row) {
+    static OAuthClient toDomain(OAuthClientRow row) {
         LinkedHashSet<OAuthScope> scopes = Arrays.stream(row.getAllowedScopes())
                 .map(OAuthScope::fromValue)
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));

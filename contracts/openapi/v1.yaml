@@ -1531,6 +1531,42 @@ paths:
         '504': { $ref: './common.yaml#/components/responses/Problem' }
 
   /api/v1/platform/oauth-clients:
+    get:
+      tags: [OAuth clients]
+      operationId: listOAuthClients
+      x-saasforge-service: iam-service
+      summary: List non-sensitive OAuth Client details
+      description: Requires current Platform Admin authorization. Literal case-sensitive name substring, type and status filters; fixed ID ascending order. Opaque cursors bind the resource and filters and expire after 24 hours. No Secret material is returned.
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: cursor
+          in: query
+          schema: { type: string, maxLength: 2048 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: name
+          in: query
+          schema: { type: string, maxLength: 200 }
+        - name: clientType
+          in: query
+          schema: { $ref: '#/components/schemas/OAuthClientType' }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/OAuthClientStatus' }
+      responses:
+        '200':
+          description: Authoritative non-sensitive OAuth Clients.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OAuthClientPage' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '405': { $ref: './common.yaml#/components/responses/Problem' }
+        '502': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+        '504': { $ref: './common.yaml#/components/responses/Problem' }
     post:
       tags: [OAuth clients]
       operationId: createOAuthClient
@@ -2399,6 +2435,19 @@ components:
           writeOnly: true
           description: Returned exactly once. Store it in a controlled secret manager.
       additionalProperties: false
+    OAuthClientPage:
+      allOf:
+        - $ref: './common.yaml#/components/schemas/Page'
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/OAuthClientDetail' }
+            nextCursor:
+              oneOf:
+                - type: string
+                - type: 'null'
+            hasMore: { type: boolean }
     OAuthClientDetail:
       type: object
       required: [clientId, displayName, clientType, allowedScopes, status, createdAt, updatedAt]

@@ -12,6 +12,7 @@ import { verifyPasswordSetupNotification } from './password-setup-notification-a
 import { verifyAdministratorInitialization } from './administrator-initialization-acceptance.mjs';
 import { verifyQuotaDefinition } from './quota-definition-acceptance.mjs';
 import { verifyTenantCreation } from './tenant-creation-acceptance.mjs';
+import { verifyOAuthClients } from './oauth-client-acceptance.mjs';
 import { verifyClientRecovery } from './console-client-acceptance.mjs';
 import { verifyRequestProblemSurfaces } from './console-problem-acceptance.mjs';
 import { verifyBrandRemoteInheritance } from './brand-remote-acceptance.mjs';
@@ -244,6 +245,20 @@ test('Platform and Tenant sessions survive independent recovery and logout after
   await platform.getByText(email, { exact: true }).waitFor();
   await selectConsoleLocale(platform, '简体中文');
   await platform.getByRole('heading', { name: 'Platform 总览', exact: true }).waitFor();
+
+  await t.test('OAuth Client list filters, cursor paging and detail reload', async () => {
+    await verifyOAuthClients({
+      browser,
+      rootDomain,
+      email,
+      password,
+      login,
+      selectLocale: selectConsoleLocale,
+      accessibility: expectRouteAccessibility,
+      safeStorage: expectSafeStorage,
+      capture: captureBrandEvidence,
+    });
+  });
 
   await t.test(
     'Tenant creation survives lost response, refresh, browser restart and re-login',

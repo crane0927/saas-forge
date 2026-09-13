@@ -30,6 +30,9 @@ import {
   type CreateOAuthClientRequest,
   type CurrentSession,
   type OAuthClientDetail,
+  type OAuthClientPage,
+  type OAuthClientType,
+  type OAuthClientStatus,
   type OAuthClientSecretResult,
 } from '@saas-forge/api-client';
 
@@ -199,6 +202,15 @@ export type IdempotentConsoleApiResult<T> =
       readonly operationHandle: IdempotentOperationHandle;
     };
 
+export interface ListOAuthClientsInput {
+  readonly name?: string;
+  readonly clientType?: OAuthClientType;
+  readonly status?: OAuthClientStatus;
+  readonly cursor?: string;
+  readonly limit?: number;
+  readonly signal?: AbortSignal;
+}
+
 export interface GetOAuthClientInput {
   readonly clientId: string;
   readonly signal?: AbortSignal;
@@ -211,6 +223,9 @@ export interface CreateOAuthClientInput {
 }
 
 export type {
+  OAuthClientDetail,
+  OAuthClientType,
+  OAuthClientStatus,
   TenantAdministratorPasswordSetup,
   TenantAdministratorInitialization,
   Subscription,
@@ -380,6 +395,7 @@ export interface ConsoleApiClient {
     signal?: AbortSignal,
   ): Promise<ConsoleApiResult<TenantCreationOperation>>;
   getCurrentSession(signal?: AbortSignal): Promise<ConsoleApiResult<CurrentSession>>;
+  listOAuthClients(input: ListOAuthClientsInput): Promise<ConsoleApiResult<OAuthClientPage>>;
   getOAuthClient(input: GetOAuthClientInput): Promise<ConsoleApiResult<OAuthClientDetail>>;
   createOAuthClient(
     input: CreateOAuthClientInput,
@@ -1346,6 +1362,8 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
           ...(value.displayName === undefined ? {} : { displayName: value.displayName }),
         };
       }, signal),
+    listOAuthClients: ({ signal, ...query }) =>
+      executeRead(() => oauthClientsApi.listOAuthClients(query, { signal }), signal),
     getOAuthClient: ({ clientId, signal }) =>
       executeRead(() => oauthClientsApi.getOAuthClient({ clientId }, { signal }), signal),
     createOAuthClient: ({ request, operationHandle, signal }) =>

@@ -435,6 +435,61 @@ class AuthenticationHttpIT {
 
     @Test
     @Order(2)
+    void listsOAuthClientsWithFiltersAndBoundPaginationWithoutSecrets() throws Exception {
+        createUser("client-list@example.test", "correct-password", true, Credential.REGULAR);
+        String token = accessToken(login("client-list@example.test", "correct-password", "PLATFORM").andReturn());
+        for (int i = 0; i < 3; i++) {
+            mockMvc.perform(post("/api/v1/platform/oauth-clients")
+                            .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                            .header("Idempotency-Key", uuidV7(96_001 + i).toString())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(new ObjectMapper().writeValueAsBytes(Map.of(
+                                    "displayName", "list%_worker-" + i, "allowedScopes", List.of("runtime:read")))))
+                    .andExpect(status().isCreated());
+        }
+        var first = mockMvc.perform(get("/api/v1/platform/oauth-clients")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .param("name", "list%_worker").param("clientType", "RUNTIME_SERVICE")
+                        .param("status", "ACTIVE").param("limit", "2"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].clientType").value("RUNTIME_SERVICE"))
+                .andExpect(jsonPath("$.items[0].clientSecret").doesNotExist())
+                .andExpect(jsonPath("$.items[0].secretDigest").doesNotExist())
+                .andExpect(jsonPath("$.hasMore").value(true)).andReturn();
+        String cursor = json(first.getResponse().getContentAsByteArray()).get("nextCursor").asString();
+        mockMvc.perform(get("/api/v1/platform/oauth-clients")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .param("name", "list%_worker").param("clientType", "RUNTIME_SERVICE")
+                        .param("status", "ACTIVE").param("limit", "2").param("cursor", cursor))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.hasMore").value(false));
+        mockMvc.perform(get("/api/v1/platform/oauth-clients")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token).param("cursor", cursor))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/v1/platform/oauth-clients")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .param("name", "list%_worker").param("status", "REVOKED"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(0));
+        for (String invalid : List.of("invalid", "", Base64.getUrlEncoder().withoutPadding().encodeToString(
+                ("oauth-clients:list%_worker:RUNTIME_SERVICE:ACTIVE\n2000-01-01T00:00:00Z\n"
+                        + uuidV7(96_999)).getBytes(java.nio.charset.StandardCharsets.UTF_8)))) {
+            mockMvc.perform(get("/api/v1/platform/oauth-clients")
+                            .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                            .param("name", "list%_worker").param("clientType", "RUNTIME_SERVICE")
+                            .param("status", "ACTIVE").param("cursor", invalid))
+                    .andExpect(status().isBadRequest());
+        }
+        mockMvc.perform(get("/api/v1/platform/oauth-clients")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token).param("limit", "101"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/v1/platform/oauth-clients"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @Order(2)
     void platformAdminCreatesAndReadsRuntimeOAuthClientWithOneTimeSecretAndIndependentIamAuthorization()
             throws Exception {
         TestUser admin = createUser(
@@ -544,6 +599,10 @@ class AuthenticationHttpIT {
                 "oauth-client-stale-role@example.test", "correct-password", "PLATFORM").andReturn());
         jdbc.update("UPDATE iam_platform_role_assignments SET revoked_at = now() WHERE identity_id = ?",
                 staleRole.identity().id());
+        mockMvc.perform(get("/api/v1/platform/oauth-clients")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + staleRoleToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("PLATFORM_ADMIN_REQUIRED"));
         mockMvc.perform(get(location).header(HttpHeaders.AUTHORIZATION, "Bearer " + staleRoleToken))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("PLATFORM_ADMIN_REQUIRED"));

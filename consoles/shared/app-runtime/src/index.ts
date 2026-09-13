@@ -67,6 +67,10 @@ export {
   type SwitchTenantContextInput,
   type TenantSwitchResult,
   type GetOAuthClientInput,
+  type ListOAuthClientsInput,
+  type OAuthClientDetail,
+  type OAuthClientType,
+  type OAuthClientStatus,
   type IdempotentConsoleApiResult,
   type IdempotentOperationHandle,
 } from './authentication-runtime';

@@ -1189,6 +1189,51 @@ describe('createAuthenticationRuntime', () => {
     expect(fetch.mock.calls[1]?.[1]?.body).toBe(JSON.stringify({ sessionSlot: 'PLATFORM' }));
   });
 
+  it('discards an OAuth Client list response after logout changes the session', async () => {
+    let resolveRead: ((response: Response) => void) | undefined;
+    const fetch = vi
+      .fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveRead = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const runtime = createRuntime({ realm: {}, intent: 'PLATFORM', fetch });
+    await runtime.login({ email: 'admin@example.test', password: 'secret' });
+    const pending = runtime.client.listOAuthClients({
+      name: 'worker',
+      clientType: 'RESERVED_SERVICE',
+      status: 'ACTIVE',
+      limit: 2,
+    });
+    await vi.waitFor(() => {
+      expect(resolveRead).toBeDefined();
+    });
+    const request = new URL(requestUrl(fetch.mock.calls[1][0]));
+    expect(request.searchParams.get('name')).toBe('worker');
+    expect(request.searchParams.get('clientType')).toBe('RESERVED_SERVICE');
+    expect(request.searchParams.get('status')).toBe('ACTIVE');
+    await runtime.logout();
+    resolveRead?.(
+      Response.json({
+        items: [oauthClientDetail('018f1f2e-7b5a-7c42-8c91-2b3d4e5f6076')],
+        nextCursor: null,
+        hasMore: false,
+      }),
+    );
+    await expect(pending).resolves.toEqual({ ok: false, problem: { code: 'SESSION_CHANGED' } });
+  });
+
   it('refreshes at the 30 second boundary before a typed read operation', async () => {
     let currentTime = 1_000;
     const clientId = '018f1f2e-7b5a-7c42-8c91-2b3d4e5f6076';

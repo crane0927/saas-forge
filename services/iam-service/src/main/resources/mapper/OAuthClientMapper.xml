@@ -71,6 +71,17 @@
         FOR UPDATE
     </select>
 
+    <select id="listClients" resultMap="clientRow">
+        SELECT id, display_name, client_type, reserved_service_key, allowed_scopes,
+               client_status, created_at, updated_at, revoked_at
+        FROM iam_oauth_clients
+        WHERE strpos(display_name, #{name}) > 0
+        <if test="type != null">AND client_type = #{type}</if>
+        <if test="status != null">AND client_status = #{status}</if>
+        <if test="afterId != null">AND id > #{afterId}</if>
+        ORDER BY id ASC LIMIT #{limit}
+    </select>
+
     <select id="findClientById" resultMap="clientRow">
         SELECT id, display_name, client_type, reserved_service_key, allowed_scopes,
                client_status, created_at, updated_at, revoked_at
