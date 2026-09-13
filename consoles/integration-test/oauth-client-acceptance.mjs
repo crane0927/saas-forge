@@ -13,7 +13,7 @@ export async function verifyOAuthClients({
   capture,
 }) {
   const context = await browser.newContext({
-    locale: 'zh-CN',
+    locale: 'en-US',
     viewport: { width: 1440, height: 960 },
   });
   const base = `https://platform.${rootDomain}`;
@@ -21,8 +21,9 @@ export async function verifyOAuthClients({
   const page = await context.newPage();
   try {
     await page.goto(base);
+    await accessibility(page, 'Sign in to SaaS Forge');
     await selectLocale(page, '简体中文');
-    await login(page, email, password, 'zh-CN');
+    await login(page, email, password, 'zh-CN', { focusedElementId: 'console-locale' });
     const fixture = await context.newPage();
     try {
       await fixture.goto(`${base}/acceptance-client.html`);
@@ -50,13 +51,31 @@ export async function verifyOAuthClients({
       await fixture.close();
     }
     const reads = [];
-    page.on('response', (response) => {
+    const observeRead = (response) => {
       if (
         response.request().method() === 'GET' &&
         new URL(response.url()).pathname.startsWith('/api/v1/platform/oauth-clients')
       )
-        reads.push(response);
-    });
+        reads.push(
+          response.text().then(
+            (body) => ({
+              status: response.status(),
+              readable: true,
+              safe: !/"(?:clientSecret|secretDigest|secret_digest|accessToken)"/.test(body),
+            }),
+            () => ({ status: response.status(), readable: false, safe: false }),
+          ),
+        );
+    };
+    const verifyReads = async () => {
+      assert.ok(reads.length > 0, 'real OAuth Client GET responses were observed');
+      for (const read of await Promise.all(reads)) {
+        assert.equal(read.status, 200);
+        assert.equal(read.readable, true, 'read response body before navigation');
+        assert.equal(read.safe, true, 'read responses exclude sensitive fields');
+      }
+    };
+    page.on('response', observeRead);
     await page.goto(`${base}/oauth-clients`);
     await page.getByRole('textbox', { name: '名称', exact: true }).fill(name);
     await page.getByRole('combobox', { name: '类型', exact: true }).click();
@@ -74,18 +93,16 @@ export async function verifyOAuthClients({
     await page.getByRole('button', { name: '查看详情', exact: true }).click();
     await page.getByText('runtime:read', { exact: true }).waitFor();
     const detailUrl = page.url();
+    await verifyReads();
     await page.reload();
     await page.getByText(`${name}-50`, { exact: true }).waitFor();
     await selectLocale(page, 'English');
     await page.getByRole('heading', { name: 'OAuth Client details', exact: true }).waitFor();
-    await accessibility(page, 'OAuth Client details');
+    await accessibility(page, 'OAuth Client details', { focusedElementId: 'console-locale' });
     await capture(page, 'oauth-client-details-en');
     await safeStorage(page);
-    for (const response of reads) {
-      assert.equal(response.status(), 200);
-      const text = await response.text();
-      assert.doesNotMatch(text, /"(?:clientSecret|secretDigest|secret_digest|accessToken)"/);
-    }
+    await verifyReads();
+    page.off('response', observeRead);
     await page.getByRole('button', { name: 'Sign out', exact: true }).click();
     await login(page, email, password, 'en-US');
     await page.goto(detailUrl);

@@ -70,6 +70,11 @@ function fixture(read: (url: URL) => Response): AuthenticationFetch {
     return read(url);
   };
 }
+async function auditSettledPage() {
+  // 数据到达后按钮从 disabled 恢复，需等待颜色过渡结束再检查静态对比度。
+  await Promise.all(document.getAnimations().map((animation) => animation.finished));
+  return auditAccessibility(document.body);
+}
 it('filters, pages and navigates to authoritative OAuth Client details with keyboard focus', async () => {
   const queries: URL[] = [];
   mount(
@@ -111,7 +116,7 @@ it('filters, pages and navigates to authoritative OAuth Client details with keyb
     .element(page.getByText('tenant-access:membership:read', { exact: true }))
     .toBeVisible();
   expect(document.activeElement?.id).toBe('oauth-page-title');
-  expect((await auditAccessibility(document.body)).violations).toEqual([]);
+  expect((await auditSettledPage()).violations).toEqual([]);
 });
 for (const status of [403, 503])
   it(`shows ${String(status)} without a fabricated empty list and retries`, async () => {
@@ -164,5 +169,5 @@ it('loads an English detail route directly and reloads authoritative fields', as
   await expect.element(page.getByText('Updated worker', { exact: true })).toBeVisible();
   await expect.element(page.getByText('Reserved service', { exact: true })).toBeVisible();
   expect(document.body.textContent).not.toContain('fixture-token');
-  expect((await auditAccessibility(document.body)).violations).toEqual([]);
+  expect((await auditSettledPage()).violations).toEqual([]);
 });

@@ -1199,9 +1199,9 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       const navigation = platform.getByRole('link', { name: 'OAuth Client', exact: true });
       await navigation.focus();
       await navigation.press('Enter');
-      await expectRouteAccessibility(platform, 'OAuth Client 管理');
+      await expectRouteAccessibility(platform, 'OAuth Clients');
       assert.equal(new URL(platform.url()).pathname, '/oauth-clients');
-      await recover(platform, 'OAuth Client 管理');
+      await recover(platform, 'OAuth Clients');
       const page = await context.newPage();
       const marker = `private-route-error-${randomUUID()}`;
       let leaked = false;
@@ -1216,7 +1216,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         Object.defineProperty(globalThis.Node.prototype, 'textContent', {
           ...descriptor,
           set(value) {
-            if (this.nodeName === 'H1' && value === 'OAuth Client 管理') throw new Error(marker);
+            if (this.nodeName === 'H1' && value === 'OAuth Clients') throw new Error(marker);
             descriptor.set.call(this, value);
           },
         });
@@ -1271,7 +1271,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       const navigation = platform.getByRole('link', { name: 'OAuth Client', exact: true });
       await navigation.focus();
       await navigation.press('Enter');
-      await expectRouteAccessibility(platform, 'OAuth Client management');
+      await expectRouteAccessibility(platform, 'OAuth Clients');
 
       const signedOut = platform.waitForResponse(isAuthResponse('logout'));
       const signOut = platform.getByRole('button', { name: 'Sign out', exact: true });
@@ -1534,7 +1534,7 @@ test('request Problems, malformed responses and unknown network results stay wit
 });
 
 async function expectRouteAccessibility(page, title, { focusedElementId } = {}) {
-  await page.getByRole('heading', { name: title, exact: true }).waitFor();
+  await page.getByRole('heading', { name: title, exact: true, level: 1 }).waitFor();
   await page.waitForFunction(
     ({ expectedTitle, expectedId }) =>
       expectedId === undefined

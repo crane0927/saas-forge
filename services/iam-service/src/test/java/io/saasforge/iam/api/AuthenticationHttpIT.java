@@ -3977,7 +3977,9 @@ class AuthenticationHttpIT {
             MyBatisIdentityRepository.class,
             AuthenticationController.class,
             OutboxPublisher.class
-    })
+    }, excludeFilters = @ComponentScan.Filter(
+            type = org.springframework.context.annotation.FilterType.ANNOTATION,
+            classes = org.springframework.boot.test.context.TestConfiguration.class))
     @Import({AuthenticationConfiguration.class, PasswordSetupMailConfiguration.class,
             io.saasforge.iam.config.OAuthClientManagementConfiguration.class})
     static class TestConfiguration {

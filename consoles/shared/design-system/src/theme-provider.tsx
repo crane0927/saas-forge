@@ -115,6 +115,10 @@ export function DesignSystemProvider({
         paddingXL: 32,
       },
       components: {
+        Button: {
+          defaultHoverColor: palette.text,
+          defaultActiveColor: palette.text,
+        },
         Table: {
           headerBg: palette.surfaceElevated,
           borderColor: palette.border,

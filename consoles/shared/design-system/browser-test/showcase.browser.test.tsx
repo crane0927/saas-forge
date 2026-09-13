@@ -85,6 +85,21 @@ async function tabToNextControl() {
 }
 
 describe('Design System 真实浏览器展示矩阵', () => {
+  for (const colorScheme of ['light', 'dark'] as const) {
+    it(`${colorScheme} 普通按钮悬停文字满足对比度要求`, async () => {
+      render(
+        <DesignSystemProvider forcedColorScheme={colorScheme}>
+          <main>
+            <Button>重新读取</Button>
+          </main>
+        </DesignSystemProvider>,
+      );
+      await userEvent.hover(page.getByRole('button', { name: '重新读取' }));
+      await waitForLayout();
+      await Promise.all(document.getAnimations().map((animation) => animation.finished));
+      expect((await axe.run(document, { runOnly: ['color-contrast'] })).violations).toEqual([]);
+    });
+  }
   it.skipIf(import.meta.env.SF_VISUAL_SNAPSHOTS === 'false')(
     '固定完整平台品牌的宽屏与窄屏视觉状态',
     async () => {

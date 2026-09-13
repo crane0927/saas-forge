@@ -87,7 +87,7 @@ import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -1020,11 +1020,16 @@ class IamPersistenceRepositoryIT {
         throw new IllegalStateException("无法定位仓库根目录");
     }
 
-    @Configuration(proxyBeanMethods = false)
+    @TestConfiguration(proxyBeanMethods = false)
     @EnableTransactionManagement
     @MapperScan(basePackages = "io.saasforge.iam.infrastructure.persistence.mapper", sqlSessionFactoryRef = "iamSqlSessionFactory")
     @ComponentScan(basePackageClasses = MyBatisIdentityRepository.class)
     static class PersistenceConfiguration {
+
+        @Bean
+        Clock clock() {
+            return Clock.fixed(Instant.parse("2026-08-21T08:00:00Z"), ZoneOffset.UTC);
+        }
 
         @Bean
         DataSource dataSource() {
