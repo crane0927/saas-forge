@@ -50,7 +50,7 @@ docker compose run --rm --no-deps entitlement-migrate migrate
 
 重新同步 Maven，在 IDEA 创建 Spring Boot 配置：主类 `io.saasforge.entitlement.EntitlementServiceApplication`，classpath `entitlement-service`，Active profiles `local`。只保留 IDE Build，不添加 package、后台 JAR 或 replace/restore 前置步骤。
 
-HTTP 默认 8083、gRPC 默认 9093。`ENTITLEMENT_HTTP_PORT`、`ENTITLEMENT_GRPC_PORT`、`ENTITLEMENT_REGISTER_IP`、`ENTITLEMENT_BIND_ADDRESS` 控制自身端口、注册 IP 和 HTTP 监听地址。HTTP 目标取 Nacos IP/port，gRPC 目标取同一实例 IP/`grpc.port`，不设置下游实例地址。
+HTTP 默认 8083、gRPC 默认 9093。端口演练优先在 IDE 环境变量中设置 `ENTITLEMENT_HTTP_PORT` 与 `ENTITLEMENT_GRPC_PORT`；若直接修改个人 YAML 默认值，必须同步 HTTP 的 `server.port` 与 `spring.cloud.nacos.discovery.port`，否则可能监听新端口却注册旧端口。`ENTITLEMENT_HTTP_PORT`、`ENTITLEMENT_GRPC_PORT`、`ENTITLEMENT_REGISTER_IP`、`ENTITLEMENT_BIND_ADDRESS` 控制自身端口、注册 IP 和 HTTP 监听地址。HTTP 目标取 Nacos IP/port，gRPC 目标取同一实例 IP/`grpc.port`，不设置下游实例地址。
 
 同时在 IDEA 运行 Gateway、IAM、Tenant Access、Entitlement；开发者自行处理重复实例和注册地址可达性。修改后使用 IDEA Build、Stop、Debug。可在 Entitlement `GrpcTenantEligibilityGateway.checkInitialSubscription` 或 Quota 接收入口设断点，恢复执行后确认正式操作结果。
 
