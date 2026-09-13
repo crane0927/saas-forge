@@ -56,7 +56,7 @@ export async function verifyPasswordSetupNotification({
   const errors = [];
   page.on('pageerror', () => errors.push('pageerror'));
   const base = `https://platform.${rootDomain}`;
-  let mailStopped = false;
+  let mailPaused = false;
   try {
     await page.goto(base);
     await login(page, email, password, 'zh-CN');
@@ -71,8 +71,10 @@ export async function verifyPasswordSetupNotification({
     await page.getByText('Browser Plan (browser-plan) — 1', { exact: true }).click();
     await page.getByRole('button', { name: '创建首个 Subscription', exact: true }).click();
     await page.getByText('查询时有效', { exact: true }).waitFor();
-    docker('stop', `${project}-mailpit-1`);
-    mailStopped = true;
+    // 保留容器 DNS，只冻结 SMTP 处理；stop 会移除服务解析，可能使 IAM 缓存上游错误地址。
+    // 暂停期间仍须观察真实投递失败；恢复不重启 IAM，也不重放新的业务请求。
+    docker('pause', `${project}-mailpit-1`);
+    mailPaused = true;
     await page.getByRole('textbox', { name: '管理员邮箱' }).fill(recipient);
     await page.getByRole('button', { name: '初始化管理员', exact: true }).click();
     await page.getByText('初始化已完成', { exact: true }).waitFor();
@@ -175,8 +177,8 @@ export async function verifyPasswordSetupNotification({
       await observer.close();
     }
 
-    docker('start', `${project}-mailpit-1`);
-    mailStopped = false;
+    docker('unpause', `${project}-mailpit-1`);
+    mailPaused = false;
     const mailAddress = docker('port', `${project}-mailpit-1`, '8025/tcp');
     assert.match(mailAddress, /^127\.0\.0\.1:\d+$/);
     const readyUntil = Date.now() + 30000;
@@ -185,7 +187,7 @@ export async function verifyPasswordSetupNotification({
       try {
         mailReady = (await fetch(`http://${mailAddress}/api/v1/messages`)).ok;
       } catch {
-        /* SMTP service is still starting. */
+        /* Mailpit HTTP service has not resumed yet. */
       }
       if (mailReady) break;
       await setTimeout(250);
@@ -252,7 +254,7 @@ export async function verifyPasswordSetupNotification({
     await capture(page, 'issue-177-english');
     assert.deepEqual(errors, []);
   } finally {
-    if (mailStopped) docker('start', `${project}-mailpit-1`);
+    if (mailPaused) docker('unpause', `${project}-mailpit-1`);
     await context.close();
     await browser.close();
   }

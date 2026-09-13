@@ -47,7 +47,7 @@ bash scripts/verify-console-authentication-e2e.sh --product
 
 最终运行覆盖 Platform 初始改密/登录/恢复/退出、Tenant Membership/Context、槽位与多标签竞争、中英文故障表单、Locale/品牌与安全拒绝路径。此命令复用前一节构建工件，没有重复执行 Maven/workspace 门禁。
 
-首次 SMTP 恢复 503 在未修改代码的复跑中未复现，根因尚未确定。本记录保留该间歇失败，不以重试通过证明其稳定性已解决；本轮没有为获得通过而跳过测试、延长超时或放宽断言。完整受限诊断保留在 `sf-console-e2e-diagnostics.7TR06F`，不得直接上传原始日志。
+首次 SMTP 恢复 503 在未修改代码的复跑中未复现，当时根因尚未确定；后续复现与修复见下节。本记录保留该间歇失败，不以重试通过证明其稳定性已解决；本轮没有为获得通过而跳过测试、延长超时或放宽断言。完整受限诊断保留在 `sf-console-e2e-diagnostics.7TR06F`，不得直接上传原始日志。
 
 远端 CI 尚未执行；已接入的 `console-visual` job 尚无当前提交的远端运行结果。MVP 对应事项保持未勾选，Issue 保持 OPEN。
 
@@ -56,3 +56,19 @@ bash scripts/verify-console-authentication-e2e.sh --product
 - Standards：初次发现英文 Shell 测试未同步组件语言，已改为读取当前 Console Locale；复核剩余 0 项。
 - Spec：初次发现恢复面板分支/文案及共享退出保护覆盖不足，已补齐并更新覆盖清单；复核剩余 0 项。
 - 审查为源码核对；测试执行结果以上表及后续完整验收为准。
+
+## SMTP 故障注入稳定性修复
+
+后续在同一 Fresh 项目中重复通知场景，第 3 次复现恢复 503。失败前工作流无租约、已到重试时间且自动恢复暂停；调用后尝试次数增加，IAM 新增 `MailSendException → MessagingException`，排除该次为未领取到工作流。原始失败轮次缺少内部记录，下面是后续同类复现证据，不倒推其未记录的细节。
+
+最小化到持续运行的容器内 JVM 后，定位到 `stop/start` 的 DNS 副作用：Mailpit 停止时 `mailpit` 被解析为非容器地址 `198.18.0.102`；重启后的容器地址及新进程系统解析均为 `172.24.0.2`，JVM 却仍使用旧缓存，SMTP 欢迎语阶段收到 `[EOF]`。HTTP 管理接口检查无法覆盖调用方 JVM 的解析状态。本机具体哪个 DNS/代理组件提供了非容器地址未在本任务中确定。
+
+| 对照 | 结果 |
+| --- | --- |
+| 持续 JVM，停止期间发送，重启后仅等待 HTTP 就绪 | 15/15 恢复失败，SMTP bad greeting `[EOF]` |
+| 同一探针增加调用方 SMTP 握手就绪检查 | 15/15 恢复成功；首次多等待 29.890 秒 |
+| 使用 `pause/unpause` 保留容器网络与 DNS | 15/15 暂停期间真实投递失败，15/15 恢复后立即投递成功 |
+
+修复选择 `pause/unpause`：该用例要注入的是 SMTP 无法处理邮件，不需要附带 DNS 服务名消失。保留初始化成功、投递待恢复、原操作者限制、原请求恢复 `204`、真实 Mailpit 收件与既有身份/幂等键不变的断言；`finally` 解除本次暂停。没有重启 IAM、修改 DNS 缓存策略、自动重放业务请求或放宽断言。
+
+对照日志保留在本机 `/tmp/issue180-smtp-network/`，修复后的完整 Fresh 产品验证通过：Chrome 40/40、0 失败/跳过；重置数据卷后的 Chrome 浏览器门禁通过，整个入口退出码 0。日志 `/tmp/issue180-smtp-fixed-fresh.log`，证据 `sf-brand-evidence.S88f3W/acceptance-run.json`，本次为 `c192b3d` 上的修复工作区（`dirty=true`），不冒称远端当前 SHA CI 结果。临时诊断代码已移除并重建原始 IAM 制品。脚本格式、ESLint、语法及差异检查通过；Standards/Spec 两线审查无遗留项。
