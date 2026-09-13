@@ -45,6 +45,7 @@ export async function verifyAdministratorInitialization({
   const errors = [];
   page.on('pageerror', () => errors.push('pageerror'));
   const base = `https://platform.${rootDomain}`;
+  let administratorEmail;
   async function createTarget(name) {
     await page.goto(`${base}/tenants/new`);
     await page.getByRole('textbox', { name: '名称' }).fill(name);
@@ -52,6 +53,7 @@ export async function verifyAdministratorInitialization({
     await page.waitForURL(/\/tenants\/[0-9a-f-]{36}$/);
     const id = page.url().split('/').at(-1);
     assert.match(id, /^[0-9a-f-]{36}$/);
+    administratorEmail = `administrator-${id}@example.test`;
     await page.getByRole('combobox', { name: 'Plan', exact: true }).click();
     await page.getByText('Browser Plan (browser-plan) — 1', { exact: true }).click();
     await page.getByRole('button', { name: '创建首个 Subscription', exact: true }).click();
@@ -59,8 +61,8 @@ export async function verifyAdministratorInitialization({
     return id;
   }
   async function start() {
-    // 复用现有 Identity；通知语义仍必须与初始化分开。
-    await page.getByRole('textbox', { name: '管理员邮箱' }).fill(email);
+    // 每个目标独立管理员，避免改变后续安全验收主账号的 Membership 候选集合。
+    await page.getByRole('textbox', { name: '管理员邮箱' }).fill(administratorEmail);
     await page.getByRole('button', { name: '初始化管理员', exact: true }).click();
   }
   async function usage(expected) {
@@ -106,6 +108,8 @@ export async function verifyAdministratorInitialization({
     await page.getByText('初始化已完成', { exact: true }).waitFor();
     await page.getByText('初始管理员历史 Membership', { exact: true }).waitFor();
     await usage(1);
+    await page.reload();
+    await page.getByText('初始化已完成', { exact: true }).waitFor();
     await accessibility(page, 'Tenant 详情');
     await safeStorage(page);
     await capture(page, 'issue-176-initialized');
@@ -126,6 +130,8 @@ export async function verifyAdministratorInitialization({
     await selectLocale(page, 'English');
     await page.getByText('Initialization completed', { exact: true }).waitFor();
     await page.setViewportSize({ width: 320, height: 900 });
+    // 视口改变后等待 Shell 的响应式状态生效，再判断稳定布局。
+    await page.waitForFunction(() => document.documentElement.scrollWidth <= innerWidth);
     assert.equal(
       await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
       true,
@@ -159,7 +165,8 @@ export async function verifyAdministratorInitialization({
     );
     assert.match(original, /^[0-9a-f-]{36}$/);
     const otherEmail = 'initialization-observer@example.test';
-    // 仅在隔离库准备第二个平台管理员，密码哈希直接库内复制，不输出凭据材料。
+    // 仅在隔离库准备既有平台管理员，密码哈希直接库内复制，不输出凭据材料。
+    // 授权早于当前秒，避免夹具的微秒时间晚于 JWT 按秒截断的 issuedAt。
     fixture(
       'iam_db',
       `WITH added AS (
@@ -172,7 +179,7 @@ export async function verifyAdministratorInitialization({
       WHERE owner.normalized_email = '${email.replaceAll("'", "''")}'
         AND source.credential_type = 'PASSWORD' AND source.invalidated_at IS NULL
     ) INSERT INTO iam_platform_role_assignments(identity_id, role_key, assigned_at)
-      SELECT id, 'PLATFORM_ADMIN', now() FROM added;`,
+      SELECT id, 'PLATFORM_ADMIN', now() - interval '1 second' FROM added;`,
     );
     const observer = await browser.newContext({ ignoreHTTPSErrors: false, locale: 'zh-CN' });
     try {

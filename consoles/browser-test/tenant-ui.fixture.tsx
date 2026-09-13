@@ -10,9 +10,9 @@ import { useState } from 'react';
 import { PlatformConsoleApp } from '../platform-console/src/app';
 
 /** 复用正式 Console/Runtime 的浏览器缝；仅 HTTP 响应由测试夹具提供，不代表后端验收。 */
-export function TenantUiFixture() {
+export function TenantUiFixture({ locale = 'zh-CN' }: { readonly locale?: 'zh-CN' | 'en-US' }) {
   return (
-    <ConsoleLocaleProvider initialLocale="zh-CN">
+    <ConsoleLocaleProvider initialLocale={locale}>
       <FixtureContent />
     </ConsoleLocaleProvider>
   );
@@ -44,6 +44,17 @@ function FixtureContent() {
         );
       if (url.pathname.endsWith('/tenant-creations'))
         return Promise.resolve(Response.json({ items: [], nextCursor: null, hasMore: false }));
+      if (url.pathname.endsWith('/administrator-initialization'))
+        return Promise.resolve(
+          Response.json({
+            tenantId: tenants[0].id,
+            initializationId: tenants[0].id,
+            state: 'SUCCEEDED',
+            canStart: false,
+            canContinue: false,
+            initialAdministratorMembershipId: tenants[0].id,
+          }),
+        );
       if (url.pathname.endsWith('/tenants') && init?.method !== 'POST') {
         const name = url.searchParams.get('name') ?? '';
         const status = url.searchParams.get('status');

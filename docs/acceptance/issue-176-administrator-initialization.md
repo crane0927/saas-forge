@@ -18,12 +18,17 @@
 - 通过：共享 Runtime 单测试文件 60 项；新增恢复通过正式生成 Client，使用服务端初始化 ID，拒绝复制出的句柄。页面 4 项回归覆盖双击、响应丢失、权威状态与用量回读、Tenant 局部故障保留已确认区域、其他操作者无接手动作，以及未知提交无法查明时禁止新 Key 重建。
 - 两轴代码审查已完成并复审：修复了 Tenant 局部故障卸载其他区域、Subscription 重复状态所有者问题；权威工作流查询的优先级已明确命名并记录原因。复审无新的明确问题。
 - 通过：完整后端 `./mvnw -Pbackend-local verify`，退出码 0，耗时 5 分 32 秒。包含最终 Tenant PostgreSQL 29 项与 Entitlement PostgreSQL 26 项、真实 Quota 消费/耗尽/释放与幂等、契约兼容及质量门禁。首轮因正式路由数仍为 46 而失败，更新为 48 并断言新增路由归属和 USER_REQUIRED 后完整复验通过。
-- 通过：完整前端 `pnpm --dir consoles run verify:workspace`，退出码 0，含类型、lint、格式、全部工作区单元测试、Chromium 浏览器门禁、国际化校验和生产构建；Runtime 136 项、Platform Console 35 项通过。Fresh 拒绝场景脚本随后补充重新登录与权限撤销检查，单独格式化和 lint 通过，未执行产品测试。
-- Chrome/Fresh：当前未执行。2026-09-13 预检确认 Chrome 153.0.8010.36 可用，但未配置 SF_ACCEPTANCE_TLS_CERT / SF_ACCEPTANCE_TLS_KEY，且 127.0.0.1:443 已有监听，不能覆盖开发者现有环境。已请开发者提供证书路径并释放端口。
+- 通过：完整前端 `pnpm --dir consoles run verify:workspace`，退出码 0，含类型、lint、格式、全部工作区单元测试、Chromium 浏览器门禁、国际化校验和生产构建；Runtime 136 项、Platform Console 35 项通过。后续调整仅涉及验收脚本、浏览器回归及文档，格式与 lint 另行通过，真实产品结果见下文。
+- Chrome/Fresh 前置条件：2026-09-13 开发者释放 127.0.0.1:443 后，使用现有 `deploy/compose/.secrets/local-https-development/server.pem` 与 `server.key` 通过 Chrome 153.0.8010.36 的四域证书、系统信任与入口预检；全程保持正常证书校验。
+- Chrome/Fresh 失败记录：首轮已进入真实业务测试，暴露新增验收夹具复用主账号邮箱、污染后续 Membership 候选，以及刷新按钮后错误要求页面标题焦点两处测试问题；改为目标独立邮箱，并在重新导航后执行路由焦点检查，两轴复审通过。第二轮在四域 TLS 握手时连接关闭，未进入产品测试；清理后独立临时容器的宿主 HTTPS 访问正常，尚未确认此次连接关闭的根因。
+- Chrome/Fresh 第三轮：四域 TLS 正常，36 项通过，新增测试及其父测试共 2 项失败。失败为缩放视口后立即读取宽度，早于 Shell 响应式更新；已在轻浏览器缝复现从 1440px 缩到 320px 的即时断言失败，而初始 320px 和等待布局稳定均通过。保留超时约束与无溢出要求后，Chrome 定向测试 5 项通过；新增回归覆盖成功初始化与 Subscription 读取失败的局部布局，完整成功详情仍以 Fresh 为准。测试改动的两轴复审通过。
+- Chrome/Fresh 第四轮：英文窄布局通过，已触发真实 Entitlement 故障并取得可恢复根；第二管理员登录返回 403，未继续恢复与补偿。代码显示新夹具的微秒级授权时间可能晚于 JWT 截秒后的 issuedAt；夹具改为授权时间早于当前秒的既有管理员，不修改认证规则，后续重跑验证。
+- 通过：第五轮 Chrome/Fresh 产品测试 38 项全部通过，无失败或跳过；第二管理员登录、跨操作者 404、当前权限撤销后 403、重新登录后服务端发现原根并沿用原 Key 恢复全部验证。初始化原 Key 重放与响应丢失后实际 max_users 用量仍为 1；真实激活事务失败触发额度释放，补偿完成后权威用量为 0，显式新尝试成功后为 1。四域会话安全及其他产品测试一并通过。
+- 通过：同轮 `console-browser-chrome` 全部通过，脚本退出码 0，`acceptance-run.json` 总状态与 Chrome 渠道均为 passed；临时 Compose 项目、数据卷及验收镜像已按脚本清理。证据截图已人工核对成功、英文窄布局、拒绝与补偿后新尝试页面。
 - 远端 CI 未执行，本票不据本地单测或脚本存在宣称完整验收通过。
 
-## 验收入口与未验证范围
+## 验收入口与证据
 
 `consoles/integration-test/administrator-initialization-acceptance.mjs` 接入既有 `verify-console-authentication-e2e.sh --product`。复用 Platform 登录、Quota Definition / Plan 前置步骤，由真实页面创建 Tenant / Subscription 后初始化；覆盖原 Key 重放、响应丢失、独立权威读、局部故障、英文和窄布局；新增第二个平台管理员真实登录、业务进度可见但无接手动作，篡改允许动作的拒绝场景通过正式请求验证跨操作者拒绝；原发起人重新登录后，从服务端重新取得恢复句柄，并覆盖权限撤销后的拒绝。隔离 Fresh 中撤销 Entitlement 计量写权限产生真实依赖故障，恢复权限后继续持久根；使用定向激活事务故障验证真实额度释放与新尝试。
 
-脚本尚未执行，以上浏览器路径、截图和 Fresh 副作用目前均属未验证；不得以组件测试或数据库测试替代。本记录不关闭 #176、父 #170 或 #165。
+本机第五轮证据目录为 `/tmp/issue176-chrome-evidence-r5`，包括 `acceptance-run.json` 与六张 `issue-176-*.png`，覆盖成功、局部故障、英文窄布局、跨 actor 拒绝、恢复与补偿后新尝试。运行基点为 `3e308f79a7d26ffe12634eaae59b3a15caea9ce4`，记录中的 `dirty=true` 对应本轮测试及文档修正；产品制品来自此前完整构建，不将此结果表述为后续提交的远端 CI。本记录不关闭 #176、父 #170 或 #165。

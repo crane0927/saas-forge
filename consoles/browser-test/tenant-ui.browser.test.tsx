@@ -12,15 +12,22 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function mount() {
-  window.history.replaceState(null, '', '/tenants');
+function mount(locale: 'zh-CN' | 'en-US' = 'zh-CN', path = '/tenants') {
+  window.history.replaceState(null, '', path);
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
-  root.render(<TenantUiFixture />);
+  root.render(<TenantUiFixture locale={locale} />);
 }
 
 describe('A 分区列表的正式 Console 浏览器缝', () => {
+  it('英文初始化成功详情在 320px 下无横向溢出', async () => {
+    await page.viewport(1440, 900);
+    mount('en-US', '/tenants/019535d9-0000-7000-8000-000000000001');
+    await expect.element(page.getByText('Initialization completed', { exact: true })).toBeVisible();
+    await page.viewport(320, 900);
+    await expect.poll(() => document.documentElement.scrollWidth).toBeLessThanOrEqual(320);
+  });
   it('保留查询和详情导航，唯一语言控件移入顶栏', async () => {
     await page.viewport(1440, 900);
     mount();
