@@ -30,6 +30,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Route, Routes, useBlocker, useLocation, useNavigate, useParams } from 'react-router';
 import { platformMessages } from './messages';
 import { TenantSubscriptionSection } from './tenant-subscription';
+import { TenantPasswordSetupSection } from './tenant-password-setup';
 import { TenantInitializationSection } from './tenant-initialization';
 
 type Props = { readonly client: ConsoleApiClient; readonly locale: SupportedLocale };
@@ -457,6 +458,13 @@ function TenantDetailContent({ client, locale, tenantId }: Props & { readonly te
             tenantKnown={!busy && tenantProblem === undefined}
             onRead={receiveSubscription}
             onDirtyChange={setSubscriptionDirty}
+          />
+          <TenantPasswordSetupSection
+            key={tenantId}
+            client={client}
+            locale={locale}
+            tenantId={tenantId}
+            refreshVersion={attempt}
           />
           <TenantInitializationSection
             client={client}

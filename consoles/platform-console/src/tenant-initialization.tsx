@@ -176,7 +176,6 @@ export function TenantInitializationSection({
                 ]}
               />
               <p>{t('initializationHistorical')}</p>
-              <p>{t('initializationNotification')}</p>
             </>
           ) : null}
           {read.value.failureCode ? <p>{read.value.failureCode}</p> : null}

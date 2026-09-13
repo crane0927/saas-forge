@@ -61,6 +61,18 @@ public class ResendAdministratorPasswordSetupService {
         deliver(claimed, true);
     }
 
+    /** 只领取已经查明身份的原记录，避免过期检查后经 prepare 删除并重建。 */
+    public void recover(AdministratorPasswordSetupWorkflow workflow) {
+        if (workflow.completed()) {
+            replayOutcome(workflow);
+            return;
+        }
+        Instant now = now();
+        var claimed = workflows.claim(workflow.workflowId(), claimant, now, now.plus(recoveryPolicy.leaseDuration()))
+                .orElseThrow(() -> pending(1));
+        deliver(claimed, true);
+    }
+
     public boolean recoverNext() {
         Instant now = now();
         var claimed = workflows.claimNext(claimant, now, now.plus(recoveryPolicy.leaseDuration()));

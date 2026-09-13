@@ -86,7 +86,10 @@ class PasswordSetupDeliveryGrpcServiceIT {
         PasswordSetupDeliveryService application = Mockito.mock(PasswordSetupDeliveryService.class);
         when(application.deliver(TENANT_ACCESS_CLIENT_ID, REQUEST_ID, IDENTITY_ID, null))
                 .thenReturn(io.saasforge.iam.application.authentication.PasswordSetupDeliveryResult.PASSWORD_READY);
-        PasswordSetupDeliveryGrpcService grpc = new PasswordSetupDeliveryGrpcService(application);
+        var queries = Mockito.mock(io.saasforge.iam.application.authentication.PasswordSetupNotificationQueryService.class);
+        when(queries.get(TENANT_ACCESS_CLIENT_ID, REQUEST_ID, IDENTITY_ID)).thenReturn(
+                io.saasforge.iam.application.authentication.PasswordSetupNotificationQueryService.State.MAIL_SERVICE_ACCEPTED);
+        PasswordSetupDeliveryGrpcService grpc = new PasswordSetupDeliveryGrpcService(application, queries);
         PasswordSetupDeliveryServerInterceptor interceptor =
                 new PasswordSetupDeliveryServerInterceptor(tokens, clients);
         String name = InProcessServerBuilder.generateName();
@@ -120,6 +123,20 @@ class PasswordSetupDeliveryGrpcServiceIT {
         StatusRuntimeException missing = assertThrows(StatusRuntimeException.class,
                 () -> PasswordSetupServiceGrpc.newBlockingStub(channel).deliverPasswordSetup(request()));
         assertEquals(Status.Code.UNAUTHENTICATED, missing.getStatus().getCode());
+    }
+
+    @Test
+    void notificationReadUsesTheSameReservedClientAuthorization() throws Exception {
+        var request = io.saasforge.contracts.iam.passwordsetup.v1.GetPasswordSetupNotificationRequest.newBuilder()
+                .setRequestId(REQUEST_ID.toString()).setIdentityId(IDENTITY_ID.toString()).build();
+        assertEquals(io.saasforge.contracts.iam.passwordsetup.v1.PasswordSetupNotificationState.MAIL_SERVICE_ACCEPTED,
+                stub(serviceToken(TENANT_ACCESS_CLIENT_ID, "iam:password-setup:write")).getPasswordSetupNotification(request).getState());
+        assertEquals(Status.Code.PERMISSION_DENIED, assertThrows(StatusRuntimeException.class,
+                () -> stub(serviceToken(OTHER_CLIENT_ID, "iam:password-setup:write")).getPasswordSetupNotification(request)).getStatus().getCode());
+        assertEquals(Status.Code.PERMISSION_DENIED, assertThrows(StatusRuntimeException.class,
+                () -> stub(serviceToken(TENANT_ACCESS_CLIENT_ID, "iam:identity:write")).getPasswordSetupNotification(request)).getStatus().getCode());
+        assertEquals(Status.Code.UNAUTHENTICATED, assertThrows(StatusRuntimeException.class,
+                () -> PasswordSetupServiceGrpc.newBlockingStub(channel).getPasswordSetupNotification(request)).getStatus().getCode());
     }
 
     @Test

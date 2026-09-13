@@ -165,5 +165,19 @@
   "initializationUnknown": "初始化结果待确认",
   "initializationUnknownHint": "请求可能已提交。请重新读取进度；取消或离开页面不会撤销服务端工作。",
   "initializationReadFailed": "初始化进度暂不可读取",
-  "initializationInputInvalid": "请输入有效邮箱，邮箱最长 320 字符，显示名称最长 200 字符。"
+  "initializationInputInvalid": "请输入有效邮箱，邮箱最长 320 字符，显示名称最长 200 字符。",
+  "notificationTitle": "密码设置通知",
+  "notificationNotApplicable": "尚未初始化，无需投递通知",
+  "notificationPending": "待投递",
+  "notificationAccepted": "已交付邮件服务",
+  "notificationPasswordReady": "已有可用密码，无需发送设置通知",
+  "notificationActionRequired": "通知需处理",
+  "notificationIndependent": "通知投递与 Tenant 初始化独立，重发不会重复初始化或扣减额度。",
+  "notificationAcceptanceLimit": "邮件服务接受不代表收件箱送达。",
+  "notificationRefresh": "刷新通知状态",
+  "notificationResend": "重新发送通知",
+  "notificationContinue": "继续原重发",
+  "notificationReadFailed": "通知状态暂时无法读取",
+  "notificationUnknown": "重发结果待确认",
+  "notificationUnknownHint": "请刷新权威状态；未查明原请求前不能重新发送。其他管理员不能接手未完成的重发。"
 }

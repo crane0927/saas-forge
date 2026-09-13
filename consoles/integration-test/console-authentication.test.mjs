@@ -8,6 +8,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { chromium, firefox, webkit } from 'playwright';
 import { verifyPlan } from './plan-acceptance.mjs';
 import { verifySubscription } from './subscription-acceptance.mjs';
+import { verifyPasswordSetupNotification } from './password-setup-notification-acceptance.mjs';
 import { verifyAdministratorInitialization } from './administrator-initialization-acceptance.mjs';
 import { verifyQuotaDefinition } from './quota-definition-acceptance.mjs';
 import { verifyTenantCreation } from './tenant-creation-acceptance.mjs';
@@ -314,6 +315,21 @@ test('Platform and Tenant sessions survive independent recovery and logout after
     'Tenant administrator initialization, authoritative Quota, recovery and compensation',
     async () => {
       await verifyAdministratorInitialization({
+        rootDomain,
+        email,
+        password,
+        login,
+        selectLocale: selectConsoleLocale,
+        accessibility: expectRouteAccessibility,
+        safeStorage: expectSafeStorage,
+        capture: captureBrandEvidence,
+      });
+    },
+  );
+  await t.test(
+    'Independent notification SMTP failure, original resend recovery and authoritative refresh',
+    async () => {
+      await verifyPasswordSetupNotification({
         rootDomain,
         email,
         password,

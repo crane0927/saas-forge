@@ -165,5 +165,19 @@
   "initializationUnknown": "Initialization outcome unknown",
   "initializationUnknownHint": "The request may have committed. Reload progress; cancellation or leaving the page does not revoke server work.",
   "initializationReadFailed": "Initialization progress unavailable",
-  "initializationInputInvalid": "Enter a valid email (up to 320 characters) and a display name up to 200 characters."
+  "initializationInputInvalid": "Enter a valid email (up to 320 characters) and a display name up to 200 characters.",
+  "notificationTitle": "Password setup notification",
+  "notificationNotApplicable": "Not initialized; no notification required",
+  "notificationPending": "Pending delivery",
+  "notificationAccepted": "Accepted by mail service",
+  "notificationPasswordReady": "A valid password exists; setup notification is unnecessary",
+  "notificationActionRequired": "Notification needs attention",
+  "notificationIndependent": "Notification delivery is independent of Tenant initialization. Resending does not initialize again or consume quota.",
+  "notificationAcceptanceLimit": "Mail service acceptance does not confirm inbox delivery.",
+  "notificationRefresh": "Refresh notification status",
+  "notificationResend": "Resend notification",
+  "notificationContinue": "Continue original resend",
+  "notificationReadFailed": "Notification status is unavailable",
+  "notificationUnknown": "Resend result awaiting confirmation",
+  "notificationUnknownHint": "Refresh authoritative status. Do not resend before the original request is confirmed. Other administrators cannot take over a pending resend."
 }

@@ -17,8 +17,43 @@ public final class PasswordSetupDeliveryGrpcService
         extends PasswordSetupServiceGrpc.PasswordSetupServiceImplBase {
     private final PasswordSetupDeliveryService deliveries;
 
-    public PasswordSetupDeliveryGrpcService(PasswordSetupDeliveryService deliveries) {
+    private final io.saasforge.iam.application.authentication.PasswordSetupNotificationQueryService queries;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public PasswordSetupDeliveryGrpcService(PasswordSetupDeliveryService deliveries,
+            io.saasforge.iam.application.authentication.PasswordSetupNotificationQueryService queries) {
+        this.queries = queries;
         this.deliveries = deliveries;
+    }
+
+    public PasswordSetupDeliveryGrpcService(PasswordSetupDeliveryService deliveries) {
+        this(deliveries, null);
+    }
+
+    @Override
+    public void getPasswordSetupNotification(
+            io.saasforge.contracts.iam.passwordsetup.v1.GetPasswordSetupNotificationRequest request,
+            StreamObserver<io.saasforge.contracts.iam.passwordsetup.v1.GetPasswordSetupNotificationResponse> observer) {
+        UUID caller = PasswordSetupDeliveryServerInterceptor.callerClientId();
+        if (caller == null) {
+            observer.onError(Status.UNAUTHENTICATED.asRuntimeException());
+            return;
+        }
+        try {
+            var state = queries.get(caller, canonicalUuidV7(request.getRequestId()), canonicalUuidV7(request.getIdentityId()));
+            var wire = io.saasforge.contracts.iam.passwordsetup.v1.PasswordSetupNotificationState.valueOf(
+                    state == io.saasforge.iam.application.authentication.PasswordSetupNotificationQueryService.State.PASSWORD_READY
+                            ? "PASSWORD_ALREADY_READY" : state.name());
+            observer.onNext(io.saasforge.contracts.iam.passwordsetup.v1.GetPasswordSetupNotificationResponse.newBuilder()
+                    .setState(wire).build());
+            observer.onCompleted();
+        } catch (PasswordSetupDeliveryRequestConflictException exception) {
+            observer.onError(Status.ALREADY_EXISTS.asRuntimeException());
+        } catch (IllegalArgumentException exception) {
+            observer.onError(Status.INVALID_ARGUMENT.asRuntimeException());
+        } catch (RuntimeException exception) {
+            observer.onError(Status.UNAVAILABLE.asRuntimeException());
+        }
     }
 
     @Override

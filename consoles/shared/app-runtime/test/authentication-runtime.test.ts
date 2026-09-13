@@ -8,6 +8,93 @@ import {
 } from '../src';
 
 describe('createAuthenticationRuntime', () => {
+  it('correlates an unknown resend by its exact original Key instead of accepting a different latest record', async () => {
+    const id = '019535d9-0000-7000-8000-000000000002';
+    const key = '019535d9-0000-7000-8000-000000000004';
+    const fetch = vi
+      .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      )
+      .mockRejectedValueOnce(new TypeError('Lost response'))
+      .mockResolvedValueOnce(
+        Response.json({
+          tenantId: id,
+          state: 'MAIL_SERVICE_ACCEPTED',
+          operationState: 'UNKNOWN',
+          canResend: false,
+          canContinue: false,
+        }),
+      );
+    const runtime = createRuntime({
+      realm: {},
+      intent: 'PLATFORM',
+      fetch,
+      createIdempotencyKey: () => key,
+    });
+    await runtime.login({ email: 'admin@example.test', password: 'secret' });
+    expect((await runtime.client.resendTenantAdministratorPasswordSetup(id)).ok).toBe(false);
+    const read = await runtime.client.getTenantAdministratorPasswordSetup(id);
+    expect(read).toMatchObject({
+      ok: true,
+      value: { operationState: 'UNKNOWN', canResend: false },
+    });
+    expect(new Headers(fetch.mock.calls[1][1]?.headers).get('Idempotency-Key')).toBe(key);
+    expect(new Headers(fetch.mock.calls[1][1]?.headers).get('Content-Type')).toBe(
+      'application/json',
+    );
+    expect(new Headers(fetch.mock.calls[1][1]?.headers).get('Authorization')).toBe('Bearer token');
+    expect(new URL(requestUrl(fetch.mock.calls[2][0])).searchParams.get('idempotencyKey')).toBe(
+      key,
+    );
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('reads and recovers a notification through its original server handle, rejecting copied handles', async () => {
+    const id = '019535d9-0000-7000-8000-000000000002';
+    const fetch = vi
+      .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          tenantId: id,
+          resendId: id,
+          state: 'ACTION_REQUIRED',
+          operationState: 'PENDING',
+          canResend: false,
+          canContinue: true,
+        }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const runtime = createRuntime({ realm: {}, intent: 'PLATFORM', fetch });
+    await runtime.login({ email: 'admin@example.test', password: 'secret' });
+    const progress = await runtime.client.getTenantAdministratorPasswordSetup(id);
+    if (!progress.ok) throw new Error('Expected notification state');
+    expect(
+      await runtime.client.recoverTenantAdministratorPasswordSetup(progress.value),
+    ).toMatchObject({ ok: true });
+    expect(fetch.mock.calls[2][0]).toEqual(
+      expect.stringContaining(`/administrator-password-setups/${id}/recovery`),
+    );
+    expect(fetch.mock.calls[2][1]?.body).toBe('{}');
+    expect(new Headers(fetch.mock.calls[2][1]?.headers).has('Idempotency-Key')).toBe(false);
+    expect(
+      await runtime.client.recoverTenantAdministratorPasswordSetup({ ...progress.value }),
+    ).toMatchObject({ ok: false, problem: { code: 'INVALID_OPERATION_HANDLE' } });
+  });
+
   it('continues a durable initialization by its server identity without retaining administrator email or inventing a new Key', async () => {
     const id = '019535d9-0000-7000-8000-000000000002';
     const initializationId = '019535d9-0000-7000-8000-000000000003';

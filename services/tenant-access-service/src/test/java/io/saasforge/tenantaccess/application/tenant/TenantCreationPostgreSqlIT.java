@@ -182,6 +182,115 @@ class TenantCreationPostgreSqlIT {
     @Autowired
     private io.saasforge.tenantaccess.application.administrator.AdministratorInitializationQueries initializationQueries;
 
+    @Autowired
+    private io.saasforge.tenantaccess.application.administrator.AdministratorPasswordSetupQueries notificationQueries;
+
+    @Test
+    void readsPasswordNotificationIndependentlyBeforeInitialization() throws Exception {
+        UUID actor = uuidV7(880);
+        var tenant = service.create(actor, uuidV7(881), "Notification status", null, null);
+        var mvc = standaloneSetup(new io.saasforge.tenantaccess.api.TenantCreationController(
+                authorization -> actor, recoverableCreation, null, null, null, tenantQueries, null,
+                new io.saasforge.tenantaccess.application.administrator.AdministratorPasswordSetupQueryService(notificationQueries,
+                        new io.saasforge.tenantaccess.application.administrator.PasswordSetupDeliveryGateway() {
+                            public void deliver(UUID requestId, UUID identityId) { throw new AssertionError("Read must not send"); }
+                            public NotificationState notification(UUID requestId, UUID identityId) { return NotificationState.PENDING; }
+                        }, null, Clock.systemUTC())))
+                .setControllerAdvice(new io.saasforge.tenantaccess.api.TenantCreationExceptionHandler()).build();
+        mvc.perform(get("/api/v1/platform/tenants/" + tenant.id() + "/administrator-password-setup"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.state").value("NOT_APPLICABLE"))
+                .andExpect(jsonPath("$.canResend").value(false))
+                .andExpect(jsonPath("$.canContinue").value(false))
+                .andExpect(jsonPath("$.idempotencyKey").doesNotExist());
+    }
+
+    @Test
+    void activatedTenantNotificationRemainsIndependentWhenMailIsPending() throws Exception {
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+        UUID actor = uuidV7(882);
+        UUID identity = uuidV7(883);
+        var tenant = service.create(actor, uuidV7(884), "Pending notification", null, null);
+        var prepared = administratorInitialization.prepare(workflow(tenant.id(), actor, uuidV7(885), "b".repeat(64)), now);
+        var claimed = administratorInitialization.claim(prepared.workflowId(), "test", now, now.plusSeconds(30)).orElseThrow();
+        var ready = administratorInitialization.completeIdentity(claimed, identity, IdentityCredentialDisposition.SETUP_ALLOWED, now);
+        var quota = administratorInitialization.completeQuotaConsumption(ready, now);
+        var activating = administratorInitialization.beginActivation(quota, now);
+        administratorInitialization.activate(activating, identity, IdentityCredentialDisposition.SETUP_ALLOWED, now);
+        var delivered = new java.util.concurrent.atomic.AtomicBoolean();
+        var requestIds = new java.util.ArrayList<UUID>();
+        var gateway = new io.saasforge.tenantaccess.application.administrator.PasswordSetupDeliveryGateway() {
+            public void deliver(UUID requestId, UUID identityId) {
+                requestIds.add(requestId);
+                if (!delivered.get()) throw new io.saasforge.tenantaccess.application.administrator.RemoteWorkflowUnavailableException(new IllegalStateException("mail unavailable"));
+            }
+            public NotificationState notification(UUID requestId, UUID identityId) {
+                return delivered.get() ? NotificationState.MAIL_SERVICE_ACCEPTED : NotificationState.PENDING;
+            }
+        };
+        var clock = Clock.fixed(now.plusSeconds(31), java.time.ZoneOffset.UTC);
+        var resends = new io.saasforge.tenantaccess.application.administrator.ResendAdministratorPasswordSetupService(
+                administratorPasswordSetups, gateway, new UuidV7Generator(clock, new java.security.SecureRandom()), clock,
+                new io.saasforge.tenantaccess.application.administrator.InitializationRecoveryPolicy(
+                        java.time.Duration.ofSeconds(10), java.time.Duration.ofSeconds(1), java.time.Duration.ofSeconds(1), 1), "notification-test");
+        var query = new io.saasforge.tenantaccess.application.administrator.AdministratorPasswordSetupQueryService(
+                notificationQueries, gateway, resends, clock);
+        assertEquals("PENDING", query.get(actor, tenant.id()).state().name());
+        assertEquals("ACTIVE", tenantQueries.get(tenant.id()).status().name());
+        var membership = initializationQueries.get(tenant.id()).initialMembershipId();
+        assertThrows(io.saasforge.tenantaccess.application.administrator.AdministratorPasswordSetupException.class,
+                () -> resends.resend(actor, uuidV7(886), tenant.id(), null));
+        // 另一管理员可从旧页面并发提交；它不能遮蔽原操作者的未决记录。
+        administratorPasswordSetups.prepare(passwordSetupWorkflow(tenant.id(), uuidV7(888), uuidV7(889),
+                uuidV7(878), uuidV7(879), now.plusSeconds(32)), now.plusSeconds(32));
+        var progress = query.get(actor, tenant.id());
+        assertEquals("UNKNOWN", query.get(actor, tenant.id(), uuidV7(877), null).operationState().name());
+        assertFalse(query.get(actor, tenant.id(), uuidV7(877), null).canResend());
+        assertEquals("PENDING", progress.operationState().name());
+        assertEquals("PENDING", progress.state().name());
+        assertTrue(progress.canContinue());
+        assertFalse(progress.canResend());
+        assertFalse(query.get(uuidV7(887), tenant.id()).canContinue());
+        assertEquals(null, query.get(uuidV7(887), tenant.id()).resendId());
+        var denied = assertThrows(io.saasforge.tenantaccess.application.administrator.AdministratorPasswordSetupException.class,
+                () -> query.recover(uuidV7(887), tenant.id(), progress.resendId(), null));
+        assertEquals("PASSWORD_SETUP_RESEND_NOT_FOUND", denied.code());
+        var currentActor = new java.util.concurrent.atomic.AtomicReference<UUID>(actor);
+        var mvc = standaloneSetup(new io.saasforge.tenantaccess.api.TenantCreationController(
+                authorization -> {
+                    if (currentActor.get() == null) throw new io.saasforge.sdk.auth.PlatformAuthorizationDeniedException();
+                    return currentActor.get();
+                }, recoverableCreation, null, resends, null, tenantQueries, null, query))
+                .setControllerAdvice(new io.saasforge.tenantaccess.api.TenantCreationExceptionHandler()).build();
+        String readPath = "/api/v1/platform/tenants/" + tenant.id() + "/administrator-password-setup";
+        String recoveryPath = "/api/v1/platform/tenants/" + tenant.id() + "/administrator-password-setups/" + progress.resendId() + "/recovery";
+        currentActor.set(uuidV7(887));
+        mvc.perform(get(readPath)).andExpect(status().isOk()).andExpect(jsonPath("$.canContinue").value(false))
+                .andExpect(jsonPath("$.resendId").doesNotExist());
+        mvc.perform(post(recoveryPath).contentType("application/json").content("{}")).andExpect(status().isNotFound());
+        currentActor.set(null);
+        mvc.perform(get(readPath)).andExpect(status().isForbidden());
+        mvc.perform(post(recoveryPath).contentType("application/json").content("{}")).andExpect(status().isForbidden());
+        currentActor.set(actor);
+        delivered.set(true);
+        mvc.perform(post(recoveryPath).contentType("application/json").content("{}")).andExpect(status().isNoContent());
+        query.recover(actor, tenant.id(), progress.resendId(), null);
+        assertEquals(2, requestIds.size());
+        assertEquals(requestIds.get(0), requestIds.get(1));
+        assertEquals("MAIL_SERVICE_ACCEPTED", query.get(actor, tenant.id()).state().name());
+        assertEquals("ACTIVE", tenantQueries.get(tenant.id()).status().name());
+        assertEquals(membership, initializationQueries.get(tenant.id()).initialMembershipId());
+        assertEquals("COMPLETED", query.get(actor, tenant.id(), uuidV7(886), null).operationState().name());
+        assertEquals("UNKNOWN", query.get(uuidV7(887), tenant.id(), uuidV7(886), null).operationState().name());
+        assertFalse(query.get(actor, tenant.id()).canResend());
+        var expired = new io.saasforge.tenantaccess.application.administrator.AdministratorPasswordSetupQueryService(
+                notificationQueries, gateway, resends, Clock.fixed(now.plusSeconds(31 + 86400), java.time.ZoneOffset.UTC));
+        assertThrows(io.saasforge.tenantaccess.application.administrator.AdministratorPasswordSetupException.class,
+                () -> expired.recover(actor, tenant.id(), progress.resendId(), null));
+        assertEquals(2, requestIds.size());
+    }
+
     @Test
     void exposesInitializationBusinessProgressWithoutRecoveryMaterials() throws Exception {
         UUID actor = uuidV7(890);
@@ -1258,7 +1367,7 @@ class TenantCreationPostgreSqlIT {
     @MapperScan(
             basePackages = "io.saasforge.tenantaccess.infrastructure.persistence.mapper",
             sqlSessionFactoryRef = "tenantAccessSqlSessionFactory")
-    @Import({io.saasforge.tenantaccess.infrastructure.persistence.MyBatisAdministratorInitializationQueries.class, MyBatisTenantRepository.class, MyBatisTenantCreationIdempotency.class,
+    @Import({io.saasforge.tenantaccess.infrastructure.persistence.MyBatisAdministratorPasswordSetupQueries.class, io.saasforge.tenantaccess.infrastructure.persistence.MyBatisAdministratorInitializationQueries.class, MyBatisTenantRepository.class, MyBatisTenantCreationIdempotency.class,
             MyBatisTenantAccessOutboxEventRepository.class,
             MyBatisTenantAdministratorInitializationRepository.class,
             MyBatisAdministratorPasswordSetupRepository.class,

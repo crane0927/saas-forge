@@ -116,7 +116,7 @@ public class TenantCreationExceptionHandler {
     ResponseEntity<Problem> administratorPasswordSetupFailure(
             AdministratorPasswordSetupException exception, HttpServletRequest request) {
         HttpStatus status = switch (exception.code()) {
-            case "TENANT_NOT_FOUND" -> HttpStatus.NOT_FOUND;
+            case "TENANT_NOT_FOUND", "PASSWORD_SETUP_RESEND_NOT_FOUND" -> HttpStatus.NOT_FOUND;
             case "PASSWORD_SETUP_DELIVERY_PENDING" -> HttpStatus.SERVICE_UNAVAILABLE;
             default -> HttpStatus.CONFLICT;
         };

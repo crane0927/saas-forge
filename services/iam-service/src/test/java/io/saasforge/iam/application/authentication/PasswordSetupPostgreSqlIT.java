@@ -97,6 +97,30 @@ class PasswordSetupPostgreSqlIT {
                 .migrate();
     }
 
+    @Autowired
+    private io.saasforge.iam.domain.identity.PasswordSetupDeliveryRepository deliveries;
+
+    @Autowired
+    private io.saasforge.iam.domain.client.OAuthClientRepository clients;
+
+    @Test
+    void notificationReadDistinguishesPendingAndSmtpAcceptanceWithoutSending() {
+        UUID identityId = createIdentity("notification-read@example.test");
+        clients.createWithId(io.saasforge.iam.domain.client.OAuthClient.register("notification-query-test", io.saasforge.iam.application.bootstrap.ReservedServiceClient.TENANT_ACCESS.allowedScopes(), NOW).identifiedBy(KEY_A),
+                io.saasforge.iam.domain.shared.Sha256Digest.of(new byte[32]), NOW);
+        var query = new PasswordSetupNotificationQueryService(deliveries, identities, Clock.fixed(NOW, ZoneOffset.UTC));
+        assertEquals(PasswordSetupNotificationQueryService.State.NOT_REQUESTED, query.get(KEY_A, KEY_B, identityId));
+        var challenge = service.issueChallenge(identityId);
+        deliveries.savePending(KEY_A, KEY_B, identityId, challenge.challengeId(), challenge.expiresAt());
+        assertEquals(PasswordSetupNotificationQueryService.State.PENDING, query.get(KEY_A, KEY_B, identityId));
+        deliveries.markDelivered(KEY_A, KEY_B, challenge.challengeId(), NOW);
+        assertEquals(PasswordSetupNotificationQueryService.State.MAIL_SERVICE_ACCEPTED, query.get(KEY_A, KEY_B, identityId));
+        service.establishPassword(KEY_B, challenge.value(), "Notification-Password-2026", null);
+        assertEquals(PasswordSetupNotificationQueryService.State.PASSWORD_READY, query.get(KEY_A, KEY_B, identityId));
+        identities.invalidate(identities.findCredentials(identityId).get(0).id(), NOW);
+        assertEquals(PasswordSetupNotificationQueryService.State.RECOVERY_REQUIRED, query.get(KEY_A, KEY_B, identityId));
+    }
+
     @Test
     void storesOnlyDigestAndAtomicallyReplacesTheOpenChallenge() throws Exception {
         UUID identityId = createIdentity("replace@example.test");

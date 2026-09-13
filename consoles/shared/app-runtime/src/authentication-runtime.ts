@@ -7,6 +7,7 @@ import {
   PlatformEntitlementBootstrapApi,
   type Subscription,
   type TenantSubscription,
+  type TenantAdministratorPasswordSetup,
   type TenantAdministratorInitialization,
   type AdministratorInitializationRequest,
   type SubscriptionOperationRecovery,
@@ -210,6 +211,7 @@ export interface CreateOAuthClientInput {
 }
 
 export type {
+  TenantAdministratorPasswordSetup,
   TenantAdministratorInitialization,
   Subscription,
   TenantSubscription,
@@ -275,6 +277,19 @@ export interface SubscriptionOperationPage {
 }
 
 export interface ConsoleApiClient {
+  getTenantAdministratorPasswordSetup(
+    tenantId: string,
+    signal?: AbortSignal,
+  ): Promise<ConsoleApiResult<TenantAdministratorPasswordSetup>>;
+  resendTenantAdministratorPasswordSetup(
+    tenantId: string,
+    signal?: AbortSignal,
+  ): Promise<IdempotentConsoleApiResult<void>>;
+  recoverTenantAdministratorPasswordSetup(
+    progress: TenantAdministratorPasswordSetup,
+    signal?: AbortSignal,
+  ): Promise<ConsoleApiResult<void>>;
+
   getTenantAdministratorInitialization(
     tenantId: string,
     signal?: AbortSignal,
@@ -984,12 +999,85 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
     }
   }
 
+  const notificationSelectors = new Map<
+    string,
+    { idempotencyKey?: string; resendId?: string; epoch: number }
+  >();
+  const notificationHandles = new WeakMap<
+    TenantAdministratorPasswordSetup,
+    { tenantId: string; resendId: string; epoch: number }
+  >();
+
   const initializationHandles = new WeakMap<
     TenantAdministratorInitialization,
     { tenantId: string; initializationId: string; epoch: number }
   >();
 
   const client: ConsoleApiClient = {
+    getTenantAdministratorPasswordSetup: (tenantId, signal) =>
+      executeRead(async () => {
+        const selected = notificationSelectors.get(tenantId);
+        const selector = selected?.epoch === sessionEpoch ? selected : undefined;
+        const value = await tenantsApi.getTenantAdministratorPasswordSetup(
+          { tenantId, idempotencyKey: selector?.idempotencyKey, resendId: selector?.resendId },
+          { signal },
+        );
+        if (
+          value.tenantId !== tenantId ||
+          ![
+            'NOT_APPLICABLE',
+            'PENDING',
+            'MAIL_SERVICE_ACCEPTED',
+            'PASSWORD_READY',
+            'ACTION_REQUIRED',
+          ].includes(value.state) ||
+          !['NONE', 'PENDING', 'COMPLETED', 'UNKNOWN'].includes(value.operationState) ||
+          typeof value.canResend !== 'boolean' ||
+          typeof value.canContinue !== 'boolean' ||
+          (value.resendId !== undefined && !UUID_V7.test(value.resendId)) ||
+          (value.canContinue && (value.resendId === undefined || value.canResend))
+        ) {
+          throw new Error('INVALID_SERVICE_RESPONSE');
+        }
+        if (value.canContinue && value.resendId !== undefined)
+          notificationHandles.set(value, {
+            tenantId,
+            resendId: value.resendId,
+            epoch: sessionEpoch,
+          });
+        return value;
+      }, signal),
+    resendTenantAdministratorPasswordSetup: (tenantId, signal) =>
+      executeMutation(undefined, signal, (idempotencyKey) => {
+        notificationSelectors.set(tenantId, { idempotencyKey, epoch: sessionEpoch });
+        return tenantsApi.resendTenantAdministratorPasswordSetup(
+          { tenantId, idempotencyKey },
+          // 无请求体的正式 operation 仍须满足浏览器写请求的 JSON 协议边界。
+          ({ init }) => {
+            const headers = new Headers(init.headers);
+            headers.set('Content-Type', 'application/json');
+            return Promise.resolve({ ...init, signal, headers });
+          },
+        );
+      }),
+    recoverTenantAdministratorPasswordSetup: (progress, signal) => {
+      const material = notificationHandles.get(progress);
+      if (material === undefined || material.epoch !== sessionEpoch)
+        return Promise.resolve({ ok: false, problem: { code: 'INVALID_OPERATION_HANDLE' } });
+      notificationSelectors.set(material.tenantId, {
+        resendId: material.resendId,
+        epoch: material.epoch,
+      });
+      return executeRead(
+        () =>
+          tenantsApi.recoverTenantAdministratorPasswordSetup(
+            { tenantId: material.tenantId, resendId: material.resendId, body: {} },
+            { signal },
+          ),
+        signal,
+      );
+    },
+
     getTenantAdministratorInitialization: (tenantId, signal) =>
       executeRead(async () => {
         const value = await tenantsApi.getTenantAdministratorInitialization(

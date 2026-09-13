@@ -144,7 +144,7 @@ public class MyBatisAdministratorPasswordSetupRepository
                 TenantAccessTime.asOffsetDateTime(workflow.recoveryExhaustedAt()), workflow.lastFailure());
     }
 
-    private static AdministratorPasswordSetupWorkflow fromRow(
+    static AdministratorPasswordSetupWorkflow fromRow(
             AdministratorPasswordSetupWorkflowRow row) {
         return new AdministratorPasswordSetupWorkflow(
                 row.workflowId(), row.tenantId(), row.actorIdentityId(), row.idempotencyKey(),

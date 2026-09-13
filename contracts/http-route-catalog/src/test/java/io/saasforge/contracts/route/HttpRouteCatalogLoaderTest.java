@@ -17,8 +17,8 @@ class HttpRouteCatalogLoaderTest {
                 .count();
 
         assertEquals(HttpRouteCatalogLoader.SUPPORTED_SCHEMA_VERSION, catalog.schemaVersion());
-        assertEquals(48 + acceptanceRoutes, catalog.routes().size());
-        for (String operation : java.util.List.of("getTenantAdministratorInitialization", "recoverTenantAdministratorInitialization")) {
+        assertEquals(50 + acceptanceRoutes, catalog.routes().size());
+        for (String operation : java.util.List.of("getTenantAdministratorPasswordSetup", "recoverTenantAdministratorPasswordSetup", "getTenantAdministratorInitialization", "recoverTenantAdministratorInitialization")) {
             var route = catalog.routes().stream().filter(value -> value.operationId().equals(operation)).findFirst().orElseThrow();
             assertEquals("tenant-access-service", route.serviceId());
             assertEquals(HttpRouteCatalog.CredentialRequirement.USER_REQUIRED, route.credentialRequirement());
