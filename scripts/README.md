@@ -1,11 +1,13 @@
 # 脚本
 
-脚本只自动化已有的明确流程。
+脚本只自动化已有的明确流程。日常应用启停使用[原生开发流程](../docs/native-local-development.md)，局部检查使用[分层验证](../docs/local-verification.md)；下列托管、replace/restore 和完整矩阵保留为集成验收工具。
+
+- `local-https-development.sh <start|status|stop> edge`：独立 HTTPS 入口生命周期，不启动或停止原生 Console/后端；`setup|hosts|trust-ca|doctor` 用于独立准备与诊断。
 
 - `validate-nacos-config.sh`：校验四个环境的 Nacos 非敏感配置清单，或只校验传入的单个环境。
 - `validate-local-compose-jwt.sh`：校验本地 Compose 是否向 IAM 注入 JWT 配置、只读挂载私钥，并在 `.env.example` 声明初始化变量。
 - `initialize-local-iam-signing-key.sh`：显式生成 Git 忽略的本地 PKCS#8 RSA 私钥，并在迁移后的 IAM 数据库中初始化与其匹配的唯一 ACTIVE Signing Key 元数据。
-- `local-development.sh frontend <start|status|stop> platform`：Issue #149 的 Platform 显式受管生命周期；旧无参数 `frontend` 不再兼容。其余 `setup|doctor|status|replace|restore` 命令保持既有五服务开发入口职责。
+- `local-development.sh frontend <start|status|stop> platform`：Issue #149 的 Platform 显式受管生命周期；旧无参数 `frontend` 不再兼容。其余 `setup|doctor|status|replace|restore` 命令保持既有五服务集成验收职责。
 - `local-https-development.sh <start|status|stop> platform`：统一入口复用的受控 HTTPS 底层命令；另保留 `setup|hosts|trust-ca|doctor` 准备与诊断命令。脚本不会安装前端依赖、生成 API Client、修改系统配置或启动后端。
 - `local-service-replacement.sh <doctor|replace|status|restore> <gateway|iam-service|tenant-access-service|entitlement-service|audit-service>`：统一入口复用的单目标生命周期命令。在不构建应用镜像、不删除卷的前提下，受控切换一个唯一健康的容器服务和对应本机 JVM；只读取受限 Secret，输出不包含其值，`replace` 失败时自动恢复选定容器。
 - `verify-iam-local-replacement-e2e.sh`：在已运行的本地 Compose 开发栈中执行 IAM 本机替换、真实浏览器 Refresh 和容器恢复验收；结束时恢复标准拓扑并核对所有应用镜像标识未变化。

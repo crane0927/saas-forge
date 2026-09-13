@@ -1,5 +1,7 @@
 # Minimal Local Docker Compose
 
+For daily application development, start with the [native development guide](../../docs/native-local-development.md): foreground `pnpm run dev` and IDE Run/Debug. Full Compose and replacement tools below are for integration acceptance, demos and reproduction. Infrastructure may be prepared independently; full application orchestration is not required for daily startup.
+
 [简体中文](README.md)
 
 This directory provides the minimum saas-forge local runtime topology for development, demonstrations, and end-to-end testing. The default `compose.yaml` starts only the backend and infrastructure; it does not include either Console or a browser HTTPS entry point.

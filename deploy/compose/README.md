@@ -1,5 +1,7 @@
 # 最小本地 Docker Compose
 
+日常应用开发从[原生开发总入口](../../docs/native-local-development.md)开始，使用前台 `pnpm run dev` 与 IDE Run/Debug。下列完整 Compose 与替换工具用于集成验收、演示和复现；依赖可独立准备，完整应用编排不是日常启动前提。
+
 [English](README-en.md)
 
 本目录提供 saas-forge 的最小本地运行拓扑，供开发、演示和端到端测试使用。默认 `compose.yaml` 只启动后端及基础设施，不包含 Platform Console、Tenant Console 或浏览器 HTTPS 入口。

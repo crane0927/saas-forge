@@ -43,7 +43,13 @@ Tenant ── Subscription Version
 
 当前仓库处于分阶段实现期：Maven 多模块构建、Gateway、四个领域服务、SDK/Starter、契约目录和最小 Docker Compose 运行拓扑均已建立；IAM、Tenant Access 与 Entitlement 已落地部分领域切片。通用 Tenant RBAC、Feature 运行时闭环和 Audit 业务能力仍未完整实现，领域定义不代表对应功能已经全部交付。
 
-## 构建
+## 本地开发
+
+从[原生本地开发总入口](docs/native-local-development.md)完成一次性依赖、证书、域名和个人配置准备。两个 Console 分别在应用目录执行 `pnpm run dev`，五个后端由 IDE 直接 Run/Debug；日志、停止和重启由各自终端或 IDE 管理，跨服务联调使用 Nacos 服务发现。
+
+普通修改按[本地分层验证](docs/local-verification.md)选择受影响范围；完整门禁和本机复现入口见下文。组合验收的已完成证据与缺口见 [Issue #169](docs/acceptance/issue-169-native-development.md)。
+
+## 完整构建与验收
 
 当前开发阶段仅支持 JDK 17 和桌面 Chrome 当前稳定版；Chromium 用于日常功能与视觉测试。全仓库验证还要求 Node 24.14.1、pnpm 11.22.0，并先在 `consoles` 完成冻结 lockfile 安装；Maven 不安装前端工具或依赖。
 
@@ -67,9 +73,9 @@ cd ..
 - examples/：官方示例的预留位置。
 - deploy/：Compose、Helm 与 systemd 交付物的预留位置。
 
-## 本地 Compose
+## Compose 集成验收
 
-最小运行拓扑包含 Gateway、四个领域服务、PostgreSQL、Redis、Kafka、OpenTelemetry Collector 与四个 Flyway 迁移任务；对象存储将在第 6 阶段加入。使用方式见 [deploy/README.md](deploy/README.md)。
+完整 Compose 用于演示、集成验收和专项复现；日常应用启停使用上述原生流程。最小运行拓扑包含 Gateway、四个领域服务、PostgreSQL、Redis、Kafka、OpenTelemetry Collector 与四个 Flyway 迁移任务；对象存储将在第 6 阶段加入。使用方式见 [deploy/README.md](deploy/README.md)。
 
 详细的产品、领域、架构、安全与部署约束见 docs/。
 

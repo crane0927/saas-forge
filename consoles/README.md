@@ -15,23 +15,23 @@ SaaS Forge 的前端工作区：两个独立部署的 React 控制台，共用�
 
 ### 环境要求
 
-| 工具                | 要求                          | 用途                             |
-| ------------------- | ----------------------------- | -------------------------------- |
-| Node.js             | `24.14.1`                     | 前端开发与验证                   |
-| pnpm                | `11.22.0`，通过 Corepack 启用 | 唯一工作区包管理器               |
-| JDK                 | `17`；仓库 CI 同时验证 `21`   | Maven 生成 TypeScript API Client |
-| Playwright Chromium | 安装后运行浏览器门禁          | `verify` 的必需依赖              |
+| 工具                | 要求                                 | 用途                             |
+| ------------------- | ------------------------------------ | -------------------------------- |
+| Node.js             | `24.14.1`                            | 前端开发与验证                   |
+| pnpm                | `11.22.0`，通过 Corepack 启用        | 唯一工作区包管理器               |
+| JDK                 | `17`；产品浏览器为桌面 Chrome 稳定版 | Maven 生成 TypeScript API Client |
+| Playwright Chromium | 安装后运行浏览器门禁                 | `verify` 的必需依赖              |
 
 本目录是唯一的 pnpm workspace 根。依赖声明使用 [默认 Catalog](pnpm-workspace.yaml)，解析版本由 `pnpm-lock.yaml` 锁定；后端构建使用仓库自带的 Maven Wrapper，无需另装 Maven。
 
-从仓库根目录准备依赖并完成前端验证：
+从仓库根目录完成首次依赖和正式 Client 准备：
 
 ```bash
 cd consoles
 corepack enable
 pnpm install --frozen-lockfile
 pnpm exec playwright install chromium
-pnpm run verify
+pnpm run generate:api
 ```
 
 Linux CI 使用 `pnpm exec playwright install --with-deps chromium` 准备浏览器系统依赖。首次安装及 API Client 生成需要能够访问相应的依赖仓库。
@@ -48,16 +48,24 @@ pnpm run dev:platform
 pnpm run dev:tenant
 ```
 
-两个命令都会先生成 API Client，再启动对应的 Vite 服务器，访问地址以终端输出为准。仅查看共享组件时，可启动 Design System 展示册：
+两个命令只转发到应用目录的 `pnpm run dev`；启动前校验 Client 是否完整且与正式输入一致，不调用 Maven。契约变化后重新执行 `pnpm run generate:api`。日志在当前终端，使用 Ctrl+C 独立停止。浏览器访问终端标明的受信 HTTPS 入口。仅查看共享组件时，可启动 Design System 展示册：
 
 ```bash
 pnpm --filter @saas-forge/design-system run dev:showcase
 ```
 
 > [!IMPORTANT]
-> 开发服务器只提供前端，不启动 Gateway、IAM 或数据库。它通过 `/runtime-config.json` 提供固定的 `https://api.saasforge.test` API Origin。真实认证联调还需要受信 HTTPS、正确的域名解析、Gateway 安全配置与已准备的账户；默认 HTTP localhost 页面不能代替受控浏览器入口。环境准备见 [Compose 部署说明](../deploy/compose/README.md)。
+> 开发服务器只提供前端，不启动 Gateway、IAM 或数据库。它通过 `/runtime-config.json` 提供固定的 `https://api.saasforge.test` API Origin。真实认证联调还需要受信 HTTPS、正确的域名解析、Gateway 安全配置与已准备的账户；默认 HTTP localhost 页面不能代替受控浏览器入口。环境准备见[原生开发总入口](../docs/native-local-development.md)和 [Console 与独立 HTTPS Edge](../docs/native-console-development.md)。
 
-### 受控 HTTPS Console 开发入口
+### 原生 HTTPS 开发
+
+按 [Console 原生说明](../docs/native-console-development.md)一次性准备证书、hosts 和 CA 信任，独立执行 `bash scripts/local-https-development.sh start edge`。随后分别在 `platform-console/`、`tenant-console-shell/` 执行 `pnpm run dev`；浏览器访问 `https://platform.saasforge.test`、`https://console.saasforge.test`，HMR 使用对应 WSS。不要用旧托管状态判断原生进程。
+
+日常验证见[分层验证说明](../docs/local-verification.md)。首次安装浏览器运行时与完整前端 `pnpm run verify` 均属于相应验证的准备或执行，不是每次启动的前置步骤。
+
+## 旧托管工具的集成验收与恢复
+
+以下保留既有托管工具的专项用法，仅用于集成验收与复现，不作为日常启动入口；不应与同端口原生进程同时运行。
 
 在 macOS Docker Desktop 上，从仓库根目录执行一次性准备，再显式选择 Console：
 
@@ -80,7 +88,7 @@ bash scripts/local-development.sh frontend stop all
 
 `frontend` 必须提供 `start|status|stop` 和 `platform|tenant|all`。Platform Vite 固定监听 `127.0.0.1:5173`，Tenant 固定监听 `127.0.0.1:5174`，均启用 strict port，分别只接受对应受控 Host，HMR 使用对应 HTTPS Origin 的 WSS 443。Edge 通过 `host.docker.internal` 访问两个回环 Vite，将 API 转发到当前 Gateway，并保留浏览器安全头。未知 Host 被拒绝；不得为解决 Docker Desktop 连通性问题将 Vite 改为所有网络接口。
 
-启动使用 Node `24.14.1`、pnpm `11.22.0` 和既有依赖，复用健康兼容的 Edge。日常启停不生成证书、不修改 hosts/信任、不安装依赖、不生成 API Client，也不启动后端或重置账户。已有不兼容 Edge 占用 443 时会阻止启动；升级旧 Edge 前先停止两个 Console，再重新启动。
+启动使用 Node `24.14.1`、pnpm `11.22.0` 和既有依赖，复用健康兼容的 Edge。该工具的启停不生成证书、不修改 hosts/信任、不安装依赖、不生成 API Client，也不启动后端或重置账户。已有不兼容 Edge 占用 443 时会阻止启动；升级旧 Edge 前先停止两个 Console，再重新启动。
 
 `start all` 在启动前捕获两个 Console 与 Edge 状态并预检；两个正式 HTTPS Host 都就绪后才成功。已有健康进程与兼容 Edge 会被复用，重复启动不重启资源；任一步骤失败只回收本次调用新启动的进程与 Edge。`stop all` 先核验两个目标，再停止受管 Vite 和当前项目 Edge；未知 PID、端口归属或 Edge 配置错误会阻塞变更。
 
@@ -134,7 +142,7 @@ pnpm --filter @saas-forge/platform-console run dev
 pnpm --filter @saas-forge/tenant-console-shell run dev
 ```
 
-包级命令不生成 API Client；工作区 `dev:platform`/`dev:tenant` 则先生成再启动。两者均不属于受管 PID 生命周期，应由原终端 Ctrl-C 结束；HTTP localhost 显示页面只能说明前端可渲染，不能作为登录、Cookie、CSRF 或 TLS 安全验收证据。
+包级命令与工作区 `dev:platform`/`dev:tenant` 均只校验已生成的 API Client，不调用 Maven。两者均不属于受管 PID 生命周期，应由原终端 Ctrl-C 结束；HTTP localhost 显示页面只能说明前端可渲染，不能作为登录、Cookie、CSRF 或 TLS 安全验收证据。
 
 #### 双 Console 产品路径验收与恢复
 

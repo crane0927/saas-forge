@@ -2,11 +2,13 @@
 
 本目录保存 saas-forge 的部署交付物：本地 Docker Compose 运行环境、Nacos 配置清单、生产 Helm 接入契约和虚拟机 `systemd` 预留目录。部署拓扑与安全约束见 [部署设计](../docs/14-deployment.md)。
 
+日常应用开发从[原生开发总入口](../docs/native-local-development.md)开始；本目录的完整 Compose 用于演示、集成验收或专项复现。
+
 ## 选择交付物
 
 | 场景 | 使用的目录或脚本 | 说明 |
 | --- | --- | --- |
-| 本地开发、演示或端到端测试 | [`compose/`](compose/README.md) | 启动 Gateway、四个领域服务及本地依赖；不用于生产。 |
+| 演示、集成验收或端到端测试 | [`compose/`](compose/README.md) | 启动 Gateway、四个领域服务及本地依赖；不用于生产。 |
 | 修改、校验或发布 Nacos 非敏感配置 | [`nacos/`](nacos/README.md) 与仓库根目录的 `scripts/*nacos*.sh` | 配置清单按环境受 Git 管理；生产发布只能由受保护的 GitHub Actions 工作流执行。 |
 | 生产 Kubernetes 接入外部 Nacos | [`helm/`](helm/README.md) | 仅提供应用 Chart 与外部 Nacos 的接口契约，不包含完整应用 Chart 或 Nacos Server。 |
 | 虚拟机裸部署 | [`systemd/`](systemd/README.md) | 预留独立服务单元与受限账号配置示例。 |
@@ -33,7 +35,7 @@ docker compose logs nacos-init
 docker compose logs postgres
 ```
 
-日常停止使用 `docker compose down`。只有需要重新初始化 PostgreSQL、Redis 和 Kafka 的本地数据时，才使用 `docker compose down -v`；该命令会删除这三个命名卷。
+该完整环境停止使用 `docker compose down`。只有需要重新初始化 PostgreSQL、Redis 和 Kafka 的本地数据时，才使用 `docker compose down -v`；该命令会删除这三个命名卷。
 
 所有宿主机端口仅绑定 `127.0.0.1`。完整组件、端口、环境变量和故障说明见 [`compose/README.md`](compose/README.md)。
 
