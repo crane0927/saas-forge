@@ -144,7 +144,7 @@ flowchart TD
 
 ### 2. 身份与租户最小闭环
 
-「Console 交互」前三项的已确认范围、最小额度新规则、历史兼容和操作恢复设计见 [Platform Console 身份与租户初始化闭环](30-platform-console-tenant-initialization.md)。该设计尚待实现和验收，不据此勾选以下事项。
+「Console 交互」前三项的已确认范围、最小额度新规则、历史兼容和操作恢复设计见 [Platform Console 身份与租户初始化闭环](30-platform-console-tenant-initialization.md)。前三项已完成实现与验收；2026-09-13 汇总核对见 [Issue #170 验收记录](acceptance/issue-170-console-prd.md)。后续 Console 条目仍按各自范围验收。
 
 **领域与服务**
 
@@ -160,17 +160,13 @@ flowchart TD
 
 **Console 交互**
 
-- [ ] 补齐页面刷新和浏览器重启所需的最小权威读取契约，包括 Current Session、Accessible Memberships，以及本阶段 Quota Definition、Plan、Tenant、Subscription 和 OAuth Client 的必要列表/详情；只增加资源化最小读模型，不前移后续完整 CRUD。
-  - #178 已实现 OAuth Client 正式列表、详情页面和共享 Runtime 读取；本机完整 Maven/workspace、Fresh Compose 真实产品 40/40 及 Chrome 浏览器门禁通过，远端当前提交 CI 未执行，Issue 保持打开。见 [验收记录](acceptance/issue-178-oauth-client-reads.md)。
-- [ ] Platform Console 完成“登录 → 首次密码修改 → Refresh → Logout”，并显示稳定的登录保护、凭据错误、会话失效和恢复反馈。
-  - Issue #171 已补充 Current Session 正式读取、共享 Client 和双语页面，复用既有认证 Runtime；原生环境真实 HTTPS 当前身份、刷新、浏览器重启及双 Console 安全验收通过。首次改密与 Fresh Compose Chrome 产品测试 33/33 及浏览器门禁通过；本阶段仍有其他验收，本项保持未勾选，见 [验收记录](acceptance/issue-171-current-session.md)。
-- [ ] Platform Console 完成“Quota Definition/Plan → Tenant → Subscription → Tenant Administrator 初始化”产品路径，读取结果必须来自真实服务权威状态。
-  - Issue #177 已补充独立密码设置通知权威读取、重发和原操作者恢复；当前验证进度见[验证记录](acceptance/issue-177-password-setup-notification.md)，本阶段总项仍保持未勾选。
-  - Issue #176 已补充初始化业务进度、原发起人恢复、Tenant 详情入口与独立 Quota 回读；完整本地后端、前端与真实 Chrome/Fresh 产品验证通过，远端 CI 与 Issue 关闭尚未完成，本项保持未勾选，见[验证记录](acceptance/issue-176-administrator-initialization.md)。
-  - Issue #175 已实现 Tenant 详情的首个 Subscription 创建、权威有效期/额度读取及原操作者持久恢复；完整验收结果见 [验收记录](acceptance/issue-175-subscription.md)。本阶段初始化等剩余范围保持未勾选。
-  - Issue #172 已实现 Tenant 列表/详情/创建和原操作者服务端恢复；前端完整门禁、后端测试及质量门禁复验通过，Fresh Compose 产品测试 34/34 与重置后 Chrome 浏览器门禁通过。当前子项验收完成，不代表父规格其他业务闭环完成，详见含关闭前复核与历史失败的[验收记录](acceptance/issue-172-tenant-creation-recovery.md)。
-  - Issue #173 已完成 Quota Definition 正式读取、创建/激活恢复及独立页面；前后端门禁通过，真实 Chrome/Fresh Compose 产品 35/35 通过，原生环境 V4→V5 升级及操作记录读取也已复核，交付状态见[验收记录](acceptance/issue-173-quota-definition-recovery.md)。
-  - Issue #174 已实现 Plan 正式读取、创建/激活恢复、独立页面和新授予最小额度 1；保留历史零额度及稳定响应。前后端完整门禁、迁移兼容、生命周期 Fresh Compose 13/13、真实 Chrome 产品 36/36 及重置后浏览器门禁通过，本地 V6 升级后操作记录读取也已确认正常，不勾选父项，详见[验收记录](acceptance/issue-174-plan-management.md)。
+- [x] 补齐页面刷新和浏览器重启所需的最小权威读取契约，包括 Current Session、Accessible Memberships，以及本阶段 Quota Definition、Plan、Tenant、Subscription 和 OAuth Client 的必要列表/详情；只增加资源化最小读模型，不前移后续完整 CRUD。
+  - #171～#178 均已关闭；资源读取、授权、筛选/游标、原操作者恢复及 OAuth Client 非敏感详情已有对应验收。见 [PRD 汇总核对](acceptance/issue-170-console-prd.md)。
+- [x] Platform Console 完成“登录 → 首次密码修改 → Refresh → Logout”，并显示稳定的登录保护、凭据错误、会话失效和恢复反馈。
+  - #171 的原生 Chrome、Fresh Compose、IAM HTTP 与共享 Runtime 证据覆盖认证及恢复；最新提交 CI 再次通过完整认证产品路径。
+- [x] Platform Console 完成“Quota Definition/Plan → Tenant → Subscription → Tenant Administrator 初始化”产品路径，读取结果必须来自真实服务权威状态。
+  - #172～#177 完成最小权益、历史零额度兼容、Tenant/Subscription、管理员初始化及独立通知读取/重发；真实 Quota 消费、补偿、恢复和拒绝均有证据。
+  - 验证提交 `ed9b49dbb6bad52d9d11b8a3c88df1c617d9f408` 的 [Verify CI](https://github.com/crane0927/saas-forge/actions/runs/34747247761) 三项门禁全部成功；下载产物确认同 SHA、dirty=false、Chrome/Fresh 全阶段通过。本次仅汇总已有验收，不表示重新运行本机完整环境，也不代表 #165 或整个第 2 阶段完成。
 - [ ] Tenant Console 完成“Password Setup → Tenant Administrator 登录 → Accessible Membership 选择 → Tenant Context Switch”，刷新页面后从权威状态恢复当前 Session 与资源上下文。
 - [ ] Platform Console 完成 Tenant Suspension、显式恢复和恢复失败处理；Tenant Console 可观察旧 Token 被拒绝、Session 失效及重新登录后的恢复结果。
 - [ ] Platform Console 完成 OAuth Client 创建、Secret 一次展示、结果不确定恢复、重叠轮换和吊销；Secret 不得进入浏览器持久存储、日志或重复读取接口。

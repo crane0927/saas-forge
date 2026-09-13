@@ -2,15 +2,15 @@
 
 ## 状态与范围
 
-2026-09-11 设计访谈 Q1～Q16 已确认。本文是待实现规格，不是验收通过记录；本次只整理文档，不修改契约、代码或数据库，也不关闭 Issue #165。
+2026-09-11 设计访谈 Q1～Q16 已确认。2026-09-13 已核对 #171～#178 的实现与验收，本文规定的前三项范围完成；逐项证据见 [Issue #170 验收记录](acceptance/issue-170-console-prd.md)。不代表 Issue #165 或整个第 2 阶段完成。
 
 完整覆盖 [MVP 开发计划](16-mvp-development-plan.md)第 2 阶段「Console 交互」前三项：必要权威读取、Platform 登录与会话管理，以及 Quota Definition/Plan → Tenant → Subscription → Tenant Administrator 初始化的产品路径。按此链路分批交付，不以只解除 #165 阻塞代替完整范围。
 
 不扩展后续 OAuth Client 完整管理、Tenant Suspension、Tenant Console 管理员登录与切换页面、设备/历史会话管理、远程踢人、批量操作、导出、自定义排序、未提交表单草稿持久化、套餐变更或续订。OAuth Client 的必要列表与已有详情读取仍在前三项范围内。
 
-## 现有能力与差距
+## 设计时的能力与差距（2026-09-11）
 
-截至本次源码核实：
+以下保留设计时基线，不表示当前仍存在这些缺口；最终状态见上述验收记录。设计时源码核实：
 
 - 共享 Authentication Runtime 与 Authentication Shell 已实现 Platform 登录、首次改密、恢复、刷新和登出，已有相关测试及部分真实浏览器证据。本轮补齐缺口和专项验收，不重建认证机制。
 - Platform 当前仅有首页与 OAuth Client 占位路由；共享 ConsoleApiClient 暴露 OAuth Client 读取/创建，尚无本切片 Tenant/Entitlement 业务封装。
