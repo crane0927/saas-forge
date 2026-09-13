@@ -27,9 +27,27 @@
 
 `./mvnw --batch-mode --no-transfer-progress verify` 通过，耗时 8 分 14 秒，日志 `/tmp/issue180-maven.log`。前端类型、lint、格式检查、550 个工作区单测、边界检查和制品构建通过；本机组件浏览器 90 通过/4 截图专用跳过，消费者浏览器 38 通过/2 截图专用跳过。六个截图专用用例已由上述 Linux 正式视觉门禁执行通过。
 
-`bash scripts/verify-console-authentication-e2e.sh --product` 已尝试，**预检受阻**：本次进程未设置 `SF_ACCEPTANCE_TLS_CERT` / `SF_ACCEPTANCE_TLS_KEY`，且 `127.0.0.1:443` 被现有服务占用。Chrome 153.0.8010.36 可启动，但未进入 TLS 导航与 Fresh Compose 阶段。记录：`/tmp/issue180-fresh.log`，预检证据目录 `sf-brand-evidence.R6pMel`。未创建验收项目，也未停止已有服务或删除已有数据卷。
+443 释放后复用现有 `deploy/compose/.secrets/local-https-development/server.pem` / `server.key`，四域 DNS、正常 TLS 校验与 Chrome 153.0.8010.36 导航预检通过。旧 `local-console-tls.pem` 缺少 Remote SAN，未用于正式验收；没有忽略证书错误或修改信任边界。
 
-因此，本次 Fresh 的 Platform 初始改密/登录/恢复/退出、Tenant Membership/Context、槽位与多标签竞争、双语故障表单、Locale/品牌及安全拒绝路径均为**未执行**，不能用已有测试源码或本机 Chromium 结果代替。需要开发者释放 443 并提供受信四域证书路径后复跑上述入口。
+执行命令（只传文件路径，不输出密钥）：
+
+```bash
+SF_ACCEPTANCE_TLS_CERT="$PWD/deploy/compose/.secrets/local-https-development/server.pem" \
+SF_ACCEPTANCE_TLS_KEY="$PWD/deploy/compose/.secrets/local-https-development/server.key" \
+bash scripts/verify-console-authentication-e2e.sh --product
+```
+
+| 轮次 | 结果 | 记录 |
+| --- | --- | --- |
+| 初始预检 | 受阻，尚未创建环境 | TLS 路径未设置、443 被占用；`/tmp/issue180-fresh.log` |
+| 首次真实 Fresh | 失败，38 通过/2 失败，0 跳过 | `/tmp/issue180-fresh-retry.log`；`sf-brand-evidence.aqGpiy`；通知 SMTP 恢复子测试在重新启动 Mailpit 后收到 503，预期 204，父测试随之失败 |
+| 未改代码的独立 Fresh 复跑 | **通过，40/40，0 失败/跳过** | `/tmp/issue180-fresh-confirm.log`；`sf-brand-evidence.9ULzQI/acceptance-run.json` 的 `status=passed`、`commit=6cd6d83a716758ad754959c45bdb1329b2a52fae`、`dirty=false` |
+| 重置数据卷后的 Chrome 浏览器门禁 | **通过** | 同一最终记录中 `compose-reset`、`console-browser-chrome` 均 passed，整个入口退出码 0 |
+| 专属项目清理 | **通过** | 两轮项目的 Docker label 查询均无残留容器/卷：`saas-forge-console-1789310078-7455-ce5698`、`saas-forge-console-1789310444-9329-38a5bd`；未接管日常服务 |
+
+最终运行覆盖 Platform 初始改密/登录/恢复/退出、Tenant Membership/Context、槽位与多标签竞争、中英文故障表单、Locale/品牌与安全拒绝路径。此命令复用前一节构建工件，没有重复执行 Maven/workspace 门禁。
+
+首次 SMTP 恢复 503 在未修改代码的复跑中未复现，根因尚未确定。本记录保留该间歇失败，不以重试通过证明其稳定性已解决；本轮没有为获得通过而跳过测试、延长超时或放宽断言。完整受限诊断保留在 `sf-console-e2e-diagnostics.7TR06F`，不得直接上传原始日志。
 
 远端 CI 尚未执行；已接入的 `console-visual` job 尚无当前提交的远端运行结果。MVP 对应事项保持未勾选，Issue 保持 OPEN。
 
