@@ -44,7 +44,7 @@ services:
       KAFKA_AUDIT_PASSWORD: ${KAFKA_AUDIT_PASSWORD:?KAFKA_AUDIT_PASSWORD is required}
       KAFKA_AUDIT_REPLAY_PASSWORD: ${KAFKA_AUDIT_REPLAY_PASSWORD:?KAFKA_AUDIT_REPLAY_PASSWORD is required}
     volumes:
-      - ./kafka-audit-acl-init.sh:/scripts/kafka-audit-acl-init.sh:ro
+      - ../compose/kafka-audit-acl-init.sh:/scripts/kafka-audit-acl-init.sh:ro
   mailpit:
     ports: !override
       - "127.0.0.1::8025"

@@ -23,7 +23,7 @@ for required_file in \
 done
 
 compose() {
-  local -a arguments=(compose --project-directory "$repository_root/deploy/compose" --file "$repository_root/deploy/compose/compose.yaml")
+  local -a arguments=(compose --project-directory "$repository_root/deploy/acceptance" --file "$repository_root/deploy/acceptance/compose.yaml")
   if [[ -n "${LOCAL_COMPOSE_ENV_FILE:-}" ]]; then
     arguments+=(--env-file "$LOCAL_COMPOSE_ENV_FILE")
   fi

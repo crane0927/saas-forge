@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 readonly repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-readonly compose_directory="$repository_root/deploy/compose"
+readonly compose_directory="$repository_root/deploy/acceptance"
 readonly override_file="$compose_directory/oauth-client-revocation-e2e.override.yaml"
 readonly project_name="saas-forge-oauth-client-$PPID-$$"
 readonly work_directory="$(mktemp -d)"
@@ -78,7 +78,7 @@ write_environment() {
   nacos_token_source="$(openssl rand -base64 48 | tr -d '\n')"
   umask 077
   mkdir -p "$secret_directory"
-  "$compose_directory/generate-service-client-secrets.sh" "$secret_directory" >/dev/null
+  "$repository_root/saas-forge-services/iam-service/generate-service-client-secrets.sh" "$secret_directory" >/dev/null
   printf '%s\n' 'platform-admin@saas.forge.test' >"$secret_directory/platform-admin-email"
   openssl rand -base64 32 | tr -d '\n' >"$secret_directory/platform-admin-password"
   printf '\n' >>"$secret_directory/platform-admin-password"
@@ -147,7 +147,7 @@ build_runtime_image() {
   fi
   cp "${runtime_jars[0]}" "$context_directory/application.jar"
   docker build --pull=false --quiet --tag "$image" \
-    --file "$compose_directory/Dockerfile.prebuilt" "$context_directory" >/dev/null
+    --file "$repository_root/deploy/docker/Dockerfile.prebuilt" "$context_directory" >/dev/null
 }
 
 run_bootstrap() {

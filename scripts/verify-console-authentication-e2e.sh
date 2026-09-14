@@ -3,7 +3,7 @@ set -Eeuo pipefail
 umask 077
 
 readonly repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-readonly compose_directory="$repository_root/deploy/compose"
+readonly compose_directory="$repository_root/deploy/acceptance"
 readonly override_file="$compose_directory/console-authentication.override.yaml"
 readonly acceptance_target="${SF_ACCEPTANCE_TARGET:-local}"
 [[ "$acceptance_target" == local || "$acceptance_target" == ci ]] || {
@@ -164,7 +164,7 @@ stage() {
 
 write_environment() {
   mkdir -p "$secret_directory"
-  "$compose_directory/generate-service-client-secrets.sh" "$secret_directory" >/dev/null
+  "$repository_root/saas-forge-services/iam-service/generate-service-client-secrets.sh" "$secret_directory" >/dev/null
   printf '%s\n' 'platform-admin@saas.forge.test' >"$secret_directory/platform-admin-email"
   openssl rand -base64 32 >"$secret_directory/platform-admin-password"
   cp "$SF_ACCEPTANCE_TLS_CERT" "$secret_directory/tls-cert.pem"
@@ -213,7 +213,7 @@ build_runtime_image() {
   mkdir -p "$image_directory"
   cp "$application_jar" "$image_directory/application.jar"
   docker build --pull=false --quiet --tag "$project_name/$service:acceptance" \
-    --file "$compose_directory/Dockerfile.prebuilt" "$image_directory" >/dev/null
+    --file "$repository_root/deploy/docker/Dockerfile.prebuilt" "$image_directory" >/dev/null
 }
 
 write_environment

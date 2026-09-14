@@ -155,7 +155,6 @@ public final class HttpRouteCatalogGenerator {
         Set<String> modulePaths = new HashSet<>();
         Set<String> artifactIds = new HashSet<>();
         Set<String> nacosNames = new HashSet<>();
-        String compose = Files.readString(repository.resolve("deploy/compose/compose.yaml"), StandardCharsets.UTF_8);
         String helm = Files.readString(
                 repository.resolve("deploy/helm/nacos-production-contract.yaml"), StandardCharsets.UTF_8);
         String nacosAcl = gatewayDiscoveryPermissions(Files.readString(
@@ -191,8 +190,9 @@ public final class HttpRouteCatalogGenerator {
                         entry.serviceId() + " 缺少 " + environment + " Nacos 资源");
             }
             if (entry.deployable()) {
+                String compose = Files.readString(module.resolve("compose.yaml"), StandardCharsets.UTF_8);
                 require(compose.contains("\n  " + entry.serviceId() + ":"),
-                        entry.serviceId() + " 缺少 Compose 部署清单");
+                        entry.serviceId() + " 缺少所属模块的 Compose 部署清单");
                 require(helm.contains("    " + entry.serviceId() + ":"),
                         entry.serviceId() + " 缺少 Helm Nacos 工作负载登记");
             } else {

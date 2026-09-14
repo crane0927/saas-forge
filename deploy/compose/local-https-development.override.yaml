@@ -22,9 +22,6 @@ services:
       SF_REMOTE_STATIC_DIRECTORY: /app/remote-artifacts
     ports:
       - "127.0.0.1:443:8443"
-    depends_on:
-      gateway:
-        condition: service_started
     volumes:
       - ./local-https-development/edge.mjs:/app/edge.mjs:ro
       - ./local-https-development/remote-static.mjs:/app/remote-static.mjs:ro

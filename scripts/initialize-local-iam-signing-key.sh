@@ -2,15 +2,19 @@
 set -euo pipefail
 
 readonly repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-readonly compose_directory="$repository_root/deploy/compose"
+# 独立开发分别操作环境与 IAM；显式验收项目仍使用完整组合。
+readonly environment_directory="$repository_root/deploy/compose"
+compose_directory="$repository_root/saas-forge-services/iam-service"
+if [[ -n "${COMPOSE_PROJECT_NAME:-}" || -n "${LOCAL_COMPOSE_OVERRIDE_FILE:-}" ]]; then
+  compose_directory="$repository_root/deploy/acceptance"
+fi
+readonly compose_directory
 readonly configuration_file="$(mktemp)"
-compose_arguments=(
-  --project-directory "$compose_directory"
-  --file "$compose_directory/compose.yaml"
-)
-
+compose_arguments=(--project-directory "$compose_directory" --file "$compose_directory/compose.yaml")
+environment_arguments=(--project-directory "$environment_directory" --file "$environment_directory/compose.yaml")
 if [[ -n "${LOCAL_COMPOSE_ENV_FILE:-}" ]]; then
   compose_arguments+=(--env-file "$LOCAL_COMPOSE_ENV_FILE")
+  environment_arguments+=(--env-file "$LOCAL_COMPOSE_ENV_FILE")
 fi
 if [[ -n "${COMPOSE_PROJECT_NAME:-}" ]]; then
   compose_arguments+=(--project-name "$COMPOSE_PROJECT_NAME")
@@ -25,6 +29,14 @@ cleanup() {
 trap cleanup EXIT
 
 compose() {
+  if [[ "$compose_directory" != "$repository_root/deploy/acceptance" ]]; then
+    for argument in "$@"; do
+      if [[ "$argument" == postgres ]]; then
+        docker compose "${environment_arguments[@]}" "$@"
+        return
+      fi
+    done
+  fi
   docker compose "${compose_arguments[@]}" "$@"
 }
 

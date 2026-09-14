@@ -321,7 +321,7 @@ function runtimePaths(root) {
 }
 
 function composeArguments(root) {
-  const directory = path.join(root, "deploy", "compose");
+  const directory = path.join(root, "deploy", "acceptance");
   const arguments_ = ["compose", "--project-directory", directory];
   if (process.env.LOCAL_COMPOSE_ENV_FILE) {
     arguments_.push("--env-file", process.env.LOCAL_COMPOSE_ENV_FILE);
@@ -485,7 +485,7 @@ function loadContext(root) {
     document = JSON.parse(configuration.stdout);
   } catch {
     throw new BlockedError(
-      "无法解析本地 Compose 配置。请先修复 deploy/compose/.env。",
+      "无法解析本地 Compose 配置。请先修复 deploy/acceptance/.env。",
     );
   }
   const iam = document.services?.[supportedService];
@@ -1202,7 +1202,7 @@ function additionalContext(root, definition) {
     document = JSON.parse(configuration.stdout);
   } catch {
     throw new BlockedError(
-      "无法解析本地 Compose 配置。请先修复 deploy/compose/.env。",
+      "无法解析本地 Compose 配置。请先修复 deploy/acceptance/.env。",
     );
   }
   const services = document.services ?? {};
@@ -1693,7 +1693,7 @@ async function doctorIam(context, paths) {
     !(await diagnostic(
       "INFRASTRUCTURE_UNAVAILABLE",
       supportedService,
-      "在 deploy/compose 中启动并恢复 PostgreSQL、Redis、Kafka、Mailpit 与 Nacos。",
+      "在 deploy/acceptance 中启动并恢复当前验收项目的 PostgreSQL、Redis、Kafka、Mailpit 与 Nacos。",
       () =>
         infrastructureIsHealthy(entries, [
           "postgres",
@@ -1710,7 +1710,7 @@ async function doctorIam(context, paths) {
     !(await diagnostic(
       "SECRET_MISSING",
       supportedService,
-      "按 deploy/compose/README.md 准备 IAM 受限 Secret 文件。",
+      "按 deploy/acceptance/README.md 准备 IAM 受限 Secret 文件。",
       () =>
         assertReadableNonEmpty(
           context.signingKeyFile,
@@ -1805,7 +1805,7 @@ async function doctorAdditional(context, paths) {
     !(await diagnostic(
       "SECRET_MISSING",
       definition.service,
-      "按 deploy/compose/README.md 准备该目标的受限 Secret 文件。",
+      "按 deploy/acceptance/README.md 准备该目标的受限 Secret 文件。",
       () => assertReadableNonEmpty(...Object.values(context.secretFiles)),
       "所需 Secret 文件可读且非空。",
     ))
@@ -1882,7 +1882,7 @@ async function doctorTarget(root, service) {
       `BLOCKED [COMPOSE_CONFIG_INVALID]: ${service} 无法加载固定端口、环境或 Secret 挂载配置。`,
     );
     console.log(
-      "恢复：修复 deploy/compose/.env 与 Compose 配置后重新运行 doctor；不要输出环境变量值。",
+      "恢复：修复 deploy/acceptance/.env 与 Compose 配置后重新运行 doctor；不要输出环境变量值。",
     );
     return 1;
   }

@@ -4,61 +4,22 @@
 
 日常应用开发从[原生开发总入口](../docs/native-local-development.md)开始；本目录的完整 Compose 用于演示、集成验收或专项复现。
 
-## 选择交付物
+## 目录与使用入口
 
-| 场景 | 使用的目录或脚本 | 说明 |
-| --- | --- | --- |
-| 演示、集成验收或端到端测试 | [`compose/`](compose/README.md) | 启动 Gateway、四个领域服务及本地依赖；不用于生产。 |
-| 修改、校验或发布 Nacos 非敏感配置 | [`nacos/`](nacos/README.md) 与仓库根目录的 `scripts/*nacos*.sh` | 配置清单按环境受 Git 管理；生产发布只能由受保护的 GitHub Actions 工作流执行。 |
-| 生产 Kubernetes 接入外部 Nacos | [`helm/`](helm/README.md) | 仅提供应用 Chart 与外部 Nacos 的接口契约，不包含完整应用 Chart 或 Nacos Server。 |
-| 虚拟机裸部署 | [`systemd/`](systemd/README.md) | 预留独立服务单元与受限账号配置示例。 |
+| 用途 | 入口 |
+| --- | --- |
+| 基础设施与共享 HTTPS | [`compose/`](compose/README.md) |
+| 应用独立启停 | 各服务、Gateway 与 Console 目录下的 `compose.yaml` |
+| 完整集成验收及场景覆盖 | [`acceptance/`](acceptance/README.md) |
+| 共用后端构建与静态托管文件 | `docker/` |
+| Nacos 环境资源 | [`nacos/`](nacos/README.md) |
+| 生产 Kubernetes 配置 | [`helm/`](helm/README.md) |
 
-## 本地 Compose
+日常依赖从 `deploy/compose` 启动；应用分别连接共享网络，各自管理迁移任务。默认环境项目名与数据卷名保持不变。完整验收复用服务定义，在自己的项目中恢复跨服务启动门禁并隔离网络、数据卷。具体命令、凭据准备和旧项目迁移见对应入口。
 
-从 `deploy/compose/` 执行。首次使用先根据 [`.env.example`](compose/.env.example) 创建 `.env`，并填写全部仅限本地使用的变量：
+PostgreSQL 集群引导仍由 `postgresql/bootstrap.sh` 负责，服务 Flyway 迁移归各服务。`compose/nacos-init.sh` 仍负责运行环境的身份、权限和配置准备。共享 Dockerfile 已移至 `docker/Dockerfile` 与 `docker/Dockerfile.prebuilt`。
 
-```bash
-cd deploy/compose
-test -f .env || cp .env.example .env
-bash ../../scripts/initialize-local-iam-signing-key.sh
-docker compose config
-docker compose up --build
-```
-
-初始化脚本显式生成 Git 忽略的本地 JWT 私钥，并在 IAM 数据库没有 ACTIVE Signing Key 时初始化匹配的公开元数据；它不会覆盖已有的不匹配密钥。
-
-`docker compose up --build` 会构建五个应用镜像，并按依赖顺序启动 Nacos 初始化、PostgreSQL 初始化、Flyway 迁移和应用服务。状态与日志可用以下命令查看：
-
-```bash
-docker compose ps --all
-docker compose logs nacos-init
-docker compose logs postgres
-```
-
-该完整环境停止使用 `docker compose down`。只有需要重新初始化 PostgreSQL、Redis 和 Kafka 的本地数据时，才使用 `docker compose down -v`；该命令会删除这三个命名卷。
-
-所有宿主机端口仅绑定 `127.0.0.1`。完整组件、端口、环境变量和故障说明见 [`compose/README.md`](compose/README.md)。
-
-### Compose 内部脚本
-
-下列脚本由 Compose 容器自动执行，依赖容器内的网络、命令和环境变量，不作为宿主机上的独立部署命令使用。
-
-| 脚本 | 功能 | 使用方式 | 适用场景 |
-| --- | --- | --- | --- |
-| [`compose/nacos-init.sh`](compose/nacos-init.sh) | 在 Nacos 健康后初始化管理员密码，校验六个非管理员身份互不重复，创建 `dev` namespace、角色和最小权限；随后用配置发布身份写入五份 `SAAS_FORGE` 配置。再次运行会将这些身份密码更新为 `.env` 中的值。 | `docker compose up --build` 自动执行；本地 Nacos 已启动时，执行 `docker compose run --rm nacos-init` 可重新发布 `dev` 配置并更新声明的身份密码。 | 首次启动本地环境；更新 Git 管理的 `dev` 配置，或轮换本地 Nacos 开发身份密码后重新初始化。 |
-| [`postgresql/bootstrap.sh`](postgresql/bootstrap.sh) | 校验四个领域服务的 migrator/app 密码，创建各自数据库与受限账号，并授予 migrator 建表权限和 app 连接/使用 schema 权限。 | 由 PostgreSQL 官方镜像在**首次创建** `postgres-data` 卷时自动执行。要重新执行，须先确认可丢弃本地数据，再运行 `docker compose down -v` 后重新启动。 | 新建本地数据库卷；需要从零开始重建本地数据库与服务账号。 |
-
-`compose/Dockerfile` 是 Compose 构建本地应用镜像的共用 Dockerfile：它按传入的 `MODULE` 构建对应 Maven 模块，并以非 root 的 `spring` 用户运行 JAR。通常无需手动调用，由 `docker compose up --build` 使用。
-
-### Nacos 故障恢复验收
-
-在已填写 `deploy/compose/.env` 后，从仓库根目录运行：
-
-```bash
-bash scripts/verify-nacos-failure-recovery.sh
-```
-
-脚本通过 [`compose/failure-recovery.override.yaml`](compose/failure-recovery.override.yaml) 创建独立 Compose 项目，不占用或停止正在运行的开发栈。它验证：没有健康 IAM 实例时 Gateway 返回 `503`；Nacos 短暂不可用时已启动的 Gateway 继续使用已知健康实例；Nacos 控制面不可用时新的 IAM 实例不能成功启动。退出时会清理该验收项目创建的容器和卷。
+运行 `python3 scripts/validate-compose-layout.py` 可在不启动容器的情况下检查拆分边界及验收组合。Nacos 故障恢复继续使用 `bash scripts/verify-nacos-failure-recovery.sh`，需要准备 `deploy/acceptance/.env` 或由 CI 提供相应环境变量。
 
 ## Nacos 配置与相关脚本
 

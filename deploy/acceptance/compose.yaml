@@ -1,0 +1,171 @@
+# 专用于完整验收；网络与数据卷由验收项目独占。
+services:
+  postgres:
+    extends:
+      file: ../compose/compose.yaml
+      service: postgres
+  redis:
+    extends:
+      file: ../compose/compose.yaml
+      service: redis
+  kafka:
+    extends:
+      file: ../compose/compose.yaml
+      service: kafka
+  mailpit:
+    extends:
+      file: ../compose/compose.yaml
+      service: mailpit
+  otel-collector:
+    extends:
+      file: ../compose/compose.yaml
+      service: otel-collector
+  nacos:
+    extends:
+      file: ../compose/compose.yaml
+      service: nacos
+  nacos-init:
+    extends:
+      file: ../compose/compose.yaml
+      service: nacos-init
+    depends_on:
+      nacos:
+        condition: service_healthy
+  iam-migrate:
+    extends:
+      file: ../../saas-forge-services/iam-service/compose.yaml
+      service: iam-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+  iam-platform-admin-bootstrap:
+    extends:
+      file: ../../saas-forge-services/iam-service/compose.yaml
+      service: iam-platform-admin-bootstrap
+    depends_on:
+      iam-migrate:
+        condition: service_completed_successfully
+  iam-platform-admin-credential-reset:
+    extends:
+      file: ../../saas-forge-services/iam-service/compose.yaml
+      service: iam-platform-admin-credential-reset
+    depends_on:
+      iam-migrate:
+        condition: service_completed_successfully
+  iam-reserved-service-client-bootstrap:
+    extends:
+      file: ../../saas-forge-services/iam-service/compose.yaml
+      service: iam-reserved-service-client-bootstrap
+    depends_on:
+      iam-migrate:
+        condition: service_completed_successfully
+  iam-reserved-service-client-replacement:
+    extends:
+      file: ../../saas-forge-services/iam-service/compose.yaml
+      service: iam-reserved-service-client-replacement
+    depends_on:
+      iam-migrate:
+        condition: service_completed_successfully
+  tenant-access-migrate:
+    extends:
+      file: ../../saas-forge-services/tenant-access-service/compose.yaml
+      service: tenant-access-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+  entitlement-migrate:
+    extends:
+      file: ../../saas-forge-services/entitlement-service/compose.yaml
+      service: entitlement-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+  audit-migrate:
+    extends:
+      file: ../../saas-forge-services/audit-service/compose.yaml
+      service: audit-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+  iam-service:
+    extends:
+      file: ../../saas-forge-services/iam-service/compose.yaml
+      service: iam-service
+    depends_on:
+      iam-migrate:
+        condition: service_completed_successfully
+      nacos-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+  tenant-access-service:
+    extends:
+      file: ../../saas-forge-services/tenant-access-service/compose.yaml
+      service: tenant-access-service
+    depends_on:
+      tenant-access-migrate:
+        condition: service_completed_successfully
+      nacos-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+  entitlement-service:
+    extends:
+      file: ../../saas-forge-services/entitlement-service/compose.yaml
+      service: entitlement-service
+    depends_on:
+      entitlement-migrate:
+        condition: service_completed_successfully
+      nacos-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+  audit-service:
+    extends:
+      file: ../../saas-forge-services/audit-service/compose.yaml
+      service: audit-service
+    depends_on:
+      audit-migrate:
+        condition: service_completed_successfully
+      nacos-init:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
+  audit-isolation-replay:
+    extends:
+      file: ../../saas-forge-services/audit-service/compose.yaml
+      service: audit-isolation-replay
+    depends_on:
+      audit-migrate:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
+  gateway:
+    extends:
+      file: ../../gateway/compose.yaml
+      service: gateway
+    depends_on:
+      nacos-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      iam-service:
+        condition: service_started
+      tenant-access-service:
+        condition: service_started
+      entitlement-service:
+        condition: service_started
+      audit-service:
+        condition: service_started
+
+volumes:
+  postgres-data:
+  redis-data:
+  kafka-data:
+
+networks:
+  default: {}
