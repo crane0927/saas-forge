@@ -171,16 +171,18 @@ flowchart TD
 - [x] Platform Console 完成 Tenant Suspension、显式恢复和恢复失败处理；Tenant Console 可观察旧 Token 被拒绝、Session 失效及重新登录后的恢复结果。
 - [x] Platform Console 完成 OAuth Client 创建、Secret 一次展示、结果不确定恢复、重叠轮换和吊销；Secret 不得进入浏览器持久存储、日志或重复读取接口。
 
-以上三项的已确认产品范围、闲置页面 30 秒失效提示、跨刷新恢复及验收要求见 [Console 租户访问、冻结与接入凭据管理](31-console-tenant-access-and-oauth-client-management.md)；规格确认不代表实现或验收完成。
+以上三项的已确认产品范围、闲置页面 30 秒失效提示、跨刷新恢复及验收要求见 [Console 租户访问、冻结与接入凭据管理](31-console-tenant-access-and-oauth-client-management.md)，实现与本机验收见 [Issue #181 验证记录](acceptance/issue-181-console-access-management.md)。这些局部证据不替代下列阶段浏览器聚合验收。
 
 **浏览器验收**
+
+验收边界已逐项确认，见 [第 2 阶段浏览器聚合验收](32-stage2-browser-acceptance.md)：同一次全新环境完成主链，产品外注入攻击与故障，OAuth 管理与服务消费关联验证，并明确时间状态注入、双语、错误判定和 Audit 证据要求。规格确认不代表验收通过。
 
 - [ ] 从全新 Compose 数据卷用 Playwright 完成 Platform Admin 登录与初始化、最小 Entitlement Bootstrap、Tenant 创建和 Tenant Administrator 初始化，再由 Tenant Administrator 完成 Password Setup、登录、Membership 选择与 Tenant Context Switch。
 - [ ] 通过真实 Console 验证错误 Token、Refresh 重放、撤销 Token、Redis 不可用、越权 Tenant 切换、Tenant Suspension 后旧 Token 拒绝，以及显式恢复后的重新登录；相关运行时与浏览器 Console 不得出现使结果失效的错误。
 - [ ] 通过真实 Console 验证 OAuth Client Secret 一次展示、丢失结果恢复、轮换重叠窗口和吊销后的旧凭据拒绝；保留 curl E2E 作为后端诊断，不把它作为本项完成证据。
 - [ ] 完整路径至少以默认 Locale 执行一次，并验证 Locale 切换及另一语言的代表性身份/Tenant 操作。
 
-**完成标准：** 从全新 Compose 数据卷经真实 Platform Console、Tenant Console、Gateway、IAM、Tenant Access、Entitlement、Audit、PostgreSQL、Redis 和 Kafka 完成“Platform Admin 登录 → 创建 Tenant → 初始化 Tenant Admin → Tenant Admin 登录与切换 Tenant”，并覆盖上述安全拒绝、恢复、OAuth Client 与双语代表路径。当前领域与服务项已完成，但 Console 与浏览器验收尚未完成，因此本阶段仍为部分完成。
+**完成标准：** 从全新 Compose 数据卷经真实 Platform Console、Tenant Console、Gateway、IAM、Tenant Access、Entitlement、Audit、PostgreSQL、Redis 和 Kafka 完成“Platform Admin 登录 → 创建 Tenant → 初始化 Tenant Admin → Tenant Admin 登录与切换 Tenant”，并覆盖上述安全拒绝、恢复、OAuth Client 与双语代表路径。当前领域与服务、Console 交互项已勾选，但上述浏览器聚合验收尚未完成，因此本阶段仍为部分完成。
 
 ### 3. SDK 与 Example 租户隔离闭环
 
