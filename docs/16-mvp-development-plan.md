@@ -167,9 +167,9 @@ flowchart TD
 - [x] Platform Console 完成“Quota Definition/Plan → Tenant → Subscription → Tenant Administrator 初始化”产品路径，读取结果必须来自真实服务权威状态。
   - #172～#177 完成最小权益、历史零额度兼容、Tenant/Subscription、管理员初始化及独立通知读取/重发；真实 Quota 消费、补偿、恢复和拒绝均有证据。
   - 验证提交 `ed9b49dbb6bad52d9d11b8a3c88df1c617d9f408` 的 [Verify CI](https://github.com/crane0927/saas-forge/actions/runs/34747247761) 三项门禁全部成功；下载产物确认同 SHA、dirty=false、Chrome/Fresh 全阶段通过。本次仅汇总已有验收，不表示重新运行本机完整环境，也不代表 #165 或整个第 2 阶段完成。
-- [ ] Tenant Console 完成“Password Setup → Tenant Administrator 登录 → Accessible Membership 选择 → Tenant Context Switch”，刷新页面后从权威状态恢复当前 Session 与资源上下文。
-- [ ] Platform Console 完成 Tenant Suspension、显式恢复和恢复失败处理；Tenant Console 可观察旧 Token 被拒绝、Session 失效及重新登录后的恢复结果。
-- [ ] Platform Console 完成 OAuth Client 创建、Secret 一次展示、结果不确定恢复、重叠轮换和吊销；Secret 不得进入浏览器持久存储、日志或重复读取接口。
+- [x] Tenant Console 完成“Password Setup → Tenant Administrator 登录 → Accessible Membership 选择 → Tenant Context Switch”，刷新页面后从权威状态恢复当前 Session 与资源上下文。
+- [x] Platform Console 完成 Tenant Suspension、显式恢复和恢复失败处理；Tenant Console 可观察旧 Token 被拒绝、Session 失效及重新登录后的恢复结果。
+- [x] Platform Console 完成 OAuth Client 创建、Secret 一次展示、结果不确定恢复、重叠轮换和吊销；Secret 不得进入浏览器持久存储、日志或重复读取接口。
 
 以上三项的已确认产品范围、闲置页面 30 秒失效提示、跨刷新恢复及验收要求见 [Console 租户访问、冻结与接入凭据管理](31-console-tenant-access-and-oauth-client-management.md)；规格确认不代表实现或验收完成。
 
@@ -187,7 +187,7 @@ flowchart TD
 **领域与服务**
 
 - [x] 完成 BOM、`sdk-core`、`sdk-auth`、`sdk-tenant` 与 Starter 的首个可用版本；从公开契约生成 REST Client，不暴露内部 gRPC 或数据库模型。
-- [ ] Starter 集成 Spring Security Resource Server 和 IAM JWKS，固定只接受 `RS256`，支持按 `kid` 缓存公钥、未知 `kid` 受控刷新、常规密钥轮换、撤销 `kid` 与 `jti` 的 Redis fail-closed 检查，以及不可写的 Identity/Membership/Tenant Context。
+- [x] Starter 集成 Spring Security Resource Server 和 IAM JWKS，固定只接受 `RS256`，支持按 `kid` 缓存公钥、未知 `kid` 受控刷新、常规密钥轮换、撤销 `kid` 与 `jti` 的 Redis fail-closed 检查，以及不可写的 Identity/Membership/Tenant Context。
 - [ ] 实现 Project/Task Example 的最小业务 API；仅经 Starter 获取 Tenant Context，并在租户范围表使用事务级 `app.tenant_id` 和 RLS。
 - [ ] 为 Example 接入 Gateway 路由、结构化日志、Trace 和最小审计投递；API 集成测试和种子数据只作为诊断与准备手段，不能替代本阶段最终 Tenant Shell/Remote 浏览器验收。
 - [ ] 冻结首版 Manifest 最小契约：`module`、`version`、受控 `source`、生命周期状态与审核/启用事实；只允许 CI Client Credentials 注册，只有 Platform Administrator 审核并启用的受控来源可被 Shell 加载。
