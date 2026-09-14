@@ -86,6 +86,14 @@ def main():
             assert model['networks']['default']['name'] == f'{project}_default'
             assert all(v['name'].startswith(project + '_') for v in model['volumes'].values())
             assert model['services']['gateway']['depends_on']['iam-service']['condition'] == 'service_started'
+            if overlay and overlay.name == 'tenant-lifecycle-e2e.override.yaml':
+                for service, variable in (
+                    ('iam-service', 'SAAS_FORGE_IAM_SESSION_REVOCATION_WORKER_DELAY'),
+                    ('tenant-access-service', 'SAAS_FORGE_TENANT_ACCESS_LIFECYCLE_RECOVERY_DELAY'),
+                ):
+                    assert model['services'][service]['environment'].get(variable) == 'PT1H', (
+                        f'{service}: 生命周期验收必须延迟后台接管，{variable} 应为 PT1H'
+                    )
     edge = configuration([ENVIRONMENT, ENVIRONMENT.parent / 'local-https-development.override.yaml'])
     assert not edge['services']['local-https-edge'].get('depends_on'), 'HTTPS 入口不能自动启动应用'
     print(f'通过：{len(APPLICATIONS)} 个独立应用、5 个验收场景、项目/网络/卷隔离、挂载与迁移门禁。')
