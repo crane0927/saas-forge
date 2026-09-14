@@ -34,13 +34,10 @@ async function fixture(t, excluded) {
   return root;
 }
 
-function run(root, overrides = {}) {
+function run(root, overrides = {}, entry = "--product") {
   return spawnSync(
     "bash",
-    [
-      path.join(root, "scripts/verify-console-authentication-e2e.sh"),
-      "--product",
-    ],
+    [path.join(root, "scripts/verify-console-authentication-e2e.sh"), entry],
     {
       cwd: root,
       encoding: "utf8",
@@ -89,6 +86,14 @@ test("fresh product acceptance rejects ambiguous runtime jars", async (t) => {
     "old fixture",
   );
   const result = run(root);
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stderr, /BLOCKED:.*gateway.*JAR/u);
+  assert.doesNotMatch(result.stdout, /EVIDENCE:|PASS:|RUN:/u);
+});
+
+test("stage2 product rerun rejects missing artifacts before creating an environment", async (t) => {
+  const root = await fixture(t, "gateway/target/gateway.jar");
+  const result = run(root, {}, "--stage2-product");
   assert.equal(result.status, 1, result.stdout + result.stderr);
   assert.match(result.stderr, /BLOCKED:.*gateway.*JAR/u);
   assert.doesNotMatch(result.stdout, /EVIDENCE:|PASS:|RUN:/u);

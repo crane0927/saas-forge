@@ -17,8 +17,8 @@ if [[ -n "${SF_PRODUCT_CHANNEL:-}" && "$SF_PRODUCT_CHANNEL" != chrome ]]; then
   exit 2
 fi
 
-if [[ "${1:-}" != "" && "${1:-}" != "--preflight" && "${1:-}" != "--product" && "${1:-}" != "--development" && "${1:-}" != "--stage2" ]] || [[ "$#" -gt 1 ]]; then
-  echo '用法：bash scripts/verify-console-authentication-e2e.sh [--preflight|--product|--development|--stage2]' >&2
+if [[ "${1:-}" != "" && "${1:-}" != "--preflight" && "${1:-}" != "--product" && "${1:-}" != "--development" && "${1:-}" != "--stage2" && "${1:-}" != "--stage2-product" ]] || [[ "$#" -gt 1 ]]; then
+  echo '用法：bash scripts/verify-console-authentication-e2e.sh [--preflight|--product|--development|--stage2|--stage2-product]' >&2
   exit 2
 fi
 runtime_jar() {
@@ -36,7 +36,7 @@ runtime_jar() {
 
 # CI 在同一 job 先执行完整 verify；复用入口必须在环境初始化前拒绝缺失或歧义制品。
 # 此处只验证存在性，实际构建、镜像启动和浏览器门禁仍负责验证制品可用性。
-if [[ "${1:-}" == '--product' ]]; then
+if [[ "${1:-}" == '--product' || "${1:-}" == '--stage2-product' ]]; then
   for application in platform-console tenant-console-shell; do
     [[ -f "$repository_root/consoles/$application/dist/index.html" ]] || {
       echo "BLOCKED: 缺少 $application 生产构建，请先执行完整 Maven verify" >&2
@@ -96,7 +96,7 @@ compose_started=false
 
 compose() {
   local -a scenario_files=(--file "$override_file")
-  if [[ "${SF_ACCEPTANCE_SCOPE:-}" == '--stage2' ]]; then
+  if [[ "${SF_ACCEPTANCE_SCOPE:-}" == --stage2* ]]; then
     scenario_files+=(--file "$compose_directory/stage2-main-chain.override.yaml")
   fi
   docker compose --ansi never --progress quiet \
@@ -234,7 +234,7 @@ stage compose-config compose config --quiet
 export SF_ACCEPTANCE_FRESH_VOLUMES=verified
 printf 'ENV: project=%s node=%s date=%s\n' "$project_name" "$(node --version)" "$(date -u +%FT%TZ)"
 
-if [[ "${1:-}" != '--product' ]]; then
+if [[ "${1:-}" != '--product' && "${1:-}" != '--stage2-product' ]]; then
   # 根 verify 的 saas-forge-contracts/saas-forge-openapi-contracts 门禁已经执行 Console workspace 验证及独立构建。
   stage maven-verify "$repository_root/mvnw" -f "$repository_root/pom.xml" \
     --batch-mode --no-transfer-progress verify
@@ -318,7 +318,7 @@ JS
 
 # 产品验收仅运行 Chrome；Chromium 的日常功能与视觉检查由 workspace 承担。
 start_fresh_environment
-if [[ "${1:-}" == '--stage2' ]]; then
+if [[ "${1:-}" == --stage2* ]]; then
   stage product-chrome env SF_BROWSER=chromium SF_BROWSER_CHANNEL=chrome \
     node --test --test-reporter=tap "$repository_root/consoles/integration-test/stage2-main-chain.test.mjs"
 else
@@ -332,7 +332,7 @@ stage compose-reset compose down --volumes --remove-orphans
   stage console-browser-chrome pnpm run test:browser:chrome
 )
 
-if [[ "${1:-}" == '--product' ]]; then
+if [[ "${1:-}" == '--product' || "${1:-}" == '--stage2-product' ]]; then
   echo "PASS: $acceptance_target 的产品与浏览器门禁通过；本命令没有执行 Maven/workspace 门禁。"
 else
   echo "PASS: $acceptance_target 的 Maven/workspace、生产构建、Fresh Compose 与浏览器门禁全部通过。"

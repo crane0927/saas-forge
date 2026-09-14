@@ -153,7 +153,7 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
     const loginLogo = page.getByRole('img', { name: 'SaaS Forge Logo' });
     await expect.element(loginLogo).toBeVisible();
     const loginLogoElement = loginLogo.element() as HTMLImageElement;
-    expect(loginLogoElement.complete).toBe(true);
+    await expect.poll(() => loginLogoElement.complete).toBe(true);
     expect(loginLogoElement.naturalWidth).toBeGreaterThan(0);
     expect(document.title).toBe('SaaS Forge Platform Console');
     expect(document.querySelector('link[rel~="icon"]')?.getAttribute('href')).toBe(

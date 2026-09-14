@@ -11,6 +11,8 @@ export SF_BRAND_EVIDENCE_DIRECTORY=/absolute/path/to/new-evidence-directory
 bash scripts/verify-console-authentication-e2e.sh --stage2
 ```
 
+已通过完整 Maven/workspace 验证、只修改验收脚本时，可用 `--stage2-product` 复用已构建制品重跑。它仍进行制品预检并创建全新项目和数据卷，但不声称重新运行 Maven/workspace 门禁。
+
 入口复用既有 Fresh Compose 的随机项目、全新数据卷检查、受限凭据、基础引导、四域 TLS 就绪门禁和本轮清理。443 被占用时在构建和启动之前拒绝执行，由开发者释放入口；不停止或替换开发服务。执行完整 Maven/workspace 检查后构建本轮服务镜像；Tenant Console 挂载正式生产制品，退出 Remote/故障验收路由包装。
 
 主链仅运行 Chrome、浏览器语言 zh-CN，无保存的语言偏好；不注入 localStorage。顺序为首次平台登录和改密 → max_users 与 Plan → 两个 Tenant、Subscription、同一 Tenant Administrator → 真实邮件设置密码 → 两个 Accessible Membership 的首次选择 → 切换与刷新 → Audit。所有业务创建和正常身份操作通过页面及原有共享 Client；没有 API 预建、写库种子或成功响应伪造。
@@ -25,7 +27,7 @@ Audit 观察只读本轮生产 Outbox 的事件引用与 Trace，再匹配 Audit
 
 键盘登录、按钮提交、路由焦点、播报和安全存储沿用共享验收帮助函数；完整 Maven 的 Console 门禁保留国际化、无障碍与浏览器测试。
 
-## 当前验证记录
+## 初次实现验证记录（释放 443 前）
 
 - 基线：`f2883f5e59a7181a43da386c3ac968867dce8a00`；开始时仅有既有未跟踪 `.scratch/`，未纳入提交。
 - 通过：Console 类型检查、本次脚本 ESLint/Prettier、Shell 语法检查；入口与诊断测试 20 项；Compose 布局校验覆盖 8 个独立应用、6 个验收组合以及正式 Tenant 制品挂载。
@@ -34,3 +36,34 @@ Audit 观察只读本轮生产 Outbox 的事件引用与 Trace，再匹配 Audit
 - 真实环境预检：Chrome `153.0.8010.37` 可启动；宿主 `127.0.0.1:443` 已有监听，Fresh 主链未执行。没有关闭开发入口，也没有将历史 #181 证据计入本轮。
 - 新测试入口先因实现模块尚不存在而失败；真实边界的 green 尚待 Fresh 运行，不能将静态检查称为 TDD 主链通过。
 - 远端 CI 和父规格聚合：未执行；Issue 与阶段清单不据此勾选或关闭。
+
+
+## 2026-09-14：释放 443 后的真实复验
+
+首轮基线 `9a073d990ae35e99bc943ba5a4f78a71a587194e`，完整 Maven/workspace 再次通过。真实启动暴露 overlay 的 `!override` 同时删除服务器脚本挂载；已改为按目标路径覆盖正式 `dist`，布局检查同步验证服务器及其依赖脚本仍在。
+
+第二、三轮证明平台初始改密及新密码登录成功，但表单卸载对已收到 204 的无正文请求执行 abort。第六轮在真实邮件密码建立成功后观察到相同行为。报告仅对两个明确的密码接口，按同页面、同场景、同请求已收到 204、响应后一秒内且每接口最多一次记录 `completedResponseCancellations`；整轮仍须新密码登录成功。它们不是预期安全拒绝，也不放行其他请求失败或 Console 错误。
+
+第四轮发现测试在套餐操作资格查询完成前键盘提交，未发出业务请求；已等待读取完成及按钮启用，保留键盘路径。第六轮的权益及两个 Tenant/Subscription/Administrator Initialization 均通过，但该轮因邮件密码写入后的取消尚未分类而整体失败。第五轮容器启动成功，宿主四域 HTTPS 全部 `ERR_CONNECTION_CLOSED`，在就绪门禁失败，未执行业务主链。所有失败轮次均清理本轮项目，不拼接为成功证据。
+
+第七轮在首次 Membership 选择后发现验收读取了不存在的 JWT `sub`，已按正式签发契约读取 `identityId`；密码设置后返回登录页的匿名刷新也纳入该页面明确的匿名窗口。第八轮等待订阅按钮启用失败，第九、十轮进一步暴露选中值断言依赖 Ant 非固定 CSS 结构；已按 Plan 表单字段和精确显示文本验证选择，再等待按钮启用。第十一轮再次在宿主 HTTPS 门禁失败；容器内 TLS 可返回 HTTP 响应，宿主直连回环映射仍被重置，未执行产品主链。
+
+第十二、十三轮确认 Plan 已选中且下拉关闭，失败来自同字段两份同名文本触发严格定位；修正为下拉隐藏后检查字段显示内容，并继续严格校验创建订阅返回的本轮 Plan ID。第十四轮通过此前所有场景及切换/刷新业务断言，但阶段末捕获切换请求收到 204 后的取消；新增该接口在 Tenant 页面、切换阶段、同请求 204 后一秒内且最多一次的精确记录，后续两次刷新及 Audit 仍必须通过。对切换取消仅记录观察事实，未确认其具体内部触发原因。
+
+第十五轮主链 7 个场景全部通过，4 条生产事件均匹配 Audit，未知错误为零；随后 Chrome 消费者门禁在 Logo 可见后同步检查 `complete` 时失败，因此入口整体仍为失败。将该断言改为有界等待图片加载，保留 `naturalWidth > 0`；Chrome 消费者复验 39 项通过、2 项既有跳过。第十六轮因 `nacos-init` 退出 1 在启动阶段失败，未执行业务主链。
+
+第十七轮在宿主四域 HTTPS 就绪门禁失败，未执行业务主链。停止反复创建环境后，独立执行完整 `pnpm --dir consoles run test:browser:chrome`，退出码 0：Design System 90 项通过、4 项跳过；消费者 39 项通过、2 项跳过；浏览器会话/Locale/Remote 8 项通过。跳过保持现有 Chrome 门禁配置，未删检查。日志 `/tmp/issue184-chrome-final.log`。
+
+## 最终本地结果与证据边界
+
+| 验证 | 结果 |
+| --- | --- |
+| 第十五轮 Fresh 中文主链 | 7/7 场景通过，未知错误 0；两次 Tenant Created、Session Started、Tenant Context Switched 共 4 条生产事件与真实 Audit 消费记录匹配 |
+| 运行身份 | `saas-forge-console-1789396697-41803-da9cbf`；Chrome `153.0.8010.37`；宿主 JDK `17.0.12`；五个服务 JRE `17.0.20` |
+| 完整 Maven/workspace | 初次实现与释放 443 后第一轮均通过；最终仅改验收脚本/测试，未再次运行完整 Maven |
+| 最终受影响检查 | Console 类型检查、ESLint/Prettier、Shell 语法、Compose 布局、入口与诊断 21 项通过 |
+| 最终完整 Chrome 门禁 | 独立运行 137 项通过、6 项既有跳过，退出码 0 |
+| 完整 Fresh 编排入口 | 尚无整轮全绿：第十五轮主链通过但旧 Logo 断言失败；修正后第十六、十七轮分别在 Nacos 初始化、HTTPS 门禁失败 |
+| 远端 CI / 父规格 #183 聚合 | 未执行；不据本地结果勾选或关闭 Issue |
+
+[主链脱敏报告](evidence/issue-184/stage2-main-chain.json)与[同轮编排报告](evidence/issue-184/acceptance-run.json)保留原始状态。证据基线为 `9a073d990ae35e99bc943ba5a4f78a71a587194e` 加报告列出的工作区修正；主链通过后未再修改主链实现。后续仅修复独立消费者测试的图片等待并补充文档，不能将其独立通过改写成第十五轮编排全绿。报告没有保存业务凭据、Cookie、Token 或邮件链接；既有 `.scratch/` 不纳入提交。

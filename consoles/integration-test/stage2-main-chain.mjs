@@ -46,6 +46,7 @@ export async function runStage2MainChain(consume = async () => {}) {
     status: 'running',
     scenarios: steps.map((name) => ({ name, status: 'not-run' })),
     expectedRefusals: [],
+    completedResponseCancellations: [],
     errors: [],
   };
   let browser;
@@ -85,12 +86,53 @@ export async function runStage2MainChain(consume = async () => {}) {
     let anonymousPage;
     const refusals = [];
     const requestStarts = new WeakMap();
+    const responses = new WeakMap();
     const consoleErrors = [];
     const tasks = [];
     context.on('page', (page) => {
       page.on('request', (request) => requestStarts.set(request, Date.now()));
       page.on('pageerror', () => unexpected.push('uncaught-page-error'));
-      page.on('requestfailed', () => unexpected.push('request-failed'));
+      page.on('requestfailed', (request) => {
+        const failure = request.failure()?.errorText;
+        const response = responses.get(request);
+        const url = new URL(request.url());
+        const pathname = url.pathname;
+        const observation = {
+          scenario: current?.name,
+          method: request.method(),
+          path: pathname,
+          at: new Date().toISOString(),
+          code: /^net::ERR_[A-Z_]+$/.test(failure ?? '') ? failure : 'UNKNOWN',
+        };
+        // Chrome 在状态转换后可能取消已收到 204 的无正文响应。
+        // 仅记录已观测到的三个接口；整轮仍须通过后续登录或切换刷新验证。
+        const completedTransition =
+          (current?.name === 'initial-platform-login' &&
+            page === platform &&
+            pathname === `${api}auth/password-changes`) ||
+          (current?.name === 'mail-password-setup' &&
+            page === tenant &&
+            pathname === `${api}auth/password-setups`) ||
+          (current?.name === 'tenant-switch-refresh' &&
+            page === tenant &&
+            pathname === `${api}auth/tenant-switches`);
+        if (
+          completedTransition &&
+          url.origin === `https://api.${rootDomain}` &&
+          request.method() === 'POST' &&
+          failure === 'net::ERR_ABORTED' &&
+          response?.status === 204 &&
+          Date.now() - response.at <= 1000 &&
+          !report.completedResponseCancellations.some((item) => item.path === pathname)
+        ) {
+          report.completedResponseCancellations.push({
+            ...observation,
+            status: 204,
+            startedAt: new Date(requestStarts.get(request)).toISOString(),
+            responseAt: new Date(response.at).toISOString(),
+          });
+        } else unexpected.push({ category: 'request-failed', ...observation });
+      });
       page.on('console', (message) => {
         if (message.type() === 'error')
           consoleErrors.push({
@@ -105,6 +147,7 @@ export async function runStage2MainChain(consume = async () => {}) {
           });
       });
       page.on('response', (response) => {
+        responses.set(response.request(), { status: response.status(), at: Date.now() });
         if (response.status() < 400) return;
         const url = new URL(response.url());
         const expected =
@@ -142,7 +185,15 @@ export async function runStage2MainChain(consume = async () => {}) {
               })
               .catch(() => unexpected.push('unreadable-anonymous-problem')),
           );
-        } else unexpected.push(`http-${response.status()}`);
+        } else
+          unexpected.push({
+            category: 'http-error',
+            scenario: current?.name,
+            method: response.request().method(),
+            path: url.pathname,
+            status: response.status(),
+            at: new Date().toISOString(),
+          });
       });
     });
     const platform = await context.newPage();
@@ -158,6 +209,16 @@ export async function runStage2MainChain(consume = async () => {}) {
       (response) =>
         new URL(response.url()).pathname === `${api}${suffix}` &&
         response.request().method() === method;
+    async function navigate(page, url) {
+      await page.waitForLoadState('networkidle');
+      await page.goto(url);
+      await page.waitForLoadState('networkidle');
+    }
+    async function reload(page) {
+      await page.waitForLoadState('networkidle');
+      await page.reload();
+      await page.waitForLoadState('networkidle');
+    }
     function observe(page, predicate) {
       const pending = page.waitForResponse(predicate);
       // 若交互先失败，关闭页面仍会拒绝等待器；消费其拒绝但不改变原 Promise 的结果。
@@ -165,6 +226,17 @@ export async function runStage2MainChain(consume = async () => {}) {
       return pending;
     }
     async function submit(page, suffix, label, status = 200) {
+      current.operation = suffix;
+      // 操作资格查询由产品异步读取；键盘 press 不像 click 那样自动等待 enabled。
+      await page.waitForLoadState('networkidle');
+      const button = page.getByRole('button', { name: label, exact: true });
+      try {
+        await button.and(page.locator(':enabled')).waitFor();
+      } catch {
+        current.actionPresent = (await button.count()) === 1;
+        current.actionEnabled = current.actionPresent && (await button.isEnabled());
+        throw new Error('产品操作尚未就绪');
+      }
       const pending = observe(page, requestMatches(suffix));
       await page.getByRole('button', { name: label, exact: true }).press('Enter');
       const response = await pending;
@@ -183,7 +255,7 @@ export async function runStage2MainChain(consume = async () => {}) {
     }
     async function anonymous(page, base) {
       anonymousPage = page;
-      await page.goto(base);
+      await navigate(page, base);
       await expectRouteAccessibility(page, '登录 SaaS Forge');
       assert.equal(
         await page.evaluate(() => globalThis.localStorage.getItem('sf:ui:locale')),
@@ -202,7 +274,7 @@ export async function runStage2MainChain(consume = async () => {}) {
     function tokenIdentity(token) {
       // 仅在内存读取真实响应中的身份引用；不保存 Token 或完整 claims。
       try {
-        const identity = JSON.parse(Buffer.from(token.split('.')[1], 'base64url')).sub;
+        const identity = JSON.parse(Buffer.from(token.split('.')[1], 'base64url')).identityId;
         assert.match(identity, /^[0-9a-f-]{36}$/);
         return identity;
       } catch {
@@ -239,20 +311,21 @@ export async function runStage2MainChain(consume = async () => {}) {
       resources.platformIdentityId = (await session(platform)).identityId;
     });
     await stage('entitlement', async () => {
-      await platform.goto(`${platformBase}/quota-definitions`);
+      await navigate(platform, `${platformBase}/quota-definitions`);
       await platform.getByRole('button', { name: '创建 max_users', exact: true }).press('Enter');
       await expectRouteAccessibility(platform, '创建 max_users');
       resources.quotaId = (
         await submit(platform, 'platform/quota-definitions', '创建 max_users', 201)
       ).id;
       await platform.waitForURL(/\/quota-definitions\/[0-9a-f-]{36}$/);
+      await platform.waitForLoadState('networkidle');
       await submit(
         platform,
         `platform/quota-definitions/${resources.quotaId}/activations`,
         '激活 max_users',
       );
       await platform.getByText('已激活', { exact: true }).waitFor();
-      await platform.goto(`${platformBase}/plans/new`);
+      await navigate(platform, `${platformBase}/plans/new`);
       await expectRouteAccessibility(platform, '创建套餐');
       const form = platform.getByRole('form', { name: '创建套餐', exact: true });
       await form.getByRole('textbox', { name: '编码', exact: false }).fill('stage2-plan');
@@ -260,12 +333,13 @@ export async function runStage2MainChain(consume = async () => {}) {
       await form.getByRole('textbox', { name: 'max_users 上限', exact: false }).fill('2');
       resources.planId = (await submit(platform, 'platform/plans', '创建套餐', 201)).id;
       await platform.waitForURL(/\/plans\/[0-9a-f-]{36}$/);
+      await platform.waitForLoadState('networkidle');
       await submit(platform, `platform/plans/${resources.planId}/activations`, '激活套餐');
       await platform.getByText('已激活', { exact: true }).waitFor();
     });
     await stage('tenants', async () => {
       for (const name of ['中文主链甲', '中文主链乙']) {
-        await platform.goto(`${platformBase}/tenants/new`);
+        await navigate(platform, `${platformBase}/tenants/new`);
         await expectRouteAccessibility(platform, '创建 Tenant');
         await platform.getByRole('textbox', { name: '名称', exact: false }).fill(name);
         const startedAt = new Date().toISOString();
@@ -279,8 +353,20 @@ export async function runStage2MainChain(consume = async () => {}) {
           finishedAt: new Date().toISOString(),
         });
         await platform.waitForURL(/\/tenants\/[0-9a-f-]{36}$/);
+        await platform.waitForLoadState('networkidle');
         await platform.getByRole('combobox', { name: 'Plan', exact: true }).click();
         await platform.getByText('中文主链套餐 (stage2-plan) — 2', { exact: true }).click();
+        await platform.locator('#subscription-plan[aria-expanded="false"]').waitFor();
+        await platform.locator('.ant-select-dropdown:visible').waitFor({ state: 'hidden' });
+        assert.ok(
+          (
+            await platform
+              .locator('.sf-form-field')
+              .filter({ has: platform.getByRole('combobox', { name: 'Plan', exact: true }) })
+              .innerText()
+          ).includes('中文主链套餐 (stage2-plan) — 2'),
+          'Plan 控件显示已选择的套餐',
+        );
         const subscription = await submit(
           platform,
           `platform/tenants/${created.id}/subscriptions`,
@@ -297,7 +383,7 @@ export async function runStage2MainChain(consume = async () => {}) {
         );
         assert.equal(initialized.status, 'ACTIVE');
         await platform.getByText('初始化已完成', { exact: true }).waitFor();
-        await platform.reload();
+        await reload(platform);
         await expectRouteAccessibility(platform, 'Tenant 详情');
         await platform.getByText('初始化已完成', { exact: true }).waitFor();
         const usage = platform
@@ -338,7 +424,7 @@ export async function runStage2MainChain(consume = async () => {}) {
       assert.equal(typeof link, 'string', '本轮真实收件人必须收到设置密码邮件');
       assert.equal(new URL(link).origin, tenantBase);
       await anonymous(tenant, tenantBase);
-      await tenant.goto(link).catch(() => {
+      await navigate(tenant, link).catch(() => {
         throw new Error('邮件设置密码导航失败');
       });
       await expectRouteAccessibility(tenant, '设置密码');
@@ -351,7 +437,11 @@ export async function runStage2MainChain(consume = async () => {}) {
         });
       await tenant.getByRole('button', { name: '设置密码', exact: true }).press('Enter');
       await tenant.getByText('密码已设置，请使用新密码登录。', { exact: true }).waitFor();
+      anonymousPage = tenant;
       await tenant.getByRole('button', { name: '登录', exact: true }).press('Enter');
+      await tenant.getByRole('heading', { name: '登录 SaaS Forge', exact: true }).waitFor();
+      await tenant.waitForLoadState('networkidle');
+      anonymousPage = undefined;
     });
     let familyId;
     await stage('membership-selection', async () => {
@@ -402,7 +492,7 @@ export async function runStage2MainChain(consume = async () => {}) {
       });
       await expectRouteAccessibility(tenant, 'Tenant 工作台');
       const recovery = observe(tenant, isAuthResponse('refresh'));
-      await tenant.reload();
+      await reload(tenant);
       const recovered = await recovery;
       assert.equal(recovered.status(), 200);
       const restored = await recovered.json();

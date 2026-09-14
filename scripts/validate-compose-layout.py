@@ -87,9 +87,11 @@ def main():
             model = configuration(scenario + ([overlay] if overlay else []), project)
             if overlay and overlay.name == 'stage2-main-chain.override.yaml':
                 mounts = model['services']['tenant-console']['volumes']
-                assert len(mounts) == 1
-                assert mounts[0]['source'] == str(ROOT / 'consoles/tenant-console-shell/dist')
-                assert mounts[0]['target'] == '/app/dist' and mounts[0]['read_only']
+                by_target = {mount['target']: mount for mount in mounts}
+                assert by_target['/app/dist']['source'] == str(ROOT / 'consoles/tenant-console-shell/dist')
+                assert by_target['/app/dist']['read_only']
+                for target in ('/app/serve.mjs', '/app/remote-static.mjs', '/app/browser-security-evidence.mjs'):
+                    assert target in by_target and by_target[target]['read_only']
             assert model['networks']['default'].get('external', False) is False
             assert model['networks']['default']['name'] == f'{project}_default'
             assert all(v['name'].startswith(project + '_') for v in model['volumes'].values())
