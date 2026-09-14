@@ -1,0 +1,7 @@
+[mcp_servers.antd]
+command = "pnpm"
+args = ["--workspace-root", "exec", "antd", "mcp", "--version", "6.6.2"]
+
+[mcp_servers.antd.env]
+NO_UPDATE_CHECK = "1"
+ANTD_NO_AUTO_REPORT = "1"

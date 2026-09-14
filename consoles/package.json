@@ -32,6 +32,7 @@
     "verify": "pnpm run generate:api && pnpm run verify:workspace"
   },
   "devDependencies": {
+    "@ant-design/cli": "6.6.4",
     "@eslint/js": "catalog:",
     "@formatjs/icu-messageformat-parser": "catalog:",
     "@types/node": "catalog:",
