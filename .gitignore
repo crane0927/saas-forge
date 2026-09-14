@@ -46,3 +46,6 @@ application-*.local.yaml
 .scratch/issue-180-visual/
 .scratch/console-visual-store/
 .vitest-attachments/
+
+# Optional personal business configuration; created only by the developer.
+application-local-file.*

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.saasforge.audit.config.RequiredNacosConfiguration;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
@@ -17,12 +18,27 @@ class LocalConfigurationTest {
     @Test
     void loadsPersonalConfigurationWithoutConfigCenterAndKeepsConsumerReadiness() throws Exception {
         Files.copy(Path.of("src/main/resources/application.yaml"), directory.resolve("application.yaml"));
-        Files.copy(Path.of("src/main/resources/application-local.yaml.example"), directory.resolve("application-local.yaml"));
+        var personalConfiguration = directory.resolve("application-local-file.yaml");
+        Files.copy(Path.of("../../deploy/nacos/dev/audit-service.yaml"), personalConfiguration);
+        Files.writeString(personalConfiguration, """
+
+                ---
+                spring.cloud.nacos.config.enabled: "false"
+                spring.cloud.nacos.config.import-check.enabled: "false"
+                spring.cloud.nacos.discovery.enabled: "true"
+                saasforge.audit.configuration-revision: "local"
+                spring.cloud.nacos.discovery.ip: "${AUDIT_REGISTER_IP}"
+                spring.cloud.nacos.discovery.port: "${AUDIT_HTTP_PORT}"
+                server.port: "${AUDIT_HTTP_PORT}"
+                spring.datasource.url: "${AUDIT_DATABASE_URL}"
+                spring.datasource.username: "audit_app"
+                spring.kafka.bootstrap-servers: "${KAFKA_BOOTSTRAP_SERVERS}"
+                """, StandardOpenOption.APPEND);
         new ApplicationContextRunner()
                 .withInitializer(new ConfigDataApplicationContextInitializer())
                 .withUserConfiguration(RequiredNacosConfiguration.class)
                 .withPropertyValues(
-                        "spring.profiles.active=local",
+                        "spring.profiles.active=local,local-file",
                         "spring.config.location=" + directory.toUri(),
                         "NACOS_SERVER_ADDR=127.0.0.1:1",
                         "NACOS_AUDIT_USERNAME=test",
@@ -51,6 +67,27 @@ class LocalConfigurationTest {
                     assertThat(environment.getProperty("spring.kafka.listener.ack-mode")).isEqualTo("manual_immediate");
                     assertThat(environment.getProperty("management.endpoint.health.group.readiness.include"))
                             .isEqualTo("readinessState,nacosRegistrationReadiness,auditRuntimeReadiness");
+                });
+    }
+
+    @Test
+    void refusesDisablingNacosWithoutExplicitLocalFileProfile() throws Exception {
+        Files.copy(Path.of("src/main/resources/application.yaml"), directory.resolve("application.yaml"));
+        new ApplicationContextRunner()
+                .withInitializer(new ConfigDataApplicationContextInitializer())
+                .withUserConfiguration(RequiredNacosConfiguration.class)
+                .withPropertyValues(
+                        "spring.profiles.active=local",
+                        "spring.config.location=" + directory.toUri(),
+                        "spring.cloud.nacos.config.server-addr=127.0.0.1:1",
+                        "spring.cloud.nacos.username=test",
+                        "spring.cloud.nacos.password=test",
+                        "spring.cloud.nacos.config.enabled=false",
+                        "saasforge.audit.configuration-revision=stale-local")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasMessageContaining("nacos:audit-service.yaml?group=SAAS_FORGE&refreshEnabled=false");
                 });
     }
 }

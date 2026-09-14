@@ -8,7 +8,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 
-/** 本地文件仅决定本实例的注册信息，下游地址由 Nacos 按调用发现。 */
+/** 本地启动参数仅决定本实例的注册信息，下游地址由 Nacos 按调用发现。 */
 @Configuration(proxyBeanMethods = false)
 @Profile("local")
 public class LocalServiceDiscoveryConfiguration {

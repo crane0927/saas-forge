@@ -4,7 +4,7 @@
 
 ## 独立准备与个人配置
 
-复制 `services/audit-service/src/main/resources/application-local.yaml.example` 为同目录 `application-local.yaml`，已有个人文件不覆盖。IDE 激活 `local`，从 classpath 加载文件，不请求 Nacos 配置中心。个人文件被 Git 忽略，个人文件和模板均不进入发布 JAR。
+按[开发配置说明](development-configuration.md)设置 IDE 连接参数和凭据目录。激活 `local`，默认从当前开发 Nacos 读取业务配置；不保留实际本地业务 YAML 或模板。只有显式激活 `local,local-file` 才按文档自行创建个人业务配置。
 
 按实际环境填写以下配置；默认地址仅适用于依赖已映射到本机的情况：
 
@@ -19,7 +19,7 @@
 | `SAASFORGE_ENVIRONMENT` | 默认 `dev`，必须与来源服务的 topic 环境一致 |
 | `AUDIT_HTTP_PORT` / `AUDIT_REGISTER_IP` / `AUDIT_BIND_ADDRESS` | 默认 `8084` / `127.0.0.1` / `127.0.0.1`，仅定义自身实例 |
 
-密码和 Kafka SASL/TLS 材料通过 IDE 环境变量或外部受限 Spring configtree 注入，不写入个人 YAML。使用 configtree 时，在个人文件现有 `spring` 节点下加入 `config.import: configtree:/absolute/path/to/audit-secrets/`，每个文件名为对应属性名；目录权限 700、文件 600。仅提供 Audit 运行需要的身份，不导入整份 Compose 管理员环境。需要 Kafka 认证时使用既有 `spring.kafka.properties.security.protocol`、`sasl.mechanism`、`sasl.jaas.config` 等属性；值从实际环境取得，不降低 broker 的认证策略。
+密码和 Kafka SASL/TLS 材料通过 IDE 环境变量或外部受限 Spring configtree 注入，不写入个人 YAML。使用 configtree 时，在 IDE JSON 中设置 `"spring.config.import": "configtree:/absolute/path/to/audit-secrets/"`，每个文件名为对应属性名；目录权限 700、文件 600。仅提供 Audit 运行需要的身份，不导入整份 Compose 管理员环境。需要 Kafka 认证时使用既有 `spring.kafka.properties.security.protocol`、`sasl.mechanism`、`sasl.jaas.config` 等属性；值从实际环境取得，不降低 broker 的认证策略。
 
 数据库、迁移、Kafka topic/ACL 和 Nacos 身份由独立准备流程完成。管理员使用已有 Audit Flyway 迁移入口；应用始终 `spring.flyway.enabled=false`，不得配置 migrator 或管理员账号。现有 V5 就绪检查需要读取迁移历史，运行账号对 `audit_records` 和 `audit_consumed_events` 仍仅有 SELECT/INSERT。隔离与重放表沿用已有授权，不扩大为通用写权限。
 

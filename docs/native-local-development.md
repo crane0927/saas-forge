@@ -9,18 +9,18 @@
 1. 按当前功能准备 PostgreSQL、Redis、Kafka、Nacos 等依赖；可以使用已有开发环境或独立基础设施。使用仓库 Compose 时，初始化身份、迁移和凭据规则见 [Compose 说明](../deploy/compose/README.md)，无需把五个应用容器作为原生启动的前置条件。
 2. 数据库管理员独立检查迁移状态并执行需要的前向迁移。IDE 应用不执行 Flyway，更新代码后重启不能补齐数据库表。既有 Compose 数据库可参照 [Entitlement 的 info → migrate 示例](native-entitlement-development.md#更新代码后的数据库迁移)，其余服务使用对应迁移任务。历史 checksum 错误按仓库迁移规则调查，不重置数据或盲目 repair。
 3. 由已有受控初始化流程准备 Signing Key、Service Client、Platform Admin、Nacos 工作负载及最小 naming 读取权限。既有环境复用有效身份；配置缺失不意味着允许重置账号或重复执行管理员初始化。IAM、Tenant Access、Entitlement 的跨服务权限分别见下表说明。
-4. 从下表模板复制个人 `application-local.yaml`，只在文件不存在时复制。按实际环境填写依赖地址、自身监听和注册地址；敏感值使用应用独立的环境变量或受限 configtree，文件 600、目录 700。应用只持有运行身份，不加载整份 Compose 管理员 `.env`。
+4. 按[开发配置说明](development-configuration.md)在 IDE 配置连接参数和应用独立的受限凭据目录。业务配置统一从当前开发 Nacos 读取，不再复制个人配置模板；本地文件替代模式仅按文档显式启用。
 5. IDE 导入并同步 Maven，使用 JDK 17 和模块 classpath，激活 `local`（普通 Java 配置可用 `--spring.profiles.active=local`）。仅保留普通 Build 前置动作，不添加 package、托管脚本或 Compose 启动任务。
 
-| 应用 | 可提交模板 | Main class / classpath | 依赖、凭据及调试步骤 |
-| --- | --- | --- | --- |
-| Gateway | [模板](../gateway/src/main/resources/application-local.yaml.example) | `io.saasforge.gateway.GatewayApplication` / `gateway` | [Gateway/IAM](native-platform-auth-development.md) |
-| IAM | [模板](../services/iam-service/src/main/resources/application-local.yaml.example) | `io.saasforge.iam.IamServiceApplication` / `iam-service` | [Gateway/IAM](native-platform-auth-development.md) |
-| Tenant Access | [模板](../services/tenant-access-service/src/main/resources/application-local.yaml.example) | `io.saasforge.tenantaccess.TenantAccessServiceApplication` / `tenant-access-service` | [Tenant Access](native-tenant-access-development.md) |
-| Entitlement | [模板](../services/entitlement-service/src/main/resources/application-local.yaml.example) | `io.saasforge.entitlement.EntitlementServiceApplication` / `entitlement-service` | [Entitlement](native-entitlement-development.md) |
-| Audit | [模板](../services/audit-service/src/main/resources/application-local.yaml.example) | `io.saasforge.audit.AuditServiceApplication` / `audit-service` | [Audit](native-audit-development.md) |
+| 应用 | Main class / classpath | 依赖、凭据及调试步骤 |
+| --- | --- | --- |
+| Gateway | `io.saasforge.gateway.GatewayApplication` / `gateway` | [Gateway/IAM](native-platform-auth-development.md) |
+| IAM | `io.saasforge.iam.IamServiceApplication` / `iam-service` | [Gateway/IAM](native-platform-auth-development.md) |
+| Tenant Access | `io.saasforge.tenantaccess.TenantAccessServiceApplication` / `tenant-access-service` | [Tenant Access](native-tenant-access-development.md) |
+| Entitlement | `io.saasforge.entitlement.EntitlementServiceApplication` / `entitlement-service` | [Entitlement](native-entitlement-development.md) |
+| Audit | `io.saasforge.audit.AuditServiceApplication` / `audit-service` | [Audit](native-audit-development.md) |
 
-五份个人 YAML 均被 Git 忽略，个人文件及模板不进入发布 JAR；IDE 的 `target/classes` 仍可能包含个人配置，不作为分发制品。本地文件替代 Nacos 配置中心，服务发现仍必须使用 Nacos。自身 HTTP 注册端口必须与监听一致，gRPC 使用实例自身的 `grpc.port` metadata；不要配置调用方的下游实例地址或静态回退。
+自身 HTTP 注册端口必须与监听一致，gRPC 使用实例自身的 `grpc.port` metadata；不要配置调用方的下游实例地址或静态回退。
 
 在仓库根完成前端准备：
 

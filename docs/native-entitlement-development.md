@@ -4,9 +4,9 @@
 
 ## 个人配置与独立准备
 
-复制 `services/entitlement-service/src/main/resources/application-local.yaml.example` 为同目录 `application-local.yaml`；已有个人文件不覆盖。IDE 激活 `local` 后从 classpath 加载，无需 Nacos 配置中心。个人文件被 Git 忽略，个人文件和模板都排除在发布 JAR 外。
+按[开发配置说明](development-configuration.md)设置 IDE 连接参数和凭据目录。激活 `local`，默认从当前开发 Nacos 读取业务配置；不保留实际本地业务 YAML 或模板。只有显式激活 `local,local-file` 才按文档自行创建个人业务配置。
 
-模板可配置 PostgreSQL、Redis 和 Nacos 地址，默认分别为 `127.0.0.1:5432/6379/8848`，数据库与应用账号为 `entitlement_db`、`entitlement_app`。数据库迁移、保留 Service Client 与依赖初始化独立完成，应用不获得迁移账号或管理员凭据。IAM、Tenant Access 所需 Kafka 和邮件等依赖沿用各自说明。
+IDE 连接设置可配置 PostgreSQL、Redis 和 Nacos 地址，默认分别为 `127.0.0.1:5432/6379/8848`，数据库与应用账号为 `entitlement_db`、`entitlement_app`。数据库迁移、保留 Service Client 与依赖初始化独立完成，应用不获得迁移账号或管理员凭据。IAM、Tenant Access 所需 Kafka 和邮件等依赖沿用各自说明。
 
 通过 IDE 环境变量或权限受限的外部 Spring configtree 注入以下配置；敏感值不粘贴到个人 YAML：
 
@@ -18,7 +18,7 @@
 | `IAM_JWT_ISSUER` | 与 IAM、Gateway 一致的 issuer |
 | `SAASFORGE_SERVICE_CLIENT_ID_FILE` / `SAASFORGE_SERVICE_CLIENT_SECRET_FILE` | Entitlement 自己的保留 Service Client 文件 |
 
-Secret 路径为绝对路径，文件建议 600、父目录 700。使用已初始化的服务身份，不重置或替换 Client。IAM 与 Tenant Access 的注册 metadata 须包含自身 `grpc.port: ${spring.grpc.server.port}`；升级已有个人配置时也要检查。
+Secret 路径为绝对路径，文件建议 600、父目录 700。使用已初始化的服务身份，不重置或替换 Client。IAM 与 Tenant Access 的注册 metadata 须包含自身 `grpc.port: ${spring.grpc.server.port}`；配置 IDE 启动参数时也要检查。
 
 已有 dev 环境由管理员独立增加以下 naming 读取权限，不重跑全部初始化：
 
@@ -50,7 +50,7 @@ docker compose run --rm --no-deps entitlement-migrate migrate
 
 重新同步 Maven，在 IDEA 创建 Spring Boot 配置：主类 `io.saasforge.entitlement.EntitlementServiceApplication`，classpath `entitlement-service`，Active profiles `local`。只保留 IDE Build，不添加 package、后台 JAR 或 replace/restore 前置步骤。
 
-HTTP 默认 8083、gRPC 默认 9093。端口演练优先在 IDE 环境变量中设置 `ENTITLEMENT_HTTP_PORT` 与 `ENTITLEMENT_GRPC_PORT`；若直接修改个人 YAML 默认值，必须同步 HTTP 的 `server.port` 与 `spring.cloud.nacos.discovery.port`，否则可能监听新端口却注册旧端口。`ENTITLEMENT_HTTP_PORT`、`ENTITLEMENT_GRPC_PORT`、`ENTITLEMENT_REGISTER_IP`、`ENTITLEMENT_BIND_ADDRESS` 控制自身端口、注册 IP 和 HTTP 监听地址。HTTP 目标取 Nacos IP/port，gRPC 目标取同一实例 IP/`grpc.port`，不设置下游实例地址。
+HTTP 默认 8083、gRPC 默认 9093。端口演练优先在 IDE 环境变量中设置 `ENTITLEMENT_HTTP_PORT` 与 `ENTITLEMENT_GRPC_PORT`；若直接修改 IDE JSON 中的值，必须同步 HTTP 的 `server.port` 与 `spring.cloud.nacos.discovery.port`，否则可能监听新端口却注册旧端口。`ENTITLEMENT_HTTP_PORT`、`ENTITLEMENT_GRPC_PORT`、`ENTITLEMENT_REGISTER_IP`、`ENTITLEMENT_BIND_ADDRESS` 控制自身端口、注册 IP 和 HTTP 监听地址。HTTP 目标取 Nacos IP/port，gRPC 目标取同一实例 IP/`grpc.port`，不设置下游实例地址。
 
 同时在 IDEA 运行 Gateway、IAM、Tenant Access、Entitlement；开发者自行处理重复实例和注册地址可达性。修改后使用 IDEA Build、Stop、Debug。可在 Entitlement `GrpcTenantEligibilityGateway.checkInitialSubscription` 或 Quota 接收入口设断点，恢复执行后确认正式操作结果。
 

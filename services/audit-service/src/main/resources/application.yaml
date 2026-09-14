@@ -49,5 +49,5 @@ saasforge:
 spring:
   config:
     activate:
-      on-profile: "!local"
+      on-profile: "!local-file"
     import: nacos:audit-service.yaml?group=SAAS_FORGE&refreshEnabled=false

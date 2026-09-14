@@ -4,7 +4,7 @@
 
 ## 个人配置与独立准备
 
-首次复制 `services/tenant-access-service/src/main/resources/application-local.yaml.example` 为同目录 `application-local.yaml`，已有文件不覆盖。IDE 激活 `local`，从 classpath 加载；无需 Nacos 配置中心，仍必须连接 Nacos 服务发现。个人文件被 Git 忽略，模板和个人文件都排除在发布 JAR 外。新增的内部 `service-discovery` Maven 模块需在 IDE 重新同步，不能只更新两个应用的源码。
+按[开发配置说明](development-configuration.md)设置 IDE 连接参数和凭据目录。激活 `local`，默认从当前开发 Nacos 读取业务配置；不保留实际本地业务 YAML 或模板。只有显式激活 `local,local-file` 才按文档自行创建个人业务配置。
 
 Tenant Access 必需凭据由环境变量或权限受限的外部 Spring configtree 注入：
 
@@ -19,7 +19,7 @@ Tenant Access 必需凭据由环境变量或权限受限的外部 Spring configt
 
 文件路径为绝对路径；Secret 文件建议 600、父目录 700。不要将 Client Secret、数据库密码或 Token 粘贴到个人 YAML。数据库迁移及保留 Service Client 的初始化独立完成，常驻应用不提供 migrator 或管理员凭据，不重置已有数据、不替换已有 Client。
 
-模板默认数据库 `tenant_access_db`、应用账号 `tenant_access_app`，PostgreSQL/Redis/Kafka/Nacos 地址分别为 `127.0.0.1:5432/6379/29092/8848`。通过模板中的变量改为实际环境；Kafka 若启用认证，还需注入对应凭据与协议。应用账号、namespace、issuer、环境和服务身份必须匹配实际初始化结果。
+连接示例使用数据库 `tenant_access_db`、应用账号 `tenant_access_app`，PostgreSQL/Redis/Kafka/Nacos 地址分别为 `127.0.0.1:5432/6379/29092/8848`。通过 IDE 连接设置改为实际环境；Kafka 若启用认证，还需注入对应凭据与协议。应用账号、namespace、issuer、环境和服务身份必须匹配实际初始化结果。
 
 ### 发现权限与 gRPC 注册
 
@@ -30,7 +30,7 @@ Tenant Access 必需凭据由环境变量或权限受限的外部 Spring configt
 
 全新 dev 环境的 `deploy/compose/nacos-init.sh` 已包含这两项。非 dev namespace/角色使用实际值，不照抄 dev。应用间不授予对方配置读取、发布或注册权限。`scripts/verify-nacos-acl.sh` 验证双向发现读取并保留配置隔离检查；它需要相应工作负载凭据，不应给 IDE 应用提供管理员凭据。实例列表检查使用 [Nacos Client API](https://nacos.io/docs/latest/manual/user/open-api/)。
 
-**已有 IAM 个人配置必须补上以下 metadata 后重启**；两个应用的新模板均已包含。元数据来自本实例的 gRPC 监听端口，不是调用方的下游地址配置：
+**IAM 与 Tenant Access 的 IDE 启动设置均须包含以下 metadata**；开发配置说明中的 JSON 已包含对应属性。元数据来自本实例的 gRPC 监听端口，不是调用方的下游地址配置：
 
 ```yaml
 spring:

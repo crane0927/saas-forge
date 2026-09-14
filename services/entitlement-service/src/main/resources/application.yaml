@@ -44,5 +44,5 @@ mybatis:
 spring:
   config:
     activate:
-      on-profile: "!local"
+      on-profile: "!local-file"
     import: nacos:entitlement-service.yaml?group=SAAS_FORGE&refreshEnabled=false

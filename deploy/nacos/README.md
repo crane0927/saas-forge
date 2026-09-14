@@ -25,7 +25,7 @@ bash scripts/validate-nacos-config.sh
 不进入 Nacos；部署系统必须通过 Helm values 或外部 Secret 挂载的 Spring 配置提供这两个
 Bundle。Bundle 缺失时应用应启动失败，不能回退到明文通信。
 
-发布仅能从 `Publish Nacos configuration` GitHub Actions 工作流触发。工作流须选择目标 GitHub Environment（`dev`、`test`、`staging` 或 `prod`），再以该 Environment 注入的下列值运行：
+测试及部署环境发布从 `Publish Nacos configuration` GitHub Actions 工作流触发。当前本地开发环境可复用 `nacos-init` 同步 `dev` 清单，凭据核对、备份、校验、读回和重启步骤见[开发配置说明](../../docs/development-configuration.md#更新当前开发-nacos)。本地同步不会自动启停应用。工作流须选择目标 GitHub Environment（`dev`、`test`、`staging` 或 `prod`），再以该 Environment 注入的下列值运行：
 
 - `vars.NACOS_SERVER_ADDR`：目标 Nacos HTTPS 地址；
 - `secrets.NACOS_PUBLISH_USERNAME`、`secrets.NACOS_PUBLISH_PASSWORD`：该环境的独立配置发布身份。

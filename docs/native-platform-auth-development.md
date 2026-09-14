@@ -4,16 +4,9 @@
 
 ## 个人配置
 
-首次在仓库根目录复制模板；已有个人配置时不要覆盖：
+按[开发配置说明](development-configuration.md)设置 IDE 连接参数；`local` 默认读取各自的 Nacos dev 配置，不保留实际本地业务 YAML 或模板。只有同时激活 `local-file` 才使用自己按文档创建的个人文件。
 
-```bash
-cp gateway/src/main/resources/application-local.yaml.example gateway/src/main/resources/application-local.yaml
-cp services/iam-service/src/main/resources/application-local.yaml.example services/iam-service/src/main/resources/application-local.yaml
-```
-
-两个 `application-local.yaml` 已被根 `.gitignore` 忽略，`.example` 可以提交。IDE 编译时会把个人文件复制到 classpath，选择 `local` 即可加载，无需指定工作目录或额外配置路径。两个模块的 Maven JAR 打包配置排除个人文件及模板，Spring Boot 可执行 JAR 同样不携带它们；`target/classes` 是本地编译输出，仍可能含个人配置，不应作为部署制品直接分发。模板只包含非敏感配置和凭据引用；不要把真实密码、Client Secret 或 PEM 内容写进去。`local` 是仅供本地开发的显式 profile：它取消默认 Nacos 配置导入，由个人文件提供运行策略和 `configuration-revision: local`；Nacos 服务发现仍启用。未选择 `local` 的测试、部署入口保持原有 Nacos 配置加载行为。
-
-在 IDE 环境变量中分别配置以下值，或使用权限受限的外部 Spring `configtree` 目录。该目录中每个文件名是对应属性名，例如 `NACOS_IAM_PASSWORD`；个人 YAML 可在现有 `spring` 下加入 `config.import: configtree:/absolute/path/to/iam-secrets/`。目录建议权限 700、文件 600，按应用隔离，只提供常驻应用需要的值，不导入整份 Compose 管理员环境。
+凭据通过各应用独立的环境变量或受限 configtree 提供；IDE 的 `SPRING_APPLICATION_JSON` 只保存连接参数和引用。私密文件名是对应属性名，例如 `NACOS_IAM_PASSWORD`，目录 700、文件 600。不导入整份 Compose 管理员环境。
 
 | 应用 | 必需值或引用 |
 | --- | --- |
@@ -22,7 +15,7 @@ cp services/iam-service/src/main/resources/application-local.yaml.example servic
 
 私钥位置使用 `file:/absolute/path/to/key.pem`；Client ID 与 Secret 使用受限文件的绝对路径。签名版本引用必须与数据库已初始化的 ACTIVE Signing Key 一致，不能生成新私钥后直接替换既有数据库的签名元数据。两个应用的 issuer、环境和 Browser Root Domain 必须一致。
 
-模板默认使用本机开发依赖：PostgreSQL 5432、Redis 6379、Kafka 29092、Nacos 8848。这些是基础设施地址示例，不是必需容器拓扑；可通过个人文件或模板列出的变量改为自己的环境。启用认证的 Kafka 需要另外注入其协议、机制及受限凭据属性。Nacos namespace、应用身份和网络可达性须与实际环境匹配，Nacos 客户端还需要能连接服务端 gRPC 端口。
+文档中的连接示例使用本机开发依赖：PostgreSQL 5432、Redis 6379、Kafka 29092、Nacos 8848。这些是基础设施地址示例，不是必需容器拓扑；可通过 IDE 连接设置改为自己的环境。启用认证的 Kafka 需要另外注入其协议、机制及受限凭据属性。Nacos namespace、应用身份和网络可达性须与实际环境匹配，Nacos 客户端还需要能连接服务端 gRPC 端口。
 
 ## 独立准备
 
@@ -40,11 +33,11 @@ Maven 项目使用根 POM 支持的 JDK 17。首次导入并同步 Maven，使�
 | Gateway | `io.saasforge.gateway.GatewayApplication` | `gateway` | `local` |
 | IAM | `io.saasforge.iam.IamServiceApplication` | `iam-service` | `local` |
 
-普通 Java Application 运行配置没有 Active profiles 栏时，只需填程序参数 `--spring.profiles.active=local`。IDE 启动前动作保留普通 Build，不添加 Maven package、Compose 或托管脚本。主 `application.yaml` 不设置默认 `local`，避免改变测试/部署启动行为。若曾按旧说明设置 `spring.config.additional-location` 指向模块 `config/`，请移除该参数。
+普通 Java Application 运行配置没有 Active profiles 栏时，只需填程序参数 `--spring.profiles.active=local`。IDE 启动前动作保留普通 Build，不添加 Maven package、Compose 或托管脚本。`local` 保留本机服务发现并读取 Nacos；`local-file` 仅用于显式选择本地业务文件。若曾按旧说明设置 `spring.config.additional-location` 指向模块 `config/`，请移除该参数。
 
 先 Debug IAM，再 Debug Gateway。两个主类可同时运行，分别停止和重启；日志留在对应 IDE Console。Gateway 默认 HTTP 8080，IAM 默认 HTTP 8081、gRPC 9091。用 `GATEWAY_HTTP_PORT`、`IAM_HTTP_PORT`、`IAM_GRPC_PORT` 调整监听；`GATEWAY_REGISTER_IP`、`IAM_REGISTER_IP` 决定注册表发布的地址，必须从调用方可达。注册 HTTP 端口随对应 HTTP 监听端口变化。
 
-应用默认绑定 `127.0.0.1`。若 HTTPS Edge 在 Docker 中，需要将 Gateway 的 `GATEWAY_BIND_ADDRESS` 设为 Docker 可达的本机接口（例如本地受控开发环境使用 `0.0.0.0`）；监听地址不成为浏览器入口。其他服务的容器需要访问本机 IAM 时，也必须先确认其网络可达性，不能把本机 `127.0.0.1` 当成容器内的目标地址。
+连接示例中 IAM 绑定 `127.0.0.1`，Gateway 为配合 Docker HTTPS Edge 使用 `0.0.0.0`。可用 `GATEWAY_BIND_ADDRESS` 调整为 Edge 可达的本机接口；监听地址不成为浏览器入口。其他服务的容器需要访问本机 IAM 时，也必须先确认其网络可达性，不能把本机 `127.0.0.1` 当成容器内的目标地址。
 
 ## 真实浏览器认证
 
@@ -72,6 +65,6 @@ mvn -pl gateway,services/iam-service -am \
   -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
-配置测试经 Spring Config Data 加载实际模板；内部服务令牌测试覆盖身份、精确 Scope、缓存及失败关闭；Gateway 路由测试继续覆盖发现边界。它们不能代替 IDE 操作、真实 Nacos、数据库及浏览器联调。相关模块完整测试与集成检查可用 `mvn -pl gateway,services/iam-service -am verify`；仓库完整流水线由 CI 承担。
+配置测试经 Spring Config Data 验证显式本地文件模式；内部服务令牌测试覆盖身份、精确 Scope、缓存及失败关闭；Gateway 路由测试继续覆盖发现边界。它们不能代替 IDE 操作、真实 Nacos、数据库及浏览器联调。相关模块完整测试与集成检查可用 `mvn -pl gateway,services/iam-service -am verify`；仓库完整流水线由 CI 承担。
 
 验收记录须分别标明自动检查、IDE 断点/重启、Platform 登录刷新、IAM 端口变化、无健康目标及未执行项，不能用配置加载或进程启动成功代替真实认证成功。

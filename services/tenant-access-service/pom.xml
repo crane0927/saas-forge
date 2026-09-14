@@ -127,7 +127,7 @@
                         <exclude>application-local.yml</exclude>
                         <exclude>application-local.yaml</exclude>
                         <exclude>application-local.yml.example</exclude>
-                        <exclude>application-local.yaml.example</exclude>
+                        <exclude>application-local-file.*</exclude>
                     </excludes>
                 </configuration>
                 <executions>

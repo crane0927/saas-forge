@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.saasforge.iam.config.RequiredNacosConfiguration;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
@@ -17,12 +18,22 @@ class LocalConfigurationTest {
     @Test
     void loadsPersonalConfigurationWithoutConfigCenterAndKeepsDiscovery() throws Exception {
         Files.copy(Path.of("src/main/resources/application.yaml"), directory.resolve("application.yaml"));
-        Files.copy(Path.of("src/main/resources/application-local.yaml.example"), directory.resolve("application-local.yaml"));
+        var personalConfiguration = directory.resolve("application-local-file.yaml");
+        Files.copy(Path.of("../../deploy/nacos/dev/iam-service.yaml"), personalConfiguration);
+        Files.writeString(personalConfiguration, """
+
+                ---
+                spring.cloud.nacos.config.enabled: "false"
+                spring.cloud.nacos.config.import-check.enabled: "false"
+                spring.cloud.nacos.discovery.enabled: "true"
+                saasforge.iam.configuration-revision: "local"
+                spring.cloud.nacos.discovery.metadata.grpc.port: "9091"
+                """, StandardOpenOption.APPEND);
         new ApplicationContextRunner()
                 .withInitializer(new ConfigDataApplicationContextInitializer())
                 .withUserConfiguration(RequiredNacosConfiguration.class)
                 .withPropertyValues(
-                        "spring.profiles.active=local",
+                        "spring.profiles.active=local,local-file",
                         "spring.config.location=" + directory.toUri(),
                         "NACOS_SERVER_ADDR=127.0.0.1:1",
                         "NACOS_IAM_USERNAME=test",
@@ -40,6 +51,27 @@ class LocalConfigurationTest {
                     assertThat(environment.getProperty("spring.cloud.nacos.discovery.metadata.grpc.port")).isEqualTo("9091");
                     assertThat(environment.getProperty("spring.flyway.enabled")).isEqualTo("false");
                     assertThat(environment.getProperty("spring.config.import", "")).doesNotContain("nacos:");
+                });
+    }
+
+    @Test
+    void refusesDisablingNacosWithoutExplicitLocalFileProfile() throws Exception {
+        Files.copy(Path.of("src/main/resources/application.yaml"), directory.resolve("application.yaml"));
+        new ApplicationContextRunner()
+                .withInitializer(new ConfigDataApplicationContextInitializer())
+                .withUserConfiguration(RequiredNacosConfiguration.class)
+                .withPropertyValues(
+                        "spring.profiles.active=local",
+                        "spring.config.location=" + directory.toUri(),
+                        "spring.cloud.nacos.config.server-addr=127.0.0.1:1",
+                        "spring.cloud.nacos.username=test",
+                        "spring.cloud.nacos.password=test",
+                        "spring.cloud.nacos.config.enabled=false",
+                        "saasforge.iam.configuration-revision=stale-local")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasMessageContaining("nacos:iam-service.yaml?group=SAAS_FORGE&refreshEnabled=false");
                 });
     }
 }
