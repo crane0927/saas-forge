@@ -30,6 +30,7 @@ cp "$root/scripts/run-console-visual-container.sh" "$workspace/.run-visual.sh"
 printf 'EVIDENCE: %s\n' "$evidence"
 set +e
 docker run --name "$container_name" --platform linux/arm64 --init --shm-size=1g \
+  --user "$(id -u):$(id -g)" --env HOME=/tmp/sf-visual-home \
   --cpus=2 --memory=4g \
   --mount "type=bind,src=$workspace,dst=/work" \
   --mount "type=bind,src=$evidence,dst=/evidence" \

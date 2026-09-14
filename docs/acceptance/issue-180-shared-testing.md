@@ -49,7 +49,7 @@ bash scripts/verify-console-authentication-e2e.sh --product
 
 首次 SMTP 恢复 503 在未修改代码的复跑中未复现，当时根因尚未确定；后续复现与修复见下节。本记录保留该间歇失败，不以重试通过证明其稳定性已解决；本轮没有为获得通过而跳过测试、延长超时或放宽断言。完整受限诊断保留在 `sf-console-e2e-diagnostics.7TR06F`，不得直接上传原始日志。
 
-远端 CI 尚未执行；已接入的 `console-visual` job 尚无当前提交的远端运行结果。MVP 对应事项保持未勾选，Issue 保持 OPEN。
+远端 [Verify 34791131200](https://github.com/crane0927/saas-forge/actions/runs/34791131200) 对应 `2969536`：JDK 17/Fresh Chrome、Tenant lifecycle Fresh 和 Nacos 三个 Job 通过；视觉 Job 的 94+40 个测试通过，但临时目录清理失败，整个 Job 失败。MVP 对应事项保持未勾选，Issue 保持 OPEN。
 
 ## 代码审查
 
@@ -72,3 +72,11 @@ bash scripts/verify-console-authentication-e2e.sh --product
 修复选择 `pause/unpause`：该用例要注入的是 SMTP 无法处理邮件，不需要附带 DNS 服务名消失。保留初始化成功、投递待恢复、原操作者限制、原请求恢复 `204`、真实 Mailpit 收件与既有身份/幂等键不变的断言；`finally` 解除本次暂停。没有重启 IAM、修改 DNS 缓存策略、自动重放业务请求或放宽断言。
 
 对照日志保留在本机 `/tmp/issue180-smtp-network/`，修复后的完整 Fresh 产品验证通过：Chrome 40/40、0 失败/跳过；重置数据卷后的 Chrome 浏览器门禁通过，整个入口退出码 0。日志 `/tmp/issue180-smtp-fixed-fresh.log`，证据 `sf-brand-evidence.S88f3W/acceptance-run.json`，本次为 `c192b3d` 上的修复工作区（`dirty=true`），不冒称远端当前 SHA CI 结果。临时诊断代码已移除并重建原始 IAM 制品。脚本格式、ESLint、语法及差异检查通过；Standards/Spec 两线审查无遗留项。
+
+## Linux CI 临时目录权限修复
+
+2026-09-14 检查上述 CI：视觉容器退出码为 0，随后宿主 `rm -rf /tmp/sf-visual.*` 大量报 `Permission denied`。原因是 Docker 默认 root 在 bind mount 中创建了依赖目录；GitHub Linux Runner 的普通用户无法删除 root 拥有的子目录。本机 Docker Desktop 的挂载权限行为未暴露该差异。
+
+修复为视觉容器显式使用调用者 UID/GID；Corepack 入口与缓存使用容器临时 HOME，避免非 root 进程写入系统目录。继续由宿主清理自己拥有的临时目录，不增加 sudo、全局 chmod 或忽略清理错误，也不修改图片基线或测试阈值。
+
+修复后的本机固定 Linux 视觉通过：94 个组件＋40 个消费者测试全部通过，入口最终退出码 0；记录 `.scratch/issue-180-visual/run.tKUHd0` 与 `/tmp/issue180-visual-user.log`。容器内核对进程、依赖目录及报告均为调用者 `501:20`；退出后临时目录 `sf-visual.fJDivn` 已不存在。Bash 语法及差异检查通过。远端修复提交 CI 尚未执行。

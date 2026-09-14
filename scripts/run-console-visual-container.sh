@@ -7,7 +7,10 @@ unset SF_BROWSER_CHANNEL
 export TZ=UTC
 export LANG=C.UTF-8
 export PNPM_CONFIG_MANAGE_PACKAGE_MANAGER_VERSIONS=false
-corepack enable
+# 挂载目录由宿主用户拥有；非 root 进程只在自己的临时 HOME 安装启动入口。
+mkdir -p "$HOME/bin"
+corepack enable --install-directory "$HOME/bin"
+export PATH="$HOME/bin:$PATH"
 pnpm install --frozen-lockfile
 args=()
 [[ "$mode" == --update ]] && args+=(--update)
