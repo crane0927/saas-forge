@@ -1,0 +1,203 @@
+{
+  "runId": "saas-forge-console-1789399964-55969-1e8451",
+  "startedAt": "2026-09-14T15:34:28.125Z",
+  "commit": "adaaf43c109067355e4153c4fe6d79476105393e",
+  "workspace": [
+    "M deploy/compose/nacos-init.sh",
+    " M scripts/test/compose-initialization.test.mjs",
+    " M scripts/verify-console-authentication-e2e.sh",
+    "?? .scratch/",
+    "?? consoles/platform-console/refactor-prototype/",
+    "?? consoles/scripts/host-https-readiness.mjs",
+    "?? consoles/scripts/wait-console-https.mjs",
+    "?? consoles/test/host-https-readiness.test.mjs",
+    "?? docs/plans/"
+  ],
+  "freshVolumes": true,
+  "browserLocale": "zh-CN",
+  "savedLocale": false,
+  "status": "passed",
+  "scenarios": [
+    {
+      "name": "initial-platform-login",
+      "status": "passed",
+      "startedAt": "2026-09-14T15:34:30.431Z",
+      "operation": "auth/password-changes",
+      "finishedAt": "2026-09-14T15:34:34.017Z"
+    },
+    {
+      "name": "entitlement",
+      "status": "passed",
+      "startedAt": "2026-09-14T15:34:34.017Z",
+      "operation": "platform/plans/01a0a08e-5ba3-7e6e-b4e0-0fef3b5cf467/activations",
+      "finishedAt": "2026-09-14T15:34:39.784Z"
+    },
+    {
+      "name": "tenants",
+      "status": "passed",
+      "startedAt": "2026-09-14T15:34:39.784Z",
+      "operation": "platform/tenants/01a0a08e-86a1-7820-9684-2648d1289981/administrator-initializations",
+      "finishedAt": "2026-09-14T15:34:56.237Z"
+    },
+    {
+      "name": "mail-password-setup",
+      "status": "passed",
+      "startedAt": "2026-09-14T15:34:56.237Z",
+      "finishedAt": "2026-09-14T15:34:58.169Z"
+    },
+    {
+      "name": "membership-selection",
+      "status": "passed",
+      "startedAt": "2026-09-14T15:34:58.169Z",
+      "operation": "auth/context-selections",
+      "finishedAt": "2026-09-14T15:34:59.027Z"
+    },
+    {
+      "name": "tenant-switch-refresh",
+      "status": "passed",
+      "startedAt": "2026-09-14T15:34:59.027Z",
+      "operation": "auth/tenant-switches",
+      "finishedAt": "2026-09-14T15:35:00.168Z"
+    },
+    {
+      "name": "audit",
+      "status": "passed",
+      "startedAt": "2026-09-14T15:35:00.168Z",
+      "finishedAt": "2026-09-14T15:35:01.221Z"
+    }
+  ],
+  "expectedRefusals": [
+    {
+      "scenario": "initial-platform-login",
+      "method": "POST",
+      "path": "/api/v1/auth/refresh",
+      "status": 401,
+      "requestId": 1,
+      "startedAt": "2026-09-14T15:34:31.040Z",
+      "finishedAt": "2026-09-14T15:34:31.421Z"
+    },
+    {
+      "scenario": "mail-password-setup",
+      "method": "POST",
+      "path": "/api/v1/auth/refresh",
+      "status": 401,
+      "requestId": 2,
+      "startedAt": "2026-09-14T15:34:56.497Z",
+      "finishedAt": "2026-09-14T15:34:56.537Z"
+    },
+    {
+      "scenario": "mail-password-setup",
+      "method": "POST",
+      "path": "/api/v1/auth/refresh",
+      "status": 401,
+      "requestId": 3,
+      "startedAt": "2026-09-14T15:34:58.095Z",
+      "finishedAt": "2026-09-14T15:34:58.117Z"
+    }
+  ],
+  "completedResponseCancellations": [
+    {
+      "scenario": "initial-platform-login",
+      "method": "POST",
+      "path": "/api/v1/auth/password-changes",
+      "at": "2026-09-14T15:34:32.843Z",
+      "code": "net::ERR_ABORTED",
+      "status": 204,
+      "startedAt": "2026-09-14T15:34:32.662Z",
+      "responseAt": "2026-09-14T15:34:32.834Z"
+    },
+    {
+      "scenario": "mail-password-setup",
+      "method": "POST",
+      "path": "/api/v1/auth/password-setups",
+      "at": "2026-09-14T15:34:58.048Z",
+      "code": "net::ERR_ABORTED",
+      "status": 204,
+      "startedAt": "2026-09-14T15:34:57.891Z",
+      "responseAt": "2026-09-14T15:34:58.048Z"
+    },
+    {
+      "scenario": "tenant-switch-refresh",
+      "method": "POST",
+      "path": "/api/v1/auth/tenant-switches",
+      "at": "2026-09-14T15:34:59.371Z",
+      "code": "net::ERR_ABORTED",
+      "status": 204,
+      "startedAt": "2026-09-14T15:34:59.077Z",
+      "responseAt": "2026-09-14T15:34:59.371Z"
+    }
+  ],
+  "errors": [],
+  "jdk": "17.0.12",
+  "runtimeJdk": {
+    "gateway": "17.0.20",
+    "iam-service": "17.0.20",
+    "tenant-access-service": "17.0.20",
+    "entitlement-service": "17.0.20",
+    "audit-service": "17.0.20"
+  },
+  "chrome": "153.0.8010.37",
+  "audit": [
+    {
+      "action": "TENANT_CREATED",
+      "eventId": "01a0a08e-6764-74ca-bf22-d047abbff9e2",
+      "traceId": "1f68bc34ae364caeb77baff908f64827",
+      "actorId": "01a0a08d-190d-7bd8-9638-ea1cbdfb0306",
+      "resourceId": "01a0a08e-6738-72a4-89d7-e09da8bdcc4f",
+      "tenantId": "01a0a08e-6738-72a4-89d7-e09da8bdcc4f"
+    },
+    {
+      "action": "TENANT_CREATED",
+      "eventId": "01a0a08e-86a4-7422-b4c6-bb6e2b023190",
+      "traceId": "8639fcd4c8fd4433ab4c70546f68bec1",
+      "actorId": "01a0a08d-190d-7bd8-9638-ea1cbdfb0306",
+      "resourceId": "01a0a08e-86a1-7820-9684-2648d1289981",
+      "tenantId": "01a0a08e-86a1-7820-9684-2648d1289981"
+    },
+    {
+      "action": "SESSION_STARTED",
+      "eventId": "01a0a08e-a6d7-771c-b2c3-70c8b60294b8",
+      "traceId": "bab7c533075945d39bab29180baea4a9",
+      "actorId": "01a0a08e-7c00-7fef-83c8-c92afd4876f7",
+      "resourceId": "01a0a08e-a6d4-75fa-988c-76537baf5cb6",
+      "tenantId": null
+    },
+    {
+      "action": "TENANT_CONTEXT_SWITCHED",
+      "eventId": "01a0a08e-aa14-7259-b9ba-f50f327073ea",
+      "traceId": "5201b59ec373488d9887ab9a89cb0ded",
+      "actorId": "01a0a08e-7c00-7fef-83c8-c92afd4876f7",
+      "resourceId": "01a0a08e-a6d4-75fa-988c-76537baf5cb6",
+      "tenantId": "01a0a08e-86a1-7820-9684-2648d1289981"
+    }
+  ],
+  "resources": {
+    "tenants": [
+      {
+        "id": "01a0a08e-6738-72a4-89d7-e09da8bdcc4f",
+        "name": "中文主链甲",
+        "subscriptionId": "01a0a08e-793a-729c-9a07-7d424d857f07"
+      },
+      {
+        "id": "01a0a08e-86a1-7820-9684-2648d1289981",
+        "name": "中文主链乙",
+        "subscriptionId": "01a0a08e-8e50-7956-b90c-fb753f7fe5b6"
+      }
+    ],
+    "platformIdentityId": "01a0a08d-190d-7bd8-9638-ea1cbdfb0306",
+    "quotaId": "01a0a08e-55a4-7ebb-a624-d8174184b7dd",
+    "planId": "01a0a08e-5ba3-7e6e-b4e0-0fef3b5cf467",
+    "tenantIdentityId": "01a0a08e-7c00-7fef-83c8-c92afd4876f7",
+    "memberships": [
+      {
+        "membershipId": "01a0a08e-95db-7b76-b388-90e3540337a8",
+        "tenantId": "01a0a08e-86a1-7820-9684-2648d1289981"
+      },
+      {
+        "membershipId": "01a0a08e-7c99-7e4b-ae53-52249282c75d",
+        "tenantId": "01a0a08e-6738-72a4-89d7-e09da8bdcc4f"
+      }
+    ]
+  },
+  "finishedAt": "2026-09-14T15:35:01.221Z"
+}

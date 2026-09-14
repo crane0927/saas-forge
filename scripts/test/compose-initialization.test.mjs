@@ -51,3 +51,28 @@ if (args.includes('exec')) process.exit(17);
     }
   });
 }
+
+test("Nacos readiness reports the last response code without configuration or credentials", async () => {
+  const source = await readFile(path.join(root, "deploy/compose/nacos-init.sh"), "utf8");
+  const functions = source.slice(source.indexOf("workload_config_is_readable()"), source.indexOf('wait_for_workload_config iam-service'));
+  const script = `
+set -eu
+api=http://unused.invalid
+NACOS_NAMESPACE=dev
+login() { printf '%s' 'fixture-token'; }
+curl() { printf '%s' "$TEST_NACOS_RESPONSE"; }
+sleep() { :; }
+${functions}
+wait_for_workload_config gateway fixture-user fixture-password
+`;
+  const run = (response) => spawnSync("sh", ["-c", script], {
+    encoding: "utf8",
+    env: { ...process.env, TEST_NACOS_RESPONSE: JSON.stringify(response) },
+  });
+  const denied = run({ code: 403, message: "private-config-value" });
+  assert.equal(denied.status, 1);
+  assert.match(denied.stderr, /gateway.*最近响应码：403/u);
+  assert.doesNotMatch(denied.stdout + denied.stderr, /fixture-token|fixture-password|private-config-value/u);
+  const readable = run({ code: 0, data: { content: "spring: true" } });
+  assert.equal(readable.status, 0, readable.stderr);
+});

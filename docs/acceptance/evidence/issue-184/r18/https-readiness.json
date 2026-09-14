@@ -1,0 +1,10 @@
+{
+  "project": "saas-forge-console-1789399964-55969-1e8451",
+  "observations": {
+    "remote.saas.forge.test": 200,
+    "console.saas.forge.test": 200,
+    "api.saas.forge.test": 200,
+    "platform.saas.forge.test": 200
+  },
+  "recovered": false
+}

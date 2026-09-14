@@ -54,7 +54,7 @@ Audit 观察只读本轮生产 Outbox 的事件引用与 Trace，再匹配 Audit
 
 第十七轮在宿主四域 HTTPS 就绪门禁失败，未执行业务主链。停止反复创建环境后，独立执行完整 `pnpm --dir consoles run test:browser:chrome`，退出码 0：Design System 90 项通过、4 项跳过；消费者 39 项通过、2 项跳过；浏览器会话/Locale/Remote 8 项通过。跳过保持现有 Chrome 门禁配置，未删检查。日志 `/tmp/issue184-chrome-final.log`。
 
-## 最终本地结果与证据边界
+## 第十七轮结束时的结果与证据边界
 
 | 验证 | 结果 |
 | --- | --- |
@@ -67,3 +67,20 @@ Audit 观察只读本轮生产 Outbox 的事件引用与 Trace，再匹配 Audit
 | 远端 CI / 父规格 #183 聚合 | 未执行；不据本地结果勾选或关闭 Issue |
 
 [主链脱敏报告](evidence/issue-184/stage2-main-chain.json)与[同轮编排报告](evidence/issue-184/acceptance-run.json)保留原始状态。证据基线为 `9a073d990ae35e99bc943ba5a4f78a71a587194e` 加报告列出的工作区修正；主链通过后未再修改主链实现。后续仅修复独立消费者测试的图片等待并补充文档，不能将其独立通过改写成第十五轮编排全绿。报告没有保存业务凭据、Cookie、Token 或邮件链接；既有 `.scratch/` 不纳入提交。
+
+## 入口故障定位与第十八轮完整通过
+
+HTTPS 已缩小到单个 Node TLS 容器，复用同一受信证书与 `127.0.0.1:443:8443` 映射，不启动业务服务：首组 8 次创建有 1 次宿主握手失败；再次捕获失败时，宿主 curl 退出 35，容器内 TLS 返回 200，仅重启该隔离容器后宿主正常证书校验返回 200。证据指向 Docker Desktop 宿主端口转发异常，未定位到 Docker 内部具体实现。原始受控观测在 `/tmp/issue184-tls-probe-final.log`。
+
+入口现等待正常启动收敛；仅当四域连续检查至 15 秒后仍全部为连接关闭/重置时，才允许一次恢复。恢复前验证容器属于本轮随机 Compose 项目、服务为 `console-tls`，并在容器内核对实际证书指纹与挂载证书一致、四域 HTTP 均为 200。只重启这个容器，随后仍须 Chrome 正常校验证书链、域名和信任且四域全部 200。HTTP、证书错误和内部 TLS 失败不会触发恢复，恢复后持续失败仍阻断。恢复函数在真实隔离容器上另经证书指纹与宿主 HTTPS 检查；9 项回归检查覆盖单次恢复、恢复后失败及错误项目/服务拒绝，已接入 Console boundary 测试入口。
+
+Nacos 的历史失败为工作负载配置读取未在 30 次尝试内成功。四次仅含 Nacos 与真实初始化客户端的 Fresh 复现均通过，初始化耗时约 2.8–4.4 秒，**尚未确认历史超时根因**。本次仅为最终失败增加数字响应码/固定分类，保持原权限、重试次数及非空配置条件；没有通过放宽超时掩盖问题。初始化回归 3 项通过，包含响应码可见但配置/凭据不可见；Nacos 配置校验、Shell 语法、相关入口检查及新增脚本 ESLint/Prettier 均通过。临时诊断脚本未纳入仓库。
+
+第十八轮 `bash scripts/verify-console-authentication-e2e.sh --stage2-product` **退出码 0，完整产品与 Chrome 门禁通过**：
+
+- 项目 `saas-forge-console-1789399964-55969-1e8451`，全新卷；Nacos 初始化、四域 HTTPS、中文主链 7/7、4 条 Audit 关联、清理和最终 Chrome 门禁均通过，未知主链错误 0。
+- HTTPS 报告 `recovered: false`，即本轮正常启动通过，未触发恢复；不能把这一轮称为实际故障恢复演练。
+- 基线 `adaaf43c109067355e4153c4fe6d79476105393e` 加报告列出的工作区修正；运行期间其他任务提交了前端工具配置，按实际 SHA 记录。Chrome `153.0.8010.37`、宿主 JDK `17.0.12`，五个服务 JRE `17.0.20`。
+- 本命令复用先前构建制品，未重新运行 Maven/workspace；远端 CI 与父规格 #183 聚合仍未执行，Issue 未据此关闭。
+
+本轮独立证据：[完整编排](evidence/issue-184/r18/acceptance-run.json)、[中文主链与 Audit](evidence/issue-184/r18/stage2-main-chain.json)、[HTTPS 就绪](evidence/issue-184/r18/https-readiness.json)。保留此前失败报告，不将其状态改写为通过。

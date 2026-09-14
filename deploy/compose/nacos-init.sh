@@ -268,6 +268,7 @@ workload_config_is_readable() {
   username="$1"
   password="$2"
   application="$3"
+  workload_response_code=unavailable
   workload_token="$(login "$username" "$password")" || return 1
   workload_config="$(curl --silent --show-error --get \
     --header "Authorization: Bearer $workload_token" \
@@ -275,6 +276,9 @@ workload_config_is_readable() {
     --data-urlencode 'groupName=SAAS_FORGE' \
     --data-urlencode "namespaceId=$NACOS_NAMESPACE" \
     "$api/v3/client/cs/config")" || return 1
+  # 只记录响应码；响应正文可能携带配置，登录 Token 与凭据不得进入诊断。
+  workload_response_code="$(printf '%s' "$workload_config" | sed -n 's/.*"code"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p')"
+  workload_response_code="${workload_response_code:-invalid-response}"
   printf '%s' "$workload_config" | grep -Eq '"code"[[:space:]]*:[[:space:]]*0' \
     && printf '%s' "$workload_config" | grep -Eq '"content"[[:space:]]*:[[:space:]]*"[^\"]'
 }
@@ -291,7 +295,7 @@ wait_for_workload_config() {
     sleep 1
     attempt=$((attempt + 1))
   done
-  echo "$application 工作负载未能在 30 秒内读取非空 Nacos 配置" >&2
+  echo "$application 工作负载未能在 30 次尝试内读取非空 Nacos 配置，最近响应码：$workload_response_code" >&2
   exit 1
 }
 
