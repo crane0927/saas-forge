@@ -72,3 +72,7 @@ OAuth Client 创建、Secret 一次展示、结果不确定恢复、轮换与吊
 运行记录注明代码基线及工作区修改状态、浏览器与 JDK 版本、运行标识、场景结果和脱敏证据位置；区分通过、失败、跳过及未执行。使用桌面 Google Chrome 当前稳定版、JDK 17、受信四域 HTTPS 和正常 TLS 校验，沿用现有兼容与安全边界。
 
 历史局部通过记录不能替代本轮缺失场景。只有四项均有对应证据、相关运行时及浏览器错误判定通过，才可据此更新开发计划；本规格确认不勾选验收项，也不代表远端 CI 或 Issue 关闭已完成。
+
+### 主链切片入口（Issue #184）
+
+`bash scripts/verify-console-authentication-e2e.sh --stage2` 在独立 Fresh Compose 中执行中文产品主链与 Audit 关联。[运行说明与当前验证边界](acceptance/issue-184-stage2-main-chain.md)记录同轮内存复用接口和脱敏产物；该入口不执行后续安全、OAuth 或英文切片，不能单独完成父规格。

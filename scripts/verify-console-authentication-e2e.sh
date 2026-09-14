@@ -17,8 +17,8 @@ if [[ -n "${SF_PRODUCT_CHANNEL:-}" && "$SF_PRODUCT_CHANNEL" != chrome ]]; then
   exit 2
 fi
 
-if [[ "${1:-}" != "" && "${1:-}" != "--preflight" && "${1:-}" != "--product" && "${1:-}" != "--development" ]] || [[ "$#" -gt 1 ]]; then
-  echo '用法：bash scripts/verify-console-authentication-e2e.sh [--preflight|--product|--development]' >&2
+if [[ "${1:-}" != "" && "${1:-}" != "--preflight" && "${1:-}" != "--product" && "${1:-}" != "--development" && "${1:-}" != "--stage2" ]] || [[ "$#" -gt 1 ]]; then
+  echo '用法：bash scripts/verify-console-authentication-e2e.sh [--preflight|--product|--development|--stage2]' >&2
   exit 2
 fi
 runtime_jar() {
@@ -95,10 +95,14 @@ readonly environment_file="$work_directory/compose.env"
 compose_started=false
 
 compose() {
+  local -a scenario_files=(--file "$override_file")
+  if [[ "${SF_ACCEPTANCE_SCOPE:-}" == '--stage2' ]]; then
+    scenario_files+=(--file "$compose_directory/stage2-main-chain.override.yaml")
+  fi
   docker compose --ansi never --progress quiet \
     --project-directory "$compose_directory" --env-file "$environment_file" \
     --project-name "$project_name" --file "$compose_directory/compose.yaml" \
-    --file "$override_file" "$@"
+    "${scenario_files[@]}" "$@"
 }
 
 cleanup() {
@@ -227,6 +231,7 @@ stage compose-config compose config --quiet
   echo 'FAIL: 验收项目已经存在数据卷，拒绝复用' >&2
   exit 1
 }
+export SF_ACCEPTANCE_FRESH_VOLUMES=verified
 printf 'ENV: project=%s node=%s date=%s\n' "$project_name" "$(node --version)" "$(date -u +%FT%TZ)"
 
 if [[ "${1:-}" != '--product' ]]; then
@@ -313,8 +318,13 @@ JS
 
 # 产品验收仅运行 Chrome；Chromium 的日常功能与视觉检查由 workspace 承担。
 start_fresh_environment
-stage product-chrome env SF_BROWSER=chromium SF_BROWSER_CHANNEL=chrome \
-  node --test --test-reporter=tap "$repository_root/consoles/integration-test/console-authentication.test.mjs"
+if [[ "${1:-}" == '--stage2' ]]; then
+  stage product-chrome env SF_BROWSER=chromium SF_BROWSER_CHANNEL=chrome \
+    node --test --test-reporter=tap "$repository_root/consoles/integration-test/stage2-main-chain.test.mjs"
+else
+  stage product-chrome env SF_BROWSER=chromium SF_BROWSER_CHANNEL=chrome \
+    node --test --test-reporter=tap "$repository_root/consoles/integration-test/console-authentication.test.mjs"
+fi
 stage compose-reset compose down --volumes --remove-orphans
 # Corepack 根据 cwd 选择 packageManager；pnpm --dir 不会改变 Corepack 的版本解析目录。
 (

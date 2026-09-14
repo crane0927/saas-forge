@@ -81,7 +81,15 @@ def main():
         assert required <= declared, f'{file}: 模板缺少 {required - declared}'
     for project in ('acceptance-layout-a', 'acceptance-layout-b'):
         for overlay in [None, *OVERLAYS]:
-            model = configuration([ACCEPTANCE] + ([overlay] if overlay else []), project)
+            scenario = [ACCEPTANCE]
+            if overlay and overlay.name == 'stage2-main-chain.override.yaml':
+                scenario.append(ACCEPTANCE.parent / 'console-authentication.override.yaml')
+            model = configuration(scenario + ([overlay] if overlay else []), project)
+            if overlay and overlay.name == 'stage2-main-chain.override.yaml':
+                mounts = model['services']['tenant-console']['volumes']
+                assert len(mounts) == 1
+                assert mounts[0]['source'] == str(ROOT / 'consoles/tenant-console-shell/dist')
+                assert mounts[0]['target'] == '/app/dist' and mounts[0]['read_only']
             assert model['networks']['default'].get('external', False) is False
             assert model['networks']['default']['name'] == f'{project}_default'
             assert all(v['name'].startswith(project + '_') for v in model['volumes'].values())
@@ -96,7 +104,7 @@ def main():
                     )
     edge = configuration([ENVIRONMENT, ENVIRONMENT.parent / 'local-https-development.override.yaml'])
     assert not edge['services']['local-https-edge'].get('depends_on'), 'HTTPS 入口不能自动启动应用'
-    print(f'通过：{len(APPLICATIONS)} 个独立应用、5 个验收场景、项目/网络/卷隔离、挂载与迁移门禁。')
+    print(f'通过：{len(APPLICATIONS)} 个独立应用、{len(OVERLAYS)} 个验收场景、项目/网络/卷隔离、挂载与迁移门禁。')
 
 
 if __name__ == '__main__':
