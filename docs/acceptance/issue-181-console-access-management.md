@@ -45,3 +45,34 @@
 `consoles/integration-test/password-setup-notification-acceptance.mjs` 从原有 Fresh 前置资源和真实邮件进入 Tenant Console，设置密码、正常登录和刷新，覆盖冻结后长时间后台、前台闲置、断网及浏览器暂停后恢复场景，以及显式解除冻结后的重新登录。暂停恢复暂扣一次上下文读取，确认内容在服务响应之前已遮蔽后放行；CDP 暂停证据不等同真实电脑休眠。
 
 本记录不替代当前提交的远端 CI，不自动关闭 Issue #181 或第 2 阶段父项。
+
+
+## 2026-09-14：仓库重构后的复验
+
+复验基线为 `34896cff3ea0a11dbc7b260bb66f4acf41375af5`，承接模块目录、`saas.forge` 命名空间、认证 Starter、Nacos 默认配置与 Compose 独立编排调整。结果针对该基线加本次最小修正的工作区，不将之前 `789bbc4` 的验收直接视为当前版本证据。
+
+本次修正：
+
+- 两个 Console 的 `compose.yaml` 改用仓库格式规则要求的引号；不改变配置含义。原始工作区的完整 Maven 验证因此在格式门禁失败，修正后重新执行通过。
+- OAuth 真实验收先等待独立凭据状态呈现，再刷新页面，避免测试取消尚待检查的响应。保留全部 HTTP 状态、正文可读及无敏感字段断言；没有修改产品实现或放宽安全检查。首轮 Fresh 为 38/40，两项失败是此 OAuth 子场景及其父项；修正后的第二轮 OAuth 场景已通过。
+
+已完成验证：
+
+- `VITEST_MAX_WORKERS=2 ./mvnw --batch-mode --no-transfer-progress verify`：完整通过，约 7 分 26 秒，包含后端、Console、SDK、生产构建、覆盖率与数据边界门禁。日志 `/tmp/issue181-revalidate-maven-r2.log`。后续 OAuth 测试等待修正通过对应 ESLint 与 Prettier 检查，并进入真实产品复验。
+- `bash scripts/validate-nacos-config.sh`：通过全部环境配置校验。
+- `python3 scripts/validate-compose-layout.py`：通过 8 个独立应用、5 个验收场景以及网络、卷、挂载和迁移边界；格式调整后复验通过。
+- 与 CI 一致的五个验收入口测试文件：27/27 通过，日志 `/tmp/issue181-revalidate-entrypoints.log`。
+- JDK 17.0.12、Node 24.14.1、Google Chrome 153.0.8010.37。使用 `saas.forge.test` 四域、受信 HTTPS 与真实服务；用户释放开发入口占用的 443 后预检通过，没有接管或恢复开发服务。
+
+第二轮 Fresh 产品测试 **40/40 通过**，后续 `pnpm run test:browser:chrome` 通过。脚本完成 `compose-reset` 并正常退出，隔离环境已清理。日志 `/tmp/issue181-revalidate-fresh-r2.log`，证据目录 `/tmp/issue181-revalidate-chrome-r2`。首轮当前版本的长后台、前台、断网恢复和浏览器暂停恢复分别为 14,270 ms、18,669 ms、203 ms、301 ms，均通过原断言；首轮整体不计为通过。
+
+第二轮计时沿用前述保守口径，均经过真实服务拒绝、页面遮蔽、显式解除冻结及重新登录断言：
+
+| 场景 | 第二轮实测 |
+|---|---:|
+| 隐藏超过 365 秒后的后台页 | 14,763 ms |
+| 前台闲置 | 17,625 ms |
+| 断网恢复 | 113 ms |
+| 浏览器暂停恢复 | 240 ms |
+
+本次不包含远端 CI、推送或 Issue 关闭；CDP 暂停仍不等同真实电脑休眠，也不声称完成逐帧无闪现分析。

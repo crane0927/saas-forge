@@ -2,9 +2,9 @@ name: saas-forge-tenant-console
 services:
   tenant-console:
     image: node:24.14.1-alpine
-    user: "${CONSOLE_UID:-1000}:${CONSOLE_GID:-1000}"
+    user: '${CONSOLE_UID:-1000}:${CONSOLE_GID:-1000}'
     read_only: true
-    command: ["node", "/app/serve.mjs"]
+    command: ['node', '/app/serve.mjs']
     environment:
       SF_ACCEPTANCE_ROOT_DOMAIN: ${SF_ACCEPTANCE_ROOT_DOMAIN:-saas.forge.test}
       SF_REMOTE_STATIC_MODULE: /app/remote-static.mjs

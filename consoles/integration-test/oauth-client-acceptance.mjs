@@ -155,10 +155,13 @@ export async function verifyOAuthClients({
     assert.equal(await page.getByRole('button', { name: '查看详情', exact: true }).count(), 1);
     await page.getByRole('button', { name: '查看详情', exact: true }).click();
     await page.getByText('runtime:read', { exact: true }).waitFor();
+    // 凭据状态独立读取；等待其呈现后再刷新，避免测试取消仍待检查的响应。
+    await page.getByRole('button', { name: '轮换 Secret', exact: true }).waitFor();
     const detailUrl = page.url();
     await verifyReads();
     await page.reload();
     await page.getByText(`${name}-50`, { exact: true }).waitFor();
+    await page.getByRole('button', { name: '轮换 Secret', exact: true }).waitFor();
     await selectLocale(page, 'English');
     await page.getByRole('heading', { name: 'OAuth Client details', exact: true }).waitFor();
     await accessibility(page, 'OAuth Client details', { focusedElementId: 'console-locale' });
