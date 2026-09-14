@@ -36,12 +36,40 @@ class TenantCreationControllerTest {
                 org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/platform/tenants/" + KEY),
                 org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/platform/tenant-creations"),
                 org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/platform/tenant-creations/" + KEY),
+                org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/platform/tenants/" + KEY + "/lifecycle"),
+                post("/api/v1/platform/tenants/" + KEY + "/lifecycle-operations/" + KEY + "/continuations"),
                 post("/api/v1/platform/tenant-creations/" + KEY + "/recovery").header("Idempotency-Key", KEY)
                         .contentType(MediaType.APPLICATION_JSON).content("{}"))) {
             mvc.perform(request.header("Authorization", "Bearer platform-token"))
                     .andExpect(status().isForbidden())
                     .andExpect(jsonPath("$.code").value("PLATFORM_AUTHORIZATION_DENIED"));
         }
+    }
+
+    @Test
+    void lifecycleReadAndContinuationAreNoStoreAndUseThePublishedOperationIdentity() throws Exception {
+        var lifecycle = org.mockito.Mockito.mock(io.saasforge.tenantaccess.application.tenant.TenantLifecycleService.class);
+        var observed = new io.saasforge.tenantaccess.application.tenant.TenantLifecycleProgress(
+                KEY, KEY, "SUSPEND", "PENDING", false, false, false, true);
+        org.mockito.Mockito.when(lifecycle.read(KEY)).thenReturn(observed);
+        Instant at = Instant.parse("2026-09-14T00:00:00Z");
+        org.mockito.Mockito.when(lifecycle.continueOperation(org.mockito.ArgumentMatchers.eq(KEY),
+                org.mockito.ArgumentMatchers.eq(KEY), org.mockito.ArgumentMatchers.any())).thenReturn(
+                new io.saasforge.tenantaccess.application.tenant.TenantLifecycleResult(
+                        KEY, "Example", TenantStatus.SUSPENDED, null, at, at));
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(new TenantCreationController(
+                authorization -> KEY, unusedCreation(), null, null, lifecycle, null))
+                .setControllerAdvice(new TenantCreationExceptionHandler()).build();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                        "/api/v1/platform/tenants/{tenantId}/lifecycle", KEY).header("Authorization", "Bearer platform-token"))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.state").value("PENDING"))
+                .andExpect(jsonPath("$.operationId").value(KEY.toString()))
+                .andExpect(jsonPath("$.canResume").value(false));
+        mvc.perform(post("/api/v1/platform/tenants/{tenantId}/lifecycle-operations/{operationId}/continuations", KEY, KEY)
+                        .header("Authorization", "Bearer platform-token").contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.status").value("SUSPENDED"));
     }
 
     @Test

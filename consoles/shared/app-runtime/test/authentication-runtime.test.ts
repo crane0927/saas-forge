@@ -10,6 +10,100 @@ import {
 describe.each(['zh-CN', 'en-US'])('createAuthenticationRuntime %s', (locale) => {
   beforeEach(() => vi.stubGlobal('navigator', { language: locale, languages: [locale] }));
   afterEach(() => vi.unstubAllGlobals());
+  it('continues the authoritative Tenant lifecycle identity instead of generating another freeze', async () => {
+    const id = '019535d9-0000-7000-8000-000000000002';
+    const fetch = vi
+      .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'platform-token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          tenantId: id,
+          operationId: id,
+          state: 'PENDING',
+          action: 'SUSPEND',
+          canSuspend: false,
+          canResume: false,
+          canRecoverSuspension: false,
+          canContinue: true,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          id,
+          displayName: 'Company',
+          status: 'SUSPENDED',
+          expiresAt: null,
+          createdAt: '2026-09-14T00:00:00Z',
+          updatedAt: '2026-09-14T00:00:00Z',
+        }),
+      );
+    const runtime = createRuntime({ realm: {}, intent: 'PLATFORM', fetch });
+    await runtime.login({ email: 'admin@example.test', password: 'password' });
+    const progress = await runtime.client.getTenantLifecycle(id);
+    if (!progress.ok) throw new Error('Expected lifecycle');
+    expect((await runtime.client.continueTenantLifecycle(progress.value)).ok).toBe(true);
+    expect(requestUrl(fetch.mock.calls[2][0])).toContain(
+      `/lifecycle-operations/${id}/continuations`,
+    );
+    expect(new Headers(fetch.mock.calls[2][1]?.headers).has('Idempotency-Key')).toBe(false);
+    expect(new Headers(fetch.mock.calls[2][1]?.headers).get('Content-Type')).toBe(
+      'application/json',
+    );
+  });
+  it('checks idle Tenant access without refreshing and hides the context when authority is unavailable', async () => {
+    const fetch = vi
+      .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+      .mockResolvedValueOnce(
+        Response.json({
+          contextState: 'ACCESS_TOKEN_ISSUED',
+          accessToken: 'tenant-token',
+          tokenType: 'Bearer',
+          expiresIn: 120,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ code: 'TOKEN_REVOCATION_STATUS_UNAVAILABLE' }, { status: 503 }),
+      );
+    const runtime = createRuntime({ realm: {}, intent: 'TENANT', fetch });
+    await runtime.login({ email: 'tenant@example.test', password: 'password' });
+    const check = await runtime.checkTenantSession();
+    expect(check.ok).toBe(false);
+    expect(runtime.getState()).toMatchObject({
+      status: 'authenticated',
+      transition: 'sessionSync',
+    });
+    expect(runtime.getState()).not.toHaveProperty('tenantContext');
+    expect(requestUrl(fetch.mock.calls[1][0])).toContain('/auth/context');
+    expect(fetch).toHaveBeenCalledTimes(2);
+    fetch.mockResolvedValueOnce(Response.json({ code: 'SESSION_INVALID' }, { status: 401 }));
+    await runtime.checkTenantSession();
+    expect(runtime.getState().status).toBe('anonymous');
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+  it('establishes the first password without creating or exposing a session', async () => {
+    const fetch = vi
+      .fn<AuthenticationRuntimeCreationOptions['fetch']>()
+      .mockResolvedValue(new Response(null, { status: 204 }));
+    const runtime = createRuntime({ realm: {}, intent: 'TENANT', fetch });
+    expect(
+      await runtime.establishPassword({ token: 'a'.repeat(43), newPassword: 'new-password' }),
+    ).toMatchObject({ ok: true });
+    expect(runtime.getState()).toEqual({ status: 'anonymous', transition: null });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(requestUrl(fetch.mock.calls[0][0])).toContain('/auth/password-setups');
+    expect(JSON.parse(fetch.mock.calls[0][1]?.body as string)).toEqual({
+      token: 'a'.repeat(43),
+      newPassword: 'new-password',
+    });
+    expect(new Headers(fetch.mock.calls[0][1]?.headers).has('Authorization')).toBe(false);
+  });
   it('correlates an unknown resend by its exact original Key instead of accepting a different latest record', async () => {
     const id = '019535d9-0000-7000-8000-000000000002';
     const key = '019535d9-0000-7000-8000-000000000004';
@@ -92,6 +186,9 @@ describe.each(['zh-CN', 'en-US'])('createAuthenticationRuntime %s', (locale) => 
     );
     expect(fetch.mock.calls[2][1]?.body).toBe('{}');
     expect(new Headers(fetch.mock.calls[2][1]?.headers).has('Idempotency-Key')).toBe(false);
+    expect(new Headers(fetch.mock.calls[2][1]?.headers).get('Content-Type')).toBe(
+      'application/json',
+    );
     expect(
       await runtime.client.recoverTenantAdministratorPasswordSetup({ ...progress.value }),
     ).toMatchObject({ ok: false, problem: { code: 'INVALID_OPERATION_HANDLE' } });
@@ -145,6 +242,9 @@ describe.each(['zh-CN', 'en-US'])('createAuthenticationRuntime %s', (locale) => 
     );
     expect(fetch.mock.calls[2][1]?.body).toBe('{}');
     expect(new Headers(fetch.mock.calls[2][1]?.headers).has('Idempotency-Key')).toBe(false);
+    expect(new Headers(fetch.mock.calls[2][1]?.headers).get('Content-Type')).toBe(
+      'application/json',
+    );
     expect(
       await runtime.client.recoverTenantAdministratorInitialization({ ...progress.value }),
     ).toMatchObject({

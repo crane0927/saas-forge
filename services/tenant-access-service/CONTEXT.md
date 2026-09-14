@@ -40,6 +40,14 @@ _Avoid_: Superuser, administrator flag
 平台对可恢复 Tenant 执行的人工访问冻结；`SUSPENDED` Tenant 可在显式恢复后回到 `ACTIVE`，但仍受有效期约束。
 _Avoid_: Expiration, closure
 
+**Tenant Suspension Recovery**:
+平台管理员继续完成尚未完成的 Tenant Suspension；其目标是完成冻结，不恢复 Tenant 访问。
+_Avoid_: Tenant resumption, unfreeze, restore access
+
+**Tenant Resumption**:
+平台管理员显式解除 Tenant Suspension，使 Tenant 回到 `ACTIVE`；它不复活已撤销会话，也不消除有效期等访问约束。
+_Avoid_: Tenant Suspension Recovery, session recovery, Tenant re-creation
+
 **Tenant Closure**:
 平台对 Tenant 执行的不可逆终止；处于 `CLOSED` 的 Tenant 永久拒绝访问。
 _Avoid_: Suspension, reactivation

@@ -77,6 +77,37 @@ public class OAuthClientsController implements OAuthClientsApi {
     }
 
     @Override
+    public ResponseEntity<io.saasforge.iam.contract.model.OAuthClientOperationPage> listOAuthClientOperations(String cursor, Integer limit) {
+        var actor = authorizer.authorize(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
+        var page = queries.operations(actor, cursor, limit);
+        var items = page.items().stream().map(value -> new io.saasforge.iam.contract.model.OAuthClientOperation()
+                .operationId(value.operationId()).clientId(value.clientId()).displayName(value.displayName())
+                .action(io.saasforge.iam.contract.model.OAuthClientOperation.ActionEnum.fromValue(value.action()))
+                .completedAt(toOffsetDateTime(value.completedAt())).recoveryUntil(toOffsetDateTime(value.recoveryUntil()))
+                .canRecover(value.canRecover())).toList();
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(
+                new io.saasforge.iam.contract.model.OAuthClientOperationPage(items, page.nextCursor(), page.hasMore()));
+    }
+
+    @Override
+    public ResponseEntity<io.saasforge.iam.contract.model.OAuthClientCredentialStatus> getOAuthClientCredentialStatus(UUID clientId) {
+        authorizer.authorize(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
+        var value = queries.credentialStatus(clientId);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(
+                new io.saasforge.iam.contract.model.OAuthClientCredentialStatus()
+                        .clientId(value.clientId()).overlapEndsAt(toOffsetDateTime(value.overlapEndsAt()))
+                        .canRotate(value.canRotate()).canRevoke(value.canRevoke()));
+    }
+
+    @Override
+    public ResponseEntity<OAuthClientSecretResult> recoverOAuthClientOperation(UUID operationId, UUID idempotencyKey) {
+        var request = currentRequest();
+        var actor = authorizer.authorize(request.getHeader(HttpHeaders.AUTHORIZATION));
+        var result = management.recoverOperation(actor, idempotencyKey, operationId, traceId(request));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(toSecretResult(result.client(), result.clientSecret()));
+    }
+
+    @Override
     public ResponseEntity<OAuthClientDetail> getOAuthClient(UUID clientId) {
         authorizer.authorize(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(toDetail(management.get(clientId)));

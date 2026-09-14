@@ -51,6 +51,45 @@ class TenantLifecycleServiceTest {
     }
 
     @Test
+    void lifecycleProgressDoesNotOfferResumeWhileSuspensionIsPending() {
+        var tenant = new io.saasforge.tenantaccess.domain.tenant.Tenant(
+                TENANT_ID, "Example", TenantStatus.ACTIVE, null, NOW, NOW);
+        when(workflows.readLifecycle(TENANT_ID)).thenReturn(
+                new TenantLifecycleSnapshot(tenant, Optional.of(pendingWorkflow())));
+        var progress = service.read(TENANT_ID);
+        assertEquals("PENDING", progress.state());
+        assertEquals(false, progress.canResume());
+        assertEquals(false, progress.canSuspend());
+        assertEquals(WORKFLOW_ID, progress.operationId());
+    }
+
+    @Test
+    void continuesOnlyTheLatestDurableOperationWithoutPreparingAnotherWorkflow() {
+        var tenant = new io.saasforge.tenantaccess.domain.tenant.Tenant(
+                TENANT_ID, "Example", TenantStatus.SUSPENDED, null, NOW, NOW);
+        var result = new TenantLifecycleResult(TENANT_ID, "Example", TenantStatus.SUSPENDED, null, NOW, NOW);
+        var completed = workflow(TenantLifecycleAction.SUSPEND, TenantLifecycleStatus.COMPLETED, null, result);
+        when(workflows.readLifecycle(TENANT_ID)).thenReturn(new TenantLifecycleSnapshot(tenant, Optional.of(completed)));
+        assertEquals(result, service.continueOperation(TENANT_ID, WORKFLOW_ID, null));
+        var rejected = assertThrows(TenantLifecycleException.class,
+                () -> service.continueOperation(TENANT_ID, IDEMPOTENCY_KEY, null));
+        assertEquals("TENANT_LIFECYCLE_OPERATION_UNAVAILABLE", rejected.code());
+        org.mockito.Mockito.verify(workflows, org.mockito.Mockito.never()).claim(any(), any(), any(), any(), anyInt());
+    }
+
+    @Test
+    void emptyHistoryAllowsSuspensionButNeverPretendsAnOperationCanContinue() {
+        var tenant = new io.saasforge.tenantaccess.domain.tenant.Tenant(
+                TENANT_ID, "Example", TenantStatus.ACTIVE, null, NOW, NOW);
+        when(workflows.readLifecycle(TENANT_ID)).thenReturn(new TenantLifecycleSnapshot(tenant, Optional.empty()));
+        var progress = service.read(TENANT_ID);
+        assertEquals("NONE", progress.state());
+        assertEquals(true, progress.canSuspend());
+        assertEquals(false, progress.canContinue());
+        assertThrows(TenantLifecycleException.class, () -> service.continueOperation(TENANT_ID, WORKFLOW_ID, null));
+    }
+
+    @Test
     void workerKeepsRecoverableFailureAndBusinessPendingNonInteractive() {
         TenantLifecycleWorkflow workflow = pendingWorkflow();
         when(workflows.claimNext(any(), any(), any(), anyInt()))

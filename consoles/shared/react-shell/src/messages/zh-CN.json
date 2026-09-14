@@ -41,7 +41,7 @@
   "signIn": "登录",
   "signInFailed": "登录失败",
   "signInLoading": "正在登录",
-  "tenantSessionEndedDescription": "切换后的目标 Tenant 会话无法恢复，请重新登录。",
+  "tenantSessionEndedDescription": "当前公司的访问已失效，请重新登录。",
   "tenantSessionEndedTitle": "Tenant 会话已结束",
   "tenantSwitch": "切换 Tenant",
   "tenantSwitchCommittedDescription": "旧访问令牌已停止使用，正在等待目标 Tenant 会话恢复。",
@@ -111,5 +111,12 @@
   "subscriptionRecoveryNext": "下一页操作记录",
   "subscriptionRecoveryPrevious": "上一页操作记录",
   "subscriptionRecoveryCreate": "创建 Subscription",
-  "subscriptionRecoveryUnavailable": "当前无法继续原操作，请核查已有订阅或保留期。"
+  "subscriptionRecoveryUnavailable": "当前无法继续原操作，请核查已有订阅或保留期。",
+  "passwordSetupTitle": "设置密码",
+  "passwordSetupSuccess": "密码已设置，请使用新密码登录。",
+  "passwordSetupUnknown": "设置结果尚未确认，请先尝试用刚设置的密码登录。",
+  "passwordSetupUnavailable": "此链接无法继续设置密码，请联系平台管理员重发。",
+  "passwordSetupPolicy": "请使用 12 至 128 个字符、不含空白且未泄露的密码。",
+  "tenantMonitorUnavailable": "暂时无法持续核验访问，请重新加载页面。",
+  "tenantMonitorReload": "重新加载页面"
 }

@@ -23,6 +23,7 @@ import {
   type QuotaDefinitionOperationRecovery,
   type CreateTenantRequest,
   type Tenant,
+  type TenantLifecycle,
   type TenantPage,
   type TenantStatus,
   type TenantCreationRecovery,
@@ -34,6 +35,9 @@ import {
   type OAuthClientType,
   type OAuthClientStatus,
   type OAuthClientSecretResult,
+  type OAuthClientCredentialStatus,
+  type OAuthClientOperation,
+  type OAuthClientOperationPage,
 } from '@saas-forge/api-client';
 
 import type { RuntimeConfig, RuntimeConfigError, RuntimeConfigResult } from './runtime-config';
@@ -146,6 +150,10 @@ export interface LoginInput {
 export interface ChangeInitialPasswordInput {
   readonly newPassword: string;
   readonly signal?: AbortSignal;
+}
+
+export interface EstablishPasswordInput extends ChangeInitialPasswordInput {
+  readonly token: string;
 }
 
 export interface SelectAuthenticationContextInput {
@@ -292,6 +300,40 @@ export interface SubscriptionOperationPage {
 }
 
 export interface ConsoleApiClient {
+  listOAuthClientOperations(
+    cursor?: string,
+    signal?: AbortSignal,
+  ): Promise<ConsoleApiResult<OAuthClientOperationPage>>;
+  getOAuthClientCredentialStatus(
+    clientId: string,
+    signal?: AbortSignal,
+  ): Promise<ConsoleApiResult<OAuthClientCredentialStatus>>;
+  recoverOAuthClientOperation(
+    operation: OAuthClientOperation,
+    signal?: AbortSignal,
+  ): Promise<IdempotentConsoleApiResult<OAuthClientSecretResult>>;
+  rotateOAuthClientSecret(
+    clientId: string,
+    signal?: AbortSignal,
+  ): Promise<IdempotentConsoleApiResult<OAuthClientSecretResult>>;
+  revokeOAuthClient(
+    clientId: string,
+    signal?: AbortSignal,
+  ): Promise<IdempotentConsoleApiResult<void>>;
+  getTenantLifecycle(
+    tenantId: string,
+    signal?: AbortSignal,
+  ): Promise<ConsoleApiResult<TenantLifecycle>>;
+  continueTenantLifecycle(
+    progress: TenantLifecycle,
+    signal?: AbortSignal,
+  ): Promise<ConsoleApiResult<Tenant>>;
+  changeTenantLifecycle(
+    tenantId: string,
+    action: 'SUSPEND' | 'RESUME' | 'RECOVER',
+    operationHandle?: IdempotentOperationHandle,
+    signal?: AbortSignal,
+  ): Promise<IdempotentConsoleApiResult<Tenant>>;
   getTenantAdministratorPasswordSetup(
     tenantId: string,
     signal?: AbortSignal,
@@ -410,6 +452,8 @@ export interface AuthenticationRuntime {
   recover(signal?: AbortSignal): Promise<AuthenticationOperationResult>;
   retryRecovery(signal?: AbortSignal): Promise<AuthenticationOperationResult>;
   login(input: LoginInput): Promise<AuthenticationOperationResult>;
+  establishPassword(input: EstablishPasswordInput): Promise<AuthenticationOperationResult>;
+  checkTenantSession(signal?: AbortSignal): Promise<AuthenticationOperationResult>;
   changeInitialPassword(input: ChangeInitialPasswordInput): Promise<AuthenticationOperationResult>;
   selectAuthenticationContext(
     input: SelectAuthenticationContextInput,
@@ -459,6 +503,8 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
   let switchRetryAt = 0;
   let switchRetryProblem: AuthenticationProblem | undefined;
   const operationKeys = new WeakMap<IdempotentOperationHandle, string>();
+  const lifecycleReads = new WeakMap<TenantLifecycle, number>();
+  const oauthOperationReads = new WeakMap<OAuthClientOperation, number>();
   const listeners = new Set<AuthenticationListener>();
   const publish = (nextState: AuthenticationState): void => {
     state = authenticationReducer(state, { type: 'transition', state: nextState });
@@ -1030,6 +1076,110 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
   >();
 
   const client: ConsoleApiClient = {
+    listOAuthClientOperations: (cursor, signal) =>
+      executeRead(async () => {
+        const page = await oauthClientsApi.listOAuthClientOperations(
+          { cursor, limit: 50 },
+          { signal },
+        );
+        if (typeof page.hasMore !== 'boolean' || (page.hasMore && !page.nextCursor))
+          throw new Error('INVALID_SERVICE_RESPONSE');
+        for (const item of page.items) {
+          if (
+            !UUID_V7.test(item.operationId) ||
+            !UUID_V7.test(item.clientId) ||
+            !['CREATE', 'ROTATE', 'RECOVER', 'REVOKE'].includes(item.action) ||
+            typeof item.canRecover !== 'boolean' ||
+            !Number.isFinite(item.completedAt.getTime()) ||
+            (item.recoveryUntil !== undefined && !Number.isFinite(item.recoveryUntil.getTime()))
+          )
+            throw new Error('INVALID_SERVICE_RESPONSE');
+          oauthOperationReads.set(item, sessionEpoch);
+        }
+        return page;
+      }, signal),
+    getOAuthClientCredentialStatus: (clientId, signal) =>
+      executeRead(async () => {
+        const value = await oauthClientsApi.getOAuthClientCredentialStatus(
+          { clientId },
+          { signal },
+        );
+        if (
+          value.clientId !== clientId ||
+          typeof value.canRotate !== 'boolean' ||
+          typeof value.canRevoke !== 'boolean' ||
+          (value.overlapEndsAt !== undefined &&
+            (!Number.isFinite(value.overlapEndsAt.getTime()) || value.canRotate))
+        )
+          throw new Error('INVALID_SERVICE_RESPONSE');
+        return value;
+      }, signal),
+    recoverOAuthClientOperation: (operation, signal) =>
+      executeMutation(undefined, signal, (idempotencyKey) => {
+        if (oauthOperationReads.get(operation) !== sessionEpoch || !operation.canRecover)
+          throw new Error('INVALID_OPERATION_HANDLE');
+        return oauthClientsApi.recoverOAuthClientOperation(
+          { operationId: operation.operationId, idempotencyKey },
+          { signal },
+        );
+      }),
+    rotateOAuthClientSecret: (clientId, signal) =>
+      executeMutation(undefined, signal, (idempotencyKey) =>
+        oauthClientsApi.rotateOAuthClientSecret({ clientId, idempotencyKey }, { signal }),
+      ),
+    revokeOAuthClient: (clientId, signal) =>
+      executeMutation(undefined, signal, (idempotencyKey) =>
+        oauthClientsApi.revokeOAuthClient({ clientId, idempotencyKey }, { signal }),
+      ),
+    getTenantLifecycle: (tenantId, signal) =>
+      executeRead(async () => {
+        const value = await tenantsApi.getTenantLifecycle({ tenantId }, { signal });
+        if (
+          value.tenantId !== tenantId ||
+          !['NONE', 'PENDING', 'COMPLETED', 'RETRY_REQUIRED', 'RECOVERY_REQUIRED'].includes(
+            value.state,
+          ) ||
+          [value.canSuspend, value.canResume, value.canRecoverSuspension, value.canContinue].some(
+            (flag) => typeof flag !== 'boolean',
+          ) ||
+          (value.state !== 'NONE' &&
+            (value.operationId === undefined ||
+              !UUID_V7.test(value.operationId) ||
+              value.action === undefined ||
+              !['SUSPEND', 'RESUME'].includes(value.action))) ||
+          (value.canContinue && value.state !== 'PENDING')
+        )
+          throw new Error('INVALID_SERVICE_RESPONSE');
+        lifecycleReads.set(value, sessionEpoch);
+        return value;
+      }, signal),
+    continueTenantLifecycle: (progress, signal) => {
+      if (
+        lifecycleReads.get(progress) !== sessionEpoch ||
+        !progress.canContinue ||
+        progress.operationId === undefined
+      ) {
+        return Promise.resolve({ ok: false, problem: { code: 'INVALID_OPERATION_HANDLE' } });
+      }
+      const operationId = progress.operationId;
+      return executeRead(
+        () =>
+          tenantsApi.continueTenantLifecycle(
+            { tenantId: progress.tenantId, operationId },
+            { signal },
+          ),
+        signal,
+      );
+    },
+    changeTenantLifecycle: (tenantId, action, handle, signal) =>
+      executeMutation(handle, signal, (idempotencyKey) => {
+        const request = { tenantId, idempotencyKey };
+        return action === 'SUSPEND'
+          ? tenantsApi.suspendTenant(request, { signal })
+          : action === 'RESUME'
+            ? tenantsApi.resumeTenant(request, { signal })
+            : tenantsApi.recoverTenantSuspension(request, { signal });
+      }),
     getTenantAdministratorPasswordSetup: (tenantId, signal) =>
       executeRead(async () => {
         const selected = notificationSelectors.get(tenantId);
@@ -1389,6 +1539,62 @@ function createAuthenticationRuntime(options: AuthenticationRuntimeOptions): Aut
   const runtime: AuthenticationRuntime = {
     intent: options.intent,
     client,
+    checkTenantSession: (signal) =>
+      session.run(async () => {
+        if (
+          destroyed ||
+          options.intent !== 'TENANT' ||
+          state.status !== 'authenticated' ||
+          (state.transition !== null &&
+            !(state.transition === 'sessionSync' && state.synchronizationProblem !== undefined)) ||
+          tenantContextReadPending
+        ) {
+          return { ok: false, problem: { code: 'INVALID_AUTHENTICATION_TRANSITION' } };
+        }
+        if (state.synchronizationProblem !== undefined && now() < synchronizationRetryAt) {
+          return { ok: false, problem: state.synchronizationProblem };
+        }
+        if (expiresAt === undefined || now() >= expiresAt) {
+          accessToken = undefined;
+          expiresAt = undefined;
+          const problem = { code: 'SESSION_CHANGED' };
+          publish({
+            status: 'authenticated',
+            transition: 'sessionSync',
+            synchronizationProblem: problem,
+          });
+          return { ok: false, problem };
+        }
+        publish({ status: 'authenticated', transition: 'sessionSync' });
+        return synchronizeTenantContext(sessionEpoch, signal);
+      }),
+    establishPassword: async ({ token, newPassword, signal }) => {
+      if (
+        destroyed ||
+        options.intent !== 'TENANT' ||
+        state.status !== 'anonymous' ||
+        state.transition !== null
+      ) {
+        return { ok: false, problem: { code: 'INVALID_AUTHENTICATION_TRANSITION' } };
+      }
+      const epoch = sessionEpoch;
+      publish({ status: 'anonymous', transition: 'passwordChange' });
+      try {
+        await authenticationApi.establishPassword(
+          {
+            idempotencyKey: createIdempotencyKey(),
+            xSFCSRF: '1',
+            passwordSetupRequest: { token, newPassword },
+          },
+          { signal },
+        );
+        return { ok: true, state: { status: 'anonymous', transition: null } };
+      } catch (error) {
+        return { ok: false, problem: await normalizeOperationError(error) };
+      } finally {
+        if (epoch === sessionEpoch) publish({ status: 'anonymous', transition: null });
+      }
+    },
     getState: () => state,
     subscribe: (listener) => {
       listeners.add(listener);
@@ -1939,6 +2145,8 @@ function sanitizeBrowserRequest(init: RequestInit | undefined): RequestInit {
   // 所有浏览器写请求都经过 Gateway 的 CSRF 形态校验，不能只覆盖认证 operation。
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(init?.method?.toUpperCase() ?? '')) {
     headers.set('X-SF-CSRF', '1');
+    // 生成 Client 的无请求体写操作也必须使用正式 JSON 浏览器协议。
+    if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   }
   return { ...(init ?? {}), headers: Object.fromEntries(headers.entries()) };
 }

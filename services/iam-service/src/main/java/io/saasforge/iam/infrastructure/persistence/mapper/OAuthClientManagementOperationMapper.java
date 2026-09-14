@@ -5,6 +5,8 @@ import java.util.UUID;
 import org.apache.ibatis.annotations.Param;
 
 public interface OAuthClientManagementOperationMapper {
+    OAuthClientManagementOperationRow findById(@Param("actorIdentityId") UUID actorIdentityId,
+            @Param("operationId") UUID operationId);
     boolean tryLock(@Param("lockKey") String lockKey);
 
     OAuthClientManagementOperationRow find(

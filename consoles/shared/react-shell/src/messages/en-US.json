@@ -41,7 +41,7 @@
   "signIn": "Sign in",
   "signInFailed": "Sign-in failed",
   "signInLoading": "Signing in",
-  "tenantSessionEndedDescription": "The target Tenant session could not be restored after switching. Sign in again.",
+  "tenantSessionEndedDescription": "Your access to the current company has ended. Sign in again.",
   "tenantSessionEndedTitle": "Tenant session ended",
   "tenantSwitch": "Switch Tenant",
   "tenantSwitchCommittedDescription": "The old access token is no longer in use. Waiting to restore the target Tenant session.",
@@ -111,5 +111,12 @@
   "subscriptionRecoveryNext": "Next operation records",
   "subscriptionRecoveryPrevious": "Previous operation records",
   "subscriptionRecoveryCreate": "Create Subscription",
-  "subscriptionRecoveryUnavailable": "The original operation cannot continue. Verify the existing subscription and retention period."
+  "subscriptionRecoveryUnavailable": "The original operation cannot continue. Verify the existing subscription and retention period.",
+  "passwordSetupTitle": "Set password",
+  "passwordSetupSuccess": "Password set. Sign in with your new password.",
+  "passwordSetupUnknown": "The result is not confirmed. Try signing in with the password you just submitted.",
+  "passwordSetupUnavailable": "This link cannot set your password. Contact your platform administrator for a new link.",
+  "passwordSetupPolicy": "Use 12–128 characters without whitespace and choose a password that has not been compromised.",
+  "tenantMonitorUnavailable": "Continuous access checks are unavailable. Reload this page.",
+  "tenantMonitorReload": "Reload page"
 }

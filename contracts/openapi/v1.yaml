@@ -814,6 +814,50 @@ paths:
             application/problem+json:
               schema: { $ref: './common.yaml#/components/schemas/ProblemDetails' }
 
+  /api/v1/platform/tenants/{tenantId}/lifecycle:
+    get:
+      tags: [Platform tenants]
+      operationId: getTenantLifecycle
+      x-saasforge-service: tenant-access-service
+      summary: Read authoritative Tenant lifecycle progress and allowed actions
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: Current lifecycle progress without internal recovery material
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantLifecycle' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+  /api/v1/platform/tenants/{tenantId}/lifecycle-operations/{operationId}/continuations:
+    post:
+      tags: [Platform tenants]
+      operationId: continueTenantLifecycle
+      x-saasforge-service: tenant-access-service
+      summary: Continue the existing lifecycle operation without creating another operation
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: operationId
+          in: path
+          required: true
+          schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+      responses:
+        '200':
+          description: Lifecycle operation result; read current state again after completion
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tenant' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+
   /api/v1/platform/tenants/{tenantId}/suspensions:
     post:
       tags: [Platform tenants]
@@ -1530,6 +1574,75 @@ paths:
         '502': { $ref: './common.yaml#/components/responses/Problem' }
         '504': { $ref: './common.yaml#/components/responses/Problem' }
 
+  /api/v1/platform/oauth-client-operations:
+    get:
+      tags: [OAuth clients]
+      operationId: listOAuthClientOperations
+      x-saasforge-service: iam-service
+      summary: Discover current actor's completed credential operations without returning credentials
+      description: Absence is not proof that a lost request did not commit. No Secret, digest, original Key or request is returned.
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: cursor
+          in: query
+          schema: { type: string, maxLength: 2048 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: Actor-scoped operation page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OAuthClientOperationPage' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+  /api/v1/platform/oauth-client-operations/{operationId}/secret-issuance-recoveries:
+    post:
+      tags: [OAuth clients]
+      operationId: recoverOAuthClientOperation
+      x-saasforge-service: iam-service
+      summary: Explicitly replace a lost Secret using its actor-owned operation identity
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - name: operationId
+          in: path
+          required: true
+          schema: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: One-time replacement Secret; never replayed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OAuthClientSecretResult' }
+        '400': { $ref: './common.yaml#/components/responses/ValidationProblem' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '409': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+  /api/v1/platform/oauth-clients/{clientId}/credential-status:
+    get:
+      tags: [OAuth clients]
+      operationId: getOAuthClientCredentialStatus
+      x-saasforge-service: iam-service
+      summary: Read authoritative rotation deadline and permitted management actions
+      security: [{ UserBearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ClientId'
+      responses:
+        '200':
+          description: Non-sensitive credential lifecycle information
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OAuthClientCredentialStatus' }
+        '401': { $ref: './common.yaml#/components/responses/Problem' }
+        '403': { $ref: './common.yaml#/components/responses/Problem' }
+        '404': { $ref: './common.yaml#/components/responses/Problem' }
+        '503': { $ref: './common.yaml#/components/responses/Problem' }
+
   /api/v1/platform/oauth-clients:
     get:
       tags: [OAuth clients]
@@ -1880,6 +1993,19 @@ components:
           format: password
           minLength: 1
           writeOnly: true
+      additionalProperties: false
+    TenantLifecycle:
+      type: object
+      required: [tenantId, state, canSuspend, canResume, canRecoverSuspension, canContinue]
+      properties:
+        tenantId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        operationId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        action: { type: string, enum: [SUSPEND, RESUME] }
+        state: { type: string, enum: [NONE, PENDING, COMPLETED, RETRY_REQUIRED, RECOVERY_REQUIRED] }
+        canSuspend: { type: boolean }
+        canResume: { type: boolean }
+        canRecoverSuspension: { type: boolean }
+        canContinue: { type: boolean }
       additionalProperties: false
     PasswordSetupRequest:
       type: object
@@ -2414,6 +2540,37 @@ components:
       required: [originalIdempotencyKey]
       properties:
         originalIdempotencyKey: { $ref: './common.yaml#/components/schemas/UuidV7' }
+      additionalProperties: false
+    OAuthClientCredentialStatus:
+      type: object
+      required: [clientId, canRotate, canRevoke]
+      properties:
+        clientId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        overlapEndsAt: { $ref: '#/components/schemas/Timestamp' }
+        canRotate: { type: boolean }
+        canRevoke: { type: boolean }
+      additionalProperties: false
+    OAuthClientOperation:
+      type: object
+      required: [operationId, clientId, displayName, action, completedAt, canRecover]
+      properties:
+        operationId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        clientId: { $ref: './common.yaml#/components/schemas/UuidV7' }
+        displayName: { type: string }
+        action: { type: string, enum: [CREATE, ROTATE, RECOVER, REVOKE] }
+        completedAt: { $ref: '#/components/schemas/Timestamp' }
+        recoveryUntil: { $ref: '#/components/schemas/Timestamp' }
+        canRecover: { type: boolean }
+      additionalProperties: false
+    OAuthClientOperationPage:
+      type: object
+      required: [items, nextCursor, hasMore]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/OAuthClientOperation' }
+        nextCursor: { type: [string, 'null'] }
+        hasMore: { type: boolean }
       additionalProperties: false
     OAuthClientSecretResult:
       type: object

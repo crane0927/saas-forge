@@ -38,6 +38,14 @@
           AND operation_type = 'RECOVER' AND outcome = 'SUCCEEDED'
     </select>
 
+    <select id="findById" resultMap="operationRow">
+        SELECT id, actor_identity_id, idempotency_key, operation_type, client_id,
+               request_fingerprint, original_operation_id, secret_record_id,
+               outcome, http_status, completed_at
+        FROM iam_oauth_client_management_operations
+        WHERE actor_identity_id = #{actorIdentityId} AND id = #{operationId}
+    </select>
+
     <insert id="insert">
         INSERT INTO iam_oauth_client_management_operations
             (id, actor_identity_id, idempotency_key, operation_type, client_id,

@@ -32,6 +32,7 @@ import { platformMessages } from './messages';
 import { TenantSubscriptionSection } from './tenant-subscription';
 import { TenantPasswordSetupSection } from './tenant-password-setup';
 import { TenantInitializationSection } from './tenant-initialization';
+import { TenantLifecycleSection } from './tenant-lifecycle';
 
 type Props = { readonly client: ConsoleApiClient; readonly locale: SupportedLocale };
 function translator(locale: SupportedLocale) {
@@ -447,6 +448,16 @@ function TenantDetailContent({ client, locale, tenantId }: Props & { readonly te
       </ContentPanel>
       {result?.ok ? (
         <>
+          <TenantLifecycleSection
+            key={tenantId}
+            client={client}
+            locale={locale}
+            tenantId={tenantId}
+            refreshVersion={attempt}
+            onChanged={() => {
+              setAttempt((value) => value + 1);
+            }}
+          />
           <TenantSubscriptionSection
             client={client}
             locale={locale}

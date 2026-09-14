@@ -3,6 +3,7 @@ package io.saasforge.iam.application.client;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -38,6 +39,18 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 class OAuthClientManagementServiceTest {
+    @Test
+    void replacementByOperationIdentityStillRequiresTheOriginalActor() {
+        var created = service.create(ACTOR, KEY, "Example", Set.of(OAuthScope.RUNTIME_READ), null);
+        UUID operationId = operations.operation.id();
+        assertThrows(OAuthClientManagementException.class, () -> service.recoverOperation(
+                UUID.fromString("019535d9-0000-7000-8000-000000000099"),
+                UUID.fromString("019535d9-0000-7000-8000-000000000098"), operationId, null));
+        var recovered = service.recoverOperation(ACTOR,
+                UUID.fromString("019535d9-0000-7000-8000-000000000097"), operationId, null);
+        assertEquals(created.client().id(), recovered.client().id());
+        assertNotEquals(created.clientSecret(), recovered.clientSecret());
+    }
     private static final Instant NOW = Instant.parse("2026-08-28T01:02:03Z");
     private static final UUID ACTOR = UUID.fromString("0198f240-0000-7000-8000-000000000001");
     private static final UUID KEY = UUID.fromString("0198f240-0000-7000-8000-000000000002");
@@ -349,6 +362,10 @@ class OAuthClientManagementServiceTest {
     }
 
     private static final class InMemoryOperations implements OAuthClientManagementOperationRepository {
+        @Override public Optional<OAuthClientManagementOperation> findById(UUID actor, UUID id) {
+            return stored.values().stream().filter(value -> value.actorIdentityId().equals(actor)
+                    && value.id().equals(id)).findFirst();
+        }
         private boolean lockAvailable = true;
         private boolean recoveryLockAvailable = true;
         private OAuthClientManagementOperation operation;

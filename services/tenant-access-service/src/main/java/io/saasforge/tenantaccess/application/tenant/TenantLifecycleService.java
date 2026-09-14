@@ -79,6 +79,28 @@ public final class TenantLifecycleService {
                 .ifPresent(workflow -> processClaimed(workflow, null, false));
     }
 
+    public TenantLifecycleProgress read(UUID tenantId) {
+        var snapshot = workflows.readLifecycle(tenantId);
+        var workflow = snapshot.workflow().orElse(null);
+        boolean pending = workflow != null && workflow.status() == TenantLifecycleStatus.PENDING;
+        boolean recovery = workflow != null && workflow.status() == TenantLifecycleStatus.RECOVERY_REQUIRED;
+        boolean free = !pending && !recovery;
+        return new TenantLifecycleProgress(tenantId, workflow == null ? null : workflow.workflowId(),
+                workflow == null ? null : workflow.action().name(),
+                workflow == null ? "NONE" : workflow.status().name(),
+                free && snapshot.tenant().status() == io.saasforge.tenantaccess.domain.tenant.TenantStatus.ACTIVE,
+                free && snapshot.tenant().status() == io.saasforge.tenantaccess.domain.tenant.TenantStatus.SUSPENDED,
+                recovery, pending);
+    }
+
+    public TenantLifecycleResult continueOperation(UUID tenantId, UUID operationId, String traceId) {
+        var workflow = workflows.readLifecycle(tenantId).workflow()
+                .filter(value -> value.workflowId().equals(operationId))
+                .orElseThrow(() -> new TenantLifecycleException("TENANT_LIFECYCLE_OPERATION_UNAVAILABLE",
+                        "当前 Tenant 生命周期操作不可继续"));
+        return resumeOrReplay(workflow, traceId, true);
+    }
+
     private TenantLifecycleResult resumeOrReplay(
             TenantLifecycleWorkflow workflow, String traceId, boolean interactive) {
         TenantLifecycleResult terminal = terminal(workflow);

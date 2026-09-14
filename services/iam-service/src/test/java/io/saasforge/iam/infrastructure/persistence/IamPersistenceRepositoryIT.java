@@ -153,6 +153,9 @@ class IamPersistenceRepositoryIT {
     private OAuthClientManagementOperationRepository clientOperations;
 
     @Autowired
+    private io.saasforge.iam.infrastructure.persistence.mapper.OAuthClientMapper clientMapper;
+
+    @Autowired
     private ReservedServiceClientBootstrapService reservedClientBootstrap;
 
     @Autowired
@@ -380,6 +383,31 @@ class IamPersistenceRepositoryIT {
         assertTrue(accessTokenIssuances.findByJti(accessToken.jti()).isPresent());
         assertNotNull(tokenConsumedAt(presentedDigest));
         assertEquals(1, tokenCount(successorDigest));
+    }
+
+    @Test
+    void readsActorScopedOperationsAndAuthoritativeOverlapWithoutSecretMaterial() {
+        Instant at = Instant.parse("2026-09-14T03:00:00Z");
+        var actor = identities.create(Identity.register("client-operation-reader@example.test", null, at));
+        var creation = clients.create(OAuthClient.register("operation-reader", Set.of(OAuthScope.RUNTIME_READ), at), digest(111), at);
+        var ids = new UuidV7Generator(Clock.fixed(at, ZoneOffset.UTC), new SecureRandom());
+        var operation = new io.saasforge.iam.domain.client.OAuthClientManagementOperation(ids.next(), actor.id(), ids.next(),
+                "CREATE", creation.client().id(), digest(112), null, creation.initialSecret().id(), "SUCCEEDED", 201, at);
+        clientOperations.append(operation);
+        var queries = new MyBatisOAuthClientQueries(clientMapper, Clock.fixed(at.plusSeconds(1), ZoneOffset.UTC));
+        var page = queries.operations(actor.id(), null, 50);
+        assertEquals(1, page.items().size());
+        assertEquals(operation.id(), page.items().get(0).operationId());
+        assertTrue(page.items().get(0).canRecover());
+        assertEquals(at.plusSeconds(600), page.items().get(0).recoveryUntil());
+        assertTrue(queries.operations(ids.next(), null, 50).items().isEmpty());
+        assertTrue(clientOperations.findById(actor.id(), operation.id()).isPresent());
+        assertTrue(clientOperations.findById(ids.next(), operation.id()).isEmpty());
+        clients.rotate(creation.client().id(), digest(113), at.plusSeconds(1));
+        var status = queries.credentialStatus(creation.client().id());
+        assertFalse(status.canRotate());
+        assertEquals(at.plusSeconds(86401), status.overlapEndsAt());
+        assertFalse(queries.operations(actor.id(), null, 50).items().get(0).canRecover());
     }
 
     @Test

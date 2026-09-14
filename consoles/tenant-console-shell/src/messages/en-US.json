@@ -1,5 +1,6 @@
 {
   "navigationWorkspace": "Workspace",
   "workspaceDescription": "The current session was restored or signed in through the Tenant authentication Runtime.",
-  "workspaceTitle": "Tenant workspace"
+  "workspaceTitle": "Tenant workspace",
+  "currentCompany": "Current company"
 }

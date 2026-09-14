@@ -75,6 +75,12 @@
         ORDER BY completed_at DESC LIMIT 1
     </select>
 
+    <select id="findLatest" resultMap="workflowRow">
+        SELECT <include refid="columns"/> FROM tenant_lifecycle_workflows
+        WHERE tenant_id = #{tenantId}
+        ORDER BY created_at DESC, workflow_id DESC LIMIT 1
+    </select>
+
     <insert id="insert">
         INSERT INTO tenant_lifecycle_workflows
             (workflow_id, tenant_id, actor_identity_id, idempotency_key, request_fingerprint,

@@ -93,6 +93,8 @@
 4. 否则冷启动自动执行一次所选槽位刷新：成功进入相应稳定状态，无效会话进入 `anonymous`，可恢复 `409/503` 或网络不可判定进入独立恢复界面。
 5. 不使用后台计时器持续刷新。下一业务请求前发现 Token 剩余不超过 30 秒时，先刷新。
 
+[租户访问产品规格](31-console-tenant-access-and-oauth-client-management.md#闲置页面的主动提示)另行要求闲置且正常运行的 Tenant 页面在冻结生效后 30 秒内主动提示并遮蔽受保护内容。共享 React Shell 使用无凭据 Worker 每 20 秒触发共享 Runtime 的正式 Tenant Context 读取，并以 5 秒截止遮蔽无法确认的状态；Worker 无法启动或运行失败时遮蔽工作台并提示重新加载。主动核验不刷新 Token、不延长会话寿命；休眠、断网或页面恢复执行后先核验再展示内容。实际 Chrome 前台与长时间后台证据见 [Issue #181 验证记录](acceptance/issue-181-console-access-management.md)。
+
 ### 5.3 登录、密码与 Context 选择
 
 - 共享登录页由宿主注入必填 Intent，不向普通用户提供 Platform/Tenant 切换器。

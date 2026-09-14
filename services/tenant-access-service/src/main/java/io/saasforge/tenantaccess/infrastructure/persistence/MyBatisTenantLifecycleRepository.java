@@ -30,6 +30,16 @@ public class MyBatisTenantLifecycleRepository implements TenantLifecycleReposito
     private final TenantCreationMapper creationMapper;
     private final ObjectMapper objectMapper;
 
+    @Override
+    @Transactional
+    public io.saasforge.tenantaccess.application.tenant.TenantLifecycleSnapshot readLifecycle(UUID tenantId) {
+        setTarget(tenantId);
+        TenantRow tenant = mapper.lockTenant(tenantId);
+        if (tenant == null) throw failure("TENANT_NOT_FOUND", "Tenant 不存在");
+        return new io.saasforge.tenantaccess.application.tenant.TenantLifecycleSnapshot(
+                toDomain(tenant), Optional.ofNullable(mapper.findLatest(tenantId)).map(this::toDomain));
+    }
+
     public MyBatisTenantLifecycleRepository(
             TenantLifecycleMapper mapper, TenantCreationMapper creationMapper, ObjectMapper objectMapper) {
         this.mapper = mapper;

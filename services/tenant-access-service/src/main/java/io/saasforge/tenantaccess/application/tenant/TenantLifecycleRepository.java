@@ -7,6 +7,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface TenantLifecycleRepository {
+    TenantLifecycleSnapshot readLifecycle(UUID tenantId);
+
     TenantLifecycleClaim prepare(
             UUID actorIdentityId, UUID idempotencyKey, UUID tenantId, TenantLifecycleAction action,
             String fingerprint, UUID workflowId, UUID revocationRequestId, UUID releaseRequestId, Instant at);

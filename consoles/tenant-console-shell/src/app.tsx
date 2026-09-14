@@ -187,7 +187,10 @@ function TenantRuntimeSurface({
   readonly root: ComponentType<TenantConsoleRootProps>;
 }) {
   const { locale } = useConsoleLocale();
-  const routes = useMemo(() => createTenantAuthenticationRoutes(locale), [locale]);
+  const routes = useMemo(
+    () => createTenantAuthenticationRoutes(locale, runtime),
+    [locale, runtime],
+  );
   const state = useSyncExternalStore(
     (listener) => runtime.subscribe(listener),
     () => runtime.getState(),

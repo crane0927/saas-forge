@@ -608,8 +608,14 @@ class TenantCreationPostgreSqlIT {
         sessionRevocations.results.add(SessionRevocationGateway.Result.completed(3, 7));
 
         TenantLifecycleResult suspended = tenantLifecycle.suspend(actor, uuidV7(902), created.id(), null);
+        var suspendedProgress = tenantLifecycle.read(created.id());
+        assertTrue(suspendedProgress.canResume());
+        assertFalse(suspendedProgress.canSuspend());
         UUID revocationRequestId = sessionRevocations.lastRevocationRequestId;
         TenantLifecycleResult resumed = tenantLifecycle.resume(actor, uuidV7(903), created.id());
+        var resumedProgress = tenantLifecycle.read(created.id());
+        assertTrue(resumedProgress.canSuspend());
+        assertFalse(resumedProgress.canResume());
         TenantLifecycleResult replay = tenantLifecycle.suspend(actor, uuidV7(902), created.id(), null);
 
         assertEquals(TenantStatus.SUSPENDED, suspended.status());

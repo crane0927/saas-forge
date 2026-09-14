@@ -22,6 +22,11 @@ import { createTranslator, type SupportedLocale } from '@saas-forge/i18n';
 import { useEffect, useState } from 'react';
 import { Route, Routes, useLocation, useNavigate, useParams } from 'react-router';
 import { platformMessages } from './messages';
+import {
+  OAuthClientCreate,
+  OAuthClientOperations,
+  OAuthClientCredentialActions,
+} from './oauth-client-management';
 
 type Props = { readonly client: ConsoleApiClient; readonly locale: SupportedLocale };
 const statuses = { ACTIVE: 'oauthActive', REVOKED: 'oauthRevoked' } as const;
@@ -38,6 +43,8 @@ export function OAuthClientRoutes(props: Props) {
   return (
     <Routes>
       <Route index element={<OAuthClientList {...props} />} />
+      <Route path="new" element={<OAuthClientCreate {...props} />} />
+      <Route path="operations" element={<OAuthClientOperations {...props} />} />
       <Route path=":clientId" element={<OAuthClientDetails {...props} />} />
     </Routes>
   );
@@ -113,6 +120,10 @@ function OAuthClientList({ client, locale }: Props) {
       width="wide"
       title={<Heading title={t('oauthClientsTitle')} description={t('oauthClientsDescription')} />}
     >
+      <Button onClick={() => void navigate('/oauth-clients/new')}>{t('oauthCreate')}</Button>
+      <Button onClick={() => void navigate('/oauth-clients/operations')}>
+        {t('oauthOperations')}
+      </Button>
       <ServerTable<OAuthClientDetail>
         presentation="panel"
         title={t('oauthClientsTitle')}
@@ -306,6 +317,16 @@ function OAuthClientDetailContent({
           {t('oauthBack')}
         </Button>
       </ContentPanel>
+      {result?.ok && result.value.clientType === 'RUNTIME_SERVICE' ? (
+        <OAuthClientCredentialActions
+          client={client}
+          locale={locale}
+          clientId={clientId}
+          onChanged={() => {
+            setAttempt((value) => value + 1);
+          }}
+        />
+      ) : null}
     </PageLayout>
   );
 }

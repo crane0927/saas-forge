@@ -5,3 +5,5 @@ Console 刷新会丢失内存幂等句柄，而响应丢失并不证明操作未
 普通操作的 24 小时幂等期限与 Tenant Access 持久初始化工作流分别处理；过期且无法确定结果时不自动重建。其他平台管理员可读授权范围内的业务进度，但不能接手原操作者的未完成操作。具体范围、历史兼容与验证要求见 [Platform Console 身份与租户初始化闭环](../30-platform-console-tenant-initialization.md)。
 
 Issue #173 将该边界落实到 Quota Definition：已登记恢复记录的 actor/Key 始终标识原逻辑操作，24 小时后不得通过恢复接口或原创建/激活入口把它重解释为新操作。该范围覆盖 ADR 0003 的“到期后同一键可视为新请求”默认规则；这是为了防止旧页面或迟到请求绕过恢复期限而制造新操作，属于明确的过期请求行为收紧，不宣称旧请求语义完全不变。稳定结果仍可读取；新的独立操作需使用新 Key，并先核查当前领域事实及相关未决记录。
+
+[Console 租户访问、冻结与接入凭据管理](../31-console-tenant-access-and-oauth-client-management.md)将服务端权威恢复延伸到 Tenant 生命周期和 OAuth Client 未决操作，避免刷新后丢失结果而重复提交。授权仍由各领域裁决：OAuth Secret 替代签发保留原操作者、十分钟和一次替代限制；Tenant Suspension Recovery 则沿用具备权限的 Platform Administrator 可以继续原冻结工作流的既有规则，不套用初始化的原操作者限制。此扩展不允许保存或重放 Secret，也不扩大浏览器持久存储范围。

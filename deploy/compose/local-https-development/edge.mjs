@@ -11,7 +11,6 @@ const vitePort = Number.parseInt(
 );
 const apiTargetFile = process.env.SF_LOCAL_HTTPS_API_TARGET_FILE;
 const passwordSetupPaths = new Set([
-  "/password-setup",
   "/password-setup/app.js",
   "/password-setup/styles.css",
   "/api/v1/auth/password-setups",

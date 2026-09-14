@@ -39,6 +39,7 @@ import { useRequestFormExit } from './form-exit-guard';
 import { shellMessages } from './messages';
 import { ConsoleLocaleSelectorSlot, useConsoleLocale } from './console-locale';
 import { BrandApplicationContext } from './brand-application';
+import { PasswordSetupPage } from './password-setup';
 
 export interface AuthenticationShellRoute {
   readonly path: string;
@@ -108,12 +109,15 @@ export class AuthenticationRootErrorBoundary extends Component<
   };
 }
 
-export function AuthenticationShell({
-  applicationName,
-  runtime,
-  defaultPath,
-  routes,
-}: AuthenticationShellProps) {
+export function AuthenticationShell(props: AuthenticationShellProps) {
+  const location = useLocation();
+  if (props.runtime.intent === 'TENANT' && location.pathname === '/password-setup') {
+    return <PasswordSetupPage runtime={props.runtime} />;
+  }
+  return <SessionShell {...props} />;
+}
+
+function SessionShell({ applicationName, runtime, defaultPath, routes }: AuthenticationShellProps) {
   const requestFormExit = useRequestFormExit();
   const brand = useContext(BrandApplicationContext);
   const resolvedApplicationName = brand?.applicationName ?? applicationName;
@@ -139,6 +143,72 @@ export function AuthenticationShell({
   const [tenantSwitchMembershipId, setTenantSwitchMembershipId] = useState<string>();
   const [tenantSwitchRetryMembershipId, setTenantSwitchRetryMembershipId] = useState<string>();
   const [tenantSessionEnded, setTenantSessionEnded] = useState(false);
+  const [tenantMonitorUnavailable, setTenantMonitorUnavailable] = useState(false);
+
+  useEffect(() => {
+    if (runtime.intent !== 'TENANT') return;
+    let current = true;
+    let controller: AbortController | undefined;
+    let worker: Worker;
+    let sequence = 0;
+    try {
+      worker = new Worker(new URL('./tenant-session-monitor.worker.ts', import.meta.url), {
+        type: 'module',
+      });
+    } catch {
+      setTenantMonitorUnavailable(true);
+      return;
+    }
+    worker.onerror = (event) => {
+      event.preventDefault();
+      if (current) setTenantMonitorUnavailable(true);
+      controller?.abort();
+    };
+    const check = () => {
+      const snapshot = runtime.getState();
+      if (
+        controller !== undefined ||
+        snapshot.status !== 'authenticated' ||
+        (snapshot.transition !== null &&
+          !(snapshot.transition === 'sessionSync' && snapshot.synchronizationProblem !== undefined))
+      )
+        return;
+      controller = new AbortController();
+      const active = controller;
+      const requestSequence = ++sequence;
+      worker.postMessage({ type: 'start', sequence: requestSequence });
+      void runtime
+        .checkTenantSession(active.signal)
+        .then(() => {
+          if (current && runtime.getState().status === 'anonymous') setTenantSessionEnded(true);
+        })
+        .finally(() => {
+          if (current) worker.postMessage({ type: 'finish', sequence: requestSequence });
+          controller = undefined;
+        });
+    };
+    const visible = () => {
+      if (document.visibilityState === 'visible') check();
+    };
+    worker.onmessage = (event: MessageEvent<{ type: 'tick' | 'deadline'; sequence?: number }>) => {
+      if (!current) return;
+      if (event.data.type === 'tick') check();
+      else if (event.data.sequence === sequence) controller?.abort();
+    };
+    window.addEventListener('focus', check);
+    window.addEventListener('online', check);
+    window.addEventListener('pageshow', check);
+    document.addEventListener('visibilitychange', visible);
+    return () => {
+      current = false;
+      worker.terminate();
+      controller?.abort();
+      window.removeEventListener('focus', check);
+      window.removeEventListener('online', check);
+      window.removeEventListener('pageshow', check);
+      document.removeEventListener('visibilitychange', visible);
+    };
+  }, [runtime]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -241,6 +311,21 @@ export function AuthenticationShell({
           }
         }}
       />
+    );
+  }
+
+  if (tenantMonitorUnavailable && state.status === 'authenticated') {
+    return (
+      <PageLayout title={<PageTitle>{translate.translate('tenantMonitorUnavailable')}</PageTitle>}>
+        <PersistentError title={translate.translate('tenantMonitorUnavailable')} />
+        <Button
+          onClick={() => {
+            window.location.reload();
+          }}
+        >
+          {translate.translate('tenantMonitorReload')}
+        </Button>
+      </PageLayout>
     );
   }
 

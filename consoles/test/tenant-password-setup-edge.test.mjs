@@ -13,13 +13,11 @@ import {
   ensureCertificateMaterial,
 } from '../../scripts/local-https-development.mjs';
 
-test('Tenant Password Setup document reaches Gateway instead of the Tenant SPA', async (t) => {
+test('Tenant Password Setup document reaches the real Tenant Console route', async (t) => {
   const fixture = await edgeFixture(t);
   const response = await fixture.request('/password-setup');
   assert.equal(response.status, 200);
-  assert.equal(response.body, 'Gateway document');
-  assert.equal(response.headers['content-type'], 'text/html');
-  assert.equal(response.headers['cache-control'], 'no-store');
+  assert.equal(response.body, 'Tenant SPA');
 });
 
 test('Tenant Password Setup assets retain Gateway content types and cache semantics', async (t) => {
@@ -38,11 +36,7 @@ test('Tenant Password Setup assets retain Gateway content types and cache semant
 
 test('matches exact Password Setup pathnames with queries while keeping other Tenant paths on Vite', async (t) => {
   const fixture = await edgeFixture(t);
-  for (const requestPath of [
-    '/password-setup?lang=zh',
-    '/password-setup/app.js?v=1',
-    '/password-setup/styles.css?v=1',
-  ]) {
+  for (const requestPath of ['/password-setup/app.js?v=1', '/password-setup/styles.css?v=1']) {
     const response = await fixture.request(requestPath);
     assert.match(response.body, /^Gateway /u);
   }
@@ -53,6 +47,8 @@ test('matches exact Password Setup pathnames with queries while keeping other Te
   for (const requestPath of [
     '/',
     '/login',
+    '/password-setup',
+    '/password-setup?lang=zh',
     '/src/main.tsx',
     '/@vite/client',
     '/password-setup/',
@@ -103,7 +99,6 @@ test('every formal Tenant path and API Host follows the active Gateway file with
   for (const hostname of ['gateway', 'host.docker.internal', 'gateway']) {
     await writeFile(fixture.targetFile, JSON.stringify({ hostname, port: 8080 }));
     for (const requestPath of [
-      '/password-setup',
       '/password-setup/app.js',
       '/password-setup/styles.css',
       '/api/v1/auth/password-setups',
@@ -130,7 +125,6 @@ test('a missing active Gateway file fails closed for all formal Tenant paths and
   const fixture = await edgeFixture(t, { dynamic: true });
   await rm(fixture.targetFile);
   for (const [host, requestPath] of [
-    ['console.saasforge.test', '/password-setup'],
     ['console.saasforge.test', '/password-setup/app.js'],
     ['console.saasforge.test', '/password-setup/styles.css'],
     ['console.saasforge.test', '/api/v1/auth/password-setups'],
@@ -147,6 +141,7 @@ test('a missing active Gateway file fails closed for all formal Tenant paths and
     assert.equal(response.headers['x-fixture-upstream'], undefined);
   }
   assert.equal((await fixture.request('/login')).body, 'Tenant SPA');
+  assert.equal((await fixture.request('/password-setup')).body, 'Tenant SPA');
 });
 
 test('rejects unapproved Hosts before resolving or forwarding any Password Setup request', async (t) => {
@@ -166,7 +161,6 @@ test('Password Setup upgrades follow Gateway and fail closed while Tenant HMR ke
   for (const hostname of ['gateway', 'host.docker.internal', 'gateway']) {
     await writeFile(fixture.targetFile, JSON.stringify({ hostname, port: 8080 }));
     for (const requestPath of [
-      '/password-setup',
       '/password-setup/app.js',
       '/password-setup/styles.css',
       '/api/v1/auth/password-setups',
@@ -180,7 +174,7 @@ test('Password Setup upgrades follow Gateway and fail closed while Tenant HMR ke
   for (const value of [undefined, '{']) {
     if (value === undefined) await rm(fixture.targetFile);
     else await writeFile(fixture.targetFile, value);
-    assert.equal((await fixture.upgrade('/password-setup')).status, 502);
+    assert.equal((await fixture.upgrade('/password-setup/app.js')).status, 502);
     assert.equal((await fixture.upgrade('/')).status, 101);
     assert.equal((await fixture.upgrade('/', 'unknown.saasforge.test')).status, 421);
   }
@@ -198,7 +192,6 @@ test('invalid active targets fail closed and recover after a valid target is res
   ]) {
     await writeFile(fixture.targetFile, value);
     for (const requestPath of [
-      '/password-setup',
       '/password-setup/app.js',
       '/password-setup/styles.css',
       '/api/v1/auth/password-setups',
@@ -226,7 +219,10 @@ test('invalid active targets fail closed and recover after a valid target is res
     );
   }
   await writeFile(fixture.targetFile, '{"hostname":"gateway","port":8080}');
-  assert.equal((await fixture.request('/password-setup')).headers['x-fixture-upstream'], 'gateway');
+  assert.equal(
+    (await fixture.request('/password-setup/app.js')).headers['x-fixture-upstream'],
+    'gateway',
+  );
 });
 
 test('unreachable Gateway targets return 502 without falling back to a healthy Tenant Vite', async (t) => {
@@ -235,7 +231,6 @@ test('unreachable Gateway targets return 502 without falling back to a healthy T
   for (const hostname of ['gateway', 'host.docker.internal']) {
     await writeFile(fixture.targetFile, JSON.stringify({ hostname, port: 8080 }));
     for (const requestPath of [
-      '/password-setup',
       '/password-setup/app.js',
       '/password-setup/styles.css',
       '/api/v1/auth/password-setups',

@@ -24,6 +24,11 @@ public class MyBatisOAuthClientManagementOperationRepository
     }
 
     @Override
+    public Optional<OAuthClientManagementOperation> findById(UUID actorIdentityId, UUID operationId) {
+        return map(mapper.findById(actorIdentityId, operationId));
+    }
+
+    @Override
     public Optional<OAuthClientManagementOperation> find(UUID actorIdentityId, UUID idempotencyKey) {
         return map(mapper.find(actorIdentityId, idempotencyKey));
     }

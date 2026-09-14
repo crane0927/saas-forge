@@ -1542,7 +1542,7 @@ async function expectRouteAccessibility(page, title, { focusedElementId } = {}) 
         : document.activeElement?.id === expectedId,
     { expectedTitle: title, expectedId: focusedElementId },
   );
-  const announcement = page.getByRole('status').filter({ hasText: title });
+  const announcement = page.getByRole('status').and(page.getByText(title, { exact: true }));
   assert.equal(await announcement.getAttribute('aria-live'), 'polite');
   assert.equal(await announcement.getAttribute('aria-atomic'), 'true');
   assert.equal(

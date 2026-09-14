@@ -24,6 +24,69 @@ export async function verifyOAuthClients({
     await accessibility(page, 'Sign in to SaaS Forge');
     await selectLocale(page, '简体中文');
     await login(page, email, password, 'zh-CN', { focusedElementId: 'console-locale' });
+    // 真实生产页面操作；不收集含 Secret 的截图、录像、响应体或错误参数。
+    await page.goto(`${base}/oauth-clients/new`);
+    await page.getByRole('textbox', { name: /^名称/ }).fill(`managed-${Date.now()}`);
+    const creation = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname === '/api/v1/platform/oauth-clients',
+    );
+    await page.getByRole('button', { name: '创建接入凭据', exact: true }).click();
+    assert.equal((await creation).status(), 201);
+    await page.getByRole('status', { name: '接入 Secret', exact: true }).waitFor();
+    await page.getByRole('button', { name: '我已保存，关闭展示', exact: true }).click();
+    assert.equal(await page.getByRole('status', { name: '接入 Secret', exact: true }).count(), 0);
+    await page.getByRole('button', { name: '查看详情', exact: true }).click();
+    const managedId = page.url().split('/').at(-1);
+    assert.match(managedId, /^[0-9a-f-]{36}$/);
+    await page.getByRole('button', { name: '轮换 Secret', exact: true }).click();
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: '轮换 Secret', exact: true })
+      .click();
+    await page.getByRole('status', { name: '接入 Secret', exact: true }).waitFor();
+    await page.getByRole('button', { name: '我已保存，关闭展示', exact: true }).click();
+    await page.getByText(/^旧凭据失效时间：/).waitFor();
+    assert.equal(await page.getByRole('button', { name: '轮换 Secret', exact: true }).count(), 0);
+    await page.reload();
+    await page.getByText(/^旧凭据失效时间：/).waitFor();
+    assert.equal(await page.getByRole('status', { name: '接入 Secret', exact: true }).count(), 0);
+    await safeStorage(page);
+    await page.getByRole('button', { name: '吊销接入', exact: true }).click();
+    await page.getByRole('dialog').getByRole('textbox').fill(managedId);
+    await page.getByRole('dialog').getByRole('button', { name: '吊销接入', exact: true }).click();
+    await page.getByText('已吊销', { exact: true }).waitFor();
+    assert.equal(await page.getByRole('button', { name: '吊销接入', exact: true }).count(), 0);
+
+    // 只丢弃已经由真实 IAM 处理的创建响应；随后重开页面发现本人原操作。
+    let dropped = false;
+    await page.route('**/api/v1/platform/oauth-clients', async (route) => {
+      if (route.request().method() !== 'POST') return route.continue();
+      const response = await route.fetch();
+      assert.equal(response.status(), 201);
+      dropped = true;
+      await route.abort('failed');
+    });
+    await page.goto(`${base}/oauth-clients/new`);
+    await page.getByRole('textbox', { name: /^名称/ }).fill(`lost-response-client`);
+    await page.getByRole('button', { name: '创建接入凭据', exact: true }).click();
+    await page.getByText('结果待确认，请先查看操作记录', { exact: true }).waitFor();
+    assert.equal(dropped, true);
+    await page.unroute('**/api/v1/platform/oauth-clients');
+    await page.goto(`${base}/oauth-clients/operations`);
+    const operation = page.getByRole('region', { name: `lost-response-client`, exact: true });
+    await operation.getByRole('button', { name: '补领替代 Secret', exact: true }).click();
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: '补领替代 Secret', exact: true })
+      .click();
+    await page.getByRole('status', { name: '接入 Secret', exact: true }).waitFor();
+    await page.getByRole('button', { name: '我已保存，关闭展示', exact: true }).click();
+    await page.reload();
+    await page.getByRole('heading', { name: '我的接入操作', exact: true }).waitFor();
+    assert.equal(await page.getByRole('status', { name: '接入 Secret', exact: true }).count(), 0);
+    await safeStorage(page);
     const fixture = await context.newPage();
     try {
       await fixture.goto(`${base}/acceptance-client.html`);

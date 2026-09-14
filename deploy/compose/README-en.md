@@ -66,7 +66,7 @@ The platform home and Tenant workspace currently show authentication status only
    }
    ```
 
-4. For password setup, proxy `/password-setup`, `/password-setup/app.js`, `/password-setup/styles.css`, and the submission path `/api/v1/auth/password-setups` on the Tenant Origin to Gateway rather than the SPA fallback. This independent page submits to its own Origin; other Console API calls use the configured API Origin through the shared Client.
+4. Tenant Console serves `/password-setup` and submits through the shared Client to the configured API Origin. The legacy assets `/password-setup/app.js`, `/password-setup/styles.css` and same-origin submission path `/api/v1/auth/password-setups` retain Gateway routing.
 5. Complete migrations, wait for backend readiness, and run the administrator and reserved service Client bootstrap tasks below. Tenant operations additionally require a Tenant, Membership, and valid password; a fresh environment does not create this business data automatically.
 
 The browser and shared Client handle cookies, Origin, and Fetch Metadata according to the protocol; UI users do not copy Tokens or cookies. HTTP port `8080` is a local backend port, not a product console. See the [deployment documentation](../../docs/14-deployment.md) for the complete boundary.
@@ -104,7 +104,7 @@ Each Console has its own `platform-vite.pid|log` or `tenant-vite.pid|log` under 
 
 The package-level `pnpm --filter @saas-forge/tenant-console-shell run dev` command remains available for foreground debugging. If it occupies 5174, managed lifecycle reports UNMANAGED and refuses to terminate it. Foreground HTTP debugging is not controlled HTTPS acceptance.
 
-On the Tenant Origin, `/password-setup`, `/password-setup/app.js`, `/password-setup/styles.css`, and `/api/v1/auth/password-setups` route exactly to the active Gateway, preserving query strings and browser request headers. Gateway controls page and asset content types, cache headers, and API error responses. Other Tenant paths and HMR continue to reach Tenant Vite.
+On the Tenant Origin, `/password-setup` reaches the formal Tenant Console route through Vite. Legacy `/password-setup/app.js`, `/password-setup/styles.css`, and `/api/v1/auth/password-setups` route exactly to the active Gateway, preserving query strings and browser request headers. Gateway controls those asset content types, cache headers, and API error responses. Other Tenant paths and HMR continue to reach Tenant Vite.
 
 These paths share the active target file with the API Host. After `bash scripts/local-development.sh replace gateway`, they follow the local Gateway; after `restore gateway`, they return to the container without changing the browser URL or restarting Edge. A missing or invalid target file or an unreachable target returns 502, with no fallback to Vite or another Gateway; unknown Hosts return 421. When first upgrading these routes, stop both Consoles and start them again as described above to load the new Edge script.
 

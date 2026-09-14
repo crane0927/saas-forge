@@ -171,3 +171,41 @@ it('loads an English detail route directly and reloads authoritative fields', as
   expect(document.body.textContent).not.toContain('fixture-token');
   expect((await auditSettledPage()).violations).toEqual([]);
 });
+
+it('creates a runtime client and removes its one-time Secret before leaving the page', async () => {
+  let writes = 0;
+  mount(
+    fixture((url) => {
+      if (url.pathname.endsWith('/oauth-clients')) {
+        writes += 1;
+        return Response.json(
+          {
+            ...detail,
+            clientType: 'RUNTIME_SERVICE',
+            clientSecret: 'synthetic-browser-only-value',
+          },
+          { status: 201 },
+        );
+      }
+      return Response.json({ items: [], nextCursor: null, hasMore: false });
+    }),
+    'zh-CN',
+    '/oauth-clients/new',
+  );
+  await page.getByRole('textbox', { name: '名称', exact: false }).fill('Customer application');
+  expect((await auditSettledPage()).violations).toEqual([]);
+  await page.getByRole('button', { name: '创建接入凭据', exact: true }).click();
+  await expect
+    .element(page.getByRole('status', { name: '接入 Secret', exact: true }))
+    .toBeVisible();
+  await page.getByRole('button', { name: '我已保存，关闭展示', exact: true }).click();
+  await expect
+    .element(page.getByRole('status', { name: '接入 Secret', exact: true }))
+    .not.toBeInTheDocument();
+  expect(writes).toBe(1);
+  await page.getByRole('button', { name: '我的接入操作', exact: true }).click();
+  await expect
+    .element(page.getByRole('button', { name: '创建替代接入', exact: true }))
+    .not.toBeInTheDocument();
+  expect((await auditSettledPage()).violations).toEqual([]);
+});

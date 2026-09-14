@@ -8,6 +8,10 @@ import java.util.UUID;
 import org.apache.ibatis.annotations.Param;
 
 public interface OAuthClientMapper {
+    record OperationQuery(UUID actorIdentityId, UUID beforeId, int limit, OffsetDateTime at) { }
+    List<io.saasforge.iam.infrastructure.persistence.record.OAuthClientOperationProjection> listOperations(OperationQuery query);
+    io.saasforge.iam.infrastructure.persistence.record.OAuthClientCredentialProjection credentialStatus(
+            @Param("clientId") UUID clientId, @Param("at") OffsetDateTime at);
 
     List<OAuthClientRow> listClients(ClientQuery query);
 

@@ -76,8 +76,8 @@ await build({
         import { createTenantAuthenticationRoutes as baseRoutes } from ${JSON.stringify(tenantRoutes)};
         import { DesignSystemConsumerRemote } from ${JSON.stringify(remote)};
         import StaticRemoteAcceptance from ${JSON.stringify(staticRemoteAcceptance)};
-        export function createTenantAuthenticationRoutes(locale) {
-          return [...baseRoutes(locale), {
+        export function createTenantAuthenticationRoutes(locale, runtime) {
+          return [...baseRoutes(locale, runtime), {
             path: '/acceptance/brand-remote', label: 'Remote acceptance',
             element: createElement('div', { 'data-testid': 'brand-remote' }, createElement(DesignSystemConsumerRemote, { locale })),
           }, {

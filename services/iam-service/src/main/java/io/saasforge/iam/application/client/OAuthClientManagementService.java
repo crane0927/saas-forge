@@ -102,6 +102,14 @@ public class OAuthClientManagementService {
         return clients.findById(clientId).orElseThrow(OAuthClientManagementException::notFound);
     }
 
+    @Transactional
+    public OAuthClientSecretResult recoverOperation(UUID actorIdentityId, UUID idempotencyKey,
+            UUID operationId, String traceId) {
+        var operation = operations.findById(actorIdentityId, operationId)
+                .orElseThrow(OAuthClientManagementException::recoveryNotAllowed);
+        return recover(actorIdentityId, idempotencyKey, operation.clientId(), operation.idempotencyKey(), traceId);
+    }
+
     /** 旧 Secret 截止时间、新 Secret、操作终态与事件在同一事务中提交。 */
     @Transactional
     public OAuthClientSecretResult rotate(

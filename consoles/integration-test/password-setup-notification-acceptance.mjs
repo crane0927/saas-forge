@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { execFileSync } from 'node:child_process';
 import { setTimeout } from 'node:timers/promises';
+import { launchUnemulatedChrome } from './unemulated-chrome.mjs';
 
 // Browser plugin not available. 只对本次隔离 Fresh 的真实 SMTP 服务注入故障。
 export async function verifyPasswordSetupNotification({
@@ -252,6 +253,196 @@ export async function verifyPasswordSetupNotification({
       .getByText('Mail service acceptance does not confirm inbox delivery.', { exact: true })
       .waitFor();
     await capture(page, 'issue-177-english');
+    await page.setViewportSize({ width: 1440, height: 960 });
+    await selectLocale(page, '简体中文');
+    // 使用真实邮件中的链接进入 Tenant Console，再验证闲置页面主动失效与重新登录。
+    const setupMessage = messages.messages.find((message) =>
+      message.To.some((to) => to.Address === recipient),
+    );
+    const mailDetail = await (
+      await fetch(`http://${mailAddress}/api/v1/message/${setupMessage.ID}`)
+    ).json();
+    const setupLink = mailDetail.Text?.match(
+      /https:\/\/[^\s]+\/password-setup#token=[A-Za-z0-9_-]{43}/,
+    )?.[0];
+    assert.equal(typeof setupLink, 'string', 'mail contains a setup link');
+    const nativeChrome = await launchUnemulatedChrome();
+    let releaseResumeRead = () => {};
+    try {
+      const tenantContext = nativeChrome.context;
+      // 此独立浏览器只验证闲置生命周期；语言键盘路径已由上方双语产品场景覆盖。
+      await tenantContext.addInitScript(() => localStorage.setItem('sf:ui:locale', 'zh-CN'));
+      const lifecycleConsole = await tenantContext.newPage();
+      await lifecycleConsole.setViewportSize({ width: 1440, height: 960 });
+      await lifecycleConsole.bringToFront();
+      await lifecycleConsole.goto(base);
+      await lifecycleConsole
+        .getByRole('heading', { name: '登录 SaaS Forge', exact: true })
+        .waitFor();
+      await login(lifecycleConsole, email, password, 'zh-CN');
+      await lifecycleConsole.goto(`${base}/tenants/${id}`);
+      const tenant = await tenantContext.newPage();
+      const network = await tenantContext.newCDPSession(tenant);
+      await network.send('Network.enable');
+      const setOffline = (offline) =>
+        network.send('Network.emulateNetworkConditions', {
+          offline,
+          latency: 0,
+          downloadThroughput: -1,
+          uploadThroughput: -1,
+        });
+      await tenant.bringToFront();
+      await tenant.goto(setupLink).catch(() => {
+        throw new Error('setup link navigation unavailable');
+      });
+      await tenant.getByRole('heading', { name: '设置密码', exact: true }).waitFor();
+      assert.equal(new URL(tenant.url()).hash, '', 'challenge is immediately removed from the URL');
+      await tenant
+        .getByLabel(/^新密码/)
+        .fill(password)
+        .catch(() => {
+          throw new Error('setup password field unavailable');
+        });
+      await tenant.getByRole('button', { name: '设置密码', exact: true }).click();
+      await tenant.getByText('密码已设置，请使用新密码登录。', { exact: true }).waitFor();
+      await tenant.getByRole('button', { name: '登录', exact: true }).click();
+      await tenant.getByRole('heading', { name: '登录 SaaS Forge', exact: true }).waitFor();
+      await login(tenant, recipient, password, 'zh-CN');
+      await tenant.getByRole('heading', { name: 'Tenant 工作台', exact: true }).waitFor();
+      await tenant.locator('dd').filter({ hasText: 'Notification acceptance' }).waitFor();
+      await tenant.reload();
+      await tenant.locator('dd').filter({ hasText: 'Notification acceptance' }).waitFor();
+      await safeStorage(tenant);
+      // 从测试进程观察隐藏页面，避免 Playwright 的页面 rAF 等待被 Chrome 暂停。
+      async function waitForTenantDom(locator, present) {
+        const deadline = Date.now() + 30000;
+        while (Date.now() < deadline) {
+          if ((await locator.count()) > 0 === present) return;
+          await setTimeout(50);
+        }
+        assert.fail('Tenant access display did not reach the expected state within 30 seconds');
+      }
+      for (const scenario of ['long-background', 'foreground', 'offline-return', 'sleep-return']) {
+        if (scenario === 'offline-return') await setOffline(true);
+        await lifecycleConsole.bringToFront();
+        await tenant.waitForFunction(() => document.visibilityState === 'hidden');
+        if (scenario === 'long-background') {
+          console.info('Waiting six minutes with the Tenant page truly hidden');
+          await setTimeout(365000);
+          assert.equal(await tenant.evaluate(() => document.visibilityState), 'hidden');
+        }
+        let resumeReadStarted;
+        if (scenario === 'sleep-return') {
+          await network.send('Page.setWebLifecycleState', { state: 'frozen' });
+          let markStarted;
+          resumeReadStarted = new Promise((resolve) => {
+            markStarted = resolve;
+          });
+          const held = new Promise((resolve) => {
+            releaseResumeRead = resolve;
+          });
+          await tenant.route(
+            '**/api/v1/auth/context',
+            async (route) => {
+              markStarted();
+              await held;
+              await route.continue();
+            },
+            { times: 1 },
+          );
+        }
+        const invalidated = tenant.waitForResponse(
+          (response) =>
+            new URL(response.url()).pathname === '/api/v1/auth/context' &&
+            [401, 403].includes(response.status()),
+          { timeout: 60000 },
+        );
+        await lifecycleConsole.getByRole('button', { name: '冻结公司', exact: true }).click();
+        const frozen = lifecycleConsole.waitForResponse(
+          (response) =>
+            response.request().method() === 'POST' &&
+            new URL(response.url()).pathname.endsWith('/suspensions'),
+        );
+        await lifecycleConsole
+          .getByRole('dialog')
+          .getByRole('button', { name: '冻结公司', exact: true })
+          .waitFor();
+        if (scenario === 'foreground') {
+          const checked = tenant.waitForResponse(
+            (response) =>
+              new URL(response.url()).pathname === '/api/v1/auth/context' &&
+              response.status() === 200,
+          );
+          await tenant.bringToFront();
+          await checked;
+          await tenant.getByRole('heading', { name: 'Tenant 工作台', exact: true }).waitFor();
+          assert.equal(await tenant.evaluate(() => document.visibilityState), 'visible');
+        }
+        let effectiveAt = Date.now();
+        await lifecycleConsole
+          .getByRole('dialog')
+          .getByRole('button', { name: '冻结公司', exact: true })
+          // 后台 Platform 的 rAF 已暂停；已可见且确认过的按钮通过真实输入提交，不激活标签页。
+          .click({ force: scenario === 'foreground' });
+        assert.equal((await frozen).status(), 200);
+        if (scenario === 'offline-return') {
+          await waitForTenantDom(tenant.locator('#tenant-workspace-title'), false);
+          effectiveAt = Date.now();
+          await setOffline(false);
+        }
+        if (scenario === 'sleep-return') {
+          effectiveAt = Date.now();
+          await network.send('Page.setWebLifecycleState', { state: 'active' });
+          await tenant.bringToFront();
+          await resumeReadStarted;
+          await tenant.waitForFunction(() => !document.querySelector('#tenant-workspace-title'));
+          // 权威读取仍被测试暂扣时已遮蔽，随后放行真实服务响应。
+          releaseResumeRead();
+        }
+        await invalidated;
+        await waitForTenantDom(tenant.getByText('Tenant 会话已结束', { exact: true }), true);
+        assert.ok(
+          Date.now() - effectiveAt <= 30000,
+          'runnable or returning page invalidates within 30 seconds',
+        );
+        assert.equal(
+          await tenant.getByRole('heading', { name: 'Tenant 工作台', exact: true }).count(),
+          0,
+        );
+        assert.equal(
+          await tenant.evaluate(() => document.visibilityState),
+          ['foreground', 'sleep-return'].includes(scenario) ? 'visible' : 'hidden',
+        );
+        console.info(
+          JSON.stringify({
+            check: 'idle-tenant-suspension',
+            elapsedMs: Date.now() - effectiveAt,
+            scenario,
+            visibility: await tenant.evaluate(() => document.visibilityState),
+          }),
+        );
+        await lifecycleConsole.bringToFront();
+        await lifecycleConsole.getByRole('button', { name: '解除冻结', exact: true }).click();
+        await lifecycleConsole
+          .getByRole('dialog')
+          .getByRole('button', { name: '解除冻结', exact: true })
+          .click();
+        await lifecycleConsole
+          .getByText('已解除冻结，请重新登录；其他访问限制仍然适用', { exact: true })
+          .waitFor();
+        assert.equal(
+          await tenant.getByRole('heading', { name: 'Tenant 工作台', exact: true }).count(),
+          0,
+        );
+        await tenant.bringToFront();
+        await login(tenant, recipient, password, 'zh-CN');
+        await tenant.locator('dd').filter({ hasText: 'Notification acceptance' }).waitFor();
+        await safeStorage(tenant);
+      }
+    } finally {
+      releaseResumeRead();
+      await nativeChrome.close();
+    }
     assert.deepEqual(errors, []);
   } finally {
     if (mailPaused) docker('unpause', `${project}-mailpit-1`);

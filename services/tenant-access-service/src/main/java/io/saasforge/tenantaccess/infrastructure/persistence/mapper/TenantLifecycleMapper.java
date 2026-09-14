@@ -16,6 +16,7 @@ public interface TenantLifecycleMapper {
     TenantLifecycleRow findByExternalKey(
             @Param("actorIdentityId") UUID actorIdentityId, @Param("idempotencyKey") UUID idempotencyKey);
     TenantLifecycleRow findActive(@Param("tenantId") UUID tenantId);
+    TenantLifecycleRow findLatest(@Param("tenantId") UUID tenantId);
     UUID findLatestSuspensionRequest(@Param("tenantId") UUID tenantId);
     int insert(@Param("row") TenantLifecycleRow row, @Param("at") OffsetDateTime at);
     UUID claim(

@@ -171,6 +171,8 @@ flowchart TD
 - [ ] Platform Console 完成 Tenant Suspension、显式恢复和恢复失败处理；Tenant Console 可观察旧 Token 被拒绝、Session 失效及重新登录后的恢复结果。
 - [ ] Platform Console 完成 OAuth Client 创建、Secret 一次展示、结果不确定恢复、重叠轮换和吊销；Secret 不得进入浏览器持久存储、日志或重复读取接口。
 
+以上三项的已确认产品范围、闲置页面 30 秒失效提示、跨刷新恢复及验收要求见 [Console 租户访问、冻结与接入凭据管理](31-console-tenant-access-and-oauth-client-management.md)；规格确认不代表实现或验收完成。
+
 **浏览器验收**
 
 - [ ] 从全新 Compose 数据卷用 Playwright 完成 Platform Admin 登录与初始化、最小 Entitlement Bootstrap、Tenant 创建和 Tenant Administrator 初始化，再由 Tenant Administrator 完成 Password Setup、登录、Membership 选择与 Tenant Context Switch。

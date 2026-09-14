@@ -397,7 +397,7 @@ describe('TenantConsoleShellApp', () => {
       />,
     );
 
-    expect(await screen.findByText('Current Tenant')).toBeTruthy();
+    expect(await screen.findByText('Current Tenant', { selector: 'dd' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '切换 Tenant' }));
     fireEvent.click(screen.getByRole('button', { name: '切换到 Target Tenant' }));
     expect(await screen.findByText('Tenant 切换结果未知')).toBeTruthy();
@@ -590,6 +590,36 @@ describe('TenantConsoleShellApp', () => {
       'https://api.example.test/api/v1/auth/logout',
     );
     expect(jsonRequestBody(authenticationFetch.mock.calls[2])).toEqual({ sessionSlot: 'TENANT' });
+  });
+
+  it('masks company content when continuous access monitoring cannot start', async () => {
+    const previousWorker = globalThis.Worker;
+    vi.stubGlobal('Worker', function UnavailableWorker() {
+      throw new Error('Worker unavailable');
+    });
+    try {
+      render(
+        <TenantConsoleShellApp
+          root={TenantConsoleTestRoot}
+          bootstrap={createRuntimeConfigBootstrap(() => Promise.resolve(success()))}
+          authenticationFetch={() =>
+            Promise.resolve(
+              Response.json({
+                contextState: 'ACCESS_TOKEN_ISSUED',
+                accessToken: 'tenant-token',
+                tokenType: 'Bearer',
+                expiresIn: 120,
+              }),
+            )
+          }
+          realm={{}}
+        />,
+      );
+      await screen.findByRole('button', { name: '重新加载页面' });
+      expect(screen.queryByRole('heading', { name: 'Tenant 工作台' })).toBeNull();
+    } finally {
+      vi.stubGlobal('Worker', previousWorker);
+    }
   });
 
   it('recovers and logs out only the Tenant session slot', async () => {

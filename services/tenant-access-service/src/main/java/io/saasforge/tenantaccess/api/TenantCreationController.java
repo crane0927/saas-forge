@@ -212,6 +212,27 @@ public class TenantCreationController implements PlatformTenantsApi {
     }
 
     @Override
+    public ResponseEntity<io.saasforge.tenantaccess.contract.model.TenantLifecycle> getTenantLifecycle(UUID tenantId) {
+        authorizer.authorize(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
+        var value = tenantLifecycle.read(tenantId);
+        var response = new io.saasforge.tenantaccess.contract.model.TenantLifecycle()
+                .tenantId(value.tenantId()).operationId(value.operationId())
+                .action(value.action() == null ? null : io.saasforge.tenantaccess.contract.model.TenantLifecycle.ActionEnum.fromValue(value.action()))
+                .state(io.saasforge.tenantaccess.contract.model.TenantLifecycle.StateEnum.fromValue(value.state()))
+                .canSuspend(value.canSuspend()).canResume(value.canResume())
+                .canRecoverSuspension(value.canRecoverSuspension()).canContinue(value.canContinue());
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore()).body(response);
+    }
+
+    @Override
+    public ResponseEntity<Tenant> continueTenantLifecycle(UUID tenantId, UUID operationId) {
+        var request = currentRequest();
+        authorizer.authorize(request.getHeader(HttpHeaders.AUTHORIZATION));
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(toResponse(tenantLifecycle.continueOperation(tenantId, operationId, traceId(request))));
+    }
+
+    @Override
     public ResponseEntity<Tenant> resumeTenant(UUID tenantId, UUID idempotencyKey) {
         HttpServletRequest httpRequest = currentRequest();
         UUID actorIdentityId = authorizer.authorize(httpRequest.getHeader(HttpHeaders.AUTHORIZATION));

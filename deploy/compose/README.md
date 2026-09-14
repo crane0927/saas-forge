@@ -66,7 +66,7 @@ docker compose ps --all
    }
    ```
 
-4. 使用密码设置链接时，Tenant Origin 下的 `/password-setup`、`/password-setup/app.js`、`/password-setup/styles.css` 及提交路径 `/api/v1/auth/password-setups` 需要转发到 Gateway，不能被前端 SPA 回退页面接管。该独立页面向同 Origin 提交；其他 Console API 由共享 Client 请求配置中的 API Origin。
+4. 密码设置链接的 `/password-setup` 页面由 Tenant Console 提供，通过共享 Client 向配置中的 API Origin 提交。旧静态资源 `/password-setup/app.js`、`/password-setup/styles.css` 和同 Origin 提交路径 `/api/v1/auth/password-setups` 保留 Gateway 转发。
 5. 后端迁移与服务就绪，并完成下文的管理员及保留服务 Client 引导。Tenant 操作还需要对应的 Tenant、Membership 和有效密码；新环境不会自动生成这些业务数据。
 
 浏览器 Cookie、Origin 和 Fetch Metadata 由浏览器及共享 Client 按协议处理，页面操作不需要手动复制 Token 或 Cookie。HTTP `8080` 是后端本地端口，不是产品控制台入口。完整部署边界见 [部署文档](../../docs/14-deployment.md)。
@@ -104,7 +104,7 @@ bash scripts/local-development.sh frontend stop all
 
 包级 `pnpm --filter @saas-forge/tenant-console-shell run dev` 仍可前台调试；占用 5174 时，统一生命周期报告 UNMANAGED 并拒绝终止它。前台 HTTP 调试不能替代受控 HTTPS 验收。
 
-Tenant Origin 下的 `/password-setup`、`/password-setup/app.js`、`/password-setup/styles.css` 和 `/api/v1/auth/password-setups` 精确转发到当前活动 Gateway，查询参数与浏览器请求头原样保留；页面和资源的内容类型、缓存头及 API 错误响应由 Gateway 决定。其他 Tenant 路径和 HMR 继续进入 Tenant Vite。
+Tenant Origin 下的 `/password-setup` 进入 Tenant Vite 的正式 Console 路由。旧资源 `/password-setup/app.js`、`/password-setup/styles.css` 和 `/api/v1/auth/password-setups` 精确转发到当前活动 Gateway，查询参数与浏览器请求头原样保留；这些资源的内容类型、缓存头及 API 错误响应由 Gateway 决定。其他 Tenant 路径和 HMR 继续进入 Tenant Vite。
 
 这些路径与 API Host 共用活动目标文件；`bash scripts/local-development.sh replace gateway` 后跟随本地 Gateway，`restore gateway` 后回到容器，无需修改浏览器 URL 或重启 Edge。目标文件缺失、非法或目标不可达时返回 502，不回退到 Vite 或其他 Gateway；未知 Host 返回 421。首次升级路由时，按前述步骤停止两个 Console 后重新启动，以加载新的 Edge 脚本。
 
