@@ -9,6 +9,12 @@ node_modules
 .env
 .env.*
 !.env.example
+# 服务独立配置和本地环境归档不得进入 COPY . 的构建层。
+**/.env
+**/.env.*
+!**/.env.example
+**/.secrets
+.scratch
 *.log
 logs
 coverage
