@@ -1,4 +1,4 @@
-package io.saasforge.testsupport.receiver;
+package io.saasforge.starter.security;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -37,6 +37,10 @@ final class RedisReceiverTokenRevocationChecker {
             keys.add(prefix + "user-session-revocation-fence:v1:membership:" + membershipId);
         }
         return hasRevocation(keys);
+    }
+
+    boolean isReady() {
+        return "1".equals(redis.opsForValue().get(prefix + "revocation-index-ready:v1:state"));
     }
 
     private boolean hasRevocation(List<String> revocationKeys) {

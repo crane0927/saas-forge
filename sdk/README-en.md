@@ -41,7 +41,13 @@ Import the BOM and declare only the Starter. The four supported consumer artifac
 </dependencies>
 ```
 
-The application must provide User and Service Token signature-verification and revocation-checking adapters. Missing adapters fail application startup. Production JWKS discovery and caching and Redis-backed revocation adapters are outside this first release.
+The Starter supplies the Spring Security Resource Server Bearer filter, IAM JWKS caching and Redis revocation checks. Its Nacos Discovery integration resolves `iam-service`; applications do not configure downstream instance URLs or implement these adapters.
+
+Configure `spring.application.name` to match Route Catalog ownership, `security.jwt.issuer`, `saasforge.environment`, and the environment-specific Nacos Discovery and Spring Data Redis connections. Inject credentials through environment variables, Secrets or restricted local files. Only RS256 is accepted. Keys expire after five minutes; `saasforge.authentication.jwks.refresh-interval` defaults to `10s` and `saasforge.authentication.jwks.wait-timeout` to `2s`. Both must be positive finite durations. Concurrent refreshes share one request per instance. Expired keys and indeterminate revocation status fail closed with 503; failures never extend cache validity.
+
+User routes reject reserved Tenant aliases in query parameters and JSON, including `tenantId`, `tenant_id`, `tenant` and `currentTenantId`. Explicit Tenant Operation Targets on service routes remain supported. User JSON is read with a bounded buffer: `saasforge.authentication.max-json-bytes` defaults to `1048576` (1 MiB), must be positive and less than `Integer.MAX_VALUE`, and returns `413 / PAYLOAD_TOO_LARGE` when exceeded. Business contracts must still reject undeclared fields and must not interpret custom aliases as identity.
+
+Authentication dependencies are automatically included in `/actuator/health/readiness`, not Liveness. Missing required configuration fails startup. Temporary IAM/Redis outages leave the process alive; readiness probes check for recovery. Deployments must route traffic according to Readiness. Direct receiver requests still enforce authentication on every request.
 
 Business code constructor-injects the read-only accessors and never depends on the Starter's internal Spring Security principal:
 
@@ -66,7 +72,7 @@ final class CurrentTenantService {
 }
 ```
 
-The application must explicitly provide `UserAccessTokenSignatureVerifier`, `UserAccessTokenContextRevocationChecker`, `ServiceAccessTokenSignatureVerifier`, and `ServiceAccessTokenRevocationChecker` beans. A missing bean prevents startup, and an indeterminate revocation status remains fail-closed. The fixture's in-memory keys and revocation checkers are test-only, not production implementation examples.
+Existing explicit adapters remain supported as a complete set: `UserAccessTokenSignatureVerifier`, `UserAccessTokenContextRevocationChecker`, `ServiceAccessTokenSignatureVerifier` and `ServiceAccessTokenRevocationChecker`. Partial custom sets fail startup rather than falling back to permissive behavior. Normal business integration uses the defaults; in-memory fixture adapters are for isolated tests only.
 
 ## REST client security boundary
 

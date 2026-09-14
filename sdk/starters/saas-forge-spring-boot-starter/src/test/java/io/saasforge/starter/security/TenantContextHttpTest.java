@@ -119,6 +119,26 @@ class TenantContextHttpTest {
                 .andExpect(content().string("unavailable"));
     }
 
+    @Test
+    void rejectsTenantOverridesInQueryAndJsonBody() throws Exception {
+        MockMvc http = http(new SpringSecurityIdentityContextAccessor(), new SpringSecurityTenantContextAccessor(),
+                MEMBERSHIP_ID, TENANT_ID);
+        for (String field : List.of("tenantId", "tenant_id", "tenant", "currentTenantId")) {
+            http.perform(get("/api/tenant-context").param(field, TENANT_ID.toString())
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer user-token")).andExpect(status().isBadRequest());
+            http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/tenant-context")
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"" + field + "\":\"forged\"}")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer user-token")).andExpect(status().isBadRequest());
+        }
+        http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/tenant-context")
+                .contentType(MediaType.APPLICATION_JSON).content("x".repeat(1024 * 1024 + 1)))
+                .andExpect(status().isPayloadTooLarge());
+        http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/tenant-context")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"title\":\"normal\"}")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer user-token"))
+                .andExpect(status().isOk()).andExpect(content().string("normal"));
+    }
+
     private static MockMvc http(
             IdentityContextAccessor identities,
             TenantContextAccessor tenants,
@@ -144,6 +164,8 @@ class TenantContextHttpTest {
 
     private static HttpRouteCatalog catalog() {
         return new HttpRouteCatalog(1, List.of(
+                new HttpRouteCatalog.Route("writeTenantContext", HttpRouteCatalog.HttpMethod.POST, "/api/tenant-context",
+                        "receiver-service", HttpRouteCatalog.CredentialRequirement.USER_REQUIRED, List.of()),
                 route("readTenantContext", "/api/tenant-context",
                         HttpRouteCatalog.CredentialRequirement.USER_REQUIRED),
                 route("readServiceTenantContext", "/api/service-tenant-context",
@@ -174,6 +196,11 @@ class TenantContextHttpTest {
         private TenantContextController(IdentityContextAccessor identities, TenantContextAccessor tenants) {
             this.identities = identities;
             this.tenants = tenants;
+        }
+
+        @org.springframework.web.bind.annotation.PostMapping("/api/tenant-context")
+        String write(@org.springframework.web.bind.annotation.RequestBody java.util.Map<String, String> body) {
+            return body.getOrDefault("title", "ignored");
         }
 
         @GetMapping("/api/tenant-context")

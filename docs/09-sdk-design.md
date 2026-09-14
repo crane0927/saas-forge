@@ -84,7 +84,7 @@ public List<Report> list() {
 
 ## Starter 配置边界
 
-当前 Starter 从共享 Route Catalog 选择本服务的 HTTP operation，并要求消费者提供 User/Service Token 签名验证与撤销检查适配器；缺失任何必需适配器时启动失败，不存在允许型回退。生产级 JWKS 自动发现、密钥缓存与 Redis 撤销适配不属于首版范围。
+Starter 从共享 Route Catalog 选择本服务的 HTTP operation，默认装配 Resource Server Bearer 过滤器、Nacos 发现的 IAM JWKS 与 Redis 撤销适配。常规消费者无需提供签名与撤销适配器；既有完整自定义适配方式保留兼容，部分自定义适配仍启动失败，不存在允许型回退。
 
 第 3 阶段的 Starter 身份检查任务在此基础上补齐 Spring Security Resource Server、IAM JWKS、公钥缓存与轮换、Redis fail-closed 撤销检查和只读上下文，并完成对应专项验收。该任务范围不包含 Project/Task 页面、业务 API 或数据库 RLS；这些能力及真实页面跨租户隔离验收继续由 [MVP 开发计划第 3 阶段](16-mvp-development-plan.md#3-sdk-与-example-租户隔离闭环)的后续条目交付。身份检查任务完成不代表第 3 阶段完成。
 
@@ -94,7 +94,7 @@ Tenant Context、授权和审计的公共 API 是稳定集成面；平台内部�
 
 ### 第 3 阶段 JWKS 缓存与刷新决策
 
-以下为已确认的目标行为，不表示当前 Starter 已实现：
+实现遵循以下已确认行为，实际验证结果单独记录：
 
 - 公钥缓存有效期遵循 IAM JWKS 的 5 分钟窗口。IAM 暂时不可达时，未过期且包含目标 `kid` 的缓存仍可用于验签，但每次请求仍须通过撤销状态检查；缓存到期后无法成功更新时，拒绝受保护请求，不延长旧缓存的有效期。
 - 未知 `kid` 触发的刷新按业务服务实例合并，同一实例同时最多执行一次 JWKS 获取，并限制刷新频率。无法确认的凭证不得放行；已有未过期公钥可验证的请求不等待未知 `kid` 的刷新，但仍须通过全部认证及撤销检查。

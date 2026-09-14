@@ -41,6 +41,37 @@ class SaasForgeHttpAuthenticationAutoConfigurationTest {
     }
 
     @Test
+    void startsWithoutConsumerAuthenticationAdaptersWhenDependenciesAreTemporarilyUnavailable() {
+        baseContextRunner()
+                .withPropertyValues("security.jwt.issuer=https://iam.saasforge.test", "saasforge.environment=test")
+                .withBean(org.springframework.cloud.client.loadbalancer.LoadBalancerClient.class,
+                        () -> org.mockito.Mockito.mock(org.springframework.cloud.client.loadbalancer.LoadBalancerClient.class))
+                .withBean(org.springframework.data.redis.core.StringRedisTemplate.class,
+                        () -> org.mockito.Mockito.mock(org.springframework.data.redis.core.StringRedisTemplate.class))
+                .run(context -> assertThat(context).hasNotFailed());
+    }
+
+    @Test
+    void readinessIsDownWhenAuthenticationDependenciesAreUnavailable() {
+        baseContextRunner()
+                .withConfiguration(AutoConfigurations.of(
+                        org.springframework.boot.health.autoconfigure.actuate.endpoint.HealthEndpointAutoConfiguration.class,
+                        org.springframework.boot.health.autoconfigure.registry.HealthContributorRegistryAutoConfiguration.class))
+                .withPropertyValues("security.jwt.issuer=issuer", "saasforge.environment=test")
+                .withBean(org.springframework.cloud.client.loadbalancer.LoadBalancerClient.class,
+                        () -> org.mockito.Mockito.mock(org.springframework.cloud.client.loadbalancer.LoadBalancerClient.class))
+                .withBean(org.springframework.data.redis.core.StringRedisTemplate.class,
+                        () -> org.mockito.Mockito.mock(org.springframework.data.redis.core.StringRedisTemplate.class))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    var health = context.getBean(org.springframework.boot.health.actuate.endpoint.HealthEndpoint.class)
+                            .healthForPath("readiness");
+                    assertThat(health).isNotNull();
+                    assertThat(health.getStatus().getCode()).isEqualTo("DOWN");
+                });
+    }
+
+    @Test
     void registersTheCatalogBoundAuthenticationFilter() {
         contextRunner.run(context -> {
             assertThat(context).hasNotFailed();

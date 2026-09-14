@@ -34,6 +34,8 @@ final class ReceiverProblemDetailsWriter {
 
     private static String title(String code) {
         return switch (code) {
+            case "VALIDATION_FAILED" -> "Validation failed";
+            case "PAYLOAD_TOO_LARGE" -> "Payload too large";
             case "ACCESS_CONTEXT_UNAVAILABLE" -> "Access context unavailable";
             case "ACCESS_TOKEN_INVALID" -> "Access Token invalid";
             case "ACCESS_TOKEN_SCOPE_INSUFFICIENT" -> "Access Token scope insufficient";

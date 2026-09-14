@@ -8,18 +8,26 @@ import io.saasforge.sdk.auth.ServiceAccessTokenSignatureVerifier;
 import io.saasforge.sdk.auth.ServiceContextAccessor;
 import io.saasforge.sdk.auth.UserAccessTokenSignatureVerifier;
 import io.saasforge.sdk.tenant.TenantContextAccessor;
+import java.time.Clock;
+import java.time.Duration;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.cloud.client.loadbalancer.LoadBalancerClient;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 import org.springframework.core.env.Environment;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import tools.jackson.databind.ObjectMapper;
 
 /** 为 Servlet 接收端装配共享 Catalog 驱动的 User/Service Token 复验边界。 */
-@AutoConfiguration
+@AutoConfiguration(afterName = {
+        "org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration",
+        "org.springframework.cloud.loadbalancer.config.BlockingLoadBalancerClientAutoConfiguration"})
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 public class SaasForgeHttpAuthenticationAutoConfiguration {
 
@@ -71,11 +79,62 @@ public class SaasForgeHttpAuthenticationAutoConfiguration {
     FilterRegistrationBean<HttpReceiverAuthenticationFilter> saasForgeHttpReceiverAuthenticationFilter(
             ReceiverRouteCatalog catalog,
             ReceiverTokenAuthenticators authenticators,
-            ReceiverProblemDetailsWriter problems) {
+            ReceiverProblemDetailsWriter problems, Environment environment) {
         var registration = new FilterRegistrationBean<>(
-                new HttpReceiverAuthenticationFilter(catalog, authenticators, problems));
+                new HttpReceiverAuthenticationFilter(catalog, authenticators, problems,
+                        environment.getProperty("saasforge.authentication.max-json-bytes", Integer.class, 1024 * 1024)));
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 10);
         return registration;
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnMissingBean({UserAccessTokenSignatureVerifier.class, ServiceAccessTokenSignatureVerifier.class,
+            UserAccessTokenContextRevocationChecker.class, ServiceAccessTokenRevocationChecker.class})
+    static class DefaultAuthentication {
+        @Bean
+        IamJwksKeyResolver saasForgeIamJwks(LoadBalancerClient discovery,
+                Environment environment) {
+            var binder = Binder.get(environment);
+            return new IamJwksKeyResolver(discovery, Clock.systemUTC(),
+                    binder.bind("saasforge.authentication.jwks.refresh-interval", Duration.class)
+                            .orElse(Duration.ofSeconds(10)),
+                    binder.bind("saasforge.authentication.jwks.wait-timeout", Duration.class)
+                            .orElse(Duration.ofSeconds(2)));
+        }
+
+        @Bean
+        UserAccessTokenSignatureVerifier saasForgeUserSignatures(IamJwksKeyResolver keys, Environment environment) {
+            return new UserAccessTokenSignatureVerifier(keys, Clock.systemUTC(),
+                    environment.getRequiredProperty("security.jwt.issuer"), "saasforge-api", Duration.ofSeconds(30));
+        }
+
+        @Bean
+        ServiceAccessTokenSignatureVerifier saasForgeServiceSignatures(IamJwksKeyResolver keys, Environment environment) {
+            return new ServiceAccessTokenSignatureVerifier(keys, Clock.systemUTC(),
+                    environment.getRequiredProperty("security.jwt.issuer"), "saasforge-api", Duration.ofSeconds(30));
+        }
+
+        @Bean
+        RedisReceiverTokenRevocationChecker saasForgeRedisRevocations(
+                StringRedisTemplate redis, Environment environment) {
+            return new RedisReceiverTokenRevocationChecker(redis, environment.getRequiredProperty("saasforge.environment"));
+        }
+
+        @Bean(name = AuthenticationReadiness.NAME)
+        AuthenticationReadiness saasForgeAuthenticationReadiness(IamJwksKeyResolver keys,
+                RedisReceiverTokenRevocationChecker revocations) {
+            return new AuthenticationReadiness(keys, revocations);
+        }
+
+        @Bean
+        UserAccessTokenContextRevocationChecker saasForgeUserRevocations(RedisReceiverTokenRevocationChecker revocations) {
+            return revocations::isUserTokenRevoked;
+        }
+
+        @Bean
+        ServiceAccessTokenRevocationChecker saasForgeServiceRevocations(RedisReceiverTokenRevocationChecker revocations) {
+            return revocations::isServiceTokenRevoked;
+        }
     }
 
     private static <T> T required(ObjectProvider<T> provider, Class<T> adapterType) {

@@ -18,7 +18,7 @@ class PlatformMechanismReceiverControllerTest {
                 clientId, Set.of("runtime:quota:write", "runtime:read")));
 
         PlatformMechanismReceiverController.Response response =
-                new PlatformMechanismReceiverController("receiver-1", serviceContexts).accept();
+                new PlatformMechanismReceiverController("receiver-1", serviceContexts, Optional::empty).accept();
 
         assertEquals(clientId, response.clientId());
         assertEquals(Set.of("runtime:read", "runtime:quota:write"), response.scopes());

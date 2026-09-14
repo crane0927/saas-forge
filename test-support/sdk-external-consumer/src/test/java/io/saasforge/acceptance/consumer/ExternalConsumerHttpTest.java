@@ -20,6 +20,7 @@ import tools.jackson.databind.ObjectMapper;
         classes = {ExternalConsumerApplication.class, ExternalConsumerTestAuthenticationConfiguration.class},
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
+                "spring.cloud.nacos.discovery.enabled=false",
             "spring.application.name=sdk-external-consumer-fixture",
             "server.tomcat.threads.max=1",
             "server.tomcat.threads.min-spare=1"

@@ -343,8 +343,34 @@ run_bootstrap service-client-bootstrap iam-reserved-service-client-bootstrap
 echo "[4/9] 启动真实 IAM、Redis、Nacos、Gateway 和两个 Starter 接收端实例"
 compose up --detach iam-service tenant-access-service entitlement-service audit-service >/dev/null
 wait_for_started_instances iam-service 1
-compose up --detach --scale platform-mechanism-receiver=2 platform-mechanism-receiver >/dev/null
+# IAM 的 Started 日志不代表撤销索引已重建；先等待权威 Ready，避免故障注入被启动重建覆盖。
+wait_for_redis_ready
+# 在接收端启动前使撤销索引不就绪，证明进程可以存活但不能提前 Ready。
+compose exec -T redis sh -eu -c '
+  redis-cli --no-auth-warning -a "$REDIS_PASSWORD" SET sf:dev:iam-service:revocation-index-ready:v1:state 0 >/dev/null
+'
+compose stop iam-service >/dev/null
+compose up --detach --no-deps --scale platform-mechanism-receiver=2 platform-mechanism-receiver >/dev/null
 wait_for_started_instances platform-mechanism-receiver 2
+receiver_port="$(compose port --index 1 platform-mechanism-receiver 8080 | sed 's/.*://')"
+readiness_status="$(curl --silent --max-time 5 --output "$response_body" --write-out '%{http_code}'   "http://127.0.0.1:$receiver_port/actuator/health/readiness")"
+[[ "$readiness_status" == 503 ]] || { echo "启动故障 Readiness 预期 503，实际 $readiness_status" >&2; cat "$response_body" >&2; exit 1; }
+# IAM 恢复无需重启接收端；随后单独验证 Redis 未就绪仍不能放行。
+compose start iam-service >/dev/null
+wait_for_redis_ready
+compose exec -T redis sh -eu -c '
+  redis-cli --no-auth-warning -a "$REDIS_PASSWORD" SET sf:dev:iam-service:revocation-index-ready:v1:state 0 >/dev/null
+'
+[[ "$(curl --silent --max-time 5 --output "$response_body" --write-out '%{http_code}'   "http://127.0.0.1:$receiver_port/actuator/health/readiness")" == 503 ]]
+compose exec -T redis sh -eu -c '
+  redis-cli --no-auth-warning -a "$REDIS_PASSWORD" SET sf:dev:iam-service:revocation-index-ready:v1:state 1 >/dev/null
+'
+for _ in $(seq 1 30); do
+  readiness_status="$(curl --silent --max-time 5 --output "$response_body" --write-out '%{http_code}'     "http://127.0.0.1:$receiver_port/actuator/health/readiness")"
+  [[ "$readiness_status" != 200 ]] || break
+  sleep 1
+done
+[[ "$readiness_status" == 200 ]]
 compose up --detach gateway >/dev/null
 wait_for_started_instances gateway 1
 gateway_port="$(compose port gateway 8080 | sed 's/.*://')"
@@ -365,6 +391,10 @@ request 200 POST /api/v1/auth/login \
   "$(jq -cn --arg password "$platform_password" \
     '{email:"platform-admin@saasforge.test",password:$password,contextType:"PLATFORM"}')"
 platform_token="$(jq -r '.accessToken' "$response_body")"
+request 200 GET /__test/platform-mechanism/identity '' "$platform_token"
+assert_json '(keys == ["identityId"]) and (.identityId | type == "string")'
+[[ "$(curl --silent --max-time 5 --output "$response_body" --write-out '%{http_code}'   --header "Authorization: Bearer $platform_token"   "http://127.0.0.1:$receiver_port/__test/platform-mechanism/identity")" == 200 ]]
+assert_json '(keys == ["identityId"])'
 runtime_create_key="$(uuid_v7)"
 request 201 POST /api/v1/platform/oauth-clients \
   '{"displayName":"issue-86-platform-mechanism","allowedScopes":["runtime:read","runtime:quota:write"]}' \
@@ -401,6 +431,77 @@ compose exec -T redis sh -eu -c '
   redis-cli --no-auth-warning -a "$REDIS_PASSWORD" SET \
     sf:dev:iam-service:revocation-index-ready:v1:state 1 >/dev/null
 '
+
+echo "[6b/9] 真实 IAM JWKS 发布与显式开发换钥，验证新旧凭证和缓存 kid 撤销"
+# 仅操作本脚本创建的隔离数据库及临时私钥；回拨发布时间模拟已完成发布窗口，避免等待五分钟。
+rotation_private_key="$secret_directory/iam-jwt-rotated.pem"
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$rotation_private_key" 2>/dev/null
+chmod 0640 "$rotation_private_key"
+rotation_metadata="$(ruby -ropenssl -rbase64 -e '
+  key = OpenSSL::PKey::RSA.new(File.binread(ARGV.fetch(0)))
+  puts [Base64.urlsafe_encode64(key.n.to_s(2), padding: false),
+        Base64.urlsafe_encode64(key.e.to_s(2), padding: false)].join("\t")
+' "$rotation_private_key")"
+IFS=$'\t' read -r rotation_modulus rotation_exponent <<<"$rotation_metadata"
+old_runtime_token="$runtime_token"
+request 200 GET /.well-known/jwks.json
+old_kid="$(jq -r '.keys[0].kid' "$response_body")"
+compose exec -T -e ROTATION_N="$rotation_modulus" -e ROTATION_E="$rotation_exponent" postgres sh -eu -c '
+  psql --username "$POSTGRES_USER" --dbname iam_db --set=ON_ERROR_STOP=1 \
+    --set=n="$ROTATION_N" --set=e="$ROTATION_E" <<'"'"'SQL'"'"'
+INSERT INTO iam_signing_keys
+ (kid, key_version_reference, public_jwk_modulus, public_jwk_exponent, key_status,
+  max_issued_token_ttl_seconds, published_at)
+VALUES ('"'"'e2e-rotated'"'"', '"'"'local/e2e/pem/2'"'"', :'"'"'n'"'"', :'"'"'e'"'"', '"'"'PUBLISHED'"'"', 0,
+ now() - INTERVAL '"'"'5 minutes'"'"');
+SQL
+' >/dev/null
+request 200 GET /.well-known/jwks.json
+assert_json '.keys | length == 2'
+compose stop iam-service >/dev/null
+compose exec -T postgres sh -eu -c '
+  psql --username "$POSTGRES_USER" --dbname iam_db --set=ON_ERROR_STOP=1 <<'"'"'SQL'"'"'
+BEGIN;
+UPDATE iam_signing_keys SET key_status = '"'"'RETIRING'"'"', retiring_at = now(),
+ retire_after = now() + make_interval(secs => GREATEST(1800, max_issued_token_ttl_seconds + 30))
+ WHERE key_status = '"'"'ACTIVE'"'"';
+UPDATE iam_signing_keys SET key_status = '"'"'ACTIVE'"'"', activated_at = now()
+ WHERE kid = '"'"'e2e-rotated'"'"' AND key_status = '"'"'PUBLISHED'"'"';
+COMMIT;
+SQL
+' >/dev/null
+cp "$rotation_private_key" "$secret_directory/iam-jwt-private-key.pem"
+python3 - "$environment_file" <<'PY'
+import pathlib, sys
+path = pathlib.Path(sys.argv[1])
+path.write_text(path.read_text().replace('IAM_JWT_PEM_KEY_VERSION_REF=local/e2e/pem/1',
+                                        'IAM_JWT_PEM_KEY_VERSION_REF=local/e2e/pem/2'))
+PY
+compose up --detach --no-deps --force-recreate iam-service >/dev/null
+wait_for_redis_ready
+for _ in $(seq 1 60); do
+  token_request 200 "$runtime_client" "$runtime_secret" 'runtime:read runtime:quota:write' 2>/dev/null && break
+  sleep 1
+done
+assert_json '.access_token | type == "string"'
+runtime_token="$(jq -r '.access_token' "$response_body")"
+for _ in $(seq 1 30); do
+  direct_receiver_request 200 "$receiver_port" "$runtime_token" 2>/dev/null && break
+  sleep 1
+done
+direct_receiver_request 200 "$receiver_port" "$runtime_token"
+direct_receiver_request 200 "$receiver_port" "$old_runtime_token"
+request 200 POST /__test/platform-mechanism '' "$runtime_token"
+request 200 POST /api/v1/auth/refresh '{"sessionSlot":"PLATFORM"}' '' "$(uuid_v7)"
+platform_token="$(jq -r '.accessToken' "$response_body")"
+old_kid_digest="$(printf '%s' "$old_kid" | openssl dgst -sha256 -r | cut -d ' ' -f 1)"
+compose exec -T -e OLD_KID_DIGEST="$old_kid_digest" redis sh -eu -c '
+  redis-cli --no-auth-warning -a "$REDIS_PASSWORD" SET \
+    "sf:dev:iam-service:signing-kid-revocation:v1:$OLD_KID_DIGEST" 1 EX 1800 >/dev/null
+'
+direct_receiver_request 401 "$receiver_port" "$old_runtime_token"
+assert_json '.code == "ACCESS_TOKEN_INVALID"'
+direct_receiver_request 200 "$receiver_port" "$runtime_token"
 
 echo "[7/9] 验证 Nacos 扩缩容、实例摘除、故障切换和无健康实例 503"
 instance_ids="$work_directory/instance-ids.txt"
@@ -464,5 +565,5 @@ if grep -F -- "$runtime_token" "$work_directory/application.log" "$response_body
   exit 1
 fi
 
-echo "Issue #86 平台机制 Compose 验收通过。"
+echo "Issue #86 / #182 平台机制与 Starter 默认认证 Compose 验收通过。"
 echo "证据边界：真实 IAM、PostgreSQL、Redis、Nacos、Gateway 与 Starter 接收端的平台机制验收；不代表生产 Runtime 业务闭环。"

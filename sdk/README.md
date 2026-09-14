@@ -41,7 +41,13 @@ Permission、Feature、Quota 与 Audit SDK 目前只是后续阶段的 Reactor �
 </dependencies>
 ```
 
-Starter 要求应用提供 User/Service Token 的签名验证和撤销检查适配器；缺失适配器时启动失败。生产级 JWKS 自动发现、缓存和 Redis 撤销实现不属于当前首版。
+Starter 默认装配 Spring Security Resource Server Bearer 过滤器、IAM JWKS 公钥缓存与 Redis 撤销检查；应用无需自行编写这些适配器。Starter 包含平台既有 Nacos Discovery 接入，通过 `iam-service` 服务发现获取 JWKS，不配置下游实例地址。
+
+必需配置包括 `spring.application.name`（与 Route Catalog 归属一致）、`security.jwt.issuer`、`saasforge.environment`，以及环境对应的 Nacos Discovery 和 Spring Data Redis 连接配置。凭据由环境变量、Secret 或受限本地文件注入。公钥只接受 RS256；缓存 5 分钟，`saasforge.authentication.jwks.refresh-interval` 默认 `10s`、`saasforge.authentication.jwks.wait-timeout` 默认 `2s`，两项必须为正的有限时长。刷新按实例合并；缓存过期无法更新或撤销状态不确定时返回 503，不延长旧缓存。
+
+用户路由拒绝查询参数和 JSON 中的 `tenantId`、`tenant_id`、`tenant`、`currentTenantId` 等保留别名，服务路由的正式 Tenant Operation Target 不受此限制。用户 JSON 检查使用有界读取，`saasforge.authentication.max-json-bytes` 默认 `1048576`（1 MiB），必须为正整数且小于 `Integer.MAX_VALUE`；超限返回 `413 / PAYLOAD_TOO_LARGE`。业务契约仍须拒绝其他未声明字段，不把自定义别名解释为身份。
+
+默认认证依赖自动加入 `/actuator/health/readiness`，不加入 Liveness。缺少必需配置启动失败；IAM/Redis 暂不可用时进程保留，由 Readiness 探测驱动恢复检查。部署必须按 Readiness 结果控制业务流量，直连接收端仍逐请求失败关闭。
 
 业务代码通过构造器注入只读访问器，不接触 Starter 内部的 Spring Security Principal：
 
@@ -66,7 +72,7 @@ final class CurrentTenantService {
 }
 ```
 
-应用必须显式提供 `UserAccessTokenSignatureVerifier`、`UserAccessTokenContextRevocationChecker`、`ServiceAccessTokenSignatureVerifier` 与 `ServiceAccessTokenRevocationChecker` Bean。任何一个缺失都会阻止应用启动；撤销状态不可判定时请求保持默认拒绝。夹具中的内存密钥和撤销检查器仅用于测试，不是生产实现示例。
+已有显式适配方式保留兼容：如应用提供自定义认证适配器，必须完整提供 `UserAccessTokenSignatureVerifier`、`UserAccessTokenContextRevocationChecker`、`ServiceAccessTokenSignatureVerifier` 与 `ServiceAccessTokenRevocationChecker`，不能部分混用以形成允许型回退。常规业务接入应使用默认适配；测试夹具的内存实现仅用于隔离测试。
 
 ## REST Client 安全边界
 

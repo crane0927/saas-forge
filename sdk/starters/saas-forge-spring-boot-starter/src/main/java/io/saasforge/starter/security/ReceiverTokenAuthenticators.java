@@ -50,6 +50,9 @@ final class ReceiverTokenAuthenticators {
         } catch (TokenRevocationStatusUnavailableException | AccessTokenInvalidException exception) {
             throw exception;
         } catch (UserAccessTokenInvalidException exception) {
+            if (exception.getCause() instanceof IamJwksUnavailableException) {
+                throw new TokenRevocationStatusUnavailableException(TokenKind.USER, exception);
+            }
             throw new AccessTokenInvalidException(TokenKind.USER, authorization != null, exception);
         }
     }
@@ -83,6 +86,9 @@ final class ReceiverTokenAuthenticators {
                 | ServiceAccessTokenScopeInsufficientException exception) {
             throw exception;
         } catch (ServiceAccessTokenInvalidException exception) {
+            if (exception.getCause() instanceof IamJwksUnavailableException) {
+                throw new TokenRevocationStatusUnavailableException(TokenKind.SERVICE, exception);
+            }
             throw new AccessTokenInvalidException(TokenKind.SERVICE, true, exception);
         }
     }

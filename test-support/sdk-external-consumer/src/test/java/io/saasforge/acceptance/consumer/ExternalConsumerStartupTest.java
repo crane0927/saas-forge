@@ -24,6 +24,7 @@ class ExternalConsumerStartupTest {
                         MissingServiceRevocationAdapterConfiguration.class)
                 .web(WebApplicationType.SERVLET)
                 .properties(
+                        "spring.cloud.nacos.discovery.enabled=false",
                         "spring.application.name=sdk-external-consumer-fixture",
                         "server.port=0",
                         "spring.main.banner-mode=off")
