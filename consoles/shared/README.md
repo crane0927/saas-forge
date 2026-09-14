@@ -55,7 +55,7 @@ react-shell ──> app-runtime ──> api-client
 
 ### 生成代码
 
-[`contracts/openapi/`](../../contracts/openapi/) 是 API 契约来源，Maven/OpenAPI Generator 是唯一生成权威。输出目录 `api-client/.generated/` 被 Git 忽略，不应手改或直接导入；手写代码经 `@saas-forge/api-client` 根入口引用生成 API 与类型。
+[`saas-forge-contracts/saas-forge-openapi-contracts/`](../../saas-forge-contracts/saas-forge-openapi-contracts/) 是 API 契约来源，Maven/OpenAPI Generator 是唯一生成权威。输出目录 `api-client/.generated/` 被 Git 忽略，不应手改或直接导入；手写代码经 `@saas-forge/api-client` 根入口引用生成 API 与类型。
 
 ## 开发与验证
 

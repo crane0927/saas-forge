@@ -39,15 +39,15 @@ pnpm --dir consoles --workspace-concurrency=1 --filter '...@saas-forge/react-she
 ```bash
 # 开发循环：单文件测试；上游聚合模块没有该测试时允许无匹配，务必核对目标测试实际运行。
 ./mvnw --batch-mode --no-transfer-progress -Pbackend-local \
-  -pl services/service-discovery -am -Dtest=DiscoveredGrpcChannelTest \
+  -pl saas-forge-services/saas-forge-service-discovery -am -Dtest=DiscoveredGrpcChannelTest \
   -Dsurefire.failIfNoSpecifiedTests=false test
 
 # 收尾：移除单文件过滤，运行该模块及其 Reactor 依赖的单元/集成检查。
 ./mvnw --batch-mode --no-transfer-progress -Pbackend-local \
-  -pl services/service-discovery -am verify
+  -pl saas-forge-services/saas-forge-service-discovery -am verify
 ```
 
-其他服务用真实路径替换 `-pl` 参数，例如 `services/audit-service`。`-am` 只补上游依赖，不补消费者；共享模块变更需把消费者列入 `-pl`，必要时用完整 Reactor。涉及 PostgreSQL、Redis、Kafka 的测试需要相应 Testcontainers 运行条件；不要以 `-DskipTests`、`-DskipITs` 或测试被跳过来宣称验证通过。
+其他服务用真实路径替换 `-pl` 参数，例如 `saas-forge-services/audit-service`。`-am` 只补上游依赖，不补消费者；共享模块变更需把消费者列入 `-pl`，必要时用完整 Reactor。涉及 PostgreSQL、Redis、Kafka 的测试需要相应 Testcontainers 运行条件；不要以 `-DskipTests`、`-DskipITs` 或测试被跳过来宣称验证通过。
 
 `backend-local` 仅使 OpenAPI 模块的前端聚合执行跳过（Maven 输出 `skipping execute as per configuration`），保留代码生成和后端测试。不加该 profile 的 `./mvnw verify` 仍是原完整门禁，CI/发布流程不使用本地 profile。单独选择的后端模块若本来就不依赖 OpenAPI，调整前也不会运行前端；本选项解决包含 OpenAPI 的聚合调用，不代表所有后端命令都会加速。
 

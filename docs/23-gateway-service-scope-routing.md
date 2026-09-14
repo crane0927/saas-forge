@@ -8,7 +8,7 @@
 
 ## 1. 当前事实与差距
 
-当前正式 REST 输入是唯一根契约 `contracts/openapi/v1.yaml`，Gateway 在 Maven `generate-resources` 阶段直接生成五列 TSV：
+当前正式 REST 输入是唯一根契约 `saas-forge-contracts/saas-forge-openapi-contracts/v1.yaml`，Gateway 在 Maven `generate-resources` 阶段直接生成五列 TSV：
 
 ```text
 operationId  method  path  target  userTokenRequirement
@@ -58,7 +58,7 @@ operationId  method  path  target  userTokenRequirement
 当前链路：
 
 ```text
-contracts/openapi/v1.yaml
+saas-forge-contracts/saas-forge-openapi-contracts/v1.yaml
   → 文本行生成器
   → owner switch → Target enum
   → 五列 TSV
@@ -90,8 +90,8 @@ contracts/openapi/v1.yaml
 新增：
 
 ```text
-contracts/services/engineering-registry.json
-contracts/services/engineering-registry.schema.json
+saas-forge-contracts/services/engineering-registry.json
+saas-forge-contracts/services/engineering-registry.schema.json
 ```
 
 Registry 顶层包含 `registryVersion` 和 `entries`。每个 entry 只包含：
@@ -124,8 +124,8 @@ Registry 顶层包含 `registryVersion` 和 `entries`。每个 entry 只包含�
 新增：
 
 ```text
-contracts/security/oauth-scope-registry.json
-contracts/security/oauth-scope-registry.schema.json
+saas-forge-contracts/security/oauth-scope-registry.json
+saas-forge-contracts/security/oauth-scope-registry.schema.json
 ```
 
 每个 Scope 包含：
@@ -376,13 +376,13 @@ Compose验收使用真实 IAM、Redis、Nacos、Gateway和测试接收端。该�
 
 预计涉及：
 
-- `contracts/openapi/v1.yaml`、OpenAPI README与兼容性基线；
-- `contracts/services/**`、`contracts/security/**`、新的 Route Catalog契约模块；
+- `saas-forge-contracts/saas-forge-openapi-contracts/v1.yaml`、OpenAPI README与兼容性基线；
+- `saas-forge-contracts/services/**`、`saas-forge-contracts/security/**`、新的 Route Catalog契约模块；
 - 根 POM依赖/插件版本管理；
 - Gateway生成器、目录读取、路由、认证、Header与测试；
-- `sdk/java/saas-forge-sdk-auth` 与 Spring Boot Starter；
+- `saas-forge-sdk/saas-forge-java/saas-forge-sdk-auth` 与 Spring Boot Starter；
 - 各服务 Catalog依赖和必要接收配置；
-- `quality-gates` Registry、契约与一致性门禁；
+- `saas-forge-quality-gates` Registry、契约与一致性门禁；
 - `deploy/nacos/**`、Compose、Helm与 discovery ACL验证；
 - `test-support` 非生产接收端；
 - API、SDK、安全、部署和 MVP计划文档；

@@ -21,7 +21,7 @@ test("backend-local skips the frontend execution even with an incompatible Node"
       "--batch-mode",
       "--no-transfer-progress",
       "-pl",
-      "contracts/openapi",
+      "saas-forge-contracts/saas-forge-openapi-contracts",
       "-Pbackend-local",
       "exec:exec@verify-consoles",
     ],
@@ -39,7 +39,7 @@ test("backend-local skips the frontend execution even with an incompatible Node"
       "--batch-mode",
       "--no-transfer-progress",
       "-pl",
-      "contracts/openapi",
+      "saas-forge-contracts/saas-forge-openapi-contracts",
       "exec:exec@verify-consoles",
     ],
     {

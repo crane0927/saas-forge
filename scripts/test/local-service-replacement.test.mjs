@@ -93,10 +93,10 @@ test("declares a fixed module and host port for each additional service", () => 
       }),
     ),
     {
-      "audit-service": ["services/audit-service", 8084, undefined],
-      "entitlement-service": ["services/entitlement-service", 8083, 9093],
+      "audit-service": ["saas-forge-services/audit-service", 8084, undefined],
+      "entitlement-service": ["saas-forge-services/entitlement-service", 8083, 9093],
       gateway: ["gateway", 8080, undefined],
-      "tenant-access-service": ["services/tenant-access-service", 8082, 9092],
+      "tenant-access-service": ["saas-forge-services/tenant-access-service", 8082, 9092],
     },
   );
 });

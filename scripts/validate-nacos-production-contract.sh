@@ -30,10 +30,10 @@ RUBY
 
 for application_file in \
   "$repository_root/gateway/src/main/resources/application.yaml" \
-  "$repository_root/services/iam-service/src/main/resources/application.yaml" \
-  "$repository_root/services/tenant-access-service/src/main/resources/application.yaml" \
-  "$repository_root/services/entitlement-service/src/main/resources/application.yaml" \
-  "$repository_root/services/audit-service/src/main/resources/application.yaml"; do
+  "$repository_root/saas-forge-services/iam-service/src/main/resources/application.yaml" \
+  "$repository_root/saas-forge-services/tenant-access-service/src/main/resources/application.yaml" \
+  "$repository_root/saas-forge-services/entitlement-service/src/main/resources/application.yaml" \
+  "$repository_root/saas-forge-services/audit-service/src/main/resources/application.yaml"; do
   if ! grep -Fq 'enabled: ${NACOS_TLS_ENABLED:false}' "$application_file"; then
     echo "$application_file: 缺少可由生产部署接口启用的 Nacos Config TLS" >&2
     exit 1

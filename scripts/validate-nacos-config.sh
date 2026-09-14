@@ -11,10 +11,10 @@ validate_refresh_boundaries() {
 repository_root = ARGV.fetch(0)
 imports = {
   "gateway/src/main/resources/application.yaml" => "gateway.yaml",
-  "services/iam-service/src/main/resources/application.yaml" => "iam-service.yaml",
-  "services/tenant-access-service/src/main/resources/application.yaml" => "tenant-access-service.yaml",
-  "services/entitlement-service/src/main/resources/application.yaml" => "entitlement-service.yaml",
-  "services/audit-service/src/main/resources/application.yaml" => "audit-service.yaml"
+  "saas-forge-services/iam-service/src/main/resources/application.yaml" => "iam-service.yaml",
+  "saas-forge-services/tenant-access-service/src/main/resources/application.yaml" => "tenant-access-service.yaml",
+  "saas-forge-services/entitlement-service/src/main/resources/application.yaml" => "entitlement-service.yaml",
+  "saas-forge-services/audit-service/src/main/resources/application.yaml" => "audit-service.yaml"
 }.freeze
 
 imports.each do |relative_path, resource|

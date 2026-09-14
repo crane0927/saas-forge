@@ -55,7 +55,7 @@ Import components only from the `@saas-forge/design-system` root. Consoles and R
 
 ### Generated code
 
-[`contracts/openapi/`](../../contracts/openapi/) is the API contract source, and Maven/OpenAPI Generator is the sole generator. Its output, `api-client/.generated/`, is Git-ignored and must not be edited or imported directly. Handwritten code references generated APIs and types through the `@saas-forge/api-client` root entry.
+[`saas-forge-contracts/saas-forge-openapi-contracts/`](../../saas-forge-contracts/saas-forge-openapi-contracts/) is the API contract source, and Maven/OpenAPI Generator is the sole generator. Its output, `api-client/.generated/`, is Git-ignored and must not be edited or imported directly. Handwritten code references generated APIs and types through the `@saas-forge/api-client` root entry.
 
 ## Development and verification
 

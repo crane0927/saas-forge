@@ -2,7 +2,7 @@
 
 Gateway、四个领域服务、官方 Example 以及 SDK/Starter 自身产生的日志统一输出结构化 JSON。容器写标准输出并由 Collector 收集；虚拟机通过 `systemd` 与日志转发收集。应用不依赖本地滚动文件承担留存。
 
-机器可读 Schema 和策略分别位于 `contracts/logging/application-log.schema.json` 与 `contracts/logging/policy.json`。
+机器可读 Schema 和策略分别位于 `saas-forge-contracts/logging/application-log.schema.json` 与 `saas-forge-contracts/logging/policy.json`。
 
 ## 字段模型
 

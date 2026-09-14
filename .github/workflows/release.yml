@@ -98,6 +98,6 @@ jobs:
             echo "- Maven: $(./mvnw --version | head -n 1)"
             echo
             echo '```text'
-            find sdk/java sdk/starters -path '*/target/*.jar' -type f -exec shasum -a 256 {} \; | sort
+            find saas-forge-sdk/saas-forge-java saas-forge-sdk/saas-forge-starters -path '*/target/*.jar' -type f -exec shasum -a 256 {} \; | sort
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

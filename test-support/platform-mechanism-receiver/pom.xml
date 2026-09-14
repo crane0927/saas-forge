@@ -12,7 +12,7 @@
     </parent>
 
     <artifactId>platform-mechanism-receiver</artifactId>
-    <name>saas-forge platform mechanism acceptance receiver</name>
+    <name>platform-mechanism-receiver</name>
 
     <properties>
         <maven.deploy.skip>true</maven.deploy.skip>

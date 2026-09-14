@@ -102,7 +102,7 @@ IAM 的 JWKS 响应以 `Cache-Control: max-age=300` 发布。验证方遇到未�
 - 异步工作统一称为 Job，以避免与官方 Example 的业务 `Task` 混淆。Job 的状态只能为 `QUEUED`、`RUNNING`、`SUCCEEDED`、`FAILED`；前两者为非终态，后两者为终态。Job 必含 `id`、`status`、`createdAt`、`startedAt`、`completedAt`、`failure`：`createdAt` 非空，`startedAt` 仅在 `QUEUED` 为 `null`，`completedAt` 仅在终态非空，`failure` 仅在 `FAILED` 为非空 Problem Details。轮询 `GET` Job 始终按资源读取返回 `200`，即使 Job 已失败；具体 Job 自行定义其成功结果字段，不使用无类型的通用 `result` 对象。
 - 失败响应采用 `application/problem+json`，并始终包含 `type`、`title`、`status`、`code`、`detail`、`traceId`。`type` 由 `code` 唯一派生为 `urn:saasforge:problem:{lower-kebab-case-code}`；`status` 必须等于 HTTP 响应状态。`title`、`detail` 及字段校验项的 `detail` 固定使用英文，只供人读；客户端只按全大写 `UPPER_SNAKE_CASE` 的 `code` 分支，不得解析这些文本。`traceId` 是非全零的 32 位小写十六进制 W3C Trace ID，不是 UUID。
 - 请求格式或字段校验失败使用 `400` Problem Details，并额外包含非空 `errors` 数组；每项都有指向无效输入的 JSON Pointer `pointer`、稳定 `code` 与英文 `detail`，不得回显输入值或敏感数据。其他 Problem Details 不包含 `errors`，也不返回可能泄露查询参数的 `instance`。
-- [OpenAPI 公共组件](../contracts/openapi/common.yaml)提供可复用 Schema、Response、Header 以及分页、Job、业务拒绝与字段校验的正反例。资源契约必须复用这些组件，并可通过 `allOf` 收窄 `Page.items` 或为具体 Job 添加成功结果字段。
+- [OpenAPI 公共组件](../saas-forge-contracts/saas-forge-openapi-contracts/common.yaml)提供可复用 Schema、Response、Header 以及分页、Job、业务拒绝与字段校验的正反例。资源契约必须复用这些组件，并可通过 `allOf` 收窄 `Page.items` 或为具体 Job 添加成功结果字段。
 
 ## 认证、来源与限流
 

@@ -8,7 +8,7 @@ mvn -am -pl gateway test
 
 `GatewayJwksRouteTest` 验证 OpenAPI v1 中每个当前 operation 会通过所属服务的发现实例处理，并保留方法、路径、查询参数、允许的请求头、请求体和成功响应透传；同时验证任一所属服务没有健康实例时返回稳定的 `503`、Trace Context 继续或新建，以及客户端提供的转发头不会抵达下游。`GatewayProblemDetailsTest` 验证白名单之外的路由、未声明方法、合格和不合格的下游 Problem Details、连接失败及超时。
 
-完整构建还会执行 `quality-gates` 中的 OpenAPI v1 兼容性检查和仓库标准检查。
+完整构建还会执行 `saas-forge-quality-gates` 中的 OpenAPI v1 兼容性检查和仓库标准检查。
 
 ## 非本切片范围
 

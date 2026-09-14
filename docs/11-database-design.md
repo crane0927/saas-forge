@@ -44,7 +44,7 @@ audit-service          → audit_db
 
 ## Transactional Outbox 与消费去重
 
-服务首次生产或消费已提交事实事件时，在自己的数据库和 Flyway 迁移链中分别建立本地 Outbox、消费去重和（需要时）隔离记录；不得预建没有业务切片的表，也不得在 SDK、契约模块或其他服务创建共享实现。Outbox 保存事务内生成的不可变完整 CloudEvents 快照，消费去重以 `(consumer_name, event_id)` 为唯一约束并与业务副作用同一事务提交。字段、索引、租约和保留要求见[事件工程约定](../contracts/events/transactional-outbox.md)。
+服务首次生产或消费已提交事实事件时，在自己的数据库和 Flyway 迁移链中分别建立本地 Outbox、消费去重和（需要时）隔离记录；不得预建没有业务切片的表，也不得在 SDK、契约模块或其他服务创建共享实现。Outbox 保存事务内生成的不可变完整 CloudEvents 快照，消费去重以 `(consumer_name, event_id)` 为唯一约束并与业务副作用同一事务提交。字段、索引、租约和保留要求见[事件工程约定](../saas-forge-contracts/saas-forge-event-contracts/transactional-outbox.md)。
 
 ## 逻辑数据模型
 

@@ -27,7 +27,13 @@ jobs:
           if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
             exit 0
           fi
-          changes="$(git diff --name-status "$BASE_SHA" "$GITHUB_SHA" -- contracts/compatibility-baselines/v1)"
+          baseline_root="saas-forge-contracts/compatibility-baselines/v1"
+          previous_root="$baseline_root"
+          if ! git cat-file -e "$BASE_SHA:$previous_root" 2>/dev/null; then
+            previous_root="contracts/compatibility-baselines/v1"
+          fi
+          # 比较目录树内容，允许模块目录搬迁，但仍拒绝既有快照的修改、删除或重命名。
+          changes="$(git diff --no-renames --name-status "$BASE_SHA:$previous_root" "$GITHUB_SHA:$baseline_root")"
           if [[ -n "$(printf '%s\n' "$changes" | awk '$1 !~ /^A/')" ]]; then
             echo "已发布 v1 契约基线不可修改或删除；仅允许新增快照目录。" >&2
             printf '%s\n' "$changes" >&2
@@ -39,23 +45,23 @@ jobs:
               echo "新增 v1 契约基线目录必须使用待发布 Git tag: $tag" >&2
               exit 1
             fi
-            baseline="contracts/compatibility-baselines/v1/$tag"
-            diff -u contracts/openapi/v1.yaml "$baseline/openapi/v1.yaml"
-            diff -u contracts/openapi/common.yaml "$baseline/openapi/common.yaml"
+            baseline="saas-forge-contracts/compatibility-baselines/v1/$tag"
+            diff -u saas-forge-contracts/saas-forge-openapi-contracts/v1.yaml "$baseline/openapi/v1.yaml"
+            diff -u saas-forge-contracts/saas-forge-openapi-contracts/common.yaml "$baseline/openapi/common.yaml"
             diff -u \
-              <(find contracts/protobuf -path '*/v1/*.proto' -type f | sed 's#^contracts/protobuf/##' | sort) \
+              <(find saas-forge-contracts/saas-forge-protobuf-contracts -path '*/v1/*.proto' -type f | sed 's#^saas-forge-contracts/saas-forge-protobuf-contracts/##' | sort) \
               <(find "$baseline/protobuf" -type f -name '*.proto' | sed "s#^$baseline/protobuf/##" | sort)
             while IFS= read -r proto; do
-              diff -u "contracts/protobuf/$proto" "$baseline/protobuf/$proto"
-            done < <(find contracts/protobuf -path '*/v1/*.proto' -type f | sed 's#^contracts/protobuf/##' | sort)
+              diff -u "saas-forge-contracts/saas-forge-protobuf-contracts/$proto" "$baseline/protobuf/$proto"
+            done < <(find saas-forge-contracts/saas-forge-protobuf-contracts -path '*/v1/*.proto' -type f | sed 's#^saas-forge-contracts/saas-forge-protobuf-contracts/##' | sort)
             diff -u \
-              <(find contracts/events -type f -name '*.v1.schema.json' | sed 's#^contracts/events/##' | sort) \
+              <(find saas-forge-contracts/saas-forge-event-contracts -type f -name '*.v1.schema.json' | sed 's#^saas-forge-contracts/saas-forge-event-contracts/##' | sort) \
               <(find "$baseline/events" -type f -name '*.v1.schema.json' | sed "s#^$baseline/events/##" | sort)
             while IFS= read -r schema; do
-              diff -u "contracts/events/$schema" "$baseline/events/$schema"
-            done < <(find contracts/events -type f -name '*.v1.schema.json' | sed 's#^contracts/events/##' | sort)
-          done < <(git diff --name-only --diff-filter=A "$BASE_SHA" "$GITHUB_SHA" -- contracts/compatibility-baselines/v1 \
-            | awk -F/ 'NF >= 5 {print $4}' | sort -u)
+              diff -u "saas-forge-contracts/saas-forge-event-contracts/$schema" "$baseline/events/$schema"
+            done < <(find saas-forge-contracts/saas-forge-event-contracts -type f -name '*.v1.schema.json' | sed 's#^saas-forge-contracts/saas-forge-event-contracts/##' | sort)
+          done < <(git diff --no-renames --name-only --diff-filter=A "$BASE_SHA:$previous_root" "$GITHUB_SHA:$baseline_root" \
+            | awk -F/ 'NF >= 2 {print $1}' | sort -u)
       - uses: actions/setup-java@v5
         with:
           distribution: temurin

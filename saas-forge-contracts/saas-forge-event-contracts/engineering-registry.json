@@ -1,0 +1,271 @@
+{
+  "registryVersion": 1,
+  "entries": [
+    {
+      "type": "com.saasforge.iam.session.started.v1",
+      "producerService": "iam-service",
+      "source": "urn:saasforge:iam-service",
+      "schema": "saas-forge-contracts/saas-forge-event-contracts/iam-session-started.v1.schema.json",
+      "topic": "saasforge.<environment>.iam-service.events",
+      "orderingKey": "identityId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.iam-session-events"
+        }
+      ]
+    },
+    {
+      "type": "com.saasforge.iam.tenant-context-switched.v1",
+      "producerService": "iam-service",
+      "source": "urn:saasforge:iam-service",
+      "schema": "saas-forge-contracts/saas-forge-event-contracts/iam-tenant-context-switched.v1.schema.json",
+      "topic": "saasforge.<environment>.iam-service.events",
+      "orderingKey": "identityId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.iam-session-events"
+        }
+      ]
+    },
+    {
+      "type": "com.saasforge.iam.password.changed.v1",
+      "producerService": "iam-service",
+      "source": "urn:saasforge:iam-service",
+      "schema": "saas-forge-contracts/saas-forge-event-contracts/iam-password-changed.v1.schema.json",
+      "topic": "saasforge.<environment>.iam-service.events",
+      "orderingKey": "identityId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.iam-password-events"
+        }
+      ]
+    },
+    {
+      "type": "com.saasforge.iam.password.established.v1",
+      "producerService": "iam-service",
+      "source": "urn:saasforge:iam-service",
+      "schema": "saas-forge-contracts/saas-forge-event-contracts/iam-password-established.v1.schema.json",
+      "topic": "saasforge.<environment>.iam-service.events",
+      "orderingKey": "identityId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.iam-password-events"
+        }
+      ]
+    },
+    {
+      "type": "com.saasforge.iam.password-setup-delivered.v1",
+      "producerService": "iam-service",
+      "source": "urn:saasforge:iam-service",
+      "schema": "saas-forge-contracts/saas-forge-event-contracts/iam-password-setup-delivered.v1.schema.json",
+      "topic": "saasforge.<environment>.iam-service.events",
+      "orderingKey": "identityId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.iam-password-events"
+        }
+      ]
+    },
+    {
+      "type": "com.saasforge.iam.platform-admin-initialized.v1",
+      "producerService": "iam-service",
+      "source": "urn:saasforge:iam-service",
+      "schema": "saas-forge-contracts/saas-forge-event-contracts/iam-platform-admin-initialized.v1.schema.json",
+      "topic": "saasforge.<environment>.iam-service.events",
+      "orderingKey": "identityId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.iam-platform-administration-events"
+        }
+      ]
+    },
+    {
+      "type": "com.saasforge.iam.oauth-client.created.v1",
+      "producerService": "iam-service",
+      "source": "urn:saasforge:iam-service",
+      "schema": "saas-forge-contracts/saas-forge-event-contracts/iam-oauth-client-created.v1.schema.json",
+      "topic": "saasforge.<environment>.iam-service.events",
+      "orderingKey": "clientId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.iam-oauth-client-events"
+        }
+      ]
+    },
+    {
+      "type": "com.saasforge.iam.client-secret.rotated.v1",
+      "producerService": "iam-service",
+      "source": "urn:saasforge:iam-service",
+      "schema": "saas-forge-contracts/saas-forge-event-contracts/iam-client-secret-rotated.v1.schema.json",
+      "topic": "saasforge.<environment>.iam-service.events",
+      "orderingKey": "clientId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.iam-oauth-client-events"
+        }
+      ]
+    },
+    {
+      "type": "com.saasforge.iam.oauth-client.revoked.v1",
+      "producerService": "iam-service",
+      "source": "urn:saasforge:iam-service",
+      "schema": "saas-forge-contracts/saas-forge-event-contracts/iam-oauth-client-revoked.v1.schema.json",
+      "topic": "saasforge.<environment>.iam-service.events",
+      "orderingKey": "clientId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.iam-oauth-client-events"
+        }
+      ]
+    },
+    {
+      "type": "com.saasforge.iam.client-secret.issuance-recovered.v1",
+      "producerService": "iam-service",
+      "source": "urn:saasforge:iam-service",
+      "schema": "saas-forge-contracts/saas-forge-event-contracts/iam-client-secret-issuance-recovered.v1.schema.json",
+      "topic": "saasforge.<environment>.iam-service.events",
+      "orderingKey": "clientId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.iam-oauth-client-events"
+        }
+      ]
+    },
+    {
+      "type": "com.saasforge.iam.platform-admin-initial-credential-reset.v1",
+      "producerService": "iam-service",
+      "source": "urn:saasforge:iam-service",
+      "schema": "saas-forge-contracts/saas-forge-event-contracts/iam-platform-admin-initial-credential-reset.v1.schema.json",
+      "topic": "saasforge.<environment>.iam-service.events",
+      "orderingKey": "identityId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.iam-platform-administration-events"
+        }
+      ]
+    },
+    {
+      "type": "com.saasforge.iam.session.revoked.v1",
+      "producerService": "iam-service",
+      "source": "urn:saasforge:iam-service",
+      "schema": "saas-forge-contracts/saas-forge-event-contracts/iam-session-revoked.v1.schema.json",
+      "topic": "saasforge.<environment>.iam-service.events",
+      "orderingKey": "identityId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.iam-session-events"
+        }
+      ]
+    },
+    {
+      "type": "com.saasforge.iam.refresh-replay-detected.v1",
+      "producerService": "iam-service",
+      "source": "urn:saasforge:iam-service",
+      "schema": "saas-forge-contracts/saas-forge-event-contracts/iam-refresh-replay-detected.v1.schema.json",
+      "topic": "saasforge.<environment>.iam-service.events",
+      "orderingKey": "identityId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.iam-refresh-security-events"
+        }
+      ]
+    },
+    {
+      "type": "com.saasforge.tenant.created.v1",
+      "producerService": "tenant-access-service",
+      "source": "urn:saasforge:tenant-access-service",
+      "schema": "saas-forge-contracts/saas-forge-event-contracts/tenant-created.v1.schema.json",
+      "topic": "saasforge.<environment>.tenant-access-service.events",
+      "orderingKey": "tenantId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.tenant-events"
+        }
+      ]
+    },
+    {
+      "type": "com.saasforge.tenant.suspended.v1",
+      "producerService": "tenant-access-service",
+      "source": "urn:saasforge:tenant-access-service",
+      "schema": "saas-forge-contracts/saas-forge-event-contracts/tenant-suspended.v1.schema.json",
+      "topic": "saasforge.<environment>.tenant-access-service.events",
+      "orderingKey": "tenantId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.tenant-lifecycle-events"
+        }
+      ]
+    },
+    {
+      "type": "com.saasforge.quota-definition.created.v1",
+      "producerService": "entitlement-service",
+      "source": "urn:saasforge:entitlement-service",
+      "schema": "saas-forge-contracts/saas-forge-event-contracts/quota-definition-created.v1.schema.json",
+      "topic": "saasforge.<environment>.entitlement-service.events",
+      "orderingKey": "quotaDefinitionId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.entitlement-configuration-events"
+        }
+      ]
+    },
+    {
+      "type": "com.saasforge.quota-definition.activated.v1",
+      "producerService": "entitlement-service",
+      "source": "urn:saasforge:entitlement-service",
+      "schema": "saas-forge-contracts/saas-forge-event-contracts/quota-definition-activated.v1.schema.json",
+      "topic": "saasforge.<environment>.entitlement-service.events",
+      "orderingKey": "quotaDefinitionId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.entitlement-configuration-events"
+        }
+      ]
+    },
+    {
+      "type": "com.saasforge.plan.created.v1",
+      "producerService": "entitlement-service",
+      "source": "urn:saasforge:entitlement-service",
+      "schema": "saas-forge-contracts/saas-forge-event-contracts/plan-created.v1.schema.json",
+      "topic": "saasforge.<environment>.entitlement-service.events",
+      "orderingKey": "planId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.entitlement-configuration-events"
+        }
+      ]
+    },
+    {
+      "type": "com.saasforge.plan.activated.v1",
+      "producerService": "entitlement-service",
+      "source": "urn:saasforge:entitlement-service",
+      "schema": "saas-forge-contracts/saas-forge-event-contracts/plan-activated.v1.schema.json",
+      "topic": "saasforge.<environment>.entitlement-service.events",
+      "orderingKey": "planId",
+      "allowedConsumers": [
+        {
+          "service": "audit-service",
+          "consumerName": "audit-service.entitlement-configuration-events"
+        }
+      ]
+    }
+  ]
+}

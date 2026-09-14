@@ -593,13 +593,13 @@ grant_container_secret_access
 
 echo "[3/13] 显式引导 Platform Admin 与三个保留服务 Client"
 "$repository_root/mvnw" --batch-mode --no-transfer-progress \
-  -pl gateway,services/iam-service,services/tenant-access-service,services/entitlement-service,services/audit-service \
+  -pl gateway,saas-forge-services/iam-service,saas-forge-services/tenant-access-service,saas-forge-services/entitlement-service,saas-forge-services/audit-service \
   -am package -DskipTests >"$work_directory/maven-package.log"
 build_runtime_image gateway saasforge/gateway:local
-build_runtime_image services/iam-service saasforge/iam-service:local
-build_runtime_image services/tenant-access-service saasforge/tenant-access-service:local
-build_runtime_image services/entitlement-service saasforge/entitlement-service:local
-build_runtime_image services/audit-service saasforge/audit-service:local
+build_runtime_image saas-forge-services/iam-service saasforge/iam-service:local
+build_runtime_image saas-forge-services/tenant-access-service saasforge/tenant-access-service:local
+build_runtime_image saas-forge-services/entitlement-service saasforge/entitlement-service:local
+build_runtime_image saas-forge-services/audit-service saasforge/audit-service:local
 run_bootstrap bootstrap iam-platform-admin-bootstrap
 run_bootstrap service-client-bootstrap iam-reserved-service-client-bootstrap
 initial_password="$(<"$secret_directory/platform-admin-password")"
@@ -885,7 +885,7 @@ quota_token_status="$(curl --silent --show-error --output "$response_body" --wri
 quota_token="$(jq -r '.access_token' "$response_body")"
 quota_grpc_port="$(compose port entitlement-service 9090 | sed 's/.*://')"
 quota_probe() {
-  SERVICE_ACCESS_TOKEN="$quota_token" "$repository_root/mvnw" --quiet -pl contracts/protobuf \
+  SERVICE_ACCESS_TOKEN="$quota_token" "$repository_root/mvnw" --quiet -pl saas-forge-contracts/saas-forge-protobuf-contracts \
     -Denforcer.skip=true org.codehaus.mojo:exec-maven-plugin:java \
     -Dexec.mainClass=io.saasforge.contracts.acceptance.QuotaCommandGrpcProbe \
     -Dexec.classpathScope=test -Dexec.args="$quota_grpc_port $exhausted_tenant_id $(uuid_v7) $1" \

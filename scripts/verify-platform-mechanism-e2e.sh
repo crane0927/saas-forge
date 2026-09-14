@@ -298,8 +298,8 @@ touch "$cookie_jar"
 
 echo "[1/9] 校验测试 overlay 未污染生产 Registry、OpenAPI、默认 Compose 与 Helm"
 if rg -n 'platform-mechanism-receiver|/__test/platform-mechanism' \
-    "$repository_root/contracts/services/engineering-registry.json" \
-    "$repository_root/contracts/openapi/v1.yaml" \
+    "$repository_root/saas-forge-contracts/services/engineering-registry.json" \
+    "$repository_root/saas-forge-contracts/saas-forge-openapi-contracts/v1.yaml" \
     "$repository_root/deploy/compose/compose.yaml" \
     "$repository_root/deploy/helm" >/dev/null; then
   echo "平台机制测试接收端进入了生产工程清单" >&2
@@ -319,17 +319,17 @@ fi
 echo "[2/9] 构建带测试 Catalog overlay 的真实 Gateway、IAM 与 Starter 接收端"
 "$repository_root/mvnw" --batch-mode --no-transfer-progress \
   -Pplatform-mechanism-acceptance \
-  -pl gateway,services/iam-service,services/tenant-access-service,services/entitlement-service,services/audit-service,test-support/platform-mechanism-receiver \
+  -pl gateway,saas-forge-services/iam-service,saas-forge-services/tenant-access-service,saas-forge-services/entitlement-service,saas-forge-services/audit-service,test-support/platform-mechanism-receiver \
   -am package -DskipTests >"$work_directory/maven-package.log"
 jq --exit-status '[.routes[] | select(.operationId == "acceptPlatformMechanismServiceToken" and
   .serviceId == "platform-mechanism-receiver" and .credentialRequirement == "SERVICE_REQUIRED" and
   .requiredScopes == ["runtime:read"])] | length == 1' \
-  "$repository_root/contracts/http-route-catalog/target/generated-resources/route-catalog/META-INF/saasforge/http-route-catalog.json" >/dev/null
+  "$repository_root/saas-forge-contracts/saas-forge-http-route-catalog/target/generated-resources/route-catalog/META-INF/saasforge/http-route-catalog.json" >/dev/null
 build_runtime_image gateway saasforge/gateway:local
-build_runtime_image services/iam-service saasforge/iam-service:local
-build_runtime_image services/tenant-access-service saasforge/tenant-access-service:local
-build_runtime_image services/entitlement-service saasforge/entitlement-service:local
-build_runtime_image services/audit-service saasforge/audit-service:local
+build_runtime_image saas-forge-services/iam-service saasforge/iam-service:local
+build_runtime_image saas-forge-services/tenant-access-service saasforge/tenant-access-service:local
+build_runtime_image saas-forge-services/entitlement-service saasforge/entitlement-service:local
+build_runtime_image saas-forge-services/audit-service saasforge/audit-service:local
 build_runtime_image test-support/platform-mechanism-receiver saasforge/platform-mechanism-receiver:acceptance
 
 echo "[3/9] 初始化真实 PostgreSQL、IAM Signing Key、Platform Admin 与 Reserved Client"

@@ -4,21 +4,27 @@
 
 ```text
 saas-forge
-├── services
+├── saas-forge-services
+│   ├── saas-forge-service-discovery
 │   ├── iam-service
 │   ├── tenant-access-service
 │   ├── entitlement-service
 │   └── audit-service
 ├── gateway
-├── contracts
-│   ├── openapi
-│   ├── protobuf
-│   ├── events
+├── saas-forge-contracts
+│   ├── saas-forge-http-route-catalog
+│   ├── saas-forge-openapi-contracts
+│   ├── saas-forge-protobuf-contracts
+│   ├── saas-forge-event-contracts
 │   ├── redis
 │   └── logging
-├── sdk
-│   ├── java
-│   └── starters
+├── saas-forge-sdk
+│   ├── saas-forge-java
+│   └── saas-forge-starters
+├── saas-forge-quality-gates
+├── test-support
+│   ├── platform-mechanism-receiver
+│   └── saas-forge-external-consumer-fixture
 ├── consoles
 │   ├── platform-console
 │   ├── tenant-console-shell
@@ -34,6 +40,8 @@ saas-forge
 ```
 
 API Gateway 是边界组件，不计入领域服务数量。它不持有领域数据，也不承载领域规则。
+
+所有 Maven 模块（含聚合模块与验收夹具）的末级目录名、`artifactId` 和 POM `<name>` 保持一致。目录调整保留原有 Maven 坐标；前端 workspace 包命名和事件 Schema URL 等协议标识独立于文件系统路径。
 
 ## 服务边界与数据所有权
 
@@ -74,6 +82,6 @@ Remote 仅能由经审核的版本化 Manifest 加载。Manifest 由业务模块
 
 ## 服务登记与 HTTP 路由契约
 
-`contracts` 维护受控 Service Registry 与独立 Scope Registry；它们只登记可部署服务、所有权和合法 Scope，不承载运行时实例地址。公共 OpenAPI 仍是操作、路径和安全声明的唯一事实来源。构建期将 OpenAPI、两个 Registry 与服务所有权校验后生成版本化 Route Catalog JSON，并发布为 Gateway 与 Spring Boot Starter 共同消费的 `saas-forge-http-route-catalog` 制品。Gateway 不因 Nacos 出现新实例而自动开放公网路由。完整边界见 [ADR 0034](adr/0034-controlled-service-registry-and-route-catalog.md)与 [Gateway Service Scope 路由设计](23-gateway-service-scope-routing.md)。
+`saas-forge-contracts` 维护受控 Service Registry 与独立 Scope Registry；它们只登记可部署服务、所有权和合法 Scope，不承载运行时实例地址。公共 OpenAPI 仍是操作、路径和安全声明的唯一事实来源。构建期将 OpenAPI、两个 Registry 与服务所有权校验后生成版本化 Route Catalog JSON，并发布为 Gateway 与 Spring Boot Starter 共同消费的 `saas-forge-http-route-catalog` 制品。Gateway 不因 Nacos 出现新实例而自动开放公网路由。完整边界见 [ADR 0034](adr/0034-controlled-service-registry-and-route-catalog.md)与 [Gateway Service Scope 路由设计](23-gateway-service-scope-routing.md)。
 
 Audit 只消费来源服务已经提交并注册的事实事件；首个切片仅覆盖 Session Started、Tenant Created、Tenant Context Switched，采用两个独立消费者身份写入只追加 Audit Record。存储、隔离和重放边界见 [Audit 成功事实消费设计](24-audit-success-fact-consumption.md)。

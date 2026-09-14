@@ -25,7 +25,7 @@ saas-forge-java
 
 Starter 还依赖可发布的 `saas-forge-http-route-catalog` 支撑制品，以便与 Gateway 消费同一份不可变路由和认证分类。它不是 BOM 管理的消费者 SDK，也不应由业务应用直接声明。
 
-每个首版公开 SDK 与 Starter 的允许 package 和公共类型记录在 [`sdk/public-api-allowlist.json`](../sdk/public-api-allowlist.json)。构建会对照打包后的 JAR 检查该清单，并检查公共签名、JAR 内容、实现类型引用和传递依赖；新增公共类型或 package 必须显式修改清单。门禁拒绝平台内部 Protobuf、gRPC、持久化记录、数据库实体、MyBatis、Repository、迁移实现以及 Cookie、`Origin`、Fetch Metadata 等浏览器安全参数进入公开发布面。
+每个首版公开 SDK 与 Starter 的允许 package 和公共类型记录在 [`saas-forge-sdk/public-api-allowlist.json`](../saas-forge-sdk/public-api-allowlist.json)。构建会对照打包后的 JAR 检查该清单，并检查公共签名、JAR 内容、实现类型引用和传递依赖；新增公共类型或 package 必须显式修改清单。门禁拒绝平台内部 Protobuf、gRPC、持久化记录、数据库实体、MyBatis、Repository、迁移实现以及 Cookie、`Origin`、Fetch Metadata 等浏览器安全参数进入公开发布面。
 
 当前没有已正式发布的 Java SDK 制品，因此不建立虚构的二进制兼容基线。首个正式版本发布后，后续版本才以真实发布制品启用二进制兼容比较。
 

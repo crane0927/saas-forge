@@ -34,7 +34,7 @@ const additionalServiceDefinitions = Object.freeze({
     grpcPort: undefined,
     httpPort: 8084,
     migration: "audit-migrate",
-    module: "services/audit-service",
+    module: "saas-forge-services/audit-service",
     nacosPassword: "NACOS_AUDIT_PASSWORD",
     nacosUsername: "NACOS_AUDIT_USERNAME",
     service: "audit-service",
@@ -53,7 +53,7 @@ const additionalServiceDefinitions = Object.freeze({
     grpcPort: 9093,
     httpPort: 8083,
     migration: "entitlement-migrate",
-    module: "services/entitlement-service",
+    module: "saas-forge-services/entitlement-service",
     nacosPassword: "NACOS_ENTITLEMENT_PASSWORD",
     nacosUsername: "NACOS_ENTITLEMENT_USERNAME",
     service: "entitlement-service",
@@ -96,7 +96,7 @@ const additionalServiceDefinitions = Object.freeze({
     grpcPort: 9092,
     httpPort: 8082,
     migration: "tenant-access-migrate",
-    module: "services/tenant-access-service",
+    module: "saas-forge-services/tenant-access-service",
     nacosPassword: "NACOS_TENANT_ACCESS_PASSWORD",
     nacosUsername: "NACOS_TENANT_ACCESS_USERNAME",
     service: "tenant-access-service",
@@ -772,7 +772,7 @@ async function localProcess(paths) {
     allowFailure: true,
   });
   if (result.status !== 0) return undefined;
-  if (!result.stdout.includes("/services/iam-service/target/iam-service-")) {
+  if (!result.stdout.includes("/saas-forge-services/iam-service/target/iam-service-")) {
     throw new BlockedError(
       "本地 IAM PID 文件未指向受管 IAM 进程；拒绝操作未知进程。",
     );
@@ -875,14 +875,14 @@ async function packageLocalIam(context) {
       "--batch-mode",
       "--no-transfer-progress",
       "-pl",
-      "services/iam-service",
+      "saas-forge-services/iam-service",
       "-am",
       "package",
       "-DskipTests",
     ],
     { cwd: context.root, env: systemEnvironment() },
   );
-  const target = path.join(context.root, "services", "iam-service", "target");
+  const target = path.join(context.root, "saas-forge-services", "iam-service", "target");
   const jars = (await readdir(target))
     .filter((file) => /^iam-service-.+\.jar$/u.test(file))
     .filter((file) => !file.startsWith("original-"))

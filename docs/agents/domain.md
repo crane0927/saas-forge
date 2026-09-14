@@ -19,8 +19,8 @@
 ├── CONTEXT-MAP.md
 ├── docs/adr/                          ← 系统级决策
 ├── gateway/CONTEXT.md
-├── contracts/CONTEXT.md
-└── services/
+├── saas-forge-contracts/CONTEXT.md
+└── saas-forge-services/
     ├── iam-service/CONTEXT.md
     ├── tenant-access-service/CONTEXT.md
     ├── entitlement-service/CONTEXT.md

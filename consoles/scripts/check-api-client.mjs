@@ -11,7 +11,11 @@ const recovery =
 
 async function inputsHash() {
   const hash = createHash('sha256');
-  for (const file of ['contracts/openapi/v1.yaml', 'contracts/openapi/pom.xml', 'pom.xml']) {
+  for (const file of [
+    'saas-forge-contracts/saas-forge-openapi-contracts/v1.yaml',
+    'saas-forge-contracts/saas-forge-openapi-contracts/pom.xml',
+    'pom.xml',
+  ]) {
     hash.update(await readFile(new URL(file, repository)));
     hash.update('\0');
   }
@@ -41,7 +45,7 @@ try {
         '--batch-mode',
         '--no-transfer-progress',
         '-pl',
-        'contracts/openapi',
+        'saas-forge-contracts/saas-forge-openapi-contracts',
         '-am',
         'generate-sources',
       ],

@@ -29,7 +29,7 @@
 - Failsafe 在 `integration-test` 与 `verify` 阶段运行 `*IT`；
 - Testcontainers、数据库、Redis、Kafka 和跨模块契约验证使用 `*IT`；
 - 浏览器端到端测试、性能测试和 ZAP 由独立 CI Job 负责，不并入 Maven 父 POM；
-- JaCoCo 同时采集单元测试和集成测试覆盖率，由 `quality-gates` 生成 Reactor 聚合报告并执行门禁；
+- JaCoCo 同时采集单元测试和集成测试覆盖率，由 `saas-forge-quality-gates` 生成 Reactor 聚合报告并执行门禁；
 - 全仓行覆盖率不得低于 80%，分支覆盖率不得低于 70%；
 - `iam-service`、`tenant-access-service`、`entitlement-service`、`saas-forge-sdk-auth`、`saas-forge-sdk-tenant`、`saas-forge-sdk-permission` 与 `saas-forge-sdk-quota` 的行覆盖率不得低于 90%；
 - 生成代码和无业务逻辑的 `*Application` 启动入口不计入覆盖率；没有生产代码的空模块不阻断构建。
@@ -46,9 +46,9 @@ Maven Central 发布白名单为：
 - `saas-forge-sdk-core`、`saas-forge-sdk-auth` 与 `saas-forge-sdk-tenant`；
 - `saas-forge-spring-boot-starter`。
 
-Permission、Feature、Quota 与 Audit SDK 仍是未交付的 Reactor 占位模块，不进入 BOM、Starter 或发布白名单。Gateway、领域服务、`quality-gates`、测试支持、纯聚合模块及尚未确定打包契约的 OpenAPI、Protobuf、事件模块也不得部署到 Maven Central。每个 POM 必须显式声明 `maven.deploy.skip`，质量门会拒绝发布白名单漂移；仓库不发布远程 `SNAPSHOT`。
+Permission、Feature、Quota 与 Audit SDK 仍是未交付的 Reactor 占位模块，不进入 BOM、Starter 或发布白名单。Gateway、领域服务、`saas-forge-quality-gates`、测试支持、纯聚合模块及尚未确定打包契约的 OpenAPI、Protobuf、事件模块也不得部署到 Maven Central。每个 POM 必须显式声明 `maven.deploy.skip`，质量门会拒绝发布白名单漂移；仓库不发布远程 `SNAPSHOT`。
 
-首版公开 SDK 与 Starter 通过 [`sdk/public-api-allowlist.json`](../sdk/public-api-allowlist.json) 固定允许的 package 和公共类型。Maven Enforcer 检查传递依赖，制品质量门检查公共签名、JAR 内容与 `jdeps` 实现引用，拒绝内部 Protobuf、gRPC、持久化与浏览器安全参数泄漏。首个正式 SDK 发布前没有真实二进制兼容基线；发布首版后才以已发布制品启用版本间比较。
+首版公开 SDK 与 Starter 通过 [`saas-forge-sdk/public-api-allowlist.json`](../saas-forge-sdk/public-api-allowlist.json) 固定允许的 package 和公共类型。Maven Enforcer 检查传递依赖，制品质量门检查公共签名、JAR 内容与 `jdeps` 实现引用，拒绝内部 Protobuf、gRPC、持久化与浏览器安全参数泄漏。首个正式 SDK 发布前没有真实二进制兼容基线；发布首版后才以已发布制品启用版本间比较。
 
 受保护的 `vX.Y.Z` 标签触发 `.github/workflows/release.yml`。发布流程先在 JDK 17 上以 `X.Y.Z` 执行完整 `verify`，全部通过后才由 JDK 17 重新构建正式制品。Release Profile 附加 sources、Javadoc 和 GPG 签名，通过 Central Publisher Portal 自动公开并等待 `published` 结果。
 

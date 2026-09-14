@@ -66,9 +66,9 @@ cd ..
 ## 目录
 
 - gateway/：唯一公网入口模块。
-- services/：IAM、Tenant Access、Entitlement 与 Audit 服务。
-- contracts/：OpenAPI、Protobuf 与事件契约。
-- sdk/：Java SDK、BOM 与 Spring Boot Starter。
+- saas-forge-services/：IAM、Tenant Access、Entitlement 与 Audit 服务。
+- saas-forge-contracts/：OpenAPI、Protobuf 与事件契约。
+- saas-forge-sdk/：Java SDK、BOM 与 Spring Boot Starter。
 - consoles/：Platform Console、Tenant Console Shell、业务 Remote 与共享前端边界。
 - examples/：官方示例的预留位置。
 - deploy/：Compose、Helm 与 systemd 交付物的预留位置。

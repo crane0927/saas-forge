@@ -171,7 +171,7 @@ pnpm --filter @saas-forge/tenant-console-shell run dev
 
 ### 开发边界
 
-- **API 生成**：Maven/OpenAPI Generator 是唯一生成权威，输入来自 [`contracts/openapi/`](../contracts/openapi/)，输出到被 Git 忽略的 `shared/api-client/.generated/`。不要手改生成物或直接导入生成目录；使用 `@saas-forge/api-client` 公开入口。
+- **API 生成**：Maven/OpenAPI Generator 是唯一生成权威，输入来自 [`saas-forge-contracts/saas-forge-openapi-contracts/`](../saas-forge-contracts/saas-forge-openapi-contracts/)，输出到被 Git 忽略的 `shared/api-client/.generated/`。不要手改生成物或直接导入生成目录；使用 `@saas-forge/api-client` 公开入口。
 - **认证与 HTTP**：页面和 Remote 复用宿主 Runtime，通过其受控类型化 Client 调用正式 API operation；不得创建第二套认证状态、读取 Token 或自行注入 Cookie、Origin、Fetch Metadata、Bearer Token。Access Token 不持久化；生成式 Client 本身不负责会话、CSRF 或 Token 存储。
 - **共享 UI**：每个 Console 入口只安装一个 `DesignSystemProvider`。消费者只从 `@saas-forge/design-system` 根入口导入，不直接依赖 `antd`、导入内部路径、注入全局 CSS、覆盖公共组件内部选择器或复制已有公共组件。领域内容布局可使用 CSS Modules。
 - **配置失败关闭**：先校验 Runtime Config，再进入认证与应用路由。配置加载失败只暴露安全错误码并允许显式重试，不回退到猜测的 API 地址。

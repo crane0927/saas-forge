@@ -18,7 +18,7 @@
 - `getCurrentTenantContext` 返回 Tenant 上下文及 Accessible Memberships，只接受 Tenant User Token；不能替代 Platform Current Session。已有 `getOAuthClient` 详情可复用。
 - 当前初始化实现会返回 `503` 与 `Retry-After`，但该 operation 的 OpenAPI 响应声明未完整覆盖；实施时同步修正，不能靠前端猜测错误语义。
 
-证据入口：`contracts/openapi/v1.yaml`、`consoles/platform-console/src/routes.tsx`、`consoles/shared/app-runtime/src/authentication-runtime.ts`、`docs/acceptance/issue-158-browser-session-security.md`。以上核实不表示本次重新运行了相关测试。
+证据入口：`saas-forge-contracts/saas-forge-openapi-contracts/v1.yaml`、`consoles/platform-console/src/routes.tsx`、`consoles/shared/app-runtime/src/authentication-runtime.ts`、`docs/acceptance/issue-158-browser-session-security.md`。以上核实不表示本次重新运行了相关测试。
 
 ## 页面与必要读取
 

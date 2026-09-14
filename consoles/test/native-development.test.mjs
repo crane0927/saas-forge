@@ -67,7 +67,11 @@ for (const application of ['platform-console', 'tenant-console-shell']) {
     assert.doesNotMatch(result.stdout + result.stderr, /VITE v/u);
 
     // 复用正式生成物；隔离副本允许验证缺文件和契约变化，不破坏开发工作区。
-    for (const file of ['pom.xml', 'contracts/openapi/pom.xml', 'contracts/openapi/v1.yaml']) {
+    for (const file of [
+      'pom.xml',
+      'saas-forge-contracts/saas-forge-openapi-contracts/pom.xml',
+      'saas-forge-contracts/saas-forge-openapi-contracts/v1.yaml',
+    ]) {
       await mkdir(path.dirname(path.join(repository, file)), { recursive: true });
       await cp(path.join(consoles, '..', file), path.join(repository, file));
     }
@@ -97,13 +101,17 @@ for (const application of ['platform-console', 'tenant-console-shell']) {
     assert.match(ready.stdout + ready.stderr, /vite\//u);
     assert.doesNotMatch(ready.stdout + ready.stderr, /Reactor Build|mvnw/u);
 
-    await writeFile(path.join(repository, 'contracts/openapi/v1.yaml'), '\n# contract changed\n', {
-      flag: 'a',
-    });
+    await writeFile(
+      path.join(repository, 'saas-forge-contracts/saas-forge-openapi-contracts/v1.yaml'),
+      '\n# contract changed\n',
+      {
+        flag: 'a',
+      },
+    );
     assert.notEqual(run().status, 0);
     await cp(
-      path.join(consoles, '../contracts/openapi/v1.yaml'),
-      path.join(repository, 'contracts/openapi/v1.yaml'),
+      path.join(consoles, '../saas-forge-contracts/saas-forge-openapi-contracts/v1.yaml'),
+      path.join(repository, 'saas-forge-contracts/saas-forge-openapi-contracts/v1.yaml'),
     );
     await writeFile(path.join(repository, 'mvnw'), '#!/bin/sh\nexit 1\n');
     assert.notEqual(prepare().status, 0);

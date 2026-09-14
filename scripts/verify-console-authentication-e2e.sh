@@ -47,7 +47,7 @@ if [[ "${1:-}" == '--product' ]]; then
     echo 'BLOCKED: 缺少 Remote 静态构建，请先执行完整 Maven verify' >&2
     exit 1
   }
-  for module in gateway services/iam-service services/tenant-access-service services/entitlement-service services/audit-service; do
+  for module in gateway saas-forge-services/iam-service saas-forge-services/tenant-access-service saas-forge-services/entitlement-service saas-forge-services/audit-service; do
     runtime_jar "$module" >/dev/null
   done
 fi
@@ -230,7 +230,7 @@ stage compose-config compose config --quiet
 printf 'ENV: project=%s node=%s date=%s\n' "$project_name" "$(node --version)" "$(date -u +%FT%TZ)"
 
 if [[ "${1:-}" != '--product' ]]; then
-  # 根 verify 的 contracts/openapi 门禁已经执行 Console workspace 验证及独立构建。
+  # 根 verify 的 saas-forge-contracts/saas-forge-openapi-contracts 门禁已经执行 Console workspace 验证及独立构建。
   stage maven-verify "$repository_root/mvnw" -f "$repository_root/pom.xml" \
     --batch-mode --no-transfer-progress verify
 else
@@ -238,7 +238,7 @@ else
 fi
 stage acceptance-client-build node "$repository_root/consoles/scripts/build-authentication-acceptance-client.mjs"
 for service in gateway iam-service tenant-access-service entitlement-service audit-service; do
-  module="services/$service"
+  module="saas-forge-services/$service"
   [[ "$service" == gateway ]] && module=gateway
   stage "image-$service" build_runtime_image "$service" "$module"
 done

@@ -25,7 +25,7 @@ jobs:
           java-version: "17"
           cache: maven
       - name: Generate the formal TypeScript Client
-        run: ./mvnw --batch-mode --no-transfer-progress -pl contracts/openapi -am generate-sources
+        run: ./mvnw --batch-mode --no-transfer-progress -pl saas-forge-contracts/saas-forge-openapi-contracts -am generate-sources
       - name: Compare shared component and consumer baselines
         run: bash scripts/verify-console-visual.sh
       - name: Preserve visual reports and differences

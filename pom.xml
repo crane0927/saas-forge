@@ -50,10 +50,10 @@
 
     <modules>
         <module>gateway</module>
-        <module>services</module>
-        <module>contracts</module>
-        <module>sdk</module>
-        <module>quality-gates</module>
+        <module>saas-forge-services</module>
+        <module>saas-forge-contracts</module>
+        <module>saas-forge-sdk</module>
+        <module>saas-forge-quality-gates</module>
     </modules>
 
     <properties>
@@ -446,7 +446,7 @@
                 <enforcer.skipRules>reactorModuleConvergence</enforcer.skipRules>
             </properties>
             <modules>
-                <module>test-support/sdk-external-consumer</module>
+                <module>test-support/saas-forge-external-consumer-fixture</module>
             </modules>
         </profile>
         <profile>

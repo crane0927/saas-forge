@@ -12,6 +12,7 @@
     </parent>
 
     <artifactId>test-support</artifactId>
+    <name>test-support</name>
     <packaging>pom</packaging>
 
     <properties>

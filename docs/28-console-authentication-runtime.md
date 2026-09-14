@@ -69,7 +69,7 @@
 4. 原子升级 Gateway、IAM、生成 Client、两个 Console、E2E 脚本与所有第一方消费者；
 5. 在发布说明中显式列出外部 v1 消费者中断风险。
 
-本文批准设计，不表示当前 `contracts/openapi/v1.yaml` 已实现该迁移。
+本文批准设计，不表示当前 `saas-forge-contracts/saas-forge-openapi-contracts/v1.yaml` 已实现该迁移。
 
 ## 5. 状态机
 

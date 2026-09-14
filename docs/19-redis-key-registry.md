@@ -1,6 +1,6 @@
 # Redis Key Registry
 
-Redis 仅承载安全状态、限流状态和可重建缓存，不承载领域真相。所有平台 Redis Key 必须先登记后使用，登记文件位于 `contracts/redis/registry`，并由 `contracts/redis/registry.schema.json` 约束。
+Redis 仅承载安全状态、限流状态和可重建缓存，不承载领域真相。所有平台 Redis Key 必须先登记后使用，登记文件位于 `saas-forge-contracts/redis/registry`，并由 `saas-forge-contracts/redis/registry.schema.json` 约束。
 
 ## Key 格式与所有权
 

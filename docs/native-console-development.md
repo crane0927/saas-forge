@@ -18,7 +18,7 @@ bash scripts/local-https-development.sh doctor
 
 `hosts` 与 `trust-ca` 沿用各自的系统修改授权。证书、域名或信任检查未通过时先修复环境，不使用 TLS 绕过参数。静态 Remote 构建用于满足已有四域 Edge 的只读挂载，不增加 Remote 开发或验收范围。
 
-`generate:api` 调用正式 Maven OpenAPI Generator，成功后在被 Git 忽略的 `.generated/` 内记录输入指纹。正式契约 `contracts/openapi/v1.yaml`、根 POM 或 OpenAPI 模块 POM 变化后，再执行一次该命令。日常启动只检查指纹、生成清单及必需 TypeScript 文件，不执行 Maven、不安装依赖。缺失、过期或生成失败时，启动会退出并提示准备命令；不要手写 Client 或修改指纹绕过检查。
+`generate:api` 调用正式 Maven OpenAPI Generator，成功后在被 Git 忽略的 `.generated/` 内记录输入指纹。正式契约 `saas-forge-contracts/saas-forge-openapi-contracts/v1.yaml`、根 POM 或 OpenAPI 模块 POM 变化后，再执行一次该命令。日常启动只检查指纹、生成清单及必需 TypeScript 文件，不执行 Maven、不安装依赖。缺失、过期或生成失败时，启动会退出并提示准备命令；不要手写 Client 或修改指纹绕过检查。
 
 直接运行 Maven 仍可生成正式 Client，但首次原生开发须通过上述 `generate:api` 完成准备记录。修改契约后应停止并重新启动开发服务器，以重新执行预检。
 

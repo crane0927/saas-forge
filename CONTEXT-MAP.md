@@ -4,12 +4,12 @@ saas-forge 将身份与访问、Tenant 访问、权益、审计、浏览器交�
 
 ## Contexts
 
-- [IAM](services/iam-service/CONTEXT.md)：拥有 Identity、Credential、用户与服务 Token、会话、Signing Key、OAuth Client 和 Platform Role。
-- [Tenant Access](services/tenant-access-service/CONTEXT.md)：拥有 Tenant、Membership、Tenant Context、Tenant Operation Target、Tenant 生命周期、Tenant Context Switch 和 Invitation。
-- [Entitlement](services/entitlement-service/CONTEXT.md)：拥有 Plan、Subscription、Feature 和 Quota。
-- [Audit](services/audit-service/CONTEXT.md)：拥有只追加 Audit Record。
+- [IAM](saas-forge-services/iam-service/CONTEXT.md)：拥有 Identity、Credential、用户与服务 Token、会话、Signing Key、OAuth Client 和 Platform Role。
+- [Tenant Access](saas-forge-services/tenant-access-service/CONTEXT.md)：拥有 Tenant、Membership、Tenant Context、Tenant Operation Target、Tenant 生命周期、Tenant Context Switch 和 Invitation。
+- [Entitlement](saas-forge-services/entitlement-service/CONTEXT.md)：拥有 Plan、Subscription、Feature 和 Quota。
+- [Audit](saas-forge-services/audit-service/CONTEXT.md)：拥有只追加 Audit Record。
 - [Gateway](gateway/CONTEXT.md)：拥有受控浏览器 Origin、Cookie、CSRF 与浏览器交付边界，不拥有下游领域事实。
-- [Contracts](contracts/CONTEXT.md)：拥有 Committed Fact Event 与 v1 Contract Baseline 等 Published Language 治理，不拥有各服务领域事实。
+- [Contracts](saas-forge-contracts/CONTEXT.md)：拥有 Committed Fact Event 与 v1 Contract Baseline 等 Published Language 治理，不拥有各服务领域事实。
 
 ## Relationships
 

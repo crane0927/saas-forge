@@ -348,7 +348,7 @@ probe_receiver() {
   local identity_id="$2"
   local expectation="$3"
   if ! SERVICE_ACCESS_TOKEN="$token" "$repository_root/mvnw" --quiet \
-      -pl contracts/protobuf \
+      -pl saas-forge-contracts/saas-forge-protobuf-contracts \
       -Denforcer.skip=true \
       org.codehaus.mojo:exec-maven-plugin:3.6.3:java \
       -Dexec.mainClass=io.saasforge.contracts.acceptance.PlatformAuthorizationGrpcProbe \
@@ -451,13 +451,13 @@ grant_container_secret_access
 
 echo "[3/10] 构建制品并显式引导 Platform Admin 与 Reserved Client"
 "$repository_root/mvnw" --batch-mode --no-transfer-progress \
-  -pl gateway,services/iam-service,services/tenant-access-service,services/entitlement-service,services/audit-service,contracts/protobuf \
+  -pl gateway,saas-forge-services/iam-service,saas-forge-services/tenant-access-service,saas-forge-services/entitlement-service,saas-forge-services/audit-service,saas-forge-contracts/saas-forge-protobuf-contracts \
   -am package -DskipTests >"$work_directory/maven-package.log"
 build_runtime_image gateway saasforge/gateway:local
-build_runtime_image services/iam-service saasforge/iam-service:local
-build_runtime_image services/tenant-access-service saasforge/tenant-access-service:local
-build_runtime_image services/entitlement-service saasforge/entitlement-service:local
-build_runtime_image services/audit-service saasforge/audit-service:local
+build_runtime_image saas-forge-services/iam-service saasforge/iam-service:local
+build_runtime_image saas-forge-services/tenant-access-service saasforge/tenant-access-service:local
+build_runtime_image saas-forge-services/entitlement-service saasforge/entitlement-service:local
+build_runtime_image saas-forge-services/audit-service saasforge/audit-service:local
 run_bootstrap bootstrap iam-platform-admin-bootstrap
 run_bootstrap service-client-bootstrap iam-reserved-service-client-bootstrap
 
@@ -470,7 +470,7 @@ iam_grpc_port="$(compose port iam-service 9090 | sed 's/.*://')"
 gateway_base="http://127.0.0.1:$gateway_port"
 wait_for_gateway
 wait_for_redis_revocation_ready
-"$repository_root/mvnw" --quiet -pl contracts/protobuf -am test-compile
+"$repository_root/mvnw" --quiet -pl saas-forge-contracts/saas-forge-protobuf-contracts -am test-compile
 
 echo "[5/10] 完成 Platform Admin 登录并经 Gateway 创建 Runtime Client"
 initial_password="$(<"$secret_directory/platform-admin-password")"

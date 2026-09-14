@@ -60,11 +60,11 @@ Maven 项目使用根 POM 支持的 JDK 17。首次导入并同步 Maven，使�
 聚焦配置加载与发现检查：
 
 ```bash
-mvn -pl gateway,services/iam-service -am \
+mvn -pl gateway,saas-forge-services/iam-service -am \
   -Dtest=LocalConfigurationTest,ReservedIamServiceAccessTokenProviderTest,GatewayJwksRouteTest \
   -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
-配置测试经 Spring Config Data 验证显式本地文件模式；内部服务令牌测试覆盖身份、精确 Scope、缓存及失败关闭；Gateway 路由测试继续覆盖发现边界。它们不能代替 IDE 操作、真实 Nacos、数据库及浏览器联调。相关模块完整测试与集成检查可用 `mvn -pl gateway,services/iam-service -am verify`；仓库完整流水线由 CI 承担。
+配置测试经 Spring Config Data 验证显式本地文件模式；内部服务令牌测试覆盖身份、精确 Scope、缓存及失败关闭；Gateway 路由测试继续覆盖发现边界。它们不能代替 IDE 操作、真实 Nacos、数据库及浏览器联调。相关模块完整测试与集成检查可用 `mvn -pl gateway,saas-forge-services/iam-service -am verify`；仓库完整流水线由 CI 承担。
 
 验收记录须分别标明自动检查、IDE 断点/重启、Platform 登录刷新、IAM 端口变化、无健康目标及未执行项，不能用配置加载或进程启动成功代替真实认证成功。

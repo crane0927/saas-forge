@@ -171,7 +171,7 @@ Report passed, failed, and blocked checks separately. Script tests or earlier Pl
 
 ### Development boundaries
 
-- **API generation**: Maven/OpenAPI Generator is the sole generator. It reads [`contracts/openapi/`](../contracts/openapi/) and writes to the Git-ignored `shared/api-client/.generated/`. Do not edit generated files or import that directory directly; use the public `@saas-forge/api-client` entry.
+- **API generation**: Maven/OpenAPI Generator is the sole generator. It reads [`saas-forge-contracts/saas-forge-openapi-contracts/`](../saas-forge-contracts/saas-forge-openapi-contracts/) and writes to the Git-ignored `shared/api-client/.generated/`. Do not edit generated files or import that directory directly; use the public `@saas-forge/api-client` entry.
 - **Authentication and HTTP**: pages and Remotes reuse the host runtime and call formal API operations through its controlled typed client. They must not create separate authentication state, read tokens, or inject Cookie, Origin, Fetch Metadata, or Bearer Token headers. Access tokens are not persisted. The generated client itself does not manage sessions, CSRF, or token storage.
 - **Shared UI**: each Console entry installs exactly one `DesignSystemProvider`. Consumers import only from the `@saas-forge/design-system` root. Direct `antd` dependencies, internal imports, global CSS injection, internal selector overrides, and copies of existing public components are prohibited. CSS Modules may arrange domain-specific content.
 - **Fail-closed configuration**: Runtime Config is validated before authentication and application routing. Failures expose only safe error codes and explicit retry, never a guessed fallback API address.

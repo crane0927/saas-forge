@@ -143,7 +143,7 @@ services:
       FLYWAY_LOCATIONS: filesystem:/flyway/sql
     command: migrate
     volumes:
-      - ../../services/iam-service/src/main/resources/db/migration:/flyway/sql:ro
+      - ../../saas-forge-services/iam-service/src/main/resources/db/migration:/flyway/sql:ro
 
   iam-platform-admin-bootstrap:
     profiles: ["bootstrap"]
@@ -152,7 +152,7 @@ services:
       context: ../..
       dockerfile: deploy/compose/Dockerfile
       args:
-        MODULE: services/iam-service
+        MODULE: saas-forge-services/iam-service
     depends_on:
       iam-migrate:
         condition: service_completed_successfully
@@ -190,7 +190,7 @@ services:
       context: ../..
       dockerfile: deploy/compose/Dockerfile
       args:
-        MODULE: services/iam-service
+        MODULE: saas-forge-services/iam-service
     depends_on:
       iam-migrate:
         condition: service_completed_successfully
@@ -228,7 +228,7 @@ services:
       context: ../..
       dockerfile: deploy/compose/Dockerfile
       args:
-        MODULE: services/iam-service
+        MODULE: saas-forge-services/iam-service
     depends_on:
       iam-migrate:
         condition: service_completed_successfully
@@ -287,7 +287,7 @@ services:
       context: ../..
       dockerfile: deploy/compose/Dockerfile
       args:
-        MODULE: services/iam-service
+        MODULE: saas-forge-services/iam-service
     depends_on:
       iam-migrate:
         condition: service_completed_successfully
@@ -327,7 +327,7 @@ services:
       FLYWAY_LOCATIONS: filesystem:/flyway/sql
     command: migrate
     volumes:
-      - ../../services/tenant-access-service/src/main/resources/db/migration:/flyway/sql:ro
+      - ../../saas-forge-services/tenant-access-service/src/main/resources/db/migration:/flyway/sql:ro
 
   entitlement-migrate:
     image: flyway/flyway:12
@@ -342,7 +342,7 @@ services:
       FLYWAY_LOCATIONS: filesystem:/flyway/sql
     command: migrate
     volumes:
-      - ../../services/entitlement-service/src/main/resources/db/migration:/flyway/sql:ro
+      - ../../saas-forge-services/entitlement-service/src/main/resources/db/migration:/flyway/sql:ro
 
   audit-migrate:
     image: flyway/flyway:12
@@ -357,7 +357,7 @@ services:
       FLYWAY_LOCATIONS: filesystem:/flyway/sql
     command: migrate
     volumes:
-      - ../../services/audit-service/src/main/resources/db/migration:/flyway/sql:ro
+      - ../../saas-forge-services/audit-service/src/main/resources/db/migration:/flyway/sql:ro
 
   iam-service:
     image: saasforge/iam-service:local
@@ -365,7 +365,7 @@ services:
       context: ../..
       dockerfile: deploy/compose/Dockerfile
       args:
-        MODULE: services/iam-service
+        MODULE: saas-forge-services/iam-service
     depends_on:
       iam-migrate:
         condition: service_completed_successfully
@@ -427,7 +427,7 @@ services:
       context: ../..
       dockerfile: deploy/compose/Dockerfile
       args:
-        MODULE: services/tenant-access-service
+        MODULE: saas-forge-services/tenant-access-service
     depends_on:
       tenant-access-migrate:
         condition: service_completed_successfully
@@ -483,7 +483,7 @@ services:
       context: ../..
       dockerfile: deploy/compose/Dockerfile
       args:
-        MODULE: services/entitlement-service
+        MODULE: saas-forge-services/entitlement-service
     depends_on:
       entitlement-migrate:
         condition: service_completed_successfully
@@ -532,7 +532,7 @@ services:
       context: ../..
       dockerfile: deploy/compose/Dockerfile
       args:
-        MODULE: services/audit-service
+        MODULE: saas-forge-services/audit-service
     depends_on:
       audit-migrate:
         condition: service_completed_successfully
@@ -564,7 +564,7 @@ services:
       context: ../..
       dockerfile: deploy/compose/Dockerfile
       args:
-        MODULE: services/audit-service
+        MODULE: saas-forge-services/audit-service
     depends_on:
       audit-migrate:
         condition: service_completed_successfully

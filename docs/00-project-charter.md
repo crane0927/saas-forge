@@ -85,7 +85,7 @@ Tenant、Identity、RBAC、Plan、Subscription、Feature、Quota、Audit 满足�
 
 项目从第一天按正式开源项目建设，至少包含：`README.md`、`LICENSE`、`CONTRIBUTING.md`、`SECURITY.md`、`CODE_OF_CONDUCT.md`、`CHANGELOG.md`、`ROADMAP.md`。
 
-建议文档体系包括 `getting-started`、概念文档（tenant、identity、membership、organization、permission、plan、subscription、feature、quota）、架构文档（tenant-context、data-isolation、security、extension）、`sdk`、`api`、`deployment` 与 `development`。
+建议文档体系包括 `getting-started`、概念文档（tenant、identity、membership、organization、permission、plan、subscription、feature、quota）、架构文档（tenant-context、data-isolation、security、extension）、`saas-forge-sdk`、`api`、`deployment` 与 `development`。
 
 ## 对外表述
 

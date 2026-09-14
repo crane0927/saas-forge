@@ -11,7 +11,7 @@ const artifacts = [
   "consoles/dist/static-remote-acceptance/v1/remote.js",
   "gateway/target/gateway.jar",
   ...["iam", "tenant-access", "entitlement", "audit"].map(
-    (service) => `services/${service}-service/target/${service}.jar`,
+    (service) => `saas-forge-services/${service}-service/target/${service}.jar`,
   ),
 ];
 

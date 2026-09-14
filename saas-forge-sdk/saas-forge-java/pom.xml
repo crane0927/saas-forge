@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.crane0927</groupId>
+        <artifactId>saas-forge</artifactId>
+        <version>${revision}</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>saas-forge-java</artifactId>
+    <name>saas-forge-java</name>
+    <packaging>pom</packaging>
+
+    <properties>
+        <maven.deploy.skip>true</maven.deploy.skip>
+    </properties>
+
+    <modules>
+        <module>saas-forge-bom</module>
+        <module>saas-forge-sdk-core</module>
+        <module>saas-forge-sdk-auth</module>
+        <module>saas-forge-sdk-tenant</module>
+        <module>saas-forge-sdk-permission</module>
+        <module>saas-forge-sdk-feature</module>
+        <module>saas-forge-sdk-quota</module>
+        <module>saas-forge-sdk-audit</module>
+    </modules>
+</project>

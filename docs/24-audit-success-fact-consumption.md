@@ -77,7 +77,7 @@
 新增正式文件并加入兼容性基线：
 
 ```text
-contracts/events/iam-tenant-context-switched.v1.schema.json
+saas-forge-contracts/saas-forge-event-contracts/iam-tenant-context-switched.v1.schema.json
 ```
 
 登记：
