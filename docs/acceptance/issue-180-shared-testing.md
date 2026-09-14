@@ -49,7 +49,7 @@ bash scripts/verify-console-authentication-e2e.sh --product
 
 首次 SMTP 恢复 503 在未修改代码的复跑中未复现，当时根因尚未确定；后续复现与修复见下节。本记录保留该间歇失败，不以重试通过证明其稳定性已解决；本轮没有为获得通过而跳过测试、延长超时或放宽断言。完整受限诊断保留在 `sf-console-e2e-diagnostics.7TR06F`，不得直接上传原始日志。
 
-远端 [Verify 34791131200](https://github.com/crane0927/saas-forge/actions/runs/34791131200) 对应 `2969536`：JDK 17/Fresh Chrome、Tenant lifecycle Fresh 和 Nacos 三个 Job 通过；视觉 Job 的 94+40 个测试通过，但临时目录清理失败，整个 Job 失败。MVP 对应事项保持未勾选，Issue 保持 OPEN。
+远端 [Verify 34791131200](https://github.com/crane0927/saas-forge/actions/runs/34791131200) 对应 `2969536`：JDK 17/Fresh Chrome、Tenant lifecycle Fresh 和 Nacos 三个 Job 通过；视觉 Job 的 94+40 个测试通过，但临时目录清理失败，整个 Job 失败。当时 MVP 对应事项保持未勾选、Issue 保持 OPEN；最终状态见下节。
 
 ## 代码审查
 
@@ -79,4 +79,10 @@ bash scripts/verify-console-authentication-e2e.sh --product
 
 修复为视觉容器显式使用调用者 UID/GID；Corepack 入口与缓存使用容器临时 HOME，避免非 root 进程写入系统目录。继续由宿主清理自己拥有的临时目录，不增加 sudo、全局 chmod 或忽略清理错误，也不修改图片基线或测试阈值。
 
-修复后的本机固定 Linux 视觉通过：94 个组件＋40 个消费者测试全部通过，入口最终退出码 0；记录 `.scratch/issue-180-visual/run.tKUHd0` 与 `/tmp/issue180-visual-user.log`。容器内核对进程、依赖目录及报告均为调用者 `501:20`；退出后临时目录 `sf-visual.fJDivn` 已不存在。Bash 语法及差异检查通过。远端修复提交 CI 尚未执行。
+修复后的本机固定 Linux 视觉通过：94 个组件＋40 个消费者测试全部通过，入口最终退出码 0；记录 `.scratch/issue-180-visual/run.tKUHd0` 与 `/tmp/issue180-visual-user.log`。容器内核对进程、依赖目录及报告均为调用者 `501:20`；退出后临时目录 `sf-visual.fJDivn` 已不存在。Bash 语法及差异检查通过。远端修复提交 CI 后续已通过，见下节。
+
+## 最终完成确认（2026-09-14）
+
+实现提交 `c6b451484d4815db14d63d4e007474b540a4664d` 的 [Verify 34794778921](https://github.com/crane0927/saas-forge/actions/runs/34794778921) 已完成且成功：Linux Chromium 视觉、JDK 17/Fresh Chrome、Tenant lifecycle Fresh、Nacos 四个 Job 全部通过。视觉入口及清理最终退出码 0；Fresh Chrome 产品 40/40、0 失败/跳过。
+
+据覆盖清单与本地/CI证据，Issue #180 的 16 项验收已完成，MVP 第 1 阶段对应共享测试事项勾选。此处仅完成本项，不代表其他阶段或其他业务闭环完成。此前失败、跳过及阻塞记录保留为历史事实。
