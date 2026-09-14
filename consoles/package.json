@@ -24,7 +24,7 @@
     "test:browser:chromium": "SF_BROWSER=chromium pnpm run test:browser:current",
     "test:browser:chrome": "SF_BROWSER=chromium SF_BROWSER_CHANNEL=chrome SF_VISUAL_SNAPSHOTS=false pnpm run test:browser:current",
     "test": "pnpm run test:boundaries && pnpm --recursive --if-present run test",
-    "lint": "eslint .",
+    "lint": "eslint . && pnpm --filter @saas-forge/admin run lint",
     "format:check": "prettier --check .",
     "build:workspace": "pnpm run validate:i18n && pnpm run build:static-remote && pnpm --recursive --if-present run build && node scripts/verify-design-system-artifacts.mjs",
     "build": "pnpm run generate:api && pnpm run build:workspace",

@@ -1,0 +1,79 @@
+@import './vendor/soybean/reset.css';
+@import 'element-plus/dist/index.css';
+@import 'element-plus/theme-chalk/dark/css-vars.css';
+
+html,
+body,
+#app {
+  height: 100%;
+  font-size: 14px;
+}
+
+/* 与上游 theme/settings.ts 的默认布局 token 保持一致。 */
+:root {
+  --console-container: rgb(255, 255, 255);
+  --console-layout: rgb(247, 250, 252);
+  --console-header-shadow: 0 1px 2px rgb(0, 21, 41, 0.08);
+  --console-sider-shadow: 2px 0 8px 0 rgb(29, 35, 41, 0.05);
+}
+html.dark {
+  --console-container: rgb(28, 28, 28);
+  --console-layout: rgb(18, 18, 18);
+}
+body {
+  color: var(--el-text-color-primary);
+  background: var(--console-layout);
+}
+.console-header {
+  background: var(--console-container);
+  box-shadow: var(--console-header-shadow);
+}
+.console-sider {
+  background: var(--console-container);
+  box-shadow: var(--console-sider-shadow);
+}
+.console-content {
+  min-width: 0;
+}
+.console-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.console-actions .el-button + .el-button {
+  margin-left: 0;
+}
+.console-sider .el-menu {
+  border-right: 0;
+}
+.console-logo {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 16px;
+  font-weight: 700;
+}
+.console-skip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  transform: translateY(-100%);
+  z-index: 2000;
+}
+.console-skip:focus {
+  transform: translateY(0);
+  background: var(--console-container);
+  padding: 8px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

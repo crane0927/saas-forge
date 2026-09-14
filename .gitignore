@@ -49,3 +49,6 @@ application-*.local.yaml
 
 # Optional personal business configuration; created only by the developer.
 application-local-file.*
+
+# Soybean layout browser verification artifacts
+.scratch/soybean-layout/

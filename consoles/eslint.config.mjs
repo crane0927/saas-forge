@@ -4,7 +4,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['**/.generated/**', '**/dist/**', '**/node_modules/**'],
+    ignores: ['**/.generated/**', '**/dist/**', '**/node_modules/**', 'shared/admin/**'],
   },
   {
     files: ['**/*.{js,mjs,cjs}'],

@@ -2,6 +2,7 @@ packages:
   - business-remotes/design-system-consumer-fixture
   - platform-console
   - shared/api-client
+  - shared/admin
   - shared/app-runtime
   - shared/design-system
   - shared/i18n
