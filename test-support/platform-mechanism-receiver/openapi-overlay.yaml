@@ -6,7 +6,7 @@ paths:
   /__test/platform-mechanism:
     post:
       operationId: acceptPlatformMechanismServiceToken
-      x-saasforge-service: platform-mechanism-receiver
+      x-saas.forge-service: platform-mechanism-receiver
       security:
         - ServiceOAuth2:
             - runtime:read
@@ -16,7 +16,7 @@ paths:
   /__test/platform-mechanism/identity:
     get:
       operationId: readPlatformMechanismIdentity
-      x-saasforge-service: platform-mechanism-receiver
+      x-saas.forge-service: platform-mechanism-receiver
       security:
         - UserBearerAuth: []
       responses:

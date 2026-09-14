@@ -1,0 +1,283 @@
+package io.saas.forge.tenantaccess.application.administrator;
+
+import io.saas.forge.tenantaccess.application.tenant.IdempotencyKeyInvalidException;
+import io.saas.forge.tenantaccess.application.tenant.IdempotencyKeyReusedException;
+import io.saas.forge.tenantaccess.application.tenant.UuidV7Generator;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.HexFormat;
+import java.util.UUID;
+
+public class InitializeTenantAdministratorService {
+    private final TenantAdministratorInitializationRepository workflows;
+    private final IdentityProvisioningGateway identities;
+    private final InitializationQuotaGateway quota;
+    private final PasswordSetupDeliveryGateway passwordDeliveries;
+    private final UuidV7Generator ids;
+    private final Clock clock;
+    private final InitializationRecoveryPolicy recoveryPolicy;
+    private final String claimant;
+
+    public InitializeTenantAdministratorService(
+            TenantAdministratorInitializationRepository workflows,
+            IdentityProvisioningGateway identities,
+            InitializationQuotaGateway quota,
+            PasswordSetupDeliveryGateway passwordDeliveries,
+            UuidV7Generator ids,
+            Clock clock) {
+        this(workflows, identities, quota, passwordDeliveries, ids, clock,
+                new InitializationRecoveryPolicy(
+                        Duration.ofSeconds(30), Duration.ofSeconds(1), Duration.ofMinutes(1)),
+                java.lang.management.ManagementFactory.getRuntimeMXBean().getName()
+                        + ":" + UUID.randomUUID());
+    }
+
+    public InitializeTenantAdministratorService(
+            TenantAdministratorInitializationRepository workflows,
+            IdentityProvisioningGateway identities,
+            InitializationQuotaGateway quota,
+            PasswordSetupDeliveryGateway passwordDeliveries,
+            UuidV7Generator ids,
+            Clock clock,
+            InitializationRecoveryPolicy recoveryPolicy,
+            String claimant) {
+        this.workflows = workflows;
+        this.identities = identities;
+        this.quota = quota;
+        this.passwordDeliveries = passwordDeliveries;
+        this.ids = ids;
+        this.clock = clock;
+        this.recoveryPolicy = recoveryPolicy;
+        this.claimant = claimant;
+    }
+
+    /** 根工作流先于任何远程调用提交；激活提交后 Password Setup 投递失败不得回滚 Tenant。 */
+    public TenantAdministratorInitializationResult initialize(
+            UUID actorIdentityId,
+            UUID idempotencyKey,
+            UUID tenantId,
+            String email,
+            String displayName,
+            String traceId) {
+        requireUuidV7(actorIdentityId, "调用方 Identity ID");
+        requireUuidV7(tenantId, "Tenant ID");
+        if (idempotencyKey == null || idempotencyKey.version() != 7) {
+            throw new IdempotencyKeyInvalidException();
+        }
+        Instant now = now();
+        InitializationWorkflow workflow = workflows.prepare(new InitializationWorkflow(
+                ids.next(), tenantId, actorIdentityId, idempotencyKey,
+                fingerprint(tenantId, email, displayName), email, displayName,
+                ids.next(), ids.next(), ids.next(), ids.next(), traceId,
+                null, null, now), now);
+        boolean exhaustedPasswordDelivery = "SUCCESS".equals(workflow.outcomeCode())
+                && workflow.passwordDeliveryPending() && workflow.recoveryExhaustedAt() != null;
+        if (workflow.completed() && !exhaustedPasswordDelivery) {
+            replayOutcome(workflow);
+            return workflow.result();
+        }
+        InitializationWorkflow claimed = workflows.claim(
+                        workflow.workflowId(), claimant, now, now.plus(recoveryPolicy.leaseDuration()))
+                .orElseThrow(() -> unavailable(workflow, now));
+        return resume(claimed);
+    }
+
+    /** Worker 只使用权威工作流声明函数返回的记录恢复 Tenant Operation Target。 */
+    public boolean recoverNext() {
+        Instant now = now();
+        var claimed = workflows.claimNext(claimant, now, now.plus(recoveryPolicy.leaseDuration()));
+        if (claimed.isEmpty()) {
+            return false;
+        }
+        try {
+            resume(claimed.orElseThrow());
+        } catch (RuntimeException ignored) {
+            // 失败状态和下一次恢复时间已由状态机持久化；调度线程不能因单个工作流停止。
+        }
+        return true;
+    }
+
+    private TenantAdministratorInitializationResult resume(InitializationWorkflow claimed) {
+        InitializationWorkflow workflow = claimed;
+        if (workflow.completed()) {
+            if ("SUCCESS".equals(workflow.outcomeCode()) && workflow.passwordDeliveryPending()) {
+                deliverPasswordSetup(workflow);
+            }
+            replayOutcome(workflow);
+            return workflow.result();
+        }
+
+        if (workflow.state() == InitializationWorkflowState.PREPARED) {
+            IdentityProvisioningGateway.Result identity;
+            try {
+                identity = identities.ensure(
+                        workflow.identityRequestId(), workflow.administratorEmail(),
+                        workflow.administratorDisplayName());
+            } catch (RemoteWorkflowUnavailableException exception) {
+                scheduleRetry(workflow, exception);
+                throw exception;
+            }
+            if (identity.credentialDisposition() == IdentityCredentialDisposition.RECOVERY_REQUIRED) {
+                workflows.completeFailure(
+                        workflow, "IDENTITY_CREDENTIAL_RECOVERY_REQUIRED", now());
+                throw failure("IDENTITY_CREDENTIAL_RECOVERY_REQUIRED");
+            }
+            workflow = workflows.completeIdentity(
+                    workflow, identity.identityId(), identity.credentialDisposition(), now());
+        }
+
+        if (workflow.state() == InitializationWorkflowState.IDENTITY_READY) {
+            try {
+                quota.consume(workflow.tenantId(), workflow.consumeOperationId());
+            } catch (QuotaUnavailableException exception) {
+                workflows.completeFailure(workflow, exception.code(), now());
+                throw failure(exception.code());
+            } catch (RemoteWorkflowUnavailableException exception) {
+                scheduleRetry(workflow, exception);
+                throw exception;
+            }
+            workflow = workflows.completeQuotaConsumption(workflow, now());
+        }
+
+        if (workflow.state() == InitializationWorkflowState.QUOTA_CONSUMED) {
+            workflow = workflows.beginActivation(workflow, now());
+            TenantAdministratorInitializationResult result;
+            try {
+                result = workflows.activate(
+                        workflow, workflow.administratorIdentityId(), workflow.credentialDisposition(), now());
+            } catch (RuntimeException exception) {
+                workflow = workflows.beginCompensation(workflow, now());
+                return compensate(workflow);
+            }
+            if (workflow.credentialDisposition() == IdentityCredentialDisposition.SETUP_ALLOWED) {
+                deliverPasswordSetup(workflow);
+            }
+            return result;
+        }
+
+        if (workflow.state() == InitializationWorkflowState.ACTIVATING) {
+            workflow = workflows.beginCompensation(workflow, now());
+        }
+        if (workflow.state() == InitializationWorkflowState.COMPENSATING) {
+            return compensate(workflow);
+        }
+        throw new IllegalStateException("未知 Tenant Admin 初始化恢复状态: " + workflow.state());
+    }
+
+    private TenantAdministratorInitializationResult compensate(InitializationWorkflow workflow) {
+        try {
+            quota.release(workflow.tenantId(), workflow.releaseOperationId());
+        } catch (RemoteWorkflowUnavailableException exception) {
+            scheduleRetry(workflow, exception);
+            throw compensating(workflow, now());
+        }
+        workflows.completeCompensation(workflow, now());
+        throw failure("TENANT_ADMIN_INITIALIZATION_RETRY_REQUIRED");
+    }
+
+    private void deliverPasswordSetup(InitializationWorkflow workflow) {
+        try {
+            passwordDeliveries.deliver(
+                    workflow.passwordDeliveryRequestId(), workflow.administratorIdentityId());
+            workflows.completePasswordDelivery(workflow, now());
+        } catch (RuntimeException exception) {
+            // Tenant 已激活，邮件失败只延后投递工作项，不能反向补偿额度。
+            scheduleRetry(workflow, exception);
+        }
+    }
+
+    private void scheduleRetry(InitializationWorkflow workflow, RuntimeException exception) {
+        Instant failedAt = now();
+        String failureSummary = exception.getClass().getSimpleName();
+        if (recoveryPolicy.automaticRecoveryExhausted(workflow.attemptCount())) {
+            // 自动恢复到达上限后保留原状态和失败诊断；显式重放原 Key 仍可重新领取并恢复。
+            workflows.exhaustRecovery(workflow, failedAt, failureSummary);
+            return;
+        }
+        workflows.scheduleRetry(
+                workflow, failedAt.plus(recoveryPolicy.retryDelay(workflow.attemptCount())), failureSummary);
+    }
+
+    private static void replayOutcome(InitializationWorkflow workflow) {
+        if ("SUCCESS".equals(workflow.outcomeCode())) {
+            return;
+        }
+        if ("IDEMPOTENCY_KEY_REUSED".equals(workflow.outcomeCode())) {
+            throw new IdempotencyKeyReusedException();
+        }
+        throw failure(workflow.outcomeCode());
+    }
+
+    private static TenantAdministratorInitializationException failure(String code) {
+        return new TenantAdministratorInitializationException(code, switch (code) {
+            case "TENANT_NOT_FOUND" -> "Tenant 不存在";
+            case "TENANT_EXPIRY_REACHED" -> "Tenant 绝对有效期已到达";
+            case "TENANT_ALREADY_INITIALIZED" -> "Tenant 已完成管理员初始化";
+            case "TENANT_ADMIN_INITIALIZATION_IN_PROGRESS" -> "Tenant 管理员初始化正在进行";
+            case "TENANT_ADMIN_INITIALIZATION_COMPENSATING" -> "Tenant 管理员初始化正在释放已占用额度";
+            case "TENANT_ADMIN_INITIALIZATION_RETRY_REQUIRED" -> "原初始化已完成补偿，请使用新的 Idempotency-Key 重试";
+            case "IDENTITY_CREDENTIAL_RECOVERY_REQUIRED" -> "Identity 需要先完成凭据恢复";
+            case "QUOTA_EXCEEDED" -> "max_users 额度不足";
+            case "SUBSCRIPTION_REQUIRED" -> "Tenant 缺少有效 Subscription";
+            default -> "Tenant 管理员初始化失败";
+        });
+    }
+
+    private static TenantAdministratorInitializationException unavailable(
+            InitializationWorkflow workflow, Instant now) {
+        if (workflow.state() == InitializationWorkflowState.COMPENSATING) {
+            return compensating(workflow, now);
+        }
+        return failure("TENANT_ADMIN_INITIALIZATION_IN_PROGRESS");
+    }
+
+    private static TenantAdministratorInitializationException compensating(
+            InitializationWorkflow workflow, Instant now) {
+        Instant availableAt = workflow.leaseUntil() == null ? workflow.nextAttemptAt() : workflow.leaseUntil();
+        long retryAfter = availableAt == null ? 1 : Math.max(1, Duration.between(now, availableAt).toSeconds());
+        return new TenantAdministratorInitializationException(
+                "TENANT_ADMIN_INITIALIZATION_COMPENSATING",
+                "Tenant 管理员初始化正在释放已占用额度", retryAfter);
+    }
+
+    private Instant now() {
+        return clock.instant().truncatedTo(ChronoUnit.MILLIS);
+    }
+
+    static String fingerprint(UUID tenantId, String email, String displayName) {
+        if (email == null || email.isBlank()) {
+            throw new IllegalArgumentException("管理员邮箱不能为空");
+        }
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            update(digest, "POST");
+            update(digest, "/api/v1/platform/tenants/" + tenantId + "/administrator-initializations");
+            update(digest, email);
+            digest.update((byte) (displayName == null ? 0 : 1));
+            if (displayName != null) {
+                update(digest, displayName);
+            }
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("运行环境不支持 SHA-256", exception);
+        }
+    }
+
+    private static void update(MessageDigest digest, String value) {
+        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
+        digest.update(ByteBuffer.allocate(Integer.BYTES).putInt(bytes.length).array());
+        digest.update(bytes);
+    }
+
+    private static void requireUuidV7(UUID value, String field) {
+        if (value == null || value.version() != 7) {
+            throw new IllegalArgumentException(field + " 必须是 UUIDv7");
+        }
+    }
+}

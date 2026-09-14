@@ -25,4 +25,4 @@ spring:
 
 mybatis:
   mapper-locations: classpath*:mapper/**/*Mapper.xml
-  type-handlers-package: io.saasforge.iam.infrastructure.persistence.type
+  type-handlers-package: io.saas.forge.iam.infrastructure.persistence.type

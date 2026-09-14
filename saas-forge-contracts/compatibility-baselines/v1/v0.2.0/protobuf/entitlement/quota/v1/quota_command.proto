@@ -1,9 +1,9 @@
 syntax = "proto3";
 
-package io.saasforge.contracts.entitlement.quota.v1;
+package io.saas.forge.contracts.entitlement.quota.v1;
 
 option java_multiple_files = true;
-option java_package = "io.saasforge.contracts.entitlement.quota.v1";
+option java_package = "io.saas.forge.contracts.entitlement.quota.v1";
 
 // Tenant Access uses this boundary to reserve and compensate lifecycle quota usage.
 service QuotaCommandService {

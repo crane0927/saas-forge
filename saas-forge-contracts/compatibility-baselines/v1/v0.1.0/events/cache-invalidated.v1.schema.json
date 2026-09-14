@@ -6,7 +6,7 @@
     {
       "type": "object",
       "properties": {
-        "type": { "const": "com.saasforge.cache.invalidated.v1" },
+        "type": { "const": "com.saas.forge.cache.invalidated.v1" },
         "data": {
           "oneOf": [
             { "$ref": "#/$defs/membershipScope" },

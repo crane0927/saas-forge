@@ -7,7 +7,7 @@ const artifactRoot = process.env.SF_REMOTE_STATIC_DIRECTORY
       "../../../consoles/dist/static-remote-acceptance/",
       import.meta.url,
     );
-const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? "saasforge.test";
+const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? "saas.forge.test";
 const contentTypes = {
   "remote.js": "text/javascript; charset=utf-8",
   "styles.css": "text/css; charset=utf-8",

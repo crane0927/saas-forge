@@ -53,7 +53,7 @@ cd consoles/tenant-console-shell
 pnpm run dev
 ```
 
-启动日志会将 `https://platform.saasforge.test/` 或 `https://console.saasforge.test/` 标为“浏览器入口”；打开该 HTTPS 地址。`127.0.0.1:5173/5174` 仅显示为“内部监听（非浏览器入口）”。API 仍是 `https://api.saasforge.test`，HMR 使用各自 HTTPS 域名下的 WSS。
+启动日志会将 `https://platform.saas.forge.test/` 或 `https://console.saas.forge.test/` 标为“浏览器入口”；打开该 HTTPS 地址。`127.0.0.1:5173/5174` 仅显示为“内部监听（非浏览器入口）”。API 仍是 `https://api.saas.forge.test`，HMR 使用各自 HTTPS 域名下的 WSS。
 
 日志直接输出到当前终端，`Ctrl+C` 只停止该终端的应用；另一 Console 和 Edge 继续运行。端口已被占用时 Vite 明确失败，不会改端口或接管既有进程。仓库根目录的 `pnpm --dir consoles run dev:platform` / `dev:tenant` 也只转发到同一个原生命令。
 

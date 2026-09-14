@@ -11,7 +11,7 @@ import {
 import { chromium, firefox, webkit } from 'playwright';
 import { verifyStaticRemoteRendering } from './static-remote-acceptance.mjs';
 import { staticRemoteEvidence } from './static-remote-evidence.mjs';
-const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saasforge.test';
+const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saas.forge.test';
 
 test('Tenant Console executes fourth-domain static Remote through trusted TLS without credentials', async (t) => {
   const browser = await { chromium, firefox, webkit }[process.env.SF_BROWSER ?? 'chromium'].launch({

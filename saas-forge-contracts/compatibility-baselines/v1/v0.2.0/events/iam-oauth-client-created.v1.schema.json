@@ -1,14 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://saasforge.io/contracts/events/iam-oauth-client-created.v1.schema.json",
+  "$id": "https://saas.forge.io/contracts/events/iam-oauth-client-created.v1.schema.json",
   "title": "IAM OAuth Client Created v1",
   "allOf": [
     { "$ref": "cloudevents-envelope.v1.schema.json" },
     {
       "type": "object",
       "properties": {
-        "type": { "const": "com.saasforge.iam.oauth-client.created.v1" },
-        "source": { "const": "urn:saasforge:iam-service" },
+        "type": { "const": "com.saas.forge.iam.oauth-client.created.v1" },
+        "source": { "const": "urn:saas.forge:iam-service" },
         "data": {
           "type": "object",
           "additionalProperties": false,

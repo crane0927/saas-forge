@@ -6,7 +6,7 @@ paths:
   /__test/sdk-consumer/tenant-context:
     get:
       operationId: readExternalConsumerTenantContext
-      x-saasforge-service: sdk-external-consumer-fixture
+      x-saas.forge-service: sdk-external-consumer-fixture
       security:
         - UserBearerAuth: []
       responses:
@@ -15,7 +15,7 @@ paths:
   /__test/sdk-consumer/platform-context:
     get:
       operationId: rejectExternalConsumerPlatformTenantContext
-      x-saasforge-service: sdk-external-consumer-fixture
+      x-saas.forge-service: sdk-external-consumer-fixture
       security:
         - UserBearerAuth: []
       responses:
@@ -24,7 +24,7 @@ paths:
   /__test/sdk-consumer/service-context:
     get:
       operationId: rejectExternalConsumerServiceTenantContext
-      x-saasforge-service: sdk-external-consumer-fixture
+      x-saas.forge-service: sdk-external-consumer-fixture
       security:
         - ServiceOAuth2: [runtime:read]
       responses:
@@ -33,7 +33,7 @@ paths:
   /__test/sdk-consumer/anonymous-context:
     get:
       operationId: rejectExternalConsumerAnonymousTenantContext
-      x-saasforge-service: sdk-external-consumer-fixture
+      x-saas.forge-service: sdk-external-consumer-fixture
       security: []
       responses:
         '403':
@@ -41,7 +41,7 @@ paths:
   /__test/sdk-consumer/context-state:
     get:
       operationId: readExternalConsumerContextState
-      x-saasforge-service: sdk-external-consumer-fixture
+      x-saas.forge-service: sdk-external-consumer-fixture
       security: []
       responses:
         '200':

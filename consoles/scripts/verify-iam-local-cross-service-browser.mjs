@@ -40,7 +40,7 @@ try {
     if (message.type() === 'error') consoleErrors.push(message.text());
   });
 
-  await page.goto('https://platform.saasforge.test/', {
+  await page.goto('https://platform.saas.forge.test/', {
     waitUntil: 'domcontentloaded',
   });
   await page.waitForLoadState('networkidle');
@@ -49,7 +49,7 @@ try {
   const idempotencyKey = createUuidV7(Date.now());
   const result = await page.evaluate(
     async ({ email, idempotencyKey, password }) => {
-      const login = await fetch('https://api.saasforge.test/api/v1/auth/login', {
+      const login = await fetch('https://api.saas.forge.test/api/v1/auth/login', {
         body: JSON.stringify({ contextType: 'PLATFORM', email, password }),
         credentials: 'include',
         headers: { 'Content-Type': 'application/json', 'X-SF-CSRF': '1' },
@@ -59,7 +59,7 @@ try {
       if (!login.ok || typeof loginBody.accessToken !== 'string') {
         return { loginStatus: login.status, quotaStatus: undefined };
       }
-      const quota = await fetch('https://api.saasforge.test/api/v1/platform/quota-definitions', {
+      const quota = await fetch('https://api.saas.forge.test/api/v1/platform/quota-definitions', {
         body: JSON.stringify({ code: 'max_users' }),
         credentials: 'include',
         headers: {

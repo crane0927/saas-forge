@@ -1,9 +1,9 @@
 syntax = "proto3";
 
-package io.saasforge.contracts.tenantaccess.provisioning.v1;
+package io.saas.forge.contracts.tenantaccess.provisioning.v1;
 
 option java_multiple_files = true;
-option java_package = "io.saasforge.contracts.tenantaccess.provisioning.v1";
+option java_package = "io.saas.forge.contracts.tenantaccess.provisioning.v1";
 
 // Entitlement uses this read-only boundary before creating a Tenant's first Subscription.
 service TenantProvisioningQueryService {

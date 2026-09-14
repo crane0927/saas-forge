@@ -8,7 +8,7 @@ import {
   isAnonymousRefreshError,
 } from './browser-api-security.mjs';
 
-const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saasforge.test';
+const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saas.forge.test';
 const api = `https://api.${rootDomain}`;
 const cookieName = (slot) => `__Host-sf_${slot.toLowerCase()}_refresh`;
 const authResponse = (operation) => (response) =>

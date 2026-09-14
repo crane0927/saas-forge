@@ -1,0 +1,79 @@
+package io.saas.forge.audit.infrastructure.messaging;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import org.junit.jupiter.api.Test;
+import tools.jackson.databind.ObjectMapper;
+
+class TenantAccessEventValidatorTest {
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final TenantAccessEventValidator validator = new TenantAccessEventValidator(
+            objectMapper,
+            new TenantCreatedEventValidator(objectMapper, TenantCreatedEventValidatorTest.TOPIC),
+            TenantCreatedEventValidatorTest.TOPIC);
+
+    @Test
+    void routesTenantCreatedToItsStrictValidator() {
+        var result = validator.validate(
+                TenantCreatedEventValidatorTest.TOPIC,
+                TenantCreatedEventValidatorTest.tenantId(),
+                TenantCreatedEventValidator.CONSUMER_NAME,
+                TenantCreatedEventValidatorTest.event("019535d9-0001-7000-8000-000000000001", ""));
+
+        assertEquals("TENANT_CREATED", result.orElseThrow().action());
+    }
+
+    @Test
+    void ignoresRegisteredTenantTypeBelongingToOtherConsumer() {
+        assertEquals("audit-service.tenant-lifecycle-events",
+                TenantAccessEventValidator.TENANT_SUSPENDED_CONSUMER_NAME);
+        var result = validator.validate(
+                TenantCreatedEventValidatorTest.TOPIC,
+                TenantCreatedEventValidatorTest.tenantId(),
+                TenantCreatedEventValidator.CONSUMER_NAME,
+                registeredTenantSuspendedEvent());
+
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void rejectsUnregisteredTypeWrongSourceTopicOrConsumerThroughPermanentErrorEntry() {
+        String registered = registeredTenantSuspendedEvent();
+        assertThrows(InvalidAuditEventException.class, () -> validator.validate(
+                TenantCreatedEventValidatorTest.TOPIC,
+                TenantCreatedEventValidatorTest.tenantId(),
+                TenantCreatedEventValidator.CONSUMER_NAME,
+                registered.replace("com.saas.forge.tenant.suspended.v1", "com.saas.forge.tenant.other.v1")));
+        assertThrows(InvalidAuditEventException.class, () -> validator.validate(
+                TenantCreatedEventValidatorTest.TOPIC,
+                TenantCreatedEventValidatorTest.tenantId(),
+                TenantCreatedEventValidator.CONSUMER_NAME,
+                registered.replace("urn:saas.forge:tenant-access-service", "urn:saas.forge:other")));
+        assertThrows(InvalidAuditEventException.class, () -> validator.validate(
+                "saas.forge.prod.tenant-access-service.events",
+                TenantCreatedEventValidatorTest.tenantId(),
+                TenantCreatedEventValidator.CONSUMER_NAME,
+                registered));
+        assertThrows(InvalidAuditEventException.class, () -> validator.validate(
+                TenantCreatedEventValidatorTest.TOPIC,
+                TenantCreatedEventValidatorTest.tenantId(),
+                "audit-service.other",
+                registered));
+    }
+
+    static String registeredTenantSuspendedEvent() {
+        return """
+                {"specversion":"1.0","id":"019535d9-0001-7000-8000-000000000008",
+                "source":"urn:saas.forge:tenant-access-service","type":"com.saas.forge.tenant.suspended.v1",
+                "subject":"%s","time":"2026-08-28T10:15:30Z",
+                "datacontenttype":"application/json",
+                "dataschema":"https://saas.forge.io/contracts/events/tenant-suspended.v1.schema.json",
+                "data":{"tenantId":"%s","actorIdentityId":"%s","revokedSessionCount":2}}
+                """.formatted(
+                        TenantCreatedEventValidatorTest.tenantId(),
+                        TenantCreatedEventValidatorTest.tenantId(),
+                        TenantCreatedEventValidatorTest.actorIdentityId()).replace("\n", "");
+    }
+}

@@ -1,8 +1,8 @@
 /** 只投影允许公开的观测字段；未知网络值不能原样进入持久证据。 */
 export function staticRemoteEvidence({ passed, records, errors, rendering, tenantOrigin }) {
   const allowedOrigins = [
-    'https://console.saasforge.test',
-    'https://console.saasforge.example.com',
+    'https://console.saas.forge.test',
+    'https://console.saas.forge.example.com',
   ];
   return {
     schemaVersion: 1,

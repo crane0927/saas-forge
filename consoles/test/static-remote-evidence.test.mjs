@@ -5,14 +5,14 @@ import { staticRemoteEvidence } from '../integration-test/static-remote-evidence
 test('retains observed Remote metadata and rendering without header values or response bodies', () => {
   const evidence = staticRemoteEvidence({
     passed: true,
-    tenantOrigin: 'https://console.saasforge.test',
+    tenantOrigin: 'https://console.saas.forge.test',
     records: [
       {
         path: '/static-acceptance/v1/remote.js',
         method: 'GET',
         status: 200,
         credentials: [],
-        allowOrigin: 'https://console.saasforge.test',
+        allowOrigin: 'https://console.saas.forge.test',
         allowCredentials: null,
         contentType: 'text/javascript; charset=utf-8',
         headers: { cookie: 'PRIVATE_SECRET' },
@@ -31,7 +31,7 @@ test('retains observed Remote metadata and rendering without header values or re
       method: 'GET',
       status: 200,
       credentialHeaders: [],
-      allowOrigin: 'https://console.saasforge.test',
+      allowOrigin: 'https://console.saas.forge.test',
       allowCredentials: 'absent',
       contentType: 'text/javascript; charset=utf-8',
     },

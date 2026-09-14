@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://saasforge.io/contracts/services/engineering-registry.schema.json",
+  "$id": "https://saas.forge.io/contracts/services/engineering-registry.schema.json",
   "type": "object",
   "additionalProperties": false,
   "required": ["registryVersion", "entries"],

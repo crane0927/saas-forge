@@ -53,8 +53,8 @@ function Fixture({ tenant }: { readonly tenant: boolean }) {
           : Response.json(
               {
                 type: tenant
-                  ? 'urn:saasforge:problem:access-context-unavailable'
-                  : 'urn:saasforge:problem:session-slot-already-active',
+                  ? 'urn:saas.forge:problem:access-context-unavailable'
+                  : 'urn:saas.forge:problem:session-slot-already-active',
                 detail: 'Fixture only',
                 traceId: '0123456789abcdef0123456789abcdef',
                 title: 'Unavailable',

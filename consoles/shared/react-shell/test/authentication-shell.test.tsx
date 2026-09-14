@@ -977,7 +977,7 @@ function BrokenRoot(): never {
 function problemResponse(status: number, code: string): Response {
   return Response.json(
     {
-      type: `urn:saasforge:problem:${code.toLowerCase().replaceAll('_', '-')}`,
+      type: `urn:saas.forge:problem:${code.toLowerCase().replaceAll('_', '-')}`,
       title: 'raw service title',
       status,
       code,

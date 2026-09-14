@@ -45,13 +45,13 @@ HTTP 目标取实例 IP 与 HTTP 注册端口；gRPC 目标取同一实例 IP �
 
 ## IDE Run / Debug
 
-保留 Gateway 与 IAM 的运行配置。新增 Java/Spring Boot 配置：主类 `io.saasforge.tenantaccess.TenantAccessServiceApplication`，classpath `tenant-access-service`，Active profiles 留空。只保留 IDE Build，不添加 package、后台 JAR 或 replace/restore 前置任务。
+保留 Gateway 与 IAM 的运行配置。新增 Java/Spring Boot 配置：主类 `io.saas.forge.tenantaccess.TenantAccessServiceApplication`，classpath `tenant-access-service`，Active profiles 留空。只保留 IDE Build，不添加 package、后台 JAR 或 replace/restore 前置任务。
 
 Tenant Access 默认 HTTP 8082、gRPC 9092、注册 IP `127.0.0.1`。可配置 `TENANT_ACCESS_HTTP_PORT`、`TENANT_ACCESS_GRPC_PORT`、`TENANT_ACCESS_REGISTER_IP`、`TENANT_ACCESS_BIND_ADDRESS`。IAM 的对应变量见前一切片说明。注册地址必须从调用方可达；同一个服务本机与容器冲突由开发者处理，本入口不自动停容器或接管进程。
 
 ## 真实链路验收
 
-按 [Console 与 HTTPS Edge](native-console-development.md) 启动真实 Tenant Console。浏览器仅访问 `https://console.saasforge.test` 和既有 HTTPS API Gateway，不手工注入 Cookie、Origin、Fetch Metadata 或 Bearer Token。
+按 [Console 与 HTTPS Edge](native-console-development.md) 启动真实 Tenant Console。浏览器仅访问 `https://console.saas.forge.test` 和既有 HTTPS API Gateway，不手工注入 Cookie、Origin、Fetch Metadata 或 Bearer Token。
 
 1. 在三个应用的 IDE Console 确认启动。Tenant Access 可在 `MembershipValidationGrpcService.validateMembership` 放断点，IAM 可在 `AuthenticationController.refreshAccessToken` 放断点，以真实请求确认并恢复执行；修改后由 IDE 编译、重启。
 2. 用已有合法 Membership 的 Identity 登录 Tenant Console，必要时选择 Tenant；刷新页面，确认 Tenant Session Slot 恢复及当前 Tenant 正确。IAM 的 Membership 校验携带内部签发的保留服务 Token，Tenant Access 通过发现的 IAM JWKS 和共享撤销索引复验。

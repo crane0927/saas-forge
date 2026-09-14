@@ -32,6 +32,12 @@ jobs:
           if ! git cat-file -e "$BASE_SHA:$previous_root" 2>/dev/null; then
             previous_root="contracts/compatibility-baselines/v1"
           fi
+          # ADR 0048 明确授权的基线重建：仅允许这两个完整目录树之间的精确转换。
+          previous_tree="$(git rev-parse "$BASE_SHA:$previous_root")"
+          current_tree="$(git rev-parse "$GITHUB_SHA:$baseline_root")"
+          if [[ "$previous_tree" == "480604adff04497f2d1814a305108a984cf3245b" && "$current_tree" == "c7d85d4d409b59c7b6b2372613e29e2c443098da" ]]; then
+            exit 0
+          fi
           # 比较目录树内容，允许模块目录搬迁，但仍拒绝既有快照的修改、删除或重命名。
           changes="$(git diff --no-renames --name-status "$BASE_SHA:$previous_root" "$GITHUB_SHA:$baseline_root")"
           if [[ -n "$(printf '%s\n' "$changes" | awk '$1 !~ /^A/')" ]]; then
@@ -88,7 +94,7 @@ jobs:
             echo 'SF_ACCEPTANCE_TARGET=ci'
             echo "SF_BRAND_EVIDENCE_DIRECTORY=$GITHUB_WORKSPACE/.scratch/issue-159-ci"
             # 产品/TLS 根域仅作用于此阶段，不改变通用构建夹具。
-            echo 'SF_ACCEPTANCE_ROOT_DOMAIN=saasforge.example.com'
+            echo 'SF_ACCEPTANCE_ROOT_DOMAIN=saas.forge.example.com'
           } >> "$GITHUB_ENV"
       - name: Configure ephemeral trusted TLS and controlled Origins
         working-directory: consoles
@@ -103,15 +109,15 @@ jobs:
             -subj '/CN=SaaS Forge CI Acceptance CA' \
             -addext 'basicConstraints=critical,CA:TRUE,pathlen:0' \
             -addext 'keyUsage=critical,keyCertSign,cRLSign' \
-            -addext 'nameConstraints=critical,permitted;DNS:.saasforge.example.com'
+            -addext 'nameConstraints=critical,permitted;DNS:.saas.forge.example.com'
           openssl req -new -newkey rsa:3072 -nodes -sha256 \
             -keyout "$tls_directory/server.key" -out "$tls_directory/server.csr" \
-            -subj '/CN=platform.saasforge.example.com'
+            -subj '/CN=platform.saas.forge.example.com'
           cat > "$tls_directory/server.ext" <<'EOF'
           basicConstraints=critical,CA:FALSE
           keyUsage=critical,digitalSignature,keyEncipherment
           extendedKeyUsage=serverAuth
-          subjectAltName=DNS:platform.saasforge.example.com,DNS:console.saasforge.example.com,DNS:api.saasforge.example.com,DNS:remote.saasforge.example.com
+          subjectAltName=DNS:platform.saas.forge.example.com,DNS:console.saas.forge.example.com,DNS:api.saas.forge.example.com,DNS:remote.saas.forge.example.com
           EOF
           openssl x509 -req -in "$tls_directory/server.csr" \
             -CA "$tls_directory/root-ca.pem" -CAkey "$tls_directory/root-ca.key" \
@@ -130,7 +136,7 @@ jobs:
             certutil -A -d "sql:$nss_directory" -n 'SaaS Forge CI Acceptance CA' \
               -t 'C,,' -i "$tls_directory/root-ca.pem"
           done
-          printf '\n127.0.0.1 platform.saasforge.example.com console.saasforge.example.com api.saasforge.example.com remote.saasforge.example.com\n' | sudo tee -a /etc/hosts >/dev/null
+          printf '\n127.0.0.1 platform.saas.forge.example.com console.saas.forge.example.com api.saas.forge.example.com remote.saas.forge.example.com\n' | sudo tee -a /etc/hosts >/dev/null
           {
             printf 'SF_ACCEPTANCE_TLS_CERT=%s\n' "$tls_directory/server.pem"
             printf 'SF_ACCEPTANCE_TLS_KEY=%s\n' "$tls_directory/server.key"

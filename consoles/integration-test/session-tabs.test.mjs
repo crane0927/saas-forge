@@ -70,7 +70,7 @@ test('native browser tabs share refresh, hide stale Tenant UI, and retry snapsho
           contentType: 'application/problem+json',
           headers: { 'Retry-After': '0' },
           json: {
-            type: 'urn:saasforge:problem:token-revocation-status-unavailable',
+            type: 'urn:saas.forge:problem:token-revocation-status-unavailable',
             title: 'Unavailable',
             detail: 'private acceptance detail',
             status: 503,
@@ -87,7 +87,7 @@ test('native browser tabs share refresh, hide stale Tenant UI, and retry snapsho
           status: 503,
           contentType: 'application/problem+json',
           json: {
-            type: 'urn:saasforge:problem:revocation-unavailable',
+            type: 'urn:saas.forge:problem:revocation-unavailable',
             title: 'Unavailable',
             detail: 'private acceptance detail',
             status: 503,

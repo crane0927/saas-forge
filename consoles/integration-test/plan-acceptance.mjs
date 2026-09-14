@@ -132,7 +132,7 @@ export async function verifyPlan({
         `${project}-postgres-1`,
         'psql',
         '-U',
-        'saasforge_console_e2e',
+        'saas.forge_console_e2e',
         '-d',
         'entitlement_db',
         '-v',

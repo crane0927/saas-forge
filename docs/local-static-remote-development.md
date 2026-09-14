@@ -2,7 +2,7 @@
 
 日常运行两个 Console 请使用 [Console 原生本地开发](native-console-development.md)。本页保留第四域静态资源专项验收与旧环境升级说明。
 
-本切片遵循 ADR 0009、0038、0039，补齐 Local Browser Topology 的 `remote.saasforge.test`。它不实现 Manifest、业务 Remote、Remote HMR，也不修改认证 API、Browser Session Slot 或数据库。静态文件是公开制品；CORS 是浏览器读取许可，不是私有下载鉴权。
+本切片遵循 ADR 0009、0038、0039，补齐 Local Browser Topology 的 `remote.saas.forge.test`。它不实现 Manifest、业务 Remote、Remote HMR，也不修改认证 API、Browser Session Slot 或数据库。静态文件是公开制品；CORS 是浏览器读取许可，不是私有下载鉴权。
 
 ## 准备与升级
 
@@ -41,12 +41,12 @@ bash scripts/local-development.sh frontend start all
 
 ## Tenant 入口与版本规则
 
-打开 `https://console.saasforge.test/acceptance/static-remote`，分别点击 **Load v1**、**Load v2**：
+打开 `https://console.saas.forge.test/acceptance/static-remote`，分别点击 **Load v1**、**Load v2**：
 
 - 入口属于真实 Tenant 应用，仅在 Vite 开发模式或显式 `--mode static-acceptance` 构建中可达；默认产品构建剔除此入口，不加入产品导航。不需要登录，不创建第二个认证 Runtime。
-- 模块从 `https://remote.saasforge.test/static-acceptance/v1/remote.js` 或 `v2/remote.js` 导入并执行。相同版本的 `styles.css` 以 `anonymous` 加载；`image.svg` 以 `anonymous` 加载并解码。
+- 模块从 `https://remote.saas.forge.test/static-acceptance/v1/remote.js` 或 `v2/remote.js` 导入并执行。相同版本的 `styles.css` 以 `anonymous` 加载；`image.svg` 以 `anonymous` 加载并解码。
 - Remote 不接收业务 API 调用。跨 Origin module 使用浏览器默认 `same-origin` credentials，CSS/图片使用 `anonymous`，均不向 Remote 发送 Cookie；没有 Authorization 或 X-SF-CSRF 注入。
-- 仅 `https://console.saasforge.test` 获得精确 `Access-Control-Allow-Origin`，始终不返回 `Access-Control-Allow-Credentials`。Platform、其他来源和 `null` 不获得许可。仅支持 GET/HEAD，不提供凭据请求头预检许可。
+- 仅 `https://console.saas.forge.test` 获得精确 `Access-Control-Allow-Origin`，始终不返回 `Access-Control-Allow-Credentials`。Platform、其他来源和 `null` 不获得许可。仅支持 GET/HEAD，不提供凭据请求头预检许可。
 - 精确版本/文件路径之外返回真实 404，不回退 Tenant HTML、不代理 Gateway。Remote 不提供 WebSocket/HMR。
 - `consoles/static-remote-acceptance/checksums.json` 冻结两个版本的构建字节。构建先在临时目录校验全部 SHA-256，再交付到 `consoles/dist/static-remote-acceptance/`；校验失败保留原制品。已交付版本不得修改源文件或重写对应 checksum 来掩盖变化，包括工具链升级造成的字节变化；新内容使用新版本路径。
 

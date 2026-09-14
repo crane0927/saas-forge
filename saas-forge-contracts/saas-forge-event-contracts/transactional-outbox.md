@@ -4,7 +4,7 @@
 
 ## 注册、边界与事件快照
 
-实现事件前，先在 [事件工程注册表](engineering-registry.json)登记版本化 `type`、生产服务、`source`、包含 CloudEvents 信封与 payload 的独立事件 schema、生产者 topic、`orderingKey` 与允许的消费者。注册表必须符合 [v1 Schema](engineering-registry.schema.json)。topic 固定为 `saasforge.<environment>.<producer-service>.events`；每个消费者的隔离 topic 由该消费者服务拥有，不是跨服务死信总线。
+实现事件前，先在 [事件工程注册表](engineering-registry.json)登记版本化 `type`、生产服务、`source`、包含 CloudEvents 信封与 payload 的独立事件 schema、生产者 topic、`orderingKey` 与允许的消费者。注册表必须符合 [v1 Schema](engineering-registry.schema.json)。topic 固定为 `saas.forge.<environment>.<producer-service>.events`；每个消费者的隔离 topic 由该消费者服务拥有，不是跨服务死信总线。
 
 业务事务在提交领域事实时，同一事务写入服务本地的不可变 Outbox 记录和完整 CloudEvents JSON 快照。记录至少保存稳定事件 ID、事实提交时间、topic、`orderingKey`、原始 `traceId`（如有）、payload、发布领取/重试状态和发布完成时间。发布器只能发送该快照，不得在重试时查询当前领域数据、重新序列化 payload 或创建新事件 ID。Outbox 是不可变事实记录，不使用 `updated_at`；是否属于 Tenant 范围由记录语义决定，不得为形式统一伪造 `tenant_id`。
 

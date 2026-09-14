@@ -28,8 +28,8 @@ services:
     ports: !reset []
     group_add: ["${E2E_HOST_GID:?E2E_HOST_GID is required}"]
     environment:
-      BROWSER_ROOT_DOMAIN: ${SF_ACCEPTANCE_ROOT_DOMAIN:-saasforge.test}
-      PASSWORD_SETUP_PAGE_URI: https://console.${SF_ACCEPTANCE_ROOT_DOMAIN:-saasforge.test}/password-setup
+      BROWSER_ROOT_DOMAIN: ${SF_ACCEPTANCE_ROOT_DOMAIN:-saas.forge.test}
+      PASSWORD_SETUP_PAGE_URI: https://console.${SF_ACCEPTANCE_ROOT_DOMAIN:-saas.forge.test}/password-setup
       JAVA_TOOL_OPTIONS: -Xms64m -Xmx256m
   tenant-access-service:
     image: ${SF_ACCEPTANCE_PROJECT:?SF_ACCEPTANCE_PROJECT is required}/tenant-access-service:acceptance
@@ -56,7 +56,7 @@ services:
     build: !reset null
     ports: !reset []
     environment:
-      BROWSER_ROOT_DOMAIN: ${SF_ACCEPTANCE_ROOT_DOMAIN:-saasforge.test}
+      BROWSER_ROOT_DOMAIN: ${SF_ACCEPTANCE_ROOT_DOMAIN:-saas.forge.test}
       JAVA_TOOL_OPTIONS: -Xms32m -Xmx192m
   iam-platform-admin-bootstrap:
     image: ${SF_ACCEPTANCE_PROJECT:?SF_ACCEPTANCE_PROJECT is required}/iam-service:acceptance
@@ -73,7 +73,7 @@ services:
     read_only: true
     command: ["node", "/app/serve.mjs"]
     environment:
-      SF_ACCEPTANCE_ROOT_DOMAIN: ${SF_ACCEPTANCE_ROOT_DOMAIN:-saasforge.test}
+      SF_ACCEPTANCE_ROOT_DOMAIN: ${SF_ACCEPTANCE_ROOT_DOMAIN:-saas.forge.test}
       SF_REMOTE_STATIC_MODULE: /app/remote-static.mjs
     volumes:
       - ./console-authentication/serve.mjs:/app/serve.mjs:ro
@@ -87,7 +87,7 @@ services:
     read_only: true
     command: ["node", "/app/serve.mjs"]
     environment:
-      SF_ACCEPTANCE_ROOT_DOMAIN: ${SF_ACCEPTANCE_ROOT_DOMAIN:-saasforge.test}
+      SF_ACCEPTANCE_ROOT_DOMAIN: ${SF_ACCEPTANCE_ROOT_DOMAIN:-saas.forge.test}
       SF_REMOTE_STATIC_MODULE: /app/remote-static.mjs
     volumes:
       - ./console-authentication/serve.mjs:/app/serve.mjs:ro
@@ -103,7 +103,7 @@ services:
     command: ["node", "/app/serve.mjs"]
     environment:
       SF_CONSOLE_SERVICE: edge
-      SF_ACCEPTANCE_ROOT_DOMAIN: ${SF_ACCEPTANCE_ROOT_DOMAIN:-saasforge.test}
+      SF_ACCEPTANCE_ROOT_DOMAIN: ${SF_ACCEPTANCE_ROOT_DOMAIN:-saas.forge.test}
       SF_REMOTE_STATIC_MODULE: /app/remote-static.mjs
       SF_REMOTE_STATIC_DIRECTORY: /app/remote-artifacts
     # running 不等于 ready；浏览器只能在静态工件、Gateway/IAM 与 TLS listener 都就绪后进入。

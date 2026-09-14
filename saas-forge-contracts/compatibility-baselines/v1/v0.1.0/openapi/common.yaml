@@ -45,7 +45,7 @@ components:
         type:
           type: string
           format: uri
-          description: Stable problem type derived from code as urn:saasforge:problem:{lower-kebab-case-code}.
+          description: Stable problem type derived from code as urn:saas.forge:problem:{lower-kebab-case-code}.
         title:
           type: string
           description: Short English summary for humans. Clients must not branch on it.
@@ -250,7 +250,7 @@ components:
         startedAt: '2026-08-17T09:30:46.123Z'
         completedAt: '2026-08-17T09:30:47.123Z'
         failure:
-          type: urn:saasforge:problem:tenant-suspended
+          type: urn:saas.forge:problem:tenant-suspended
           title: Tenant is suspended
           status: 403
           code: TENANT_SUSPENDED
@@ -259,7 +259,7 @@ components:
     TenantSuspendedProblem:
       summary: Business rejection
       value:
-        type: urn:saasforge:problem:tenant-suspended
+        type: urn:saas.forge:problem:tenant-suspended
         title: Tenant is suspended
         status: 403
         code: TENANT_SUSPENDED
@@ -268,7 +268,7 @@ components:
     InvitationEmailValidationProblem:
       summary: Request field validation rejection
       value:
-        type: urn:saasforge:problem:invitation-email-invalid
+        type: urn:saas.forge:problem:invitation-email-invalid
         title: Invalid invitation email
         status: 400
         code: INVITATION_EMAIL_INVALID

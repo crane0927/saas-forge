@@ -10,8 +10,8 @@ import { createLogger, createServer } from 'vite';
 const consoles = fileURLToPath(new URL('..', import.meta.url));
 
 for (const [application, origin] of [
-  ['platform-console', 'https://platform.saasforge.test/'],
-  ['tenant-console-shell', 'https://console.saasforge.test/'],
+  ['platform-console', 'https://platform.saas.forge.test/'],
+  ['tenant-console-shell', 'https://console.saas.forge.test/'],
 ]) {
   test(`${application} startup directs the browser to its controlled HTTPS Origin`, async (t) => {
     const messages = [];

@@ -50,7 +50,7 @@ function readyBootstrap() {
   return createRuntimeConfigBootstrap(() =>
     Promise.resolve({
       ok: true,
-      config: { schemaVersion: 1, apiBaseUrl: 'https://api.saasforge.test' },
+      config: { schemaVersion: 1, apiBaseUrl: 'https://api.saas.forge.test' },
     }),
   );
 }
@@ -724,7 +724,7 @@ describe('三个 Design System 消费者的真实浏览器契约', () => {
 function problemResponse(status: number, code: string): Response {
   return new Response(
     JSON.stringify({
-      type: `urn:saasforge:problem:${code.toLowerCase().replaceAll('_', '-')}`,
+      type: `urn:saas.forge:problem:${code.toLowerCase().replaceAll('_', '-')}`,
       title: 'not exposed',
       status,
       code,

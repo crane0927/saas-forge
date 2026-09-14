@@ -54,7 +54,7 @@ for (const [application, directory, heading] of [
         },
       ],
     };
-    await context.route('https://api.saasforge.test/api/v1/auth/**', async (route) => {
+    await context.route('https://api.saas.forge.test/api/v1/auth/**', async (route) => {
       if (new URL(route.request().url()).pathname === '/api/v1/auth/refresh') {
         assert.equal(route.request().postDataJSON().sessionSlot, application.toUpperCase());
         refreshes += 1;
@@ -86,7 +86,7 @@ for (const [application, directory, heading] of [
     await Promise.all(pages.map((page) => page.goto(`http://127.0.0.1:${address.port}/`)));
     // 原生队列证明另一页已经开始恢复；不要覆写 LockManager 实例方法，
     // WebKit 下该观察器可能漏报，而公开 query 已显示持锁者和等待者。
-    const lockName = `sf:session:https://api.saasforge.test:${application.toUpperCase()}`;
+    const lockName = `sf:session:https://api.saas.forge.test:${application.toUpperCase()}`;
     await Promise.all(
       pages.map((page) =>
         page.waitForFunction(async (name) => {

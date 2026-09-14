@@ -46,8 +46,8 @@ test("status all CLI always prints both endpoints and Edge, and unavailable Dock
     assert.equal(result.status, dockerExitCode, result.stderr);
     assert.equal(
       result.stdout,
-      "PLATFORM: STOPPED | 127.0.0.1:5173 | https://platform.saasforge.test | HTTPS NOT_READY\n" +
-        "TENANT: STOPPED | 127.0.0.1:5174 | https://console.saasforge.test | HTTPS NOT_READY\n" +
+      "PLATFORM: STOPPED | 127.0.0.1:5173 | https://platform.saas.forge.test | HTTPS NOT_READY\n" +
+        "TENANT: STOPPED | 127.0.0.1:5174 | https://console.saas.forge.test | HTTPS NOT_READY\n" +
         `EDGE: ${dockerExitCode === 0 ? "STOPPED" : "UNAVAILABLE"} | 127.0.0.1:443 | NOT_READY\n`,
     );
     assert.doesNotMatch(

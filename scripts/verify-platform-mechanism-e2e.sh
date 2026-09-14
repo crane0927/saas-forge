@@ -74,12 +74,12 @@ write_environment() {
   umask 077
   mkdir -p "$secret_directory"
   "$compose_directory/generate-service-client-secrets.sh" "$secret_directory" >/dev/null
-  printf '%s\n' 'platform-admin@saasforge.test' >"$secret_directory/platform-admin-email"
+  printf '%s\n' 'platform-admin@saas.forge.test' >"$secret_directory/platform-admin-email"
   openssl rand -base64 32 | tr -d '\n' >"$secret_directory/platform-admin-password"
   printf '\n' >>"$secret_directory/platform-admin-password"
 
   {
-    printf 'POSTGRES_ADMIN_USER=saasforge_e2e\n'
+    printf 'POSTGRES_ADMIN_USER=saas.forge_e2e\n'
     printf 'POSTGRES_ADMIN_PASSWORD=%s\n' "$(random_text)"
     printf 'IAM_MIGRATOR_PASSWORD=%s\n' "$(random_text)"
     printf 'IAM_APP_PASSWORD=%s\n' "$(random_text)"
@@ -109,7 +109,7 @@ write_environment() {
     printf 'NACOS_AUTH_IDENTITY_VALUE=%s\n' "$(random_text)"
     printf 'NACOS_AUTH_TOKEN=%s\n' "$(printf '%s' "$nacos_token_source" | openssl base64 -A)"
     printf 'E2E_HOST_GID=%s\n' "$(id -g)"
-    printf 'IAM_JWT_ISSUER=https://api.saasforge.test\n'
+    printf 'IAM_JWT_ISSUER=https://api.saas.forge.test\n'
     printf 'IAM_JWT_PEM_KEY_VERSION_REF=local/e2e/pem/1\n'
     printf 'IAM_JWT_PEM_PRIVATE_KEY_FILE=%s\n' "$secret_directory/iam-jwt-private-key.pem"
     printf 'IAM_PLATFORM_ADMIN_EMAIL_FILE=%s\n' "$secret_directory/platform-admin-email"
@@ -205,7 +205,7 @@ request() {
   local body="${4:-}"
   local bearer="${5:-}"
   local idempotency_key="${6:-}"
-  local browser_origin='https://console.saasforge.test'
+  local browser_origin='https://console.saas.forge.test'
   if (( $# > 6 )); then
     shift 6
   else
@@ -214,7 +214,7 @@ request() {
   local status
   if [[ "$path" == "/api/v1/auth/password-changes" || "$body" == *'"contextType":"PLATFORM"'* \
       || "$body" == *'"sessionSlot":"PLATFORM"'* ]]; then
-    browser_origin='https://platform.saasforge.test'
+    browser_origin='https://platform.saas.forge.test'
   fi
   local -a arguments=(
     --silent --show-error --request "$method"
@@ -324,13 +324,13 @@ echo "[2/9] 构建带测试 Catalog overlay 的真实 Gateway、IAM 与 Starter 
 jq --exit-status '[.routes[] | select(.operationId == "acceptPlatformMechanismServiceToken" and
   .serviceId == "platform-mechanism-receiver" and .credentialRequirement == "SERVICE_REQUIRED" and
   .requiredScopes == ["runtime:read"])] | length == 1' \
-  "$repository_root/saas-forge-contracts/saas-forge-http-route-catalog/target/generated-resources/route-catalog/META-INF/saasforge/http-route-catalog.json" >/dev/null
-build_runtime_image gateway saasforge/gateway:local
-build_runtime_image saas-forge-services/iam-service saasforge/iam-service:local
-build_runtime_image saas-forge-services/tenant-access-service saasforge/tenant-access-service:local
-build_runtime_image saas-forge-services/entitlement-service saasforge/entitlement-service:local
-build_runtime_image saas-forge-services/audit-service saasforge/audit-service:local
-build_runtime_image test-support/platform-mechanism-receiver saasforge/platform-mechanism-receiver:acceptance
+  "$repository_root/saas-forge-contracts/saas-forge-http-route-catalog/target/generated-resources/route-catalog/META-INF/saas.forge/http-route-catalog.json" >/dev/null
+build_runtime_image gateway saas.forge/gateway:local
+build_runtime_image saas-forge-services/iam-service saas.forge/iam-service:local
+build_runtime_image saas-forge-services/tenant-access-service saas.forge/tenant-access-service:local
+build_runtime_image saas-forge-services/entitlement-service saas.forge/entitlement-service:local
+build_runtime_image saas-forge-services/audit-service saas.forge/audit-service:local
+build_runtime_image test-support/platform-mechanism-receiver saas.forge/platform-mechanism-receiver:acceptance
 
 echo "[3/9] 初始化真实 PostgreSQL、IAM Signing Key、Platform Admin 与 Reserved Client"
 COMPOSE_PROJECT_NAME="$project_name" LOCAL_COMPOSE_ENV_FILE="$environment_file" \
@@ -382,14 +382,14 @@ echo "[5/9] 真实 IAM 签发 Runtime Service Token，Gateway 与 Starter 双重
 initial_password="$(<"$secret_directory/platform-admin-password")"
 request 200 POST /api/v1/auth/login \
   "$(jq -cn --arg password "$initial_password" \
-    '{email:"platform-admin@saasforge.test",password:$password,contextType:"PLATFORM"}')"
+    '{email:"platform-admin@saas.forge.test",password:$password,contextType:"PLATFORM"}')"
 assert_json '.contextState == "PASSWORD_CHANGE_REQUIRED"'
 platform_password="Platform-$(openssl rand -hex 16)"
 request 204 POST /api/v1/auth/password-changes \
   "$(jq -cn --arg password "$platform_password" '{newPassword:$password}')"
 request 200 POST /api/v1/auth/login \
   "$(jq -cn --arg password "$platform_password" \
-    '{email:"platform-admin@saasforge.test",password:$password,contextType:"PLATFORM"}')"
+    '{email:"platform-admin@saas.forge.test",password:$password,contextType:"PLATFORM"}')"
 platform_token="$(jq -r '.accessToken' "$response_body")"
 request 200 GET /__test/platform-mechanism/identity '' "$platform_token"
 assert_json '(keys == ["identityId"]) and (.identityId | type == "string")'

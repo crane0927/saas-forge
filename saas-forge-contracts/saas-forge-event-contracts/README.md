@@ -6,7 +6,7 @@
 
 ## 统一信封
 
-全部事件采用 CloudEvents 1.0 structured JSON，并通过 [CloudEvents JSON Envelope v1](cloudevents-envelope.v1.schema.json) 校验。`specversion` 固定为 `1.0`，`id` 是在 Outbox 创建时分配的 UUIDv7，重投和恢复时不得改变；新事实才产生新 ID。`source` 使用固定服务 URN（`urn:saasforge:<service>`），`type` 使用带主版本的 `com.saasforge.*.vN`，`time` 为事实提交时间的 RFC 3339 UTC 值，`datacontenttype` 固定为 `application/json`。`traceId` 是唯一允许的扩展属性，且仅在已有 W3C Trace Context 时出现。
+全部事件采用 CloudEvents 1.0 structured JSON，并通过 [CloudEvents JSON Envelope v1](cloudevents-envelope.v1.schema.json) 校验。`specversion` 固定为 `1.0`，`id` 是在 Outbox 创建时分配的 UUIDv7，重投和恢复时不得改变；新事实才产生新 ID。`source` 使用固定服务 URN（`urn:saas.forge:<service>`），`type` 使用带主版本的 `com.saas.forge.*.vN`，`time` 为事实提交时间的 RFC 3339 UTC 值，`datacontenttype` 固定为 `application/json`。`traceId` 是唯一允许的扩展属性，且仅在已有 W3C Trace Context 时出现。
 
 `subject` 和 `dataschema` 可选。事件与其 `data` 只能包含事件 schema 明确白名单中的内部 ID、状态和时间；不得包含密码、邮箱原文、Invitation 激活令牌、Access/Refresh Token、Client Secret、Cookie、物理缓存 Key 或缓存节点信息。
 
@@ -18,8 +18,8 @@
 
 | 类型 | 生产者 | `data` | Schema |
 |---|---|---|---|
-| `com.saasforge.audit.recorded.v1` | Audit | `auditRecordId`、`sourceEventId`、`recordedAt`，可选 `tenantId` | [Audit Record Stored v1](audit-recorded.v1.schema.json) |
-| `com.saasforge.cache.invalidated.v1` | 对应缓存域的权威服务 | `cacheDomain`、`scope`，以及范围匹配的 `tenantId` / `membershipId` | [Logical Cache Invalidated v1](cache-invalidated.v1.schema.json) |
+| `com.saas.forge.audit.recorded.v1` | Audit | `auditRecordId`、`sourceEventId`、`recordedAt`，可选 `tenantId` | [Audit Record Stored v1](audit-recorded.v1.schema.json) |
+| `com.saas.forge.cache.invalidated.v1` | 对应缓存域的权威服务 | `cacheDomain`、`scope`，以及范围匹配的 `tenantId` / `membershipId` | [Logical Cache Invalidated v1](cache-invalidated.v1.schema.json) |
 
 `audit.recorded.v1` 仅说明 Audit 已追加保存一条 Audit Record；当前只有 Schema，尚未登记、生产或确认消费者，没有真实消费者前不得据此建立 Audit Outbox。完整审计内容必须通过未来 Audit服务的受权查询取得。缓存失效只表达逻辑缓存域（`authorization` 或 `entitlement`）及范围（`MEMBERSHIP`、`TENANT` 或 `GLOBAL`）；消费者自行清理本地或业务缓存，未命中、过期、失效消息或缓存不可用时回源权威接口，不得把它当作领域真相。
 

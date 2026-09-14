@@ -165,8 +165,8 @@
                             <inputSpec>${maven.multiModuleProjectDirectory}/saas-forge-contracts/saas-forge-openapi-contracts/v1.yaml</inputSpec>
                             <generatorName>spring</generatorName>
                             <output>${project.build.directory}/generated-sources/openapi</output>
-                            <apiPackage>io.saasforge.tenantaccess.contract.api</apiPackage>
-                            <modelPackage>io.saasforge.tenantaccess.contract.model</modelPackage>
+                            <apiPackage>io.saas.forge.tenantaccess.contract.api</apiPackage>
+                            <modelPackage>io.saas.forge.tenantaccess.contract.model</modelPackage>
                             <generateApis>true</generateApis>
                             <apisToGenerate>PlatformTenants</apisToGenerate>
                             <generateModels>true</generateModels>

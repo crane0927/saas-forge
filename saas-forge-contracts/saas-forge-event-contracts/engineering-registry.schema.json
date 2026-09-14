@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://saasforge.io/contracts/events/engineering-registry.schema.json",
+  "$id": "https://saas.forge.io/contracts/events/engineering-registry.schema.json",
   "title": "SaaS Forge Event Engineering Registry",
   "type": "object",
   "additionalProperties": false,
@@ -32,7 +32,7 @@
       "properties": {
         "type": {
           "type": "string",
-          "pattern": "^com\\.saasforge\\.[a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9-]*)*\\.v[1-9][0-9]*$"
+          "pattern": "^com\\.saas\\.forge\\.[a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9-]*)*\\.v[1-9][0-9]*$"
         },
         "producerService": {
           "type": "string",
@@ -40,7 +40,7 @@
         },
         "source": {
           "type": "string",
-          "pattern": "^urn:saasforge:[a-z][a-z0-9-]*-service$"
+          "pattern": "^urn:saas\\.forge:[a-z][a-z0-9-]*-service$"
         },
         "schema": {
           "type": "string",
@@ -48,7 +48,7 @@
         },
         "topic": {
           "type": "string",
-          "pattern": "^saasforge\\.<environment>\\.[a-z][a-z0-9-]*-service\\.events$"
+          "pattern": "^saas\\.forge\\.<environment>\\.[a-z][a-z0-9-]*-service\\.events$"
         },
         "orderingKey": {
           "type": "string",

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://saasforge.io/contracts/security/oauth-scope-registry.schema.json",
+  "$id": "https://saas.forge.io/contracts/security/oauth-scope-registry.schema.json",
   "type": "object",
   "additionalProperties": false,
   "required": ["registryVersion", "entries"],

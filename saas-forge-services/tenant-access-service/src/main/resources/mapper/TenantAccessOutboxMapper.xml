@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="io.saasforge.tenantaccess.infrastructure.persistence.mapper.TenantAccessOutboxMapper">
+<mapper namespace="io.saas.forge.tenantaccess.infrastructure.persistence.mapper.TenantAccessOutboxMapper">
     <select id="setOperationTarget" resultType="string">
         SELECT set_config('app.tenant_id', CAST(#{tenantId} AS TEXT), true)
     </select>
@@ -10,7 +10,7 @@
     </select>
 
     <select id="findClaimed"
-            resultType="io.saasforge.tenantaccess.infrastructure.persistence.record.ClaimedTenantAccessOutboxRow">
+            resultType="io.saas.forge.tenantaccess.infrastructure.persistence.record.ClaimedTenantAccessOutboxRow">
         SELECT event_id AS eventId, tenant_id AS tenantId, topic, ordering_key AS orderingKey,
                event_snapshot::TEXT AS eventSnapshot, claimed_by AS claimedBy,
                attempt_count AS attemptCount

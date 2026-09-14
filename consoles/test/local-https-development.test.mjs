@@ -34,8 +34,8 @@ test('creates one reusable local certificate for all four development hosts', as
   const firstCertificate = await readFile(paths.serverCertificate, 'utf8');
   const { X509Certificate } = await import('node:crypto');
   assert.equal(
-    new X509Certificate(firstCertificate).checkHost('remote.saasforge.test'),
-    'remote.saasforge.test',
+    new X509Certificate(firstCertificate).checkHost('remote.saas.forge.test'),
+    'remote.saas.forge.test',
   );
 
   assert.equal(await ensureCertificateMaterial(paths), 'reused');
@@ -43,21 +43,21 @@ test('creates one reusable local certificate for all four development hosts', as
 });
 
 test('keeps the three existing proxy targets and preserves browser security headers verbatim', () => {
-  assert.deepEqual(targetForHost('platform.saasforge.test'), {
+  assert.deepEqual(targetForHost('platform.saas.forge.test'), {
     hostname: 'host.docker.internal',
     port: 5173,
   });
-  assert.deepEqual(targetForHost('api.saasforge.test'), { hostname: 'gateway', port: 8080 });
-  assert.deepEqual(targetForHost('console.saasforge.test'), {
+  assert.deepEqual(targetForHost('api.saas.forge.test'), { hostname: 'gateway', port: 8080 });
+  assert.deepEqual(targetForHost('console.saas.forge.test'), {
     hostname: 'host.docker.internal',
     port: 5174,
   });
-  assert.equal(targetForHost('unknown.saasforge.test'), undefined);
-  assert.equal(targetForHost('platform.saasforge.test:443'), undefined);
+  assert.equal(targetForHost('unknown.saas.forge.test'), undefined);
+  assert.equal(targetForHost('platform.saas.forge.test:443'), undefined);
 
   const headers = [
     'Origin',
-    'https://platform.saasforge.test',
+    'https://platform.saas.forge.test',
     'Cookie',
     '__Host-sf_platform_refresh=opaque',
     'Sec-Fetch-Site',
@@ -84,7 +84,7 @@ test('forwards browser security headers without Edge synthesis or rewriting', as
   const edge = createEdgeServer({
     certificate: await readFile(paths.serverCertificate),
     key: await readFile(paths.serverKey),
-    targets: { 'api.saasforge.test': { hostname: '127.0.0.1', port: upstreamPort } },
+    targets: { 'api.saas.forge.test': { hostname: '127.0.0.1', port: upstreamPort } },
   });
   await listen(edge);
   t.after(async () => {
@@ -96,15 +96,15 @@ test('forwards browser security headers without Edge synthesis or rewriting', as
     edge.address().port,
     await readFile(paths.certificateAuthorityCertificate),
     {
-      host: 'api.saasforge.test',
-      origin: 'https://platform.saasforge.test',
+      host: 'api.saas.forge.test',
+      origin: 'https://platform.saas.forge.test',
       cookie: '__Host-sf_platform_refresh=opaque',
       'sec-fetch-site': 'same-site',
       authorization: 'Bearer opaque',
     },
   );
   assert.equal(status, 204);
-  assert.equal(seen.get('origin'), 'https://platform.saasforge.test');
+  assert.equal(seen.get('origin'), 'https://platform.saas.forge.test');
   assert.equal(seen.get('cookie'), '__Host-sf_platform_refresh=opaque');
   assert.equal(seen.get('sec-fetch-site'), 'same-site');
   assert.equal(seen.get('authorization'), 'Bearer opaque');
@@ -126,7 +126,7 @@ test('accepts only the fixed local Gateway override target', () => {
   assert.equal(parseApiTarget('{'), undefined);
 });
 
-for (const host of ['platform.saasforge.test', 'console.saasforge.test']) {
+for (const host of ['platform.saas.forge.test', 'console.saas.forge.test']) {
   test(`relays ${host} WebSocket upgrade used by Vite HMR`, async (t) => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'sf-local-https-hmr-'));
     const paths = developmentHttpsPaths(directory);
@@ -165,11 +165,11 @@ for (const host of ['platform.saasforge.test', 'console.saasforge.test']) {
 test('recognizes the idempotent local hosts entry and fixes Vite to the Edge-facing port', () => {
   assert.equal(
     hasExpectedHosts(
-      '127.0.0.1 platform.saasforge.test console.saasforge.test api.saasforge.test remote.saasforge.test # SaaS Forge local HTTPS\n',
+      '127.0.0.1 platform.saas.forge.test console.saas.forge.test api.saas.forge.test remote.saas.forge.test # SaaS Forge local HTTPS\n',
     ),
     true,
   );
-  assert.equal(hasExpectedHosts('127.0.0.1 platform.saasforge.test\n'), false);
+  assert.equal(hasExpectedHosts('127.0.0.1 platform.saas.forge.test\n'), false);
 
   const command = viteDevelopmentCommand('/workspace/consoles');
   assert.deepEqual(command.args.slice(-8), [
@@ -270,7 +270,7 @@ function edgeRequest(port, certificateAuthority, headers) {
         method: 'POST',
         path: '/api/v1/auth/refresh',
         ca: certificateAuthority,
-        servername: 'api.saasforge.test',
+        servername: 'api.saas.forge.test',
         headers: { ...headers, 'content-type': 'application/json' },
       },
       (response) => {
@@ -321,7 +321,7 @@ test('upgrades a three-Host leaf with the existing CA and then remains idempoten
   const authorityKey = await readFile(paths.certificateAuthorityKey);
   await writeFile(
     paths.serverExtensions,
-    'subjectAltName=DNS:platform.saasforge.test,DNS:console.saasforge.test,DNS:api.saasforge.test\n',
+    'subjectAltName=DNS:platform.saas.forge.test,DNS:console.saas.forge.test,DNS:api.saas.forge.test\n',
   );
   const result = spawnSync('openssl', [
     'x509',
@@ -348,10 +348,10 @@ test('upgrades a three-Host leaf with the existing CA and then remains idempoten
   assert.equal(await certificateCoversExpectedHosts(paths.serverCertificate), true);
   assert.equal(await ensureCertificateMaterial(paths), 'reused');
   assert.deepEqual(developmentHosts, [
-    'platform.saasforge.test',
-    'console.saasforge.test',
-    'api.saasforge.test',
-    'remote.saasforge.test',
+    'platform.saas.forge.test',
+    'console.saas.forge.test',
+    'api.saas.forge.test',
+    'remote.saas.forge.test',
   ]);
 });
 
@@ -370,16 +370,16 @@ test('Tenant uses a separate command, PID and log and requires all four hosts', 
   assert.ok(paths.tenantLog.endsWith('/tenant-vite.log'));
   assert.notEqual(paths.tenantPid, paths.platformPid);
   assert.notEqual(paths.tenantLog, paths.platformLog);
-  assert.equal(hasExpectedHosts('127.0.0.1 platform.saasforge.test api.saasforge.test\n'), false);
+  assert.equal(hasExpectedHosts('127.0.0.1 platform.saas.forge.test api.saas.forge.test\n'), false);
   assert.equal(
     hasExpectedHosts(
-      '127.0.0.1 platform.saasforge.test api.saasforge.test\n127.0.0.1 console.saasforge.test remote.saasforge.test\n',
+      '127.0.0.1 platform.saas.forge.test api.saas.forge.test\n127.0.0.1 console.saas.forge.test remote.saas.forge.test\n',
     ),
     true,
   );
   assert.equal(
     hasExpectedHosts(
-      '127.0.0.1 platform.saasforge.test api.saasforge.test\n192.168.1.1 console.saasforge.test\n',
+      '127.0.0.1 platform.saas.forge.test api.saas.forge.test\n192.168.1.1 console.saas.forge.test\n',
     ),
     false,
   );
@@ -388,8 +388,8 @@ test('Tenant uses a separate command, PID and log and requires all four hosts', 
 test('loads both actual Vite configs with loopback ports, exact Hosts and controlled WSS HMR', async () => {
   const { loadConfigFromFile } = await import('vite');
   for (const [directory, port, host] of [
-    ['platform-console', 5173, 'platform.saasforge.test'],
-    ['tenant-console-shell', 5174, 'console.saasforge.test'],
+    ['platform-console', 5173, 'platform.saas.forge.test'],
+    ['tenant-console-shell', 5174, 'console.saas.forge.test'],
   ]) {
     const loaded = await loadConfigFromFile(
       { command: 'serve', mode: 'development' },
@@ -414,8 +414,8 @@ test('routes both Console HTTPS Hosts independently and rejects unknown Hosts', 
     certificate: await readFile(paths.serverCertificate),
     key: await readFile(paths.serverKey),
     targets: {
-      'platform.saasforge.test': { hostname: '127.0.0.1', port: platform.address().port },
-      'console.saasforge.test': { hostname: '127.0.0.1', port: tenant.address().port },
+      'platform.saas.forge.test': { hostname: '127.0.0.1', port: platform.address().port },
+      'console.saas.forge.test': { hostname: '127.0.0.1', port: tenant.address().port },
     },
   });
   await listen(edge);
@@ -425,10 +425,10 @@ test('routes both Console HTTPS Hosts independently and rejects unknown Hosts', 
   });
   const ca = await readFile(paths.certificateAuthorityCertificate);
   for (const [host, expected] of [
-    ['platform.saasforge.test', 201],
-    ['console.saasforge.test', 202],
-    ['unknown.saasforge.test', 421],
-    ['console.saasforge.test:443', 421],
+    ['platform.saas.forge.test', 201],
+    ['console.saas.forge.test', 202],
+    ['unknown.saas.forge.test', 421],
+    ['console.saas.forge.test:443', 421],
   ]) {
     assert.equal(await edgeRequest(edge.address().port, ca, { host }), expected);
   }
@@ -436,7 +436,7 @@ test('routes both Console HTTPS Hosts independently and rejects unknown Hosts', 
 
 test('hosts upgrade requires explicit consent, is idempotent and refuses noninteractive authorization', async () => {
   const { installHosts, confirm } = await import('../../scripts/local-https-development.mjs');
-  let content = '127.0.0.1 platform.saasforge.test api.saasforge.test\n';
+  let content = '127.0.0.1 platform.saas.forge.test api.saas.forge.test\n';
   let authorized = false;
   let writes = 0;
   const system = {

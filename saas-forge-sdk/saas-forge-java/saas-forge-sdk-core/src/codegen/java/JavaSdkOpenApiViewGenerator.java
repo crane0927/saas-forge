@@ -16,7 +16,7 @@ import java.util.regex.Pattern;
 
 /** 从唯一正式 OpenAPI 中派生仅供 Java SDK 代码生成使用的临时视图。 */
 public final class JavaSdkOpenApiViewGenerator {
-    private static final String PUBLICATION_MARKER = "      x-saasforge-java-sdk: true";
+    private static final String PUBLICATION_MARKER = "      x-saas.forge-java-sdk: true";
     private static final Pattern PATH = Pattern.compile("^  /[^:]+:$");
     private static final Pattern METHOD = Pattern.compile("^    (get|post|put|patch|delete|head|options|trace):$");
     private static final Pattern COMPONENT_SECTION = Pattern.compile("^  ([A-Za-z][A-Za-z0-9]*):$");

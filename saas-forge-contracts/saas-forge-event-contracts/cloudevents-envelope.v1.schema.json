@@ -14,12 +14,12 @@
     },
     "source": {
       "type": "string",
-      "pattern": "^urn:saasforge:[a-z][a-z0-9-]*$",
+      "pattern": "^urn:saas\\.forge:[a-z][a-z0-9-]*$",
       "description": "Stable source URN of the producing service."
     },
     "type": {
       "type": "string",
-      "pattern": "^com\\.saasforge\\.[a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9-]*)*\\.v[1-9][0-9]*$",
+      "pattern": "^com\\.saas\\.forge\\.[a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9-]*)*\\.v[1-9][0-9]*$",
       "description": "Versioned event type; the trailing vN is its major version."
     },
     "subject": {

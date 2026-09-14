@@ -9,11 +9,11 @@ try {
     if (message.type() === 'error') consoleErrors.push(message.text());
   });
 
-  await page.goto('https://platform.saasforge.test/', {
+  await page.goto('https://platform.saas.forge.test/', {
     waitUntil: 'domcontentloaded',
   });
   const result = await page.evaluate(async () => {
-    const response = await fetch('https://api.saasforge.test/api/v1/auth/refresh', {
+    const response = await fetch('https://api.saas.forge.test/api/v1/auth/refresh', {
       body: JSON.stringify({ sessionSlot: 'PLATFORM' }),
       credentials: 'include',
       headers: {

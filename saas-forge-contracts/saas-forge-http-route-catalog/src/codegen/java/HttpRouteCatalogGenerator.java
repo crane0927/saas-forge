@@ -288,7 +288,7 @@ public final class HttpRouteCatalogGenerator {
         openApi.getPaths().forEach((path, pathItem) -> pathItem.readOperationsMap().forEach((method, operation) -> {
             String operationId = operation.getOperationId();
             Object ownerExtension = operation.getExtensions() == null
-                    ? null : operation.getExtensions().get("x-saasforge-service");
+                    ? null : operation.getExtensions().get("x-saas.forge-service");
             String serviceId = ownerExtension instanceof String value ? value : null;
             require(operationId != null && operationId.matches("[A-Za-z][A-Za-z0-9]*"),
                     method + " " + path + " 缺少合法 operationId");

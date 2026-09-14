@@ -41,7 +41,7 @@ mvn -q -pl gateway,services/iam-service,services/tenant-access-service -am verif
 | IAM | 127.0.0.1 | 8081 | 9091 |
 | Tenant Access | 127.0.0.1 | 8082 | 9092 |
 
-通过真实 Chrome `https://console.saasforge.test/` 使用既有合法身份登录，进入“Tenant 工作台”；再次刷新页面后会话恢复成功。请求沿既有 Console/Gateway 入口执行，没有直接注入 Cookie、Origin 或 Bearer Token。普通登录/刷新覆盖 IAM 到 Tenant Access 的 Accessible Membership 查询；该查询不要求 Membership Validation 的服务 Token，不能单凭登录/刷新推断反向 JWKS 已调用。受保护双向路径另行通过下述正式 Runtime 操作验证。
+通过真实 Chrome `https://console.saas.forge.test/` 使用既有合法身份登录，进入“Tenant 工作台”；再次刷新页面后会话恢复成功。请求沿既有 Console/Gateway 入口执行，没有直接注入 Cookie、Origin 或 Bearer Token。普通登录/刷新覆盖 IAM 到 Tenant Access 的 Accessible Membership 查询；该查询不要求 Membership Validation 的服务 Token，不能单凭登录/刷新推断反向 JWKS 已调用。受保护双向路径另行通过下述正式 Runtime 操作验证。
 
 将 Tenant Access 个人配置的 HTTP/gRPC 端口临时改为 8182/9192，经开发者在 IDEA 重启后，Nacos 返回新端口及健康状态；IAM 与 Gateway 配置未改，真实 Tenant Console 刷新仍恢复到工作台。
 

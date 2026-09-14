@@ -1014,7 +1014,7 @@ describe.each(['zh-CN', 'en-US'])('createAuthenticationRuntime %s', (locale) => 
         Promise.resolve(
           new Response(
             JSON.stringify({
-              type: 'urn:saasforge:problem:future-login-rule',
+              type: 'urn:saas.forge:problem:future-login-rule',
               title: 'must not escape',
               status: 409,
               code: 'FUTURE_LOGIN_RULE',
@@ -2119,7 +2119,7 @@ describe.each(['zh-CN', 'en-US'])('createAuthenticationRuntime %s', (locale) => 
 function problemResponse(status: number, code: string, retryAfter?: string): Response {
   return new Response(
     JSON.stringify({
-      type: `urn:saasforge:problem:${code.toLowerCase().replaceAll('_', '-')}`,
+      type: `urn:saas.forge:problem:${code.toLowerCase().replaceAll('_', '-')}`,
       title: 'not exposed',
       status,
       code,

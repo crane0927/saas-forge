@@ -1,0 +1,58 @@
+package io.saas.forge.iam.api;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+import io.saas.forge.iam.application.authentication.ContextSelectionSessionInvalidException;
+import io.saas.forge.iam.application.authentication.PasswordChangeSessionInvalidException;
+import io.saas.forge.iam.application.authentication.RefreshContextChangedException;
+import io.saas.forge.iam.application.authentication.RefreshSessionInvalidException;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.bind.MissingRequestCookieException;
+
+class AuthenticationExceptionHandlerTest {
+    private final AuthenticationExceptionHandler handler = new AuthenticationExceptionHandler();
+
+    @Test
+    void mapsMissingRefreshCookieByAuthenticationFlow() throws Exception {
+        assertMissingCookieCode("/api/v1/auth/password-changes", PasswordChangeSessionInvalidException.CODE);
+        assertMissingCookieCode("/api/v1/auth/refresh", RefreshSessionInvalidException.CODE);
+        assertMissingCookieCode("/api/v1/auth/contexts", ContextSelectionSessionInvalidException.CODE);
+    }
+
+    @Test
+    void rethrowsMissingCookiesItDoesNotOwn() {
+        MissingRequestCookieException exception = new MissingRequestCookieException("other", null);
+        assertThrows(MissingRequestCookieException.class,
+                () -> handler.missingRefreshCookie(exception, request("/api/v1/auth/refresh")));
+    }
+
+    @Test
+    void keepsRefreshCookieWhenLatestFamilyContextMustBeRetried() {
+        var response = handler.refreshContextChanged(
+                new RefreshContextChangedException(), request("/api/v1/auth/refresh"));
+
+        assertEquals(HttpStatus.CONFLICT, response.getStatusCode());
+        assertEquals(RefreshContextChangedException.CODE, response.getBody().code());
+        assertNull(response.getHeaders().getFirst(HttpHeaders.SET_COOKIE));
+    }
+
+    private void assertMissingCookieCode(String uri, String code) throws Exception {
+        MissingRequestCookieException exception = new MissingRequestCookieException("__Host-sf_platform_refresh", null);
+        MockHttpServletRequest request = request(uri);
+        request.setAttribute(AuthenticationController.SESSION_SLOT_ATTRIBUTE, "PLATFORM");
+        var response = handler.missingRefreshCookie(exception, request);
+        assertEquals(code, response.getBody().code());
+        assertEquals(32, response.getBody().traceId().length());
+    }
+
+    private static MockHttpServletRequest request(String uri) {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI(uri);
+        return request;
+    }
+}

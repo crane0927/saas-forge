@@ -78,7 +78,7 @@ Provider 经 Spring 事务代理使用 `NOT_SUPPORTED`，挂起调用方事务�
 
 ## 最新关闭条件核对
 
-开发者确认 IAM 已在代码调整后重启，且 Platform 登录正常。只读检查确认 Gateway `127.0.0.1:8080` 与 IAM `127.0.0.1:8081` 均健康注册，受信 HTTPS JWKS 返回 200。在开发者重新登录后，通过 Chrome 刷新 `https://platform.saasforge.test/`，页面经过启动阶段重新显示 Platform 总览、认证会话说明和退出登录按钮，未跳回登录页。本次确认 Platform 登录与刷新恢复通过，替代此前旧会话未恢复的待验证状态。
+开发者确认 IAM 已在代码调整后重启，且 Platform 登录正常。只读检查确认 Gateway `127.0.0.1:8080` 与 IAM `127.0.0.1:8081` 均健康注册，受信 HTTPS JWKS 返回 200。在开发者重新登录后，通过 Chrome 刷新 `https://platform.saas.forge.test/`，页面经过启动阶段重新显示 Platform 总览、认证会话说明和退出登录按钮，未跳回登录页。本次确认 Platform 登录与刷新恢复通过，替代此前旧会话未恢复的待验证状态。
 
 按照 GitHub Issue #163 当前清单逐项核对：
 

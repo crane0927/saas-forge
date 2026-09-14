@@ -6,9 +6,9 @@ import { createConnection } from 'node:net';
 import { isAbsolute } from 'node:path';
 import { chromium } from 'playwright';
 
-const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saasforge.test';
+const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saas.forge.test';
 // 对照实验仅允许已批准的两个根域；不能把验收代理开放给任意 Host。
-if (!['saasforge.test', 'saasforge.example.com'].includes(rootDomain)) {
+if (!['saas.forge.test', 'saas.forge.example.com'].includes(rootDomain)) {
   throw new Error('unsupported acceptance root domain');
 }
 

@@ -1,14 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://saasforge.io/contracts/events/plan-activated.v1.schema.json",
+  "$id": "https://saas.forge.io/contracts/events/plan-activated.v1.schema.json",
   "title": "Plan Activated v1",
   "allOf": [
     { "$ref": "cloudevents-envelope.v1.schema.json" },
     {
       "type": "object",
       "properties": {
-        "type": { "const": "com.saasforge.plan.activated.v1" },
-        "source": { "const": "urn:saasforge:entitlement-service" },
+        "type": { "const": "com.saas.forge.plan.activated.v1" },
+        "source": { "const": "urn:saas.forge:entitlement-service" },
         "data": {
           "type": "object",
           "additionalProperties": false,

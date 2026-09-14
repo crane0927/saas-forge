@@ -128,8 +128,8 @@ for (const status of [403, 503])
               {
                 type:
                   status === 403
-                    ? 'urn:saasforge:problem:platform-admin-required'
-                    : 'urn:saasforge:problem:upstream-unavailable',
+                    ? 'urn:saas.forge:problem:platform-admin-required'
+                    : 'urn:saas.forge:problem:upstream-unavailable',
                 detail: 'Read unavailable',
                 traceId: '0123456789abcdef0123456789abcdef',
                 title: 'Unavailable',

@@ -30,7 +30,7 @@ async function observe(context) {
   await cdp.send('Network.enable');
   cdp.on('Network.requestWillBeSent', ({ requestId, request }) => {
     const url = new URL(request.url);
-    if (url.hostname === 'remote.saasforge.test') {
+    if (url.hostname === 'remote.saas.forge.test') {
       Object.assign(record(requestId), {
         path: url.pathname,
         origin: url.origin,
@@ -83,7 +83,7 @@ try {
     {
       name: 'sf_static_probe',
       value: 'non-secret',
-      domain: 'remote.saasforge.test',
+      domain: 'remote.saas.forge.test',
       path: '/',
       secure: true,
       sameSite: 'Strict',
@@ -94,20 +94,20 @@ try {
   evidence.stage = 'tenant-rendering';
   await verifyStaticRemoteRendering(tenant.page);
   assert.deepEqual(tenant.errors, []);
-  assert.ok(tenant.hmr.includes('wss://console.saasforge.test'));
-  evidence.consoles.push({ host: 'console.saasforge.test', hmr: true, errors: 0 });
+  assert.ok(tenant.hmr.includes('wss://console.saas.forge.test'));
+  evidence.consoles.push({ host: 'console.saas.forge.test', hmr: true, errors: 0 });
 
   evidence.stage = 'versions-and-404';
   const versions = await tenant.page.evaluate(async () => {
     const bodies = [];
     for (const version of ['v1', 'v2']) {
-      const url = `https://remote.saasforge.test/static-acceptance/${version}/remote.js`;
+      const url = `https://remote.saas.forge.test/static-acceptance/${version}/remote.js`;
       const first = await fetch(url, { credentials: 'omit', cache: 'no-store' });
       const second = await fetch(url, { credentials: 'omit', cache: 'no-store' });
       const text = await first.text();
       bodies.push({ status: first.status, stable: text === (await second.text()), text });
     }
-    const missing = await fetch('https://remote.saasforge.test/static-acceptance/v1/missing.js', {
+    const missing = await fetch('https://remote.saas.forge.test/static-acceptance/v1/missing.js', {
       credentials: 'omit',
     });
     return {
@@ -128,18 +128,18 @@ try {
 
   evidence.stage = 'platform-hmr';
   const platform = await observe(context);
-  await platform.page.goto('https://platform.saasforge.test/');
+  await platform.page.goto('https://platform.saas.forge.test/');
   await platform.page.waitForFunction(
     () => globalThis.document.querySelector('#root')?.textContent.length > 0,
   );
   await platform.page.waitForTimeout(500);
-  assert.ok(platform.hmr.includes('wss://platform.saasforge.test'));
+  assert.ok(platform.hmr.includes('wss://platform.saas.forge.test'));
   assert.deepEqual(platform.errors, []);
-  evidence.consoles.push({ host: 'platform.saasforge.test', hmr: true, errors: 0 });
+  evidence.consoles.push({ host: 'platform.saas.forge.test', hmr: true, errors: 0 });
 
   evidence.stage = 'api-tls';
   const api = await context.newPage();
-  const apiResponse = await api.goto('https://api.saasforge.test/.well-known/jwks.json');
+  const apiResponse = await api.goto('https://api.saas.forge.test/.well-known/jwks.json');
   assert.equal(apiResponse.status(), 200);
   evidence.api = { path: '/.well-known/jwks.json', status: 200 };
   await api.close();
@@ -157,7 +157,7 @@ try {
   ]) {
     const denied = await probe.page.evaluate(async (name) => {
       try {
-        await fetch(`https://remote.saasforge.test/static-acceptance/v1/remote.js?probe=${name}`, {
+        await fetch(`https://remote.saas.forge.test/static-acceptance/v1/remote.js?probe=${name}`, {
           credentials: 'omit',
           cache: 'no-store',
         });
@@ -200,7 +200,7 @@ try {
           (item) =>
             item.path === `/static-acceptance/${version}/${file}` &&
             item.status === 200 &&
-            item.allowOrigin === 'https://console.saasforge.test',
+            item.allowOrigin === 'https://console.saas.forge.test',
         ),
       );
     }

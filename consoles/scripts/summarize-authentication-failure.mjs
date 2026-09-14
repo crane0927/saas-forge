@@ -10,7 +10,7 @@ for (const line of stripVTControlCharacters(log).split('\n')) {
     try {
       const observations = JSON.parse(line);
       for (const [hostname, value] of Object.entries(observations)) {
-        if (!/^(?:platform|console|api|remote)\.saasforge\.(?:test|example\.com)$/.test(hostname))
+        if (!/^(?:platform|console|api|remote)\.saas\.forge\.(?:test|example\.com)$/.test(hostname))
           continue;
         const allowed = Number.isInteger(value) && value >= 100 && value <= 599;
         const networkCodes = [

@@ -18,7 +18,7 @@ Platform 与 Tenant Console 共用 `LoginLayout`：居中卡片、平台品牌�
 - 新增 5 项真实组件浏览器夹具：两个入口的浅色/深色、精确错误分支、密码图标键盘切换、提交后密码清理、320px 无横向溢出、axe 对比度与英文语言切换保留输入。
 - Chromium 消费者测试共 19 项（含新旧截图）；截图人工检查了默认登录、会话冲突、Tenant 长错误、英文角标和窄屏布局。
 - 桌面 Chrome 消费者检查 17 项通过，2 项截图矩阵按 `SF_VISUAL_SNAPSHOTS=false` 跳过；Chromium 普通截图比较复验 19 项通过。
-- 正式 `https://console.saasforge.test/login` 已在用户启动的环境中打开，深色卡片、Logo、入口角标、语言控件与密码图标显示正确。
+- 正式 `https://console.saas.forge.test/login` 已在用户启动的环境中打开，深色卡片、Logo、入口角标、语言控件与密码图标显示正确。
 
 ## 边界
 

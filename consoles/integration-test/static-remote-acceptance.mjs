@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 
 /** 真实 Tenant 入口断言，开发与后续 Fresh Compose 可复用；不代替认证验收。 */
-const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saasforge.test';
+const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saas.forge.test';
 
 export async function verifyStaticRemoteRendering(page) {
   const rendering = [];

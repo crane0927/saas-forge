@@ -64,7 +64,7 @@ test('matches exact Password Setup pathnames with queries while keeping other Te
 test('Password Setup submission preserves browser request and upstream error semantics', async (t) => {
   const fixture = await edgeFixture(t);
   const headers = {
-    origin: 'https://console.saasforge.test',
+    origin: 'https://console.saas.forge.test',
     cookie: 'edge-fixture=synthetic',
     'sec-fetch-site': 'same-origin',
     'sec-fetch-mode': 'cors',
@@ -89,7 +89,7 @@ test('Password Setup submission preserves browser request and upstream error sem
   assert.equal(received.method, 'POST');
   assert.equal(received.path, '/api/v1/auth/password-setups');
   assert.equal(received.body, body);
-  for (const [name, value] of Object.entries({ host: 'console.saasforge.test', ...headers })) {
+  for (const [name, value] of Object.entries({ host: 'console.saas.forge.test', ...headers })) {
     assert.equal(received.headers[name], value, name);
   }
 });
@@ -111,7 +111,7 @@ test('every formal Tenant path and API Host follows the active Gateway file with
     assert.equal(
       (
         await fixture.request('/api/v1/auth/password-setups', {
-          host: 'api.saasforge.test',
+          host: 'api.saas.forge.test',
           method: 'POST',
         })
       ).headers['x-fixture-upstream'],
@@ -125,10 +125,10 @@ test('a missing active Gateway file fails closed for all formal Tenant paths and
   const fixture = await edgeFixture(t, { dynamic: true });
   await rm(fixture.targetFile);
   for (const [host, requestPath] of [
-    ['console.saasforge.test', '/password-setup/app.js'],
-    ['console.saasforge.test', '/password-setup/styles.css'],
-    ['console.saasforge.test', '/api/v1/auth/password-setups'],
-    ['api.saasforge.test', '/api/v1/auth/password-setups'],
+    ['console.saas.forge.test', '/password-setup/app.js'],
+    ['console.saas.forge.test', '/password-setup/styles.css'],
+    ['console.saas.forge.test', '/api/v1/auth/password-setups'],
+    ['api.saas.forge.test', '/api/v1/auth/password-setups'],
   ]) {
     const response = await fixture.request(requestPath, {
       host,
@@ -147,8 +147,8 @@ test('a missing active Gateway file fails closed for all formal Tenant paths and
 test('rejects unapproved Hosts before resolving or forwarding any Password Setup request', async (t) => {
   const fixture = await edgeFixture(t, { dynamic: true });
   for (const host of [
-    'unknown.saasforge.test',
-    'console.saasforge.test:443',
+    'unknown.saas.forge.test',
+    'console.saas.forge.test:443',
     'constructor',
     '__proto__',
   ]) {
@@ -176,7 +176,7 @@ test('Password Setup upgrades follow Gateway and fail closed while Tenant HMR ke
     else await writeFile(fixture.targetFile, value);
     assert.equal((await fixture.upgrade('/password-setup/app.js')).status, 502);
     assert.equal((await fixture.upgrade('/')).status, 101);
-    assert.equal((await fixture.upgrade('/', 'unknown.saasforge.test')).status, 421);
+    assert.equal((await fixture.upgrade('/', 'unknown.saas.forge.test')).status, 421);
   }
 });
 
@@ -206,7 +206,7 @@ test('invalid active targets fail closed and recover after a valid target is res
     assert.equal(
       (
         await fixture.request('/api/v1/auth/password-setups', {
-          host: 'api.saasforge.test',
+          host: 'api.saas.forge.test',
           method: 'POST',
         })
       ).status,
@@ -214,7 +214,7 @@ test('invalid active targets fail closed and recover after a valid target is res
     );
     assert.equal((await fixture.request('/')).body, 'Tenant SPA');
     assert.equal(
-      (await fixture.request('/password-setup', { host: 'unknown.saasforge.test' })).status,
+      (await fixture.request('/password-setup', { host: 'unknown.saas.forge.test' })).status,
       421,
     );
   }
@@ -243,7 +243,7 @@ test('unreachable Gateway targets return 502 without falling back to a healthy T
       assert.deepEqual(JSON.parse(response.body), { status: 502, code: 'UPSTREAM_UNAVAILABLE' });
     }
     assert.equal(
-      (await fixture.request('/api/v1/auth/password-setups', { host: 'api.saasforge.test' }))
+      (await fixture.request('/api/v1/auth/password-setups', { host: 'api.saas.forge.test' }))
         .status,
       502,
     );
@@ -341,7 +341,7 @@ async function edgeFixture(t, { dynamic = false } = {}) {
     createEdgeServer({
       certificate: await readFile(paths.serverCertificate),
       key: await readFile(paths.serverKey),
-      targets: { 'console.saasforge.test': tenant, 'api.saasforge.test': gateway },
+      targets: { 'console.saas.forge.test': tenant, 'api.saas.forge.test': gateway },
       apiTargetFile: dynamic ? targetFile : undefined,
     }),
   );
@@ -351,12 +351,12 @@ async function edgeFixture(t, { dynamic = false } = {}) {
     targetFile,
     stopGateways: () =>
       Promise.all(gatewayServers.map((server) => new Promise((resolve) => server.close(resolve)))),
-    upgrade(requestPath, host = 'console.saasforge.test') {
+    upgrade(requestPath, host = 'console.saas.forge.test') {
       return new Promise((resolve, reject) => {
         const outgoing = request({
           ...edge,
           ca,
-          servername: 'console.saasforge.test',
+          servername: 'console.saas.forge.test',
           path: requestPath,
           headers: { host, connection: 'Upgrade', upgrade: 'websocket' },
         });
@@ -385,14 +385,14 @@ async function edgeFixture(t, { dynamic = false } = {}) {
     },
     request(
       requestPath,
-      { host = 'console.saasforge.test', method = 'GET', headers = {}, body } = {},
+      { host = 'console.saas.forge.test', method = 'GET', headers = {}, body } = {},
     ) {
       return new Promise((resolve, reject) => {
         const outgoing = request(
           {
             ...edge,
             ca,
-            servername: 'console.saasforge.test',
+            servername: 'console.saas.forge.test',
             path: requestPath,
             method,
             headers: { host, ...headers },

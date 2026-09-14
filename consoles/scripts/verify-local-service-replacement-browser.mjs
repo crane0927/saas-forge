@@ -44,7 +44,7 @@ try {
     }
   });
 
-  await page.goto('https://platform.saasforge.test/', {
+  await page.goto('https://platform.saas.forge.test/', {
     waitUntil: 'domcontentloaded',
   });
   await page.getByRole('heading', { name: '登录 Platform Console' }).waitFor();
@@ -99,7 +99,7 @@ try {
         'X-SF-CSRF': '1',
       };
       if (target === 'tenant-access-service') {
-        const response = await fetch('https://api.saasforge.test/api/v1/platform/tenants', {
+        const response = await fetch('https://api.saas.forge.test/api/v1/platform/tenants', {
           body: JSON.stringify({
             displayName: `Local replacement ${createUuidV7(Date.now())}`,
           }),
@@ -114,12 +114,15 @@ try {
           tenantStatus: body?.status,
         };
       }
-      const response = await fetch('https://api.saasforge.test/api/v1/platform/quota-definitions', {
-        body: JSON.stringify({ code: 'max_users' }),
-        credentials: 'include',
-        headers,
-        method: 'POST',
-      });
+      const response = await fetch(
+        'https://api.saas.forge.test/api/v1/platform/quota-definitions',
+        {
+          body: JSON.stringify({ code: 'max_users' }),
+          credentials: 'include',
+          headers,
+          method: 'POST',
+        },
+      );
       const body = await response.json().catch(() => undefined);
       return {
         operationCode: body?.code,

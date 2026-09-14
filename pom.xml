@@ -64,8 +64,8 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <project.build.outputTimestamp>1980-01-01T00:00:02Z</project.build.outputTimestamp>
         <maven.deploy.skip>false</maven.deploy.skip>
-        <saasforge.public-api-boundary.skip>true</saasforge.public-api-boundary.skip>
-        <saasforge.frontend.skip>false</saasforge.frontend.skip>
+        <saas.forge.public-api-boundary.skip>true</saas.forge.public-api-boundary.skip>
+        <saas.forge.frontend.skip>false</saas.forge.frontend.skip>
         <jacoco.line.minimum>0.80</jacoco.line.minimum>
         <jacoco.branch.minimum>0.70</jacoco.branch.minimum>
         <jacoco.critical.line.minimum>0.90</jacoco.critical.line.minimum>
@@ -336,7 +336,7 @@
                         <id>enforce-public-api-dependencies</id>
                         <goals><goal>enforce</goal></goals>
                         <configuration>
-                            <skip>${saasforge.public-api-boundary.skip}</skip>
+                            <skip>${saas.forge.public-api-boundary.skip}</skip>
                             <rules>
                                 <bannedDependencies>
                                     <excludes>
@@ -436,7 +436,7 @@
         <profile>
             <id>backend-local</id>
             <properties>
-                <saasforge.frontend.skip>true</saasforge.frontend.skip>
+                <saas.forge.frontend.skip>true</saas.forge.frontend.skip>
             </properties>
         </profile>
         <profile>

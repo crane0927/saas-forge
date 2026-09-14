@@ -26,7 +26,7 @@ Gateway 的凭据分类由正式 OpenAPI 操作的 `security` 声明生成或校
 - OpenAPI 3.1 是正式且受版本控制的 REST 契约；Swagger UI 只可作为查看和调试界面。
 - 契约采用 spec-first：先审查 OpenAPI，再生成服务端接口骨架、Java REST Client 与前端 API Client；实现不得反向修改契约。
 - 平台自有公共 REST API 只使用 URI 主版本，例如 `/api/v1/...`，不同时使用自定义版本请求头或媒体类型参数。`/oauth2/token`、`/.well-known/jwks.json` 等受标准路径约束的端点保持既有非版本路径。删除、重命名或改变字段类型/语义，收紧既有有效输入，或新增必填字段均为破坏性变更，必须进入新的主版本；同一主版本只允许新增可选字段、枚举值或可选能力等向后兼容变更。唯一新增的受控例外是 [ADR 0038](adr/0038-browser-sessions-use-intent-bound-slots.md) 列明的现有浏览器认证 operation、Cookie/security 语义与必填 `sessionSlot` 迁移；该例外不改变其他 v1 契约的无豁免规则。
-- 内部同步接口使用版本化 Protobuf；Kafka 事件使用 CloudEvents JSON 与版本化类型，例如 `com.saasforge.tenant.suspended.v1`。
+- 内部同步接口使用版本化 Protobuf；Kafka 事件使用 CloudEvents JSON 与版本化类型，例如 `com.saas.forge.tenant.suspended.v1`。
 
 ## v1 资源边界
 
@@ -100,7 +100,7 @@ IAM 的 JWKS 响应以 `Cache-Control: max-age=300` 发布。验证方遇到未�
 - 成功响应不使用 `code`／`message`／`data` 等通用外层包装。`200` 直接返回资源表示或操作结果；`201` 直接返回新资源并带 `Location`；`202` 直接返回 Job 资源并带 `Location`；`204` 不得携带响应体。`Location` 必须是目标资源的规范 API 绝对路径引用，不含主机、片段或查询参数，且与后续 `GET` 路径完全一致。
 - 集合成功响应直接返回 `{ items, nextCursor, hasMore }`。三个字段始终存在，`items` 始终为数组；`hasMore = true` 时 `nextCursor` 必为非空字符串，`hasMore = false` 时 `nextCursor` 必为 `null`。
 - 异步工作统一称为 Job，以避免与官方 Example 的业务 `Task` 混淆。Job 的状态只能为 `QUEUED`、`RUNNING`、`SUCCEEDED`、`FAILED`；前两者为非终态，后两者为终态。Job 必含 `id`、`status`、`createdAt`、`startedAt`、`completedAt`、`failure`：`createdAt` 非空，`startedAt` 仅在 `QUEUED` 为 `null`，`completedAt` 仅在终态非空，`failure` 仅在 `FAILED` 为非空 Problem Details。轮询 `GET` Job 始终按资源读取返回 `200`，即使 Job 已失败；具体 Job 自行定义其成功结果字段，不使用无类型的通用 `result` 对象。
-- 失败响应采用 `application/problem+json`，并始终包含 `type`、`title`、`status`、`code`、`detail`、`traceId`。`type` 由 `code` 唯一派生为 `urn:saasforge:problem:{lower-kebab-case-code}`；`status` 必须等于 HTTP 响应状态。`title`、`detail` 及字段校验项的 `detail` 固定使用英文，只供人读；客户端只按全大写 `UPPER_SNAKE_CASE` 的 `code` 分支，不得解析这些文本。`traceId` 是非全零的 32 位小写十六进制 W3C Trace ID，不是 UUID。
+- 失败响应采用 `application/problem+json`，并始终包含 `type`、`title`、`status`、`code`、`detail`、`traceId`。`type` 由 `code` 唯一派生为 `urn:saas.forge:problem:{lower-kebab-case-code}`；`status` 必须等于 HTTP 响应状态。`title`、`detail` 及字段校验项的 `detail` 固定使用英文，只供人读；客户端只按全大写 `UPPER_SNAKE_CASE` 的 `code` 分支，不得解析这些文本。`traceId` 是非全零的 32 位小写十六进制 W3C Trace ID，不是 UUID。
 - 请求格式或字段校验失败使用 `400` Problem Details，并额外包含非空 `errors` 数组；每项都有指向无效输入的 JSON Pointer `pointer`、稳定 `code` 与英文 `detail`，不得回显输入值或敏感数据。其他 Problem Details 不包含 `errors`，也不返回可能泄露查询参数的 `instance`。
 - [OpenAPI 公共组件](../saas-forge-contracts/saas-forge-openapi-contracts/common.yaml)提供可复用 Schema、Response、Header 以及分页、Job、业务拒绝与字段校验的正反例。资源契约必须复用这些组件，并可通过 `allOf` 收窄 `Page.items` 或为具体 Job 添加成功结果字段。
 

@@ -27,9 +27,9 @@
 
 只消费：
 
-- `com.saasforge.iam.session.started.v1`；
-- `com.saasforge.tenant.created.v1`；
-- `com.saasforge.iam.tenant-context-switched.v1`。
+- `com.saas.forge.iam.session.started.v1`；
+- `com.saas.forge.tenant.created.v1`；
+- `com.saas.forge.iam.tenant-context-switched.v1`。
 
 明确排除：
 
@@ -52,9 +52,9 @@
 
 | 属性 | 值 |
 |---|---|
-| type | `com.saasforge.iam.session.started.v1` |
-| producer/source | `iam-service` / `urn:saasforge:iam-service` |
-| topic | `saasforge.<environment>.iam-service.events` |
+| type | `com.saas.forge.iam.session.started.v1` |
+| producer/source | `iam-service` / `urn:saas.forge:iam-service` |
+| topic | `saas.forge.<environment>.iam-service.events` |
 | ordering key | `identityId` |
 | consumer | `audit-service.iam-session-events` |
 | data | `familyId`、`identityId`、`purpose`、`contextType`、`result`、`occurredAt` |
@@ -65,9 +65,9 @@
 
 | 属性 | 值 |
 |---|---|
-| type | `com.saasforge.tenant.created.v1` |
-| producer/source | `tenant-access-service` / `urn:saasforge:tenant-access-service` |
-| topic | `saasforge.<environment>.tenant-access-service.events` |
+| type | `com.saas.forge.tenant.created.v1` |
+| producer/source | `tenant-access-service` / `urn:saas.forge:tenant-access-service` |
+| topic | `saas.forge.<environment>.tenant-access-service.events` |
 | ordering key | `tenantId` |
 | consumer | `audit-service.tenant-events` |
 | data | `tenantId`、`status=PENDING`、`actorIdentityId` |
@@ -84,9 +84,9 @@ saas-forge-contracts/saas-forge-event-contracts/iam-tenant-context-switched.v1.s
 
 | 属性 | 值 |
 |---|---|
-| type | `com.saasforge.iam.tenant-context-switched.v1` |
-| producer/source | `iam-service` / `urn:saasforge:iam-service` |
-| topic | `saasforge.<environment>.iam-service.events` |
+| type | `com.saas.forge.iam.tenant-context-switched.v1` |
+| producer/source | `iam-service` / `urn:saas.forge:iam-service` |
+| topic | `saas.forge.<environment>.iam-service.events` |
 | ordering key | `identityId` |
 | consumer | `audit-service.iam-session-events` |
 | subject | `familyId` |
@@ -283,7 +283,7 @@ Envelope、Schema或安全白名单失败时：
 Kafka bootstrap地址继续通过部署环境变量提供。Audit专属 Nacos资源保存：
 
 ```yaml
-saasforge:
+saas.forge:
   audit:
     configuration-revision: "<incremented>"
     consumer:

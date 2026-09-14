@@ -587,7 +587,7 @@ test("Tenant validates all states and rejects Platform, reused and foreign PIDs"
       throw new Error("Tenant must not access legacy Platform PID");
     };
     system.isHttpsReady = async (host) => {
-      assert.equal(host, "console.saasforge.test");
+      assert.equal(host, "console.saas.forge.test");
       return options.httpsReady ?? false;
     };
     const lifecycle = createFrontendLifecycle({

@@ -50,8 +50,8 @@ spring:
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD}
 browser:
-  rootDomain: ${BROWSER_ROOT_DOMAIN:saasforge.test}
-saasforge:
+  rootDomain: ${BROWSER_ROOT_DOMAIN:saas.forge.test}
+saas.forge:
   environment: ${SAASFORGE_ENVIRONMENT:dev}
   iam:
     service-client-id-file: ${SAASFORGE_SERVICE_CLIENT_ID_FILE:?SAASFORGE_SERVICE_CLIENT_ID_FILE is required}
@@ -68,7 +68,7 @@ saasforge:
         timeout: ${SMTP_TIMEOUT:PT5S}
 mybatis:
   mapper-locations: classpath*:mapper/**/*Mapper.xml
-  type-handlers-package: io.saasforge.iam.infrastructure.persistence.type
+  type-handlers-package: io.saas.forge.iam.infrastructure.persistence.type
 server:
   address: ${IAM_BIND_ADDRESS:127.0.0.1}
   port: ${IAM_HTTP_PORT:8081}

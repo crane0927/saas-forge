@@ -26,8 +26,8 @@ spring:
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD}
 browser:
-  rootDomain: ${BROWSER_ROOT_DOMAIN:saasforge.test}
-saasforge:
+  rootDomain: ${BROWSER_ROOT_DOMAIN:saas.forge.test}
+saas.forge:
   environment: ${SAASFORGE_ENVIRONMENT:dev}
 server:
   address: ${GATEWAY_BIND_ADDRESS:0.0.0.0}

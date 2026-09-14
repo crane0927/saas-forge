@@ -39,11 +39,11 @@ compose() {
 snapshot_images() {
   local image
   for image in \
-    saasforge/gateway:local \
-    saasforge/iam-service:local \
-    saasforge/tenant-access-service:local \
-    saasforge/entitlement-service:local \
-    saasforge/audit-service:local; do
+    saas.forge/gateway:local \
+    saas.forge/iam-service:local \
+    saas.forge/tenant-access-service:local \
+    saas.forge/entitlement-service:local \
+    saas.forge/audit-service:local; do
     printf '%s ' "$image"
     docker image inspect --format '{{.Id}}' "$image"
   done

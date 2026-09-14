@@ -10,7 +10,7 @@
 | JWKS 缓存、合并、限频、限时 | IamJwksHttpTest 使用真实 HTTP JWKS、真实 RSA 签名、可控时钟和并发同步；验证五分钟到期、默认十秒刷新间隔、默认两秒等待、随机 kid、并发合并、已有公钥请求不阻塞、失败不续期及恢复 |
 | Redis fail-closed | RedisAuthenticationHttpIT 使用 Redis 8.8.1；验证 jti/kid、Membership/Tenant Fence、client_id、Ready 缺失、MGET 被 ACL 拒绝及恢复；拒绝时不能进入业务处理 |
 | 只读上下文 | TenantContextHttpTest 与既有 HTTP/公开 API 测试验证平台、租户、服务上下文互斥、不可写、异常清理、连续请求和子线程无串用；保留头、Tenant query/JSON 输入被拒绝，正常 JSON 可重放 |
-| 认证前输入有界 | USER JSON 默认最多 1 MiB，`saasforge.authentication.max-json-bytes` 可受控调整；超过上限返回 413，包括没有凭证的请求 |
+| 认证前输入有界 | USER JSON 默认最多 1 MiB，`saas.forge.authentication.max-json-bytes` 可受控调整；超过上限返回 413，包括没有凭证的请求 |
 | 缺配置与依赖恢复 | 自动配置测试验证缺少必需配置启动失败；HealthEndpoint readiness 必含认证检查，依赖故障为 DOWN，liveness 不加入认证依赖；可控 HTTP 测试验证 IAM/Redis 恢复 |
 | 真实机制链路 | `verify-platform-mechanism-e2e.sh` 创建独立 Compose 项目、卷和临时密钥；真实 IAM、Redis、Nacos、Gateway、两个仅用默认 Starter 的接收端；覆盖 Gateway 与直连、用户/服务、Scope、Ready、客户端吊销、发现与故障切换 |
 | 真实 IAM 换钥 | 同一专项中发布两个公钥，再由真实 IAM 使用新私钥签发；新旧凭证均验证成功，旧 kid 撤销后旧凭证失败、新凭证成功；浏览器会话通过正式 refresh 换取新用户凭证 |

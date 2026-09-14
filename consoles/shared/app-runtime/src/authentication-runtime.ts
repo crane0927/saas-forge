@@ -2185,7 +2185,7 @@ async function normalizeProblemResponse(response: Response): Promise<Authenticat
     value.status !== response.status ||
     typeof value.status !== 'number' ||
     !isProblemCode(value.code) ||
-    value.type !== `urn:saasforge:problem:${value.code.toLowerCase().replaceAll('_', '-')}` ||
+    value.type !== `urn:saas.forge:problem:${value.code.toLowerCase().replaceAll('_', '-')}` ||
     typeof value.detail !== 'string' ||
     typeof value.traceId !== 'string' ||
     !TRACE_ID.test(value.traceId)

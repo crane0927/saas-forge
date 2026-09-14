@@ -49,10 +49,10 @@ test('reports only controlled TLS hosts and fixed network observations', async (
   await writeFile(
     log,
     JSON.stringify({
-      'platform.saasforge.example.com': 200,
-      'console.saasforge.example.com': 'ERR_CONNECTION_RESET',
-      'api.saasforge.example.com': 'PRIVATE_PASSWORD',
-      'remote.saasforge.example.com': 404,
+      'platform.saas.forge.example.com': 200,
+      'console.saas.forge.example.com': 'ERR_CONNECTION_RESET',
+      'api.saas.forge.example.com': 'PRIVATE_PASSWORD',
+      'remote.saas.forge.example.com': 404,
       PRIVATE_HOST: 'PRIVATE_BODY',
     }),
   );
@@ -63,7 +63,7 @@ test('reports only controlled TLS hosts and fixed network observations', async (
   assert.equal(stderr, '');
   assert.equal(
     stdout,
-    'TLS: host=platform.saasforge.example.com result=200\nTLS: host=console.saasforge.example.com result=ERR_CONNECTION_RESET\nTLS: host=api.saasforge.example.com result=UNAVAILABLE\nTLS: host=remote.saasforge.example.com result=404\n',
+    'TLS: host=platform.saas.forge.example.com result=200\nTLS: host=console.saas.forge.example.com result=ERR_CONNECTION_RESET\nTLS: host=api.saas.forge.example.com result=UNAVAILABLE\nTLS: host=remote.saas.forge.example.com result=404\n',
   );
 });
 

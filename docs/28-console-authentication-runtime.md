@@ -187,7 +187,7 @@ Tenant Context Switch 是单一不可回滚的客户端转换：
 
 ### 11.2 真实浏览器与 Fresh Compose
 
-- 在 `platform.saasforge.test`、`console.saasforge.test` 与 `api.saasforge.test` 的本地受信 TLS 拓扑同时登录 Platform 与 Tenant，分别刷新、分别登出，证明槽位与内存 Token 不串扰；
+- 在 `platform.saas.forge.test`、`console.saas.forge.test` 与 `api.saas.forge.test` 的本地受信 TLS 拓扑同时登录 Platform 与 Tenant，分别刷新、分别登出，证明槽位与内存 Token 不串扰；
 - 在同 Origin 多标签页制造并发刷新、登出与迟到消息，证明唯一执行者、代次拒绝和 IAM Lease 回退；
 - 验证 Tenant Switch `204 → Refresh`、中间故障恢复与旧 Token 不可回滚；
 - 验证无 Tenant Context 与 Switch 中间态只显示完整 Platform Brand Profile，合法 Tenant Profile 的显示名称、Logo、favicon、标签页标题与 Token 共同生效；任一字段、外部素材引用、素材 `404`、错误 MIME 或解码失败时整份回退，迟到读取不得覆盖新 Profile；

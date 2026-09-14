@@ -1,7 +1,7 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
 
-const DEVELOPMENT_API_ORIGIN = 'https://api.saasforge.test';
+const DEVELOPMENT_API_ORIGIN = 'https://api.saas.forge.test';
 
 function controlledDevelopmentRuntimeConfig(): Plugin {
   return {
@@ -10,7 +10,7 @@ function controlledDevelopmentRuntimeConfig(): Plugin {
     configureServer(server) {
       // 浏览器必须经受信 HTTPS Edge 访问；默认 Local URL 仅供内部转发。
       server.printUrls = () => {
-        server.config.logger.info('  ➜  浏览器入口: https://platform.saasforge.test/');
+        server.config.logger.info('  ➜  浏览器入口: https://platform.saas.forge.test/');
         for (const url of server.resolvedUrls?.local ?? []) {
           server.config.logger.info(`  ➜  内部监听（非浏览器入口）: ${new URL(url).host}`);
         }
@@ -38,10 +38,10 @@ export default defineConfig({
     host: '127.0.0.1',
     port: 5173,
     strictPort: true,
-    allowedHosts: ['platform.saasforge.test'],
+    allowedHosts: ['platform.saas.forge.test'],
     hmr: {
       protocol: 'wss',
-      host: 'platform.saasforge.test',
+      host: 'platform.saas.forge.test',
       clientPort: 443,
     },
   },

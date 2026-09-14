@@ -17,11 +17,11 @@ const passwordSetupPaths = new Set([
 ]);
 
 export function targetForHost(host) {
-  if (host === "platform.saasforge.test")
+  if (host === "platform.saas.forge.test")
     return { hostname: viteHost, port: vitePort };
-  if (host === "console.saasforge.test")
+  if (host === "console.saas.forge.test")
     return { hostname: viteHost, port: 5174 };
-  if (host === "api.saasforge.test") return { hostname: "gateway", port: 8080 };
+  if (host === "api.saas.forge.test") return { hostname: "gateway", port: 8080 };
   return undefined;
 }
 
@@ -69,9 +69,9 @@ export function createEdgeServer({
 
 function defaultTargets() {
   return {
-    "platform.saasforge.test": { hostname: viteHost, port: vitePort },
-    "console.saasforge.test": { hostname: viteHost, port: 5174 },
-    "api.saasforge.test": { hostname: "gateway", port: 8080 },
+    "platform.saas.forge.test": { hostname: viteHost, port: vitePort },
+    "console.saas.forge.test": { hostname: viteHost, port: 5174 },
+    "api.saas.forge.test": { hostname: "gateway", port: 8080 },
   };
 }
 
@@ -91,13 +91,13 @@ async function resolveTarget(host, path, targets, configuredApiTargetFile) {
   if (targetForHost(host) === undefined) return undefined;
   // 只匹配正式路径；查询参数透传，其他 Tenant 页面及 HMR 仍由 Vite 提供。
   if (
-    host === "console.saasforge.test" &&
+    host === "console.saas.forge.test" &&
     passwordSetupPaths.has(path.split("?")[0])
   ) {
-    host = "api.saasforge.test";
+    host = "api.saas.forge.test";
   }
   const target = targets[host];
-  if (host !== "api.saasforge.test" || !configuredApiTargetFile) return target;
+  if (host !== "api.saas.forge.test" || !configuredApiTargetFile) return target;
   let value;
   try {
     value = await readFile(configuredApiTargetFile, "utf8");
@@ -110,18 +110,18 @@ async function resolveTarget(host, path, targets, configuredApiTargetFile) {
 
 async function proxy(incoming, outgoing, targets, configuredApiTargetFile) {
   if (
-    ["platform.saasforge.test", "console.saasforge.test"].includes(
+    ["platform.saas.forge.test", "console.saas.forge.test"].includes(
       incoming.headers.host,
     ) &&
     ["GET", "HEAD"].includes(incoming.method) &&
-    new URL(incoming.url, "https://console.saasforge.test").pathname ===
+    new URL(incoming.url, "https://console.saas.forge.test").pathname ===
       "/favicon.ico"
   ) {
     // 与生产静态服务器一致：Shell 安装品牌前的默认图标探测返回空响应。
     outgoing.writeHead(204, { "Cache-Control": "no-store" }).end();
     return;
   }
-  if (incoming.headers.host === "remote.saasforge.test") {
+  if (incoming.headers.host === "remote.saas.forge.test") {
     await serveRemoteStatic(incoming, outgoing);
     return;
   }
@@ -148,7 +148,7 @@ async function proxy(incoming, outgoing, targets, configuredApiTargetFile) {
       headers: copyOriginalHeaders(incoming.rawHeaders),
     },
     (response) => {
-      observeSecurityProbe(incoming, response, "saasforge.test");
+      observeSecurityProbe(incoming, response, "saas.forge.test");
       outgoing.writeHead(
         response.statusCode ?? 502,
         copyOriginalHeaders(response.rawHeaders),

@@ -56,13 +56,13 @@ The platform home and Tenant workspace currently show authentication status only
 ### Browser access prerequisites
 
 1. Build and separately host `consoles/platform-console/dist` and `consoles/tenant-console-shell/dist`, following the [Console README](../../consoles/README.md). The default Compose stack does not do this.
-2. Resolve `platform.saasforge.test`, `console.saasforge.test`, and `api.saasforge.test` to `127.0.0.1`, with browser-trusted TLS on HTTPS port 443. Route the first two hosts to their frontends and proxy the API host to Gateway. Different HTTP localhost ports cannot replace these entry points.
+2. Resolve `platform.saas.forge.test`, `console.saas.forge.test`, and `api.saas.forge.test` to `127.0.0.1`, with browser-trusted TLS on HTTPS port 443. Route the first two hosts to their frontends and proxy the API host to Gateway. Different HTTP localhost ports cannot replace these entry points.
 3. Replace `/runtime-config.json` in both deployed frontends with the following content. The original build artifact contains an intentionally invalid template; leaving it unchanged keeps the application on the configuration-error screen.
 
    ```json
    {
      "schemaVersion": 1,
-     "apiBaseUrl": "https://api.saasforge.test"
+     "apiBaseUrl": "https://api.saas.forge.test"
    }
    ```
 
@@ -90,7 +90,7 @@ bash scripts/local-development.sh status
 bash scripts/local-development.sh frontend stop all
 ```
 
-`setup` reuses a valid local CA and reissues the leaf only when a controlled Host is missing, expiry is within 24 hours, or chain/key validation fails. The certificate covers `platform.saasforge.test`, `console.saasforge.test`, `api.saasforge.test`, and `remote.saasforge.test`. Existing two-/three-Host installations must rerun setup. Hosts and Keychain changes still require separate explicit interactive authorization; existing configuration is skipped idempotently, and noninteractive system changes are refused.
+`setup` reuses a valid local CA and reissues the leaf only when a controlled Host is missing, expiry is within 24 hours, or chain/key validation fails. The certificate covers `platform.saas.forge.test`, `console.saas.forge.test`, `api.saas.forge.test`, and `remote.saas.forge.test`. Existing two-/three-Host installations must rerun setup. Hosts and Keychain changes still require separate explicit interactive authorization; existing configuration is skipped idempotently, and noninteractive system changes are refused.
 
 Every `frontend` invocation requires `start|status|stop` and `platform|tenant|all`. Platform Vite binds to `127.0.0.1:5173` and Tenant to `127.0.0.1:5174`, with strict ports, their respective controlled Hosts, and HMR over each HTTPS Origin's WSS port 443. Edge reaches both loopback Vite servers through `host.docker.internal`, forwards API traffic to the current Gateway, and preserves browser security headers. Unknown Hosts are rejected. Do not widen Vite listeners to all interfaces to work around Docker Desktop connectivity failures.
 
@@ -152,7 +152,7 @@ Package commands do not generate the API Client; workspace `dev:platform`/`dev:t
 
 1. Before acceptance, save `frontend status all`, top-level `status`, the current project's Edge container identity and running state, and backend container start times. Confirm existing trusted certificates, hosts, dependencies, and ready backends. Do not run setup, bootstrap, backend replace/restore, or password resets in this run.
 2. Cover Platform-only, Tenant-only, all, single-target stop, all stop, and repeated operations, reading aggregate status after each step. A single-target stop must retain Edge while the other Console uses it. Frontend stop does not stop backends, delete containers, Secrets, or volumes, or terminate unknown listeners.
-3. In one browser context, open `https://platform.saasforge.test` and `https://console.saasforge.test` with normal certificate verification. Check page identity, meaningful content, error overlays, console/network, and record actual `/api/*` methods, sanitized paths, and status codes for each Console; the API Origin is `https://api.saasforge.test`. Never record passwords, Cookies, Tokens, or sensitive response bodies.
+3. In one browser context, open `https://platform.saas.forge.test` and `https://console.saas.forge.test` with normal certificate verification. Check page identity, meaningful content, error overlays, console/network, and record actual `/api/*` methods, sanitized paths, and status codes for each Console; the API Origin is `https://api.saas.forge.test`. Never record passwords, Cookies, Tokens, or sensitive response bodies.
 4. Use existing accounts or sessions to log in/restore both slots. Refresh one while the other remains usable; log out of one and verify that the other remains signed in after refresh, then reverse roles. Missing login prerequisites are blockers, not permission to create accounts or reset credentials.
 5. Open the Password Setup document on the Tenant Origin and verify its script/style resources and an actual form submission reaching the current Gateway. Exercise only a failure path that does not change a password; record a blocker if no safe submission is possible, and do not consume a valid Challenge. An error response proves routing only, not successful password setup.
 6. Temporarily change one visible development marker in each Console, observe its controlled WSS Origin connection and HMR update, and restore the files. Verify host listeners bind only to `127.0.0.1` on 5173/5174, reach both from Edge through `host.docker.internal`, and prove direct access via the host LAN address fails. Stop acceptance if Docker Desktop cannot reach loopback Vite; never fall back to `0.0.0.0`.
@@ -184,7 +184,7 @@ bash scripts/local-development.sh restore gateway
 
 Before stopping a container, `replace` verifies the target's fixed ports, completed migration where applicable, Nacos `dev` configuration, constrained Secrets, infrastructure and dependencies, and exactly one healthy instance under the formal service name. It never prints credentials, cookies, or tokens. An occupied port, inconsistent configuration, duplicate Nacos instance, or readiness failure refuses the cutover. Every local JVM reuses the existing containerized infrastructure through loopback Nacos HTTP `8848`, Nacos 3 gRPC `9848`, PostgreSQL `5432`, Redis `6379`, and Kafka `29092`.
 
-For the four Issue #130 targets, only the selected application container is stopped: no volumes are removed, infrastructure is stopped, or other application containers are recreated. Local Tenant Access and Entitlement call their containerized downstream services through the existing loopback gRPC ports. The local Gateway uses a load-balancer mapping enabled only by `saasforge.local-replacement.enabled=true` to reach those ports without depending on Docker-internal IPs. Gateway replacement also changes the HTTPS Edge `api.saasforge.test` target in a Git-ignored restricted file from `gateway:8080` to `host.docker.internal:8080`, without restarting Edge; the file accepts only those fixed targets and port `8080`. Restore returns the Edge target to the container Gateway. IAM retains its existing dedicated caller-recreation behavior to route container callers to local IAM.
+For the four Issue #130 targets, only the selected application container is stopped: no volumes are removed, infrastructure is stopped, or other application containers are recreated. Local Tenant Access and Entitlement call their containerized downstream services through the existing loopback gRPC ports. The local Gateway uses a load-balancer mapping enabled only by `saas.forge.local-replacement.enabled=true` to reach those ports without depending on Docker-internal IPs. Gateway replacement also changes the HTTPS Edge `api.saas.forge.test` target in a Git-ignored restricted file from `gateway:8080` to `host.docker.internal:8080`, without restarting Edge; the file accepts only those fixed targets and port `8080`. Restore returns the Edge target to the container Gateway. IAM retains its existing dedicated caller-recreation behavior to route container callers to local IAM.
 
 If the current development stack was started before the Issue #130 Nacos ACL change, first apply each replacement target's self-only, read-only instance-discovery permission through the controlled initializer; Gateway still discovers only itself and formal public-route targets. Do not alter ACLs manually with an administrator identity:
 
@@ -223,7 +223,7 @@ bash scripts/verify-console-authentication-e2e.sh --preflight
 bash scripts/verify-console-authentication-e2e.sh
 ```
 
-The certificate must cover `platform.saasforge.test`, `console.saasforge.test`, `api.saasforge.test`, and `remote.saasforge.test`; replace the example absolute paths with actual files. Preflight checks the environment, not successful login, four-domain resource loading, or CORS rejection. The full script creates an isolated random project and fresh volumes, then drives browsers against built Consoles, the real API, and the same `consoles/dist/static-remote-acceptance/` Remote artifacts through four trusted HTTPS Origins. Chromium additionally retains sanitized evidence for Remote requests/responses, credential-free loading, CSS application, and image decoding. It then removes only its project, volumes, and temporary Secrets, retaining no accounts or environment for later manual login. Only the output of the current run establishes its result; it does not replace development-mode `verify:local:static-remote` Vite/HMR evidence and does not claim a browser matrix or parent specification #155 as complete.
+The certificate must cover `platform.saas.forge.test`, `console.saas.forge.test`, `api.saas.forge.test`, and `remote.saas.forge.test`; replace the example absolute paths with actual files. Preflight checks the environment, not successful login, four-domain resource loading, or CORS rejection. The full script creates an isolated random project and fresh volumes, then drives browsers against built Consoles, the real API, and the same `consoles/dist/static-remote-acceptance/` Remote artifacts through four trusted HTTPS Origins. Chromium additionally retains sanitized evidence for Remote requests/responses, credential-free loading, CSS application, and image decoding. It then removes only its project, volumes, and temporary Secrets, retaining no accounts or environment for later manual login. Only the output of the current run establishes its result; it does not replace development-mode `verify:local:static-remote` Vite/HMR evidence and does not claim a browser matrix or parent specification #155 as complete.
 
 The `EVIDENCE:` directory retains `static-remote-chromium.json` (using the corresponding channel name for Chrome/Edge), with sanitized network, rendering, and console observations and the Remote subtest's passed/failed status. Compose cleanup preserves this file. A passed subtest does not mean the entire run passed. Set `SF_BRAND_EVIDENCE_DIRECTORY` to choose the retained directory.
 
@@ -267,7 +267,7 @@ pbcopy < .secrets/platform-admin-password
 
 ### 2. Rebuild and start IAM
 
-The normal IAM service and the bootstrap task share `saasforge/iam-service:local`, so code changes require only one image build:
+The normal IAM service and the bootstrap task share `saas.forge/iam-service:local`, so code changes require only one image build:
 
 ```bash
 docker compose build iam-service
@@ -302,7 +302,7 @@ The bootstrap state intentionally changes after the initial password is replaced
 
 ### 4. Log in through Platform Console with the initial password
 
-After meeting the browser prerequisites above, open the [local Platform Console](https://platform.saasforge.test/), enter the bootstrap administrator email and initial password, and select “登录” (Log in). This creates only a restricted session and should open “设置新密码” (Set a new password); platform management remains unavailable at this point.
+After meeting the browser prerequisites above, open the [local Platform Console](https://platform.saas.forge.test/), enter the bootstrap administrator email and initial password, and select “登录” (Log in). This creates only a restricted session and should open “设置新密码” (Set a new password); platform management remains unavailable at this point.
 
 If the initial password has expired and no regular password exists, use the restricted initial-credential reset below rather than rerunning account creation. If the UI reports an active session in the slot, follow its prompt to log out of that Platform session first.
 

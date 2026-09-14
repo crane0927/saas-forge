@@ -161,7 +161,7 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <mainClass>io.saasforge.iam.IamServiceApplication</mainClass>
+                    <mainClass>io.saas.forge.iam.IamServiceApplication</mainClass>
                     <layout>ZIP</layout>
                 </configuration>
             </plugin>
@@ -179,8 +179,8 @@
                             <inputSpec>${maven.multiModuleProjectDirectory}/saas-forge-contracts/saas-forge-openapi-contracts/v1.yaml</inputSpec>
                             <generatorName>spring</generatorName>
                             <output>${project.build.directory}/generated-sources/openapi</output>
-                            <apiPackage>io.saasforge.iam.contract.api</apiPackage>
-                            <modelPackage>io.saasforge.iam.contract.model</modelPackage>
+                            <apiPackage>io.saas.forge.iam.contract.api</apiPackage>
+                            <modelPackage>io.saas.forge.iam.contract.model</modelPackage>
                             <generateApis>true</generateApis>
                             <apisToGenerate>Authentication,Discovery,OAuthClients</apisToGenerate>
                             <generateModels>true</generateModels>

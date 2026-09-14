@@ -22,7 +22,7 @@
 | Release verify/deploy | 发布 workflow 的 JDK 17/21 与 deploy 生命周期 | 原样保留 | 发布参数与签名环境不同，不在本次合并范围 |
 | 静态 Remote 构建 | 完整 workspace 已构建，认证脚本又构建一次 | 删除脚本额外构建 | `verify:workspace → build:workspace → build:static-remote` 已构建并检查冻结 SHA-256；workspace 内其他构建仍保留 |
 
-认证 workflow 移除独立 push/PR 触发，改由 Verify `uses` 调用；保留 `workflow_dispatch`。Verify 增加手动触发。没有引入跨 run artifact、缓存命中或额外调度平台作为正确性前提。JDK 17 的通用构建在设置产品对照根域和受信 TLS 前执行，保留原 Verify 的通用夹具环境；产品阶段继续使用已批准的 Linux `saasforge.example.com`，无 TLS、安全策略变更。
+认证 workflow 移除独立 push/PR 触发，改由 Verify `uses` 调用；保留 `workflow_dispatch`。Verify 增加手动触发。没有引入跨 run artifact、缓存命中或额外调度平台作为正确性前提。JDK 17 的通用构建在设置产品对照根域和受信 TLS 前执行，保留原 Verify 的通用夹具环境；产品阶段继续使用已批准的 Linux `saas.forge.example.com`，无 TLS、安全策略变更。
 
 每事件完整 Maven verify 从 **3 次降为 2 次**（JDK 17 一次、21 一次）；四渠道独立兼容与五渠道 Fresh 产品均保留。源码调用次数不是实际耗时改善。Ubuntu `latest` 与固定 `24.04` 的 runner 标签、下载和缓存也会影响耗时，不据此保证固定加速比。
 

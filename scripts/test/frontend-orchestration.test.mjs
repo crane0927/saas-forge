@@ -134,13 +134,13 @@ test("all status reports both fixed endpoints and Edge without mutating resource
         state,
         exitCode: ["UNREADY", "UNMANAGED"].includes(state) ? 1 : 0,
         port: 5173,
-        host: "platform.saasforge.test",
+        host: "platform.saas.forge.test",
       },
       tenant: {
         state,
         exitCode: ["UNREADY", "UNMANAGED"].includes(state) ? 1 : 0,
         port: 5174,
-        host: "console.saasforge.test",
+        host: "console.saas.forge.test",
       },
     });
     assert.equal(result.edge.state, "RUNNING");

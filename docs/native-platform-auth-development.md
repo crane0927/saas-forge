@@ -30,8 +30,8 @@ Maven 项目使用根 POM 支持的 JDK 17。首次导入并同步 Maven，使�
 
 | 配置 | Main class | 模块 classpath | Active profiles |
 | --- | --- | --- | --- |
-| Gateway | `io.saasforge.gateway.GatewayApplication` | `gateway` | 留空 |
-| IAM | `io.saasforge.iam.IamServiceApplication` | `iam-service` | 留空 |
+| Gateway | `io.saas.forge.gateway.GatewayApplication` | `gateway` | 留空 |
+| IAM | `io.saas.forge.iam.IamServiceApplication` | `iam-service` | 留空 |
 
 普通 Java Application 无需填写 profile 参数；移除旧的 `--spring.profiles.active=local`。IDE 启动前动作保留普通 Build，不添加 Maven package、Compose 或托管脚本。默认通过 Nacos 发现服务并读取配置；`local-file` 仅用于显式选择本地业务文件。若曾按旧说明设置 `spring.config.additional-location` 指向模块 `config/`，请移除该参数。
 
@@ -41,7 +41,7 @@ Maven 项目使用根 POM 支持的 JDK 17。首次导入并同步 Maven，使�
 
 ## 真实浏览器认证
 
-按 [Console 与独立 HTTPS Edge 说明](native-console-development.md) 准备证书、域名、现有 Console 和 Edge。浏览器仅访问 `https://platform.saasforge.test`。Edge 的现有 `deploy/compose/.secrets/local-service-replacement/api-target.json` 可设为：
+按 [Console 与独立 HTTPS Edge 说明](native-console-development.md) 准备证书、域名、现有 Console 和 Edge。浏览器仅访问 `https://platform.saas.forge.test`。Edge 的现有 `deploy/compose/.secrets/local-service-replacement/api-target.json` 可设为：
 
 ```json
 {"hostname":"host.docker.internal","port":8080}

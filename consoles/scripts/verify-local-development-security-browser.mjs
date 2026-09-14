@@ -21,7 +21,7 @@ try {
   const network = await page.context().newCDPSession(page);
   await network.send('Network.enable');
   network.on('Network.responseReceived', ({ response }) => {
-    if (new URL(response.url).hostname === 'api.saasforge.test') {
+    if (new URL(response.url).hostname === 'api.saas.forge.test') {
       const headers = Object.fromEntries(
         Object.entries(response.headers).map(([name, value]) => [name.toLowerCase(), value]),
       );
@@ -35,7 +35,7 @@ try {
   await page.goto(origin);
   const rejected = await page.evaluate(async () => {
     try {
-      await fetch('https://api.saasforge.test/api/v1/auth/refresh', {
+      await fetch('https://api.saas.forge.test/api/v1/auth/refresh', {
         body: JSON.stringify({ sessionSlot: 'PLATFORM' }),
         credentials: 'include',
         headers: {

@@ -64,7 +64,7 @@ for required_command in node pnpm docker openssl ruby; do
   }
 done
 export PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE=false
-export SF_ACCEPTANCE_ROOT_DOMAIN="${SF_ACCEPTANCE_ROOT_DOMAIN:-saasforge.test}"
+export SF_ACCEPTANCE_ROOT_DOMAIN="${SF_ACCEPTANCE_ROOT_DOMAIN:-saas.forge.test}"
 export SF_BRAND_EVIDENCE_DIRECTORY="${SF_BRAND_EVIDENCE_DIRECTORY:-$(mktemp -d "${TMPDIR:-/tmp}/sf-brand-evidence.XXXXXX")}"
 export SF_ACCEPTANCE_SCOPE="${1:---full}"
 record_result() { node "$repository_root/consoles/scripts/record-authentication-acceptance.mjs" "$@"; }
@@ -165,7 +165,7 @@ stage() {
 write_environment() {
   mkdir -p "$secret_directory"
   "$compose_directory/generate-service-client-secrets.sh" "$secret_directory" >/dev/null
-  printf '%s\n' 'platform-admin@saasforge.test' >"$secret_directory/platform-admin-email"
+  printf '%s\n' 'platform-admin@saas.forge.test' >"$secret_directory/platform-admin-email"
   openssl rand -base64 32 >"$secret_directory/platform-admin-password"
   cp "$SF_ACCEPTANCE_TLS_CERT" "$secret_directory/tls-cert.pem"
   cp "$SF_ACCEPTANCE_TLS_KEY" "$secret_directory/tls-key.pem"
@@ -174,7 +174,7 @@ write_environment() {
     printf 'SF_ACCEPTANCE_PROJECT=%s\n' "$project_name"
     printf 'SF_ACCEPTANCE_TLS_CERT=%s\n' "$secret_directory/tls-cert.pem"
     printf 'SF_ACCEPTANCE_TLS_KEY=%s\n' "$secret_directory/tls-key.pem"
-    printf 'POSTGRES_ADMIN_USER=saasforge_console_e2e\n'
+    printf 'POSTGRES_ADMIN_USER=saas.forge_console_e2e\n'
     for variable in POSTGRES_ADMIN_PASSWORD IAM_MIGRATOR_PASSWORD IAM_APP_PASSWORD \
       TENANT_ACCESS_MIGRATOR_PASSWORD TENANT_ACCESS_APP_PASSWORD ENTITLEMENT_MIGRATOR_PASSWORD \
       ENTITLEMENT_APP_PASSWORD AUDIT_MIGRATOR_PASSWORD AUDIT_APP_PASSWORD REDIS_PASSWORD \
@@ -190,7 +190,7 @@ write_environment() {
     printf 'NACOS_AUTH_TOKEN=%s\n' "$(openssl rand -base64 48 | tr -d '\n')"
     printf 'E2E_HOST_GID=%s\n' "$(id -g)"
     printf 'E2E_HOST_UID=%s\n' "$(id -u)"
-    printf 'IAM_JWT_ISSUER=https://api.saasforge.test\n'
+    printf 'IAM_JWT_ISSUER=https://api.saas.forge.test\n'
     printf 'IAM_JWT_PEM_KEY_VERSION_REF=local/console-e2e/pem/1\n'
     printf 'IAM_JWT_PEM_PRIVATE_KEY_FILE=%s\n' "$secret_directory/iam-jwt-private-key.pem"
     printf 'IAM_PLATFORM_ADMIN_EMAIL_FILE=%s\n' "$secret_directory/platform-admin-email"

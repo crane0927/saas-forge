@@ -50,7 +50,7 @@ it('lets the customer correct a rejected password using the same unconsumed link
       Response.json(
         {
           code: 'PASSWORD_COMPROMISED',
-          type: 'urn:saasforge:problem:password-compromised',
+          type: 'urn:saas.forge:problem:password-compromised',
           title: 'Rejected',
           detail: 'Rejected',
           status: 400,

@@ -32,7 +32,7 @@ assert_platform_https_edge() {
   if ! curl --fail --silent --show-error --connect-timeout 3 --max-time 10 \
     --cacert "$local_https_certificate_authority" \
     --output /dev/null \
-    https://platform.saasforge.test/; then
+    https://platform.saas.forge.test/; then
     echo "本机 HTTPS Edge 无法通过受信 TLS 访问 Platform；请先运行 bash scripts/local-development.sh frontend start platform 后重试。" >&2
     exit 1
   fi
@@ -55,11 +55,11 @@ compose() {
 snapshot_images() {
   local image
   for image in \
-    saasforge/gateway:local \
-    saasforge/iam-service:local \
-    saasforge/tenant-access-service:local \
-    saasforge/entitlement-service:local \
-    saasforge/audit-service:local; do
+    saas.forge/gateway:local \
+    saas.forge/iam-service:local \
+    saas.forge/tenant-access-service:local \
+    saas.forge/entitlement-service:local \
+    saas.forge/audit-service:local; do
     docker image inspect --format '{{.Id}}' "$image"
   done
 }

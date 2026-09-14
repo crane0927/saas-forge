@@ -14,7 +14,7 @@
 - `jti` 使用规范小写、连字符形式的 UUIDv7，每次实际签发新的 Access Token 都生成新值，不在登录、正常刷新或恢复刷新之间复用，也不由数据库自增值、Family ID 或 Membership ID 派生。Redis 只使用 `SHA-256(jti)` 构造撤销 Key。恢复刷新必须撤销前一次响应的 `jti` 至其 `exp` 加 30 秒，并为替代 Access Token 生成新 `jti`。
 - IAM 为每个 User Access Token 持久化最小 Access Token Issuance，包含 `jti`、`familyId`、`identityId`、可选 `membershipId`/`tenantId`、`kid`、`issuedAt`、`expiresAt`、`revokedAt` 和撤销原因，不保存 JWT、签名、邮箱、角色或权限。Family 创建或轮换与对应 Issuance 在同一数据库事务提交；常规请求不查询该表。Family 重放或安全事件据此撤销全部匹配且未过期的 `jti`，记录至少保留至 `expiresAt + 30 秒`；普通登出仍只撤销请求携带的当前 Access Token。
 - PostgreSQL 中的撤销时间是持久化事实，Redis Revocation Index 是 Gateway 与 Starter 的同步拒绝投影。撤销操作先以 Spring Data Redis 和 Lua 原子写入全部目标 `jti`/`kid` Key，再提交 PostgreSQL 事务，二者完成后才返回成功；Redis 失败时不提交，数据库提交失败时允许 Redis 产生安全优先的额外拒绝。IAM 启动、Redis 重连或数据恢复时先将 `revocation-index-ready` 标为未就绪，从 PostgreSQL 重建全部未过期撤销项，完成后才标为就绪；验证方每次同时检查 Ready 状态和目标 Key，Ready 缺失时 fail-closed。安全 Key 使用 AOF 与 `noeviction`，写入和重建均须幂等。
-- `iss` 由每个环境显式配置为该环境的 API Origin，例如本地环境为 `https://api.saasforge.test`；`aud` 固定为单值 `saasforge-api`。IAM、Gateway、SDK 和业务服务必须精确校验两者，不接受多 Audience、通配值或缺失值，也不得从 `Host`、`Forwarded` 或 `X-Forwarded-Host` 等请求头动态推导签发方。
+- `iss` 由每个环境显式配置为该环境的 API Origin，例如本地环境为 `https://api.saas.forge.test`；`aud` 固定为单值 `saas.forge-api`。IAM、Gateway、SDK 和业务服务必须精确校验两者，不接受多 Audience、通配值或缺失值，也不得从 `Host`、`Forwarded` 或 `X-Forwarded-Host` 等请求头动态推导签发方。
 - Refresh Token 是由 CSPRNG 生成的 256 位随机不透明字符串，浏览器仅以 HttpOnly Cookie 发送；PostgreSQL 只保存其 SHA-256 摘要并作为权威记录，Redis 可缓存会话状态。每个 Token 归属一个稳定的 Refresh Token Family，自首次登录起最长有效 8 小时、空闲最长 30 分钟；轮换不延长绝对期限。IAM 仅在成功登录或刷新时更新 Family 的 `lastUsedAt`。已轮换 Token 的摘要必须保留至所属 Family 的绝对到期，此前不得物理清理；轮换后再次提交旧 Token 时，IAM 必须撤销整个 Family。
 - 刷新开始前，IAM 按旧 Token 摘要在 Redis 原子取得默认 5 秒的 Refresh Rotation Lease，并将 Lease 绑定本次 `Idempotency-Key`。同一旧 Token 以不同幂等键在 Lease 存续期间到达时返回 `409 / REFRESH_ROTATION_IN_PROGRESS` 与 `Retry-After`，不签发 Token、也不撤销 Family；Lease 到期后，旧 Token 的同键重试按 10 秒单次恢复语义处理，不同键重放撤销整个 Family。Lease 只抑制在途并发，不是会话或撤销权威状态，Redis 不可用时 fail-closed。
 - 普通会话每次设置所选 Browser Session Slot 的 Refresh Token Cookie 时，`Max-Age` 等于 30 分钟与 Family 绝对剩余时间中的较小值；成功刷新可重置空闲期限，但不能延长 8 小时绝对期限。Initial Credential Session 固定使用 Platform 槽位，Cookie 最多有效 10 分钟且不得超过 Initial Platform Credential 的剩余有效期，改密不延长它。PostgreSQL Family 状态始终是权威；登出或失效时以所选槽位相同名称、Path 和安全属性设置 `Max-Age=0` 清除 Cookie。
@@ -32,7 +32,7 @@
 - `SERVICE_REQUIRED` 操作同时由 Gateway 与接收端 Starter 校验 Service Token。缺失或无效 Token 返回 `401 / ACCESS_TOKEN_INVALID`；合法 Token 缺少任一要求 Scope 返回 `403 / ACCESS_TOKEN_SCOPE_INSUFFICIENT`；撤销状态不可确定或验证上游不可用返回 `503 / TOKEN_REVOCATION_STATUS_UNAVAILABLE`。多个要求 Scope 按 AND 语义校验，已登记且已授予的额外 Scope 不构成拒绝原因。
 - Gateway 在转发前删除所有平台保留的 Identity、Membership、Tenant、Role、Permission、Scope 与 Client 身份请求头，只能从已验证 Principal 重建允许的内部头；Starter 对绕过 Gateway 的直连请求再次拒绝外部伪造保留头。精确头清单、Route Catalog 与双重校验规则见 [Gateway Service Scope 路由设计](23-gateway-service-scope-routing.md)。
 
-Service Access Token 使用与 User Access Token 相同的环境 Issuer、固定 `saasforge-api` Audience、`RS256` Signing Key 生命周期与 30 秒时钟偏差，但 JOSE `typ` 固定为 `at+jwt`，默认有效期为 5 分钟。其 Claim 白名单固定为 `iss`、`aud`、`iat`、`exp`、`jti`、`sub`、`client_id` 与 `scope`：`sub` 必须等于 `client_id`，`scope` 使用去重并排序后的单空格分隔字符串，`jti` 每次实际签发均生成新的 UUIDv7。Service Access Token 不得包含 `identityId`、`membershipId`、`tenantId`、Role 或 Permission；接收方必须同时校验 Token 类型、签名、Issuer、Audience、时间、`client_id` 与操作所需的精确 Scope。
+Service Access Token 使用与 User Access Token 相同的环境 Issuer、固定 `saas.forge-api` Audience、`RS256` Signing Key 生命周期与 30 秒时钟偏差，但 JOSE `typ` 固定为 `at+jwt`，默认有效期为 5 分钟。其 Claim 白名单固定为 `iss`、`aud`、`iat`、`exp`、`jti`、`sub`、`client_id` 与 `scope`：`sub` 必须等于 `client_id`，`scope` 使用去重并排序后的单空格分隔字符串，`jti` 每次实际签发均生成新的 UUIDv7。Service Access Token 不得包含 `identityId`、`membershipId`、`tenantId`、Role 或 Permission；接收方必须同时校验 Token 类型、签名、Issuer、Audience、时间、`client_id` 与操作所需的精确 Scope。
 
 Refresh Token 只能由 `https://api.<root>` 以两个 Browser Session Slot 的 host-only Cookie 签发和接收：Platform 为 `__Host-sf_platform_refresh`，Tenant 为 `__Host-sf_tenant_refresh`；两者均固定 `Secure; HttpOnly; SameSite=Strict; Path=/` 且不设置 `Domain`。不得把 Access Token 或 Refresh Token 写入 `localStorage`、`sessionStorage` 或 IndexedDB；只允许持久化不敏感的槽位单调代次与 `logoutPending`。Platform Console 与 Tenant Console Shell 可在受控跨 Origin 请求中携带 Cookie，但不能读取它们。
 
@@ -42,7 +42,7 @@ Refresh Token 只能由 `https://api.<root>` 以两个 Browser Session Slot 的 
 
 每个环境由非敏感部署配置 `browser.rootDomain` 推导固定 CORS 值。API Gateway 只对 `https://platform.<root>` 与 `https://console.<root>` 返回凭据型 CORS 许可，允许 `GET`、`HEAD`、`POST`、`PUT`、`PATCH`、`DELETE`、`OPTIONS` 以及 `Authorization`、`Content-Type`、`Idempotency-Key`、`X-SF-CSRF`、`traceparent`、`tracestate`；只暴露 `Location`、`Retry-After`，预检缓存 10 分钟并返回 `Vary: Origin`。Remote 静态资源只允许 `https://console.<root>` 无凭据加载。禁止通配符、`null` Origin 与 Manifest/运行时修改白名单。
 
-开发与端到端测试也必须验证相同安全边界：`platform.saasforge.test`、`console.saasforge.test`、`api.saasforge.test` 与 `remote.saasforge.test` 映射至 `127.0.0.1`，由本地受信 TLS 反向代理提供 HTTPS，并设置 `browser.rootDomain=saasforge.test`。不得以不同 `localhost` 端口替代此验收拓扑。
+开发与端到端测试也必须验证相同安全边界：`platform.saas.forge.test`、`console.saas.forge.test`、`api.saas.forge.test` 与 `remote.saas.forge.test` 映射至 `127.0.0.1`，由本地受信 TLS 反向代理提供 HTTPS，并设置 `browser.rootDomain=saas.forge.test`。不得以不同 `localhost` 端口替代此验收拓扑。
 
 ### 密码、邀请与服务身份
 
@@ -100,7 +100,7 @@ RBAC 以 `Membership → Role → Permission` 实施。平台角色与租户角�
 
 平台数据分为公开、内部、机密、敏感个人信息四级；业务模块注册其数据分类并映射到该分级。日志、Trace、审计和 Kafka 事件默认不得包含密码、Access / Refresh Token、Client Secret、完整证件或其他原始敏感个人信息，统一通过字段白名单和脱敏处理。
 
-IAM 首个认证切片同步落地服务自有 Transactional Outbox，并可靠发布 `com.saasforge.iam.session.started.v1`、`com.saasforge.iam.session.revoked.v1`、`com.saasforge.iam.refresh-replay-detected.v1` 与 `com.saasforge.iam.password.changed.v1`；现有批量 `com.saasforge.iam.sessions-revoked.v1` 仍只用于成员禁用、Tenant 冻结等跨服务撤销。事件与对应数据库事实在同一事务提交，且只含内部 ID、Purpose、上下文类型、结果、时间和 `traceId`。正常刷新成功只记录指标；密码错误、未知邮箱和锁定拒绝只写白名单结构化安全日志与指标，不伪称可靠 Outbox 事实。事件、日志均不得包含邮箱、密码、JWT、Refresh Token、Cookie、IP 原文或完整 User-Agent。
+IAM 首个认证切片同步落地服务自有 Transactional Outbox，并可靠发布 `com.saas.forge.iam.session.started.v1`、`com.saas.forge.iam.session.revoked.v1`、`com.saas.forge.iam.refresh-replay-detected.v1` 与 `com.saas.forge.iam.password.changed.v1`；现有批量 `com.saas.forge.iam.sessions-revoked.v1` 仍只用于成员禁用、Tenant 冻结等跨服务撤销。事件与对应数据库事实在同一事务提交，且只含内部 ID、Purpose、上下文类型、结果、时间和 `traceId`。正常刷新成功只记录指标；密码错误、未知邮箱和锁定拒绝只写白名单结构化安全日志与指标，不伪称可靠 Outbox 事实。事件、日志均不得包含邮箱、密码、JWT、Refresh Token、Cookie、IP 原文或完整 User-Agent。
 
 Audit 服务只追加审计记录，平台或租户管理员不得修改或物理删除。审计保留期由平台级合规配置确定。导出保留任务元数据与审计记录；临时导出文件通过短期签名 URL 获取，并按可配置留存期从对象存储物理删除。
 

@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 
-const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saasforge.test';
+const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saas.forge.test';
 
 export async function verifyRequestProblemSurfaces(browser) {
   for (const locale of ['zh-CN', 'en-US']) {
@@ -72,7 +72,7 @@ export async function verifyRequestProblemSurfaces(browser) {
                 status,
                 contentType: 'application/problem+json',
                 body: JSON.stringify({
-                  type: `urn:saasforge:problem:${code.toLowerCase().replaceAll('_', '-')}`,
+                  type: `urn:saas.forge:problem:${code.toLowerCase().replaceAll('_', '-')}`,
                   status,
                   code,
                   title: marker,

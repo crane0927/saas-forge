@@ -6,8 +6,8 @@
     {
       "type": "object",
       "properties": {
-        "source": { "const": "urn:saasforge:audit-service" },
-        "type": { "const": "com.saasforge.audit.recorded.v1" },
+        "source": { "const": "urn:saas.forge:audit-service" },
+        "type": { "const": "com.saas.forge.audit.recorded.v1" },
         "data": {
           "type": "object",
           "required": ["auditRecordId", "sourceEventId", "recordedAt"],

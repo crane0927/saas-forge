@@ -1,6 +1,6 @@
-saasforge:
+saas.forge:
   iam:
-    configuration-revision: "5"
+    configuration-revision: "6"
     outbox:
       publish-delay: PT1S
       lease-duration: PT30S

@@ -69,7 +69,7 @@ services:
       - "${E2E_HOST_GID:?E2E_HOST_GID is required}"
   platform-mechanism-receiver:
     profiles: ["platform-mechanism-acceptance"]
-    image: saasforge/platform-mechanism-receiver:acceptance
+    image: saas.forge/platform-mechanism-receiver:acceptance
     depends_on:
       nacos-init:
         condition: service_completed_successfully

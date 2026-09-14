@@ -41,7 +41,7 @@ bash scripts/verify-console-authentication-e2e.sh
 
 Chrome 使用 CDP ExtraInfo，CORS 隐藏的预检/拒绝由同一真实 TLS Edge 的随机关联探针日志补充。Edge 不修改请求或放宽安全规则；日志不包含 Cookie/Token 值、密码或正文。服务端不变必须由每个探针后的双 Console 实际恢复共同证明，不能仅凭 fetch 抛错或 Cookie 字节未变。
 
-受限 `.log` 文件可能包含原始测试诊断，不直接公开。CI 使用 Chrome 产品工作流，四域都纳入证书 SAN 和 hosts；延续此前已批准的 Linux `saasforge.example.com` 对照根域及相同主机推导策略。工作流以 `always()` 上传白名单 JSON，排除原始日志、凭据与截图。远端验收需记录对应提交的 workflow URL 和 artifact，不能引用旧运行替代。
+受限 `.log` 文件可能包含原始测试诊断，不直接公开。CI 使用 Chrome 产品工作流，四域都纳入证书 SAN 和 hosts；延续此前已批准的 Linux `saas.forge.example.com` 对照根域及相同主机推导策略。工作流以 `always()` 上传白名单 JSON，排除原始日志、凭据与截图。远端验收需记录对应提交的 workflow URL 和 artifact，不能引用旧运行替代。
 
 ## 父规格验收映射
 

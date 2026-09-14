@@ -21,7 +21,7 @@ paths:
     post:
       tags: [Authentication]
       operationId: login
-      x-saasforge-service: iam-service
+      x-saas.forge-service: iam-service
       summary: Start a browser session with email and password
       description: |
         The request never accepts a Tenant or Membership identifier. A user with one
@@ -67,7 +67,7 @@ paths:
     post:
       tags: [Authentication]
       operationId: refreshAccessToken
-      x-saasforge-service: iam-service
+      x-saas.forge-service: iam-service
       security: [{ RefreshCookieAuth: [] }]
       summary: Rotate the browser Refresh Token and issue the current Access Token
       description: The Refresh Token is supplied only by the HttpOnly refresh cookie.
@@ -104,7 +104,7 @@ paths:
     post:
       tags: [Authentication]
       operationId: changeInitialPassword
-      x-saasforge-service: iam-service
+      x-saas.forge-service: iam-service
       security: [{ RefreshCookieAuth: [] }]
       summary: Replace an initial password and end the restricted session
       description: |
@@ -135,7 +135,7 @@ paths:
     post:
       tags: [Authentication]
       operationId: establishPassword
-      x-saasforge-service: iam-service
+      x-saas.forge-service: iam-service
       summary: Establish the first Password Credential with a one-time Challenge
       description: |
         This anonymous endpoint accepts no Identity, Tenant, Membership, or email.
@@ -159,7 +159,7 @@ paths:
     post:
       tags: [Authentication]
       operationId: selectAuthenticationContext
-      x-saasforge-service: iam-service
+      x-saas.forge-service: iam-service
       security: [{ RefreshCookieAuth: [] }]
       summary: Complete a pending Tenant context selection
       description: |
@@ -195,7 +195,7 @@ paths:
     post:
       tags: [Authentication]
       operationId: logout
-      x-saasforge-service: iam-service
+      x-saas.forge-service: iam-service
       summary: Revoke the browser Refresh Token
       description: |
         Idempotently ends only the current browser session. The Refresh Token cookie is optional so
@@ -243,7 +243,7 @@ paths:
     post:
       tags: [Authentication]
       operationId: switchTenantContext
-      x-saasforge-service: iam-service
+      x-saas.forge-service: iam-service
       security: [{ RefreshCookieAuth: [] }]
       summary: Select or switch the session Membership
       description: |
@@ -276,7 +276,7 @@ paths:
     post:
       tags: [Authentication]
       operationId: issueClientCredentialsToken
-      x-saasforge-service: iam-service
+      x-saas.forge-service: iam-service
       summary: Issue a Client Credentials Access Token
       description: |
         Supports only grant_type=client_credentials. The OAuth Client authenticates
@@ -308,7 +308,7 @@ paths:
     get:
       tags: [Discovery]
       operationId: getJwks
-      x-saasforge-service: iam-service
+      x-saas.forge-service: iam-service
       summary: Get current JWT verification keys
       description: Anonymous RS256 verification-key discovery. Private material and internal signing-key metadata are never published.
       responses:
@@ -330,7 +330,7 @@ paths:
     post:
       tags: [Platform tenants]
       operationId: createPlatformTenant
-      x-saasforge-service: tenant-access-service
+      x-saas.forge-service: tenant-access-service
       summary: Create a pending Tenant
       description: Requires a Platform Admin user token. The new Tenant is PENDING until administrator initialization succeeds.
       security: [{ UserBearerAuth: [] }]
@@ -363,7 +363,7 @@ paths:
     post:
       tags: [Platform tenants]
       operationId: initializeTenantAdministrator
-      x-saasforge-service: tenant-access-service
+      x-saas.forge-service: tenant-access-service
       summary: Initialize the first Tenant Administrator
       description: |
         Requires a Platform Admin. The Tenant Access workflow verifies or creates the
@@ -397,7 +397,7 @@ paths:
     post:
       tags: [Platform tenants]
       operationId: resendTenantAdministratorPasswordSetup
-      x-saasforge-service: tenant-access-service
+      x-saas.forge-service: tenant-access-service
       summary: Resend the initial Tenant Administrator password setup email
       description: |
         Requires a Platform Admin. Tenant Access resolves the Identity only through
@@ -430,7 +430,7 @@ paths:
     post:
       tags: [Platform tenants]
       operationId: suspendTenant
-      x-saasforge-service: tenant-access-service
+      x-saas.forge-service: tenant-access-service
       summary: Suspend an active Tenant
       description: Requires a Platform Admin. Suspension revokes matching sessions before the Tenant becomes SUSPENDED.
       security: [{ UserBearerAuth: [] }]
@@ -464,7 +464,7 @@ paths:
     delete:
       tags: [Platform tenants]
       operationId: resumeTenant
-      x-saasforge-service: tenant-access-service
+      x-saas.forge-service: tenant-access-service
       summary: Remove the current Tenant suspension
       description: Requires a Platform Admin. Resuming never restores revoked sessions.
       security: [{ UserBearerAuth: [] }]
@@ -500,7 +500,7 @@ paths:
     post:
       tags: [Platform tenants]
       operationId: recoverTenantSuspension
-      x-saasforge-service: tenant-access-service
+      x-saas.forge-service: tenant-access-service
       summary: Resume an exhausted Tenant suspension workflow
       description: |
         Requires a Platform Admin. Continues the existing fail-closed suspension workflow without
@@ -535,7 +535,7 @@ paths:
     post:
       tags: [Platform entitlement bootstrap]
       operationId: createQuotaDefinition
-      x-saasforge-service: entitlement-service
+      x-saas.forge-service: entitlement-service
       summary: Create the max_users Quota Definition in DRAFT state
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -566,7 +566,7 @@ paths:
     post:
       tags: [Platform entitlement bootstrap]
       operationId: activateQuotaDefinition
-      x-saasforge-service: entitlement-service
+      x-saas.forge-service: entitlement-service
       summary: Activate a DRAFT Quota Definition
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -591,7 +591,7 @@ paths:
     post:
       tags: [Platform entitlement bootstrap]
       operationId: createPlan
-      x-saasforge-service: entitlement-service
+      x-saas.forge-service: entitlement-service
       summary: Create a DRAFT Plan with its max_users limit
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -622,7 +622,7 @@ paths:
     post:
       tags: [Platform entitlement bootstrap]
       operationId: activatePlan
-      x-saasforge-service: entitlement-service
+      x-saas.forge-service: entitlement-service
       summary: Activate a DRAFT Plan
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -647,7 +647,7 @@ paths:
     post:
       tags: [Platform entitlement bootstrap]
       operationId: createInitialSubscription
-      x-saasforge-service: entitlement-service
+      x-saas.forge-service: entitlement-service
       summary: Create the first active Subscription for a Tenant
       description: Requires a Platform Admin and an ACTIVE Plan. This batch supports only immediate ACTIVE Subscriptions.
       security: [{ UserBearerAuth: [] }]
@@ -680,7 +680,7 @@ paths:
     post:
       tags: [OAuth clients]
       operationId: createOAuthClient
-      x-saasforge-service: iam-service
+      x-saas.forge-service: iam-service
       summary: Create an OAuth Client and reveal its Secret once
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -711,7 +711,7 @@ paths:
     get:
       tags: [OAuth clients]
       operationId: getOAuthClient
-      x-saasforge-service: iam-service
+      x-saas.forge-service: iam-service
       summary: Read non-sensitive OAuth Client details
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -733,7 +733,7 @@ paths:
     post:
       tags: [OAuth clients]
       operationId: rotateOAuthClientSecret
-      x-saasforge-service: iam-service
+      x-saas.forge-service: iam-service
       summary: Rotate an OAuth Client Secret and reveal the new Secret once
       description: The previous and new Secret overlap for the service-controlled rotation window; revocation ends all Client access immediately.
       security: [{ UserBearerAuth: [] }]
@@ -759,7 +759,7 @@ paths:
     post:
       tags: [OAuth clients]
       operationId: recoverOAuthClientSecret
-      x-saasforge-service: iam-service
+      x-saas.forge-service: iam-service
       summary: Replace one lost OAuth Client Secret issuance result
       description: The original successful create or rotation can be recovered once by its original actor within ten minutes. No prior plaintext is retained or replayed.
       security: [{ UserBearerAuth: [] }]
@@ -790,7 +790,7 @@ paths:
     post:
       tags: [OAuth clients]
       operationId: revokeOAuthClient
-      x-saasforge-service: iam-service
+      x-saas.forge-service: iam-service
       summary: Irreversibly revoke an OAuth Client
       security: [{ UserBearerAuth: [] }]
       parameters:

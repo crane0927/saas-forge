@@ -1,0 +1,197 @@
+package io.saas.forge.iam.api;
+
+import io.saas.forge.iam.application.client.OAuthClientManagementAuthorizer;
+import io.saas.forge.iam.application.client.OAuthClientManagementService;
+import io.saas.forge.iam.contract.api.OAuthClientsApi;
+import io.saas.forge.iam.contract.model.CreateOAuthClientRequest;
+import io.saas.forge.iam.contract.model.OAuthClientDetail;
+import io.saas.forge.iam.contract.model.OAuthClientPage;
+import io.saas.forge.iam.application.client.OAuthClientQueries;
+import io.saas.forge.iam.contract.model.OAuthClientSecretResult;
+import io.saas.forge.iam.contract.model.OAuthClientStatus;
+import io.saas.forge.iam.contract.model.OAuthClientType;
+import io.saas.forge.iam.contract.model.ReservedServiceKey;
+import io.saas.forge.iam.contract.model.RuntimeScope;
+import io.saas.forge.iam.contract.model.SecretIssuanceRecoveryRequest;
+import io.saas.forge.iam.domain.client.OAuthClient;
+import io.saas.forge.iam.domain.client.OAuthScope;
+import jakarta.servlet.http.HttpServletRequest;
+import java.net.URI;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
+import java.util.LinkedHashSet;
+import java.util.Set;
+import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+
+@RestController
+public class OAuthClientsController implements OAuthClientsApi {
+    private static final Pattern TRACE_PARENT = Pattern.compile(
+            "^[0-9a-f]{2}-((?!0{32})[0-9a-f]{32})-(?!0{16})[0-9a-f]{16}-[0-9a-f]{2}$");
+
+    private final OAuthClientManagementAuthorizer authorizer;
+    private final OAuthClientManagementService management;
+    private final OAuthClientQueries queries;
+
+    public OAuthClientsController(
+            OAuthClientManagementAuthorizer authorizer,
+            OAuthClientManagementService management, OAuthClientQueries queries) {
+        this.authorizer = authorizer;
+        this.management = management;
+        this.queries = queries;
+    }
+
+    @Override
+    public ResponseEntity<OAuthClientSecretResult> createOAuthClient(
+            UUID idempotencyKey, CreateOAuthClientRequest request) {
+        HttpServletRequest httpRequest = currentRequest();
+        UUID actorIdentityId = authorizer.authorize(httpRequest.getHeader(HttpHeaders.AUTHORIZATION));
+        var result = management.create(actorIdentityId, idempotencyKey, request.getDisplayName(),
+                toDomainScopes(request.getAllowedScopes()), traceId(httpRequest));
+        return ResponseEntity.created(locationFor(result.client().id()))
+                .cacheControl(CacheControl.noStore())
+                .body(toSecretResult(result.client(), result.clientSecret()));
+    }
+
+    @Override
+    public ResponseEntity<OAuthClientPage> listOAuthClients(
+            String cursor, Integer limit, String name, OAuthClientType clientType, OAuthClientStatus status) {
+        authorizer.authorize(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
+        var page = queries.list(name, clientType == null ? null
+                        : io.saas.forge.iam.domain.client.OAuthClientType.valueOf(clientType.name()),
+                status == null ? null : io.saas.forge.iam.domain.client.OAuthClientStatus.valueOf(status.name()),
+                cursor, limit);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new OAuthClientPage(
+                page.items().stream().map(OAuthClientsController::toDetail).toList(),
+                page.nextCursor(), page.hasMore()));
+    }
+
+    @Override
+    public ResponseEntity<io.saas.forge.iam.contract.model.OAuthClientOperationPage> listOAuthClientOperations(String cursor, Integer limit) {
+        var actor = authorizer.authorize(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
+        var page = queries.operations(actor, cursor, limit);
+        var items = page.items().stream().map(value -> new io.saas.forge.iam.contract.model.OAuthClientOperation()
+                .operationId(value.operationId()).clientId(value.clientId()).displayName(value.displayName())
+                .action(io.saas.forge.iam.contract.model.OAuthClientOperation.ActionEnum.fromValue(value.action()))
+                .completedAt(toOffsetDateTime(value.completedAt())).recoveryUntil(toOffsetDateTime(value.recoveryUntil()))
+                .canRecover(value.canRecover())).toList();
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(
+                new io.saas.forge.iam.contract.model.OAuthClientOperationPage(items, page.nextCursor(), page.hasMore()));
+    }
+
+    @Override
+    public ResponseEntity<io.saas.forge.iam.contract.model.OAuthClientCredentialStatus> getOAuthClientCredentialStatus(UUID clientId) {
+        authorizer.authorize(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
+        var value = queries.credentialStatus(clientId);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(
+                new io.saas.forge.iam.contract.model.OAuthClientCredentialStatus()
+                        .clientId(value.clientId()).overlapEndsAt(toOffsetDateTime(value.overlapEndsAt()))
+                        .canRotate(value.canRotate()).canRevoke(value.canRevoke()));
+    }
+
+    @Override
+    public ResponseEntity<OAuthClientSecretResult> recoverOAuthClientOperation(UUID operationId, UUID idempotencyKey) {
+        var request = currentRequest();
+        var actor = authorizer.authorize(request.getHeader(HttpHeaders.AUTHORIZATION));
+        var result = management.recoverOperation(actor, idempotencyKey, operationId, traceId(request));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(toSecretResult(result.client(), result.clientSecret()));
+    }
+
+    @Override
+    public ResponseEntity<OAuthClientDetail> getOAuthClient(UUID clientId) {
+        authorizer.authorize(currentRequest().getHeader(HttpHeaders.AUTHORIZATION));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(toDetail(management.get(clientId)));
+    }
+
+    @Override
+    public ResponseEntity<OAuthClientSecretResult> rotateOAuthClientSecret(UUID clientId, UUID idempotencyKey) {
+        HttpServletRequest httpRequest = currentRequest();
+        UUID actorIdentityId = authorizer.authorize(httpRequest.getHeader(HttpHeaders.AUTHORIZATION));
+        var result = management.rotate(actorIdentityId, idempotencyKey, clientId, traceId(httpRequest));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(toSecretResult(result.client(), result.clientSecret()));
+    }
+
+    @Override
+    public ResponseEntity<OAuthClientSecretResult> recoverOAuthClientSecret(
+            UUID clientId, UUID idempotencyKey, SecretIssuanceRecoveryRequest request) {
+        HttpServletRequest httpRequest = currentRequest();
+        UUID actorIdentityId = authorizer.authorize(httpRequest.getHeader(HttpHeaders.AUTHORIZATION));
+        var result = management.recover(actorIdentityId, idempotencyKey, clientId,
+                request.getOriginalIdempotencyKey(), traceId(httpRequest));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(toSecretResult(result.client(), result.clientSecret()));
+    }
+
+    @Override
+    public ResponseEntity<Void> revokeOAuthClient(UUID clientId, UUID idempotencyKey) {
+        HttpServletRequest httpRequest = currentRequest();
+        UUID actorIdentityId = authorizer.authorize(httpRequest.getHeader(HttpHeaders.AUTHORIZATION));
+        management.revoke(actorIdentityId, idempotencyKey, clientId, traceId(httpRequest));
+        return ResponseEntity.noContent().build();
+    }
+
+    static String traceId(HttpServletRequest request) {
+        String traceparent = request.getHeader("traceparent");
+        Matcher matcher = TRACE_PARENT.matcher(traceparent == null ? "" : traceparent);
+        return matcher.matches() ? matcher.group(1) : null;
+    }
+
+    private static URI locationFor(UUID clientId) {
+        return URI.create(PATH_CREATE_O_AUTH_CLIENT + "/" + clientId);
+    }
+
+    private static OAuthClientSecretResult toSecretResult(OAuthClient client, String clientSecret) {
+        return new OAuthClientSecretResult()
+                .clientId(client.id())
+                .displayName(client.displayName())
+                .allowedScopes(toContractScopes(client.allowedScopes()))
+                .status(OAuthClientStatus.valueOf(client.status().name()))
+                .createdAt(toOffsetDateTime(client.createdAt()))
+                .updatedAt(toOffsetDateTime(client.updatedAt()))
+                .clientSecret(clientSecret);
+    }
+
+    private static OAuthClientDetail toDetail(OAuthClient client) {
+        return new OAuthClientDetail()
+                .clientId(client.id())
+                .displayName(client.displayName())
+                .clientType(OAuthClientType.valueOf(client.clientType().name()))
+                .reservedServiceKey(client.reservedServiceKey() == null
+                        ? null : ReservedServiceKey.valueOf(client.reservedServiceKey().name()))
+                .allowedScopes(toContractScopes(client.allowedScopes()))
+                .status(OAuthClientStatus.valueOf(client.status().name()))
+                .createdAt(toOffsetDateTime(client.createdAt()))
+                .updatedAt(toOffsetDateTime(client.updatedAt()))
+                .revokedAt(toOffsetDateTime(client.revokedAt()));
+    }
+
+    private static Set<RuntimeScope> toContractScopes(Set<OAuthScope> scopes) {
+        return scopes.stream().map(scope -> RuntimeScope.fromValue(scope.value()))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private static Set<OAuthScope> toDomainScopes(Set<RuntimeScope> scopes) {
+        return scopes.stream().map(scope -> OAuthScope.fromValue(scope.getValue()))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private static OffsetDateTime toOffsetDateTime(Instant instant) {
+        return instant == null ? null
+                : OffsetDateTime.ofInstant(instant.truncatedTo(ChronoUnit.MILLIS), ZoneOffset.UTC);
+    }
+
+    private static HttpServletRequest currentRequest() {
+        return ((ServletRequestAttributes) RequestContextHolder.currentRequestAttributes()).getRequest();
+    }
+}

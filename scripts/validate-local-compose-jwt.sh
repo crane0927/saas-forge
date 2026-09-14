@@ -4,7 +4,7 @@ set -euo pipefail
 readonly repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly compose_directory="$repository_root/deploy/compose"
 
-export IAM_JWT_ISSUER="${IAM_JWT_ISSUER:-https://api.saasforge.test}"
+export IAM_JWT_ISSUER="${IAM_JWT_ISSUER:-https://api.saas.forge.test}"
 export IAM_JWT_PEM_KEY_VERSION_REF="${IAM_JWT_PEM_KEY_VERSION_REF:-local/pem/1}"
 export IAM_JWT_PEM_PRIVATE_KEY_FILE="${IAM_JWT_PEM_PRIVATE_KEY_FILE:-/tmp/saas-forge-local-jwt.pem}"
 

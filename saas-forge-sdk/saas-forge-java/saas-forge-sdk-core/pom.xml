@@ -16,7 +16,7 @@
 
     <properties>
         <maven.deploy.skip>false</maven.deploy.skip>
-        <saasforge.public-api-boundary.skip>false</saasforge.public-api-boundary.skip>
+        <saas.forge.public-api-boundary.skip>false</saas.forge.public-api-boundary.skip>
     </properties>
 
     <dependencies>
@@ -86,9 +86,9 @@
                             <library>native</library>
                             <output>${project.build.directory}/generated-sources/openapi</output>
                             <cleanupOutput>true</cleanupOutput>
-                            <apiPackage>io.saasforge.sdk.core.rest.api</apiPackage>
-                            <modelPackage>io.saasforge.sdk.core.rest.model</modelPackage>
-                            <invokerPackage>io.saasforge.sdk.core.rest</invokerPackage>
+                            <apiPackage>io.saas.forge.sdk.core.rest.api</apiPackage>
+                            <modelPackage>io.saas.forge.sdk.core.rest.model</modelPackage>
+                            <invokerPackage>io.saas.forge.sdk.core.rest</invokerPackage>
                             <configOptions>
                                 <dateLibrary>java8</dateLibrary>
                                 <serializationLibrary>jackson</serializationLibrary>

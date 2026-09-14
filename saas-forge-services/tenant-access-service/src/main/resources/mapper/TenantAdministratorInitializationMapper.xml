@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="io.saasforge.tenantaccess.infrastructure.persistence.mapper.TenantAdministratorInitializationMapper">
+<mapper namespace="io.saas.forge.tenantaccess.infrastructure.persistence.mapper.TenantAdministratorInitializationMapper">
     <select id="setOperationTarget" resultType="string">
         SELECT set_config('app.tenant_id', CAST(#{tenantId} AS TEXT), true)
     </select>
 
-    <select id="lockTenant" resultType="io.saasforge.tenantaccess.infrastructure.persistence.record.TenantRow">
+    <select id="lockTenant" resultType="io.saas.forge.tenantaccess.infrastructure.persistence.record.TenantRow">
         SELECT id, display_name AS displayName, tenant_status AS status, expires_at AS expiresAt,
                created_at AS createdAt, updated_at AS updatedAt
         FROM tenants WHERE id = #{tenantId} FOR UPDATE
@@ -28,7 +28,7 @@
         ON CONFLICT DO NOTHING
     </insert>
 
-    <select id="findWorkflow" resultType="io.saasforge.tenantaccess.infrastructure.persistence.record.TenantAdministratorInitializationRow">
+    <select id="findWorkflow" resultType="io.saas.forge.tenantaccess.infrastructure.persistence.record.TenantAdministratorInitializationRow">
         SELECT workflow_id AS workflowId, tenant_id AS tenantId, actor_identity_id AS actorIdentityId,
                idempotency_key AS idempotencyKey, request_fingerprint AS requestFingerprint,
                administrator_email AS administratorEmail,
@@ -51,7 +51,7 @@
     </select>
 
     <!-- 未完成根优先；已成功的历史根不能被后来被拒绝的新 Key 遮蔽。 -->
-    <select id="findAuthoritativeWorkflow" resultType="io.saasforge.tenantaccess.infrastructure.persistence.record.TenantAdministratorInitializationRow">
+    <select id="findAuthoritativeWorkflow" resultType="io.saas.forge.tenantaccess.infrastructure.persistence.record.TenantAdministratorInitializationRow">
         SELECT workflow_id AS workflowId, tenant_id AS tenantId, actor_identity_id AS actorIdentityId,
                idempotency_key AS idempotencyKey, request_fingerprint AS requestFingerprint,
                administrator_email AS administratorEmail,
@@ -76,7 +76,7 @@
         LIMIT 1
     </select>
 
-    <select id="lockWorkflow" resultType="io.saasforge.tenantaccess.infrastructure.persistence.record.TenantAdministratorInitializationRow">
+    <select id="lockWorkflow" resultType="io.saas.forge.tenantaccess.infrastructure.persistence.record.TenantAdministratorInitializationRow">
         SELECT workflow_id AS workflowId, tenant_id AS tenantId, actor_identity_id AS actorIdentityId,
                idempotency_key AS idempotencyKey, request_fingerprint AS requestFingerprint,
                administrator_email AS administratorEmail,

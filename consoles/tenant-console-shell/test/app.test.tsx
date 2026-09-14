@@ -719,7 +719,7 @@ function jsonRequestBody(
 function problemResponse(status: number, code: string): Response {
   return new Response(
     JSON.stringify({
-      type: `urn:saasforge:problem:${code.toLowerCase().replaceAll('_', '-')}`,
+      type: `urn:saas.forge:problem:${code.toLowerCase().replaceAll('_', '-')}`,
       title: 'not exposed',
       status,
       code,

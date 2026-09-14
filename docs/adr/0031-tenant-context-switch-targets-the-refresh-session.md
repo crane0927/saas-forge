@@ -8,7 +8,7 @@ IAM 在第一次调用 Tenant Access 前持久化 Family 级根工作流；同�
 
 本切片以 IAM 的持久撤销事实和 Redis Revocation Index 为撤销交付边界；Gateway 对旧 Token 的实际拒绝及 Redis 不可用时的验证失败关闭仍由独立 Gateway 切片完成，不能从本决策的 IAM 测试推断公网端到端已拒绝旧 Token。
 
-实际切换在更新 Family 上下文、持久化全部旧 `jti` 撤销事实、记录稳定 `204` 结果并进入等待 Refresh 状态的同一数据库事务中写入 `com.saasforge.iam.tenant-context-switched.v1` Outbox；后续 Refresh 只签发新上下文 Token 并解除等待状态，不发布第二个切换事件。
+实际切换在更新 Family 上下文、持久化全部旧 `jti` 撤销事实、记录稳定 `204` 结果并进入等待 Refresh 状态的同一数据库事务中写入 `com.saas.forge.iam.tenant-context-switched.v1` Outbox；后续 Refresh 只签发新上下文 Token 并解除等待状态，不发布第二个切换事件。
 
 本切片的完成证据必须包含真实 IAM↔Tenant Access gRPC、保留服务 Client 与精确 Scope、PostgreSQL 18 权威 Membership 查询，以及 IAM PostgreSQL/Redis 撤销与 Refresh 闭环；Mock 只用于超时、非法响应、提交失败和重试耗尽等故障注入。Gateway 与浏览器不属于本切片验收。
 

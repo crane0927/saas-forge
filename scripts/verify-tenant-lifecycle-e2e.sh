@@ -122,12 +122,12 @@ write_environment() {
   umask 077
   mkdir -p "$secret_directory"
   "$compose_directory/generate-service-client-secrets.sh" "$secret_directory" >/dev/null
-  printf '%s\n' 'platform-admin@saasforge.test' >"$secret_directory/platform-admin-email"
+  printf '%s\n' 'platform-admin@saas.forge.test' >"$secret_directory/platform-admin-email"
   openssl rand -base64 32 | tr -d '\n' >"$secret_directory/platform-admin-password"
   printf '\n' >>"$secret_directory/platform-admin-password"
 
   {
-    printf 'POSTGRES_ADMIN_USER=saasforge_e2e\n'
+    printf 'POSTGRES_ADMIN_USER=saas.forge_e2e\n'
     printf 'POSTGRES_ADMIN_PASSWORD=%s\n' "$(random_text)"
     printf 'IAM_MIGRATOR_PASSWORD=%s\n' "$(random_text)"
     printf 'IAM_APP_PASSWORD=%s\n' "$(random_text)"
@@ -161,7 +161,7 @@ write_environment() {
     printf 'NACOS_AUTH_IDENTITY_VALUE=%s\n' "$(random_text)"
     printf 'NACOS_AUTH_TOKEN=%s\n' "$(printf '%s' "$nacos_token_source" | openssl base64 -A)"
     printf 'E2E_HOST_GID=%s\n' "$(id -g)"
-    printf 'IAM_JWT_ISSUER=https://api.saasforge.test\n'
+    printf 'IAM_JWT_ISSUER=https://api.saas.forge.test\n'
     printf 'IAM_JWT_PEM_KEY_VERSION_REF=local/e2e/pem/1\n'
     printf 'IAM_JWT_PEM_PRIVATE_KEY_FILE=%s\n' "$secret_directory/iam-jwt-private-key.pem"
     printf 'IAM_PLATFORM_ADMIN_EMAIL_FILE=%s\n' "$secret_directory/platform-admin-email"
@@ -378,11 +378,11 @@ request() {
   local body="${4:-}"
   local bearer="${5:-}"
   local idempotency_key="${6:-}"
-  local browser_origin='https://console.saasforge.test'
+  local browser_origin='https://console.saas.forge.test'
   local status
   if [[ "$path" == "/api/v1/auth/password-changes" || "$body" == *'"contextType":"PLATFORM"'* \
       || "$body" == *'"sessionSlot":"PLATFORM"'* ]]; then
-    browser_origin='https://platform.saasforge.test'
+    browser_origin='https://platform.saas.forge.test'
   fi
   local arguments=(
     --silent --show-error
@@ -427,7 +427,7 @@ wait_for_resume_after_redis_recovery() {
       --write-out '%{http_code}' \
       --header 'Content-Type: application/json' \
       --header 'X-SF-CSRF: 1' \
-      --header 'Origin: https://console.saasforge.test' \
+      --header 'Origin: https://console.saas.forge.test' \
       --header 'Sec-Fetch-Site: same-site' \
       --header "Authorization: Bearer $bearer" \
       --header "Idempotency-Key: $idempotency_key" \
@@ -465,7 +465,7 @@ wait_for_suspension_completion_losing_response() {
       --write-out '%{http_code}' \
       --header 'Content-Type: application/json' \
       --header 'X-SF-CSRF: 1' \
-      --header 'Origin: https://console.saasforge.test' \
+      --header 'Origin: https://console.saas.forge.test' \
       --header 'Sec-Fetch-Site: same-site' \
       --header "Authorization: Bearer $bearer" \
       --header "Idempotency-Key: $idempotency_key" \
@@ -595,11 +595,11 @@ echo "[3/13] 显式引导 Platform Admin 与三个保留服务 Client"
 "$repository_root/mvnw" --batch-mode --no-transfer-progress \
   -pl gateway,saas-forge-services/iam-service,saas-forge-services/tenant-access-service,saas-forge-services/entitlement-service,saas-forge-services/audit-service \
   -am package -DskipTests >"$work_directory/maven-package.log"
-build_runtime_image gateway saasforge/gateway:local
-build_runtime_image saas-forge-services/iam-service saasforge/iam-service:local
-build_runtime_image saas-forge-services/tenant-access-service saasforge/tenant-access-service:local
-build_runtime_image saas-forge-services/entitlement-service saasforge/entitlement-service:local
-build_runtime_image saas-forge-services/audit-service saasforge/audit-service:local
+build_runtime_image gateway saas.forge/gateway:local
+build_runtime_image saas-forge-services/iam-service saas.forge/iam-service:local
+build_runtime_image saas-forge-services/tenant-access-service saas.forge/tenant-access-service:local
+build_runtime_image saas-forge-services/entitlement-service saas.forge/entitlement-service:local
+build_runtime_image saas-forge-services/audit-service saas.forge/audit-service:local
 run_bootstrap bootstrap iam-platform-admin-bootstrap
 run_bootstrap service-client-bootstrap iam-reserved-service-client-bootstrap
 initial_password="$(<"$secret_directory/platform-admin-password")"
@@ -626,12 +626,12 @@ audit_base="http://127.0.0.1:$audit_port"
 wait_for_gateway
 wait_for_audit_health readiness 200
 wait_for_audit_health liveness 200
-login 'platform-admin@saasforge.test' "$initial_password" PLATFORM
+login 'platform-admin@saas.forge.test' "$initial_password" PLATFORM
 assert_json '.contextState == "PASSWORD_CHANGE_REQUIRED" and (has("accessToken") | not)'
 platform_password="Platform-$(openssl rand -hex 16)"
 request 204 POST /api/v1/auth/password-changes \
   "$(jq -cn --arg password "$platform_password" '{newPassword:$password}')"
-login 'platform-admin@saasforge.test' "$platform_password" PLATFORM
+login 'platform-admin@saas.forge.test' "$platform_password" PLATFORM
 assert_json '.contextState == "ACCESS_TOKEN_ISSUED" and (.accessToken | length > 100)'
 platform_token="$(jq -r '.accessToken' "$response_body")"
 
@@ -667,7 +667,7 @@ request 201 POST "/api/v1/platform/tenants/$tenant_id/subscriptions" \
   "$platform_token" "$(uuid_v7)"
 assert_json '.status == "ACTIVE"'
 cat "$response_body" >>"$business_response_log"
-tenant_admin_email='tenant-admin@saasforge.test'
+tenant_admin_email='tenant-admin@saas.forge.test'
 request 200 POST "/api/v1/platform/tenants/$tenant_id/administrator-initializations" \
   "$(jq -cn --arg email "$tenant_admin_email" \
     '{administratorEmail:$email,administratorDisplayName:"Tenant Admin"}')" \
@@ -697,7 +697,7 @@ mail_message="$(wait_for_mail "$tenant_admin_email")"
 password_setup_link="$(printf '%s' "$mail_message" | ruby -rjson -rcgi -e '
   message = JSON.parse(STDIN.read)
   body = [message["HTML"], message["Text"]].compact.join("\n")
-  link = CGI.unescapeHTML(body)[%r{https://console\.saasforge\.test/password-setup#token=[A-Za-z0-9_-]+}]
+  link = CGI.unescapeHTML(body)[%r{https://console\.saas\.forge\.test/password-setup#token=[A-Za-z0-9_-]+}]
   abort "Password Setup 邮件缺少固定 HTTPS Fragment 链接" unless link
   puts link
 ')"
@@ -744,7 +744,7 @@ login_status="$(curl --silent --show-error --output "$response_body" --write-out
   --request POST \
   --header 'Content-Type: application/json' \
   --header 'X-SF-CSRF: 1' \
-  --header 'Origin: https://console.saasforge.test' \
+  --header 'Origin: https://console.saas.forge.test' \
   --header 'Sec-Fetch-Site: same-site' \
   --data-binary "$(jq -cn --arg email "$tenant_admin_email" --arg password "$tenant_password" \
     '{email:$email,password:$password,contextType:"TENANT"}')" \
@@ -773,7 +773,7 @@ tenant_revocation_snapshot="$(postgres_value tenant_access_db \
   "SELECT tenant.tenant_status || ':' || workflow.workflow_status || ':'
        || workflow.attempt_count || ':' || workflow.revoked_family_count || ':'
        || workflow.revoked_jti_count || ':' || (SELECT count(*) FROM tenant_access_outbox_events
-          WHERE event_snapshot->>'type' = 'com.saasforge.tenant.suspended.v1'
+          WHERE event_snapshot->>'type' = 'com.saas.forge.tenant.suspended.v1'
             AND event_snapshot->'data'->>'tenantId' = '$tenant_id')
    FROM tenants tenant
    JOIN tenant_lifecycle_workflows workflow ON workflow.tenant_id = tenant.id
@@ -834,7 +834,7 @@ compose exec -T postgres sh -eu -c '
       SELECT (SELECT tenant_status = '\''ACTIVE'\'' FROM tenants WHERE id = :'"'"'tenant_id'"'"')
          AND (SELECT count(*) = 2 FROM tenant_lifecycle_workflows WHERE tenant_id = :'"'"'tenant_id'"'"')
          AND (SELECT count(*) = 1 FROM tenant_access_outbox_events
-              WHERE event_snapshot->>'\''type'\'' = '\''com.saasforge.tenant.suspended.v1'\''
+              WHERE event_snapshot->>'\''type'\'' = '\''com.saas.forge.tenant.suspended.v1'\''
                 AND event_snapshot->'\''data'\''->>'\''tenantId'\'' = :'"'"'tenant_id'"'"');
 SQL
 ' >/dev/null
@@ -887,13 +887,13 @@ quota_grpc_port="$(compose port entitlement-service 9090 | sed 's/.*://')"
 quota_probe() {
   SERVICE_ACCESS_TOKEN="$quota_token" "$repository_root/mvnw" --quiet -pl saas-forge-contracts/saas-forge-protobuf-contracts \
     -Denforcer.skip=true org.codehaus.mojo:exec-maven-plugin:java \
-    -Dexec.mainClass=io.saasforge.contracts.acceptance.QuotaCommandGrpcProbe \
+    -Dexec.mainClass=io.saas.forge.contracts.acceptance.QuotaCommandGrpcProbe \
     -Dexec.classpathScope=test -Dexec.args="$quota_grpc_port $exhausted_tenant_id $(uuid_v7) $1" \
     >>"$work_directory/quota-probe.log" 2>&1
 }
 quota_probe consume
 request 409 POST "/api/v1/platform/tenants/$exhausted_tenant_id/administrator-initializations" \
-  '{"administratorEmail":"exhausted-admin@saasforge.test"}' \
+  '{"administratorEmail":"exhausted-admin@saas.forge.test"}' \
   "$platform_token" "$(uuid_v7)"
 assert_json '.code == "QUOTA_EXCEEDED"'
 cat "$response_body" >>"$business_response_log"
@@ -911,7 +911,7 @@ request 201 POST "/api/v1/platform/tenants/$expired_tenant_id/subscriptions" \
   "$platform_token" "$(uuid_v7)"
 sleep 5
 request 409 POST "/api/v1/platform/tenants/$expired_tenant_id/administrator-initializations" \
-  '{"administratorEmail":"expired-admin@saasforge.test"}' \
+  '{"administratorEmail":"expired-admin@saas.forge.test"}' \
   "$platform_token" "$(uuid_v7)"
 assert_json '.code == "TENANT_EXPIRY_REACHED"'
 cat "$response_body" >>"$business_response_log"
@@ -986,8 +986,8 @@ wait_for_audit_condition \
 tenant_created_count_before="$(postgres_value audit_db \
   "SELECT count(*) FROM audit_records WHERE action = 'TENANT_CREATED' AND tenant_id = '$second_tenant_id'")"
 republish_outbox_event tenant_access_db tenant_access_outbox_events \
-  com.saasforge.tenant.created.v1 "$second_tenant_id" \
-  saasforge.dev.tenant-access-service.events
+  com.saas.forge.tenant.created.v1 "$second_tenant_id" \
+  saas.forge.dev.tenant-access-service.events
 sleep 3
 tenant_created_count_after="$(postgres_value audit_db \
   "SELECT count(*) FROM audit_records WHERE action = 'TENANT_CREATED' AND tenant_id = '$second_tenant_id'")"
@@ -1004,7 +1004,7 @@ switch_count_after="$(postgres_value audit_db \
 [[ "$switch_count_before" == "$switch_count_after" ]]
 
 wait_for_audit_condition \
-  "NOT EXISTS (SELECT 1 FROM audit_records WHERE source_type = 'com.saasforge.tenant.suspended.v1') AND NOT EXISTS (SELECT 1 FROM audit_consumed_events WHERE source_type = 'com.saasforge.tenant.suspended.v1')" \
+  "NOT EXISTS (SELECT 1 FROM audit_records WHERE source_type = 'com.saas.forge.tenant.suspended.v1') AND NOT EXISTS (SELECT 1 FROM audit_consumed_events WHERE source_type = 'com.saas.forge.tenant.suspended.v1')" \
   "同 Topic 合法 ignored 事件不持久化"
 
 echo "[12/13] 验证永久隔离、瞬时重试耗尽、隔离发布、原 ID 重放、权限与 Readiness 恢复"
@@ -1017,13 +1017,13 @@ invalid_payload="$(jq -cn \
   --arg id "$invalid_event_id" --arg identityId "$invalid_identity_id" \
   --arg familyId "$invalid_family_id" --arg time "$invalid_time" \
   --arg password "$invalid_sentinel" \
-  '{specversion:"1.0",id:$id,source:"urn:saasforge:iam-service",
-    type:"com.saasforge.iam.session.started.v1",subject:$familyId,time:$time,
+  '{specversion:"1.0",id:$id,source:"urn:saas.forge:iam-service",
+    type:"com.saas.forge.iam.session.started.v1",subject:$familyId,time:$time,
     datacontenttype:"application/json",
-    dataschema:"https://saasforge.io/contracts/events/iam-session-started.v1.schema.json",
+    dataschema:"https://saas.forge.io/contracts/events/iam-session-started.v1.schema.json",
     data:{familyId:$familyId,identityId:$identityId,purpose:"USER_TENANT",contextType:"TENANT",
       result:"ACCESS_TOKEN_ISSUED",occurredAt:$time,password:$password}}')"
-publish_controlled_kafka_line saasforge.dev.iam-service.events \
+publish_controlled_kafka_line saas.forge.dev.iam-service.events \
   "$invalid_identity_id|$invalid_payload"
 wait_for_audit_condition \
   "EXISTS (SELECT 1 FROM audit_consumer_isolations WHERE event_id = '$invalid_event_id' AND status = 'REJECTED_NON_REPLAYABLE' AND safe_snapshot IS NULL AND attempt_count = 1)" \
@@ -1038,10 +1038,10 @@ transient_time="$(ruby -rtime -e 'puts Time.now.utc.iso8601(3)')"
 transient_payload="$(jq -cn \
   --arg id "$transient_event_id" --arg identityId "$transient_identity_id" \
   --arg familyId "$transient_family_id" --arg time "$transient_time" \
-  '{specversion:"1.0",id:$id,source:"urn:saasforge:iam-service",
-    type:"com.saasforge.iam.session.started.v1",subject:$familyId,time:$time,
+  '{specversion:"1.0",id:$id,source:"urn:saas.forge:iam-service",
+    type:"com.saas.forge.iam.session.started.v1",subject:$familyId,time:$time,
     datacontenttype:"application/json",
-    dataschema:"https://saasforge.io/contracts/events/iam-session-started.v1.schema.json",
+    dataschema:"https://saas.forge.io/contracts/events/iam-session-started.v1.schema.json",
     data:{familyId:$familyId,identityId:$identityId,purpose:"USER_TENANT",contextType:"TENANT",
       result:"ACCESS_TOKEN_ISSUED",occurredAt:$time}}')"
 cat >"$work_directory/audit-transient-trigger.sql" <<SQL
@@ -1062,7 +1062,7 @@ SQL
 compose exec -T postgres sh -eu -c \
   'psql --username "$POSTGRES_USER" --dbname audit_db --set ON_ERROR_STOP=1' \
   <"$work_directory/audit-transient-trigger.sql" >/dev/null
-publish_controlled_kafka_line saasforge.dev.iam-service.events \
+publish_controlled_kafka_line saas.forge.dev.iam-service.events \
   "$transient_identity_id|$transient_payload"
 wait_for_audit_condition \
   "EXISTS (SELECT 1 FROM audit_consumer_isolations WHERE event_id = '$transient_event_id' AND status = 'OPEN' AND safe_snapshot IS NOT NULL AND attempt_count = 10)" \

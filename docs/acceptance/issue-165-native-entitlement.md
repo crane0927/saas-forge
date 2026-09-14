@@ -41,7 +41,7 @@
 
 开发者确认 Gateway、IAM、Tenant Access、Entitlement 已由 IDE 启动，前端已就绪。IAM、Tenant Access、Entitlement readiness 均返回 200/UP；Gateway 的同路径返回 404，不将该探针计为通过，随后真实 Console 业务正常。
 
-使用现有 Chrome 登录会话，经 `https://platform.saasforge.test` 的正式页面：
+使用现有 Chrome 登录会话，经 `https://platform.saas.forge.test` 的正式页面：
 
 - 复用已激活 `local-development` Plan（`01a08096-58a2-7c4f-bf00-eda6a204089c`），max_users 上限 1。
 - 创建专用 Tenant `issue165-native-20260913-0922`，ID `01a09a12-c184-787a-bc36-cdc49f4fed6c`，初始状态为待初始化。

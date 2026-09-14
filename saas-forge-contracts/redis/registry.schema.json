@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://saasforge.io/contracts/redis/registry.schema.json",
+  "$id": "https://saas.forge.io/contracts/redis/registry.schema.json",
   "title": "SaaS Forge Redis Key Registry",
   "type": "object",
   "additionalProperties": false,

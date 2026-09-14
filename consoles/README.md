@@ -55,11 +55,11 @@ pnpm --filter @saas-forge/design-system run dev:showcase
 ```
 
 > [!IMPORTANT]
-> 开发服务器只提供前端，不启动 Gateway、IAM 或数据库。它通过 `/runtime-config.json` 提供固定的 `https://api.saasforge.test` API Origin。真实认证联调还需要受信 HTTPS、正确的域名解析、Gateway 安全配置与已准备的账户；默认 HTTP localhost 页面不能代替受控浏览器入口。环境准备见[原生开发总入口](../docs/native-local-development.md)和 [Console 与独立 HTTPS Edge](../docs/native-console-development.md)。
+> 开发服务器只提供前端，不启动 Gateway、IAM 或数据库。它通过 `/runtime-config.json` 提供固定的 `https://api.saas.forge.test` API Origin。真实认证联调还需要受信 HTTPS、正确的域名解析、Gateway 安全配置与已准备的账户；默认 HTTP localhost 页面不能代替受控浏览器入口。环境准备见[原生开发总入口](../docs/native-local-development.md)和 [Console 与独立 HTTPS Edge](../docs/native-console-development.md)。
 
 ### 原生 HTTPS 开发
 
-按 [Console 原生说明](../docs/native-console-development.md)一次性准备证书、hosts 和 CA 信任，独立执行 `bash scripts/local-https-development.sh start edge`。随后分别在 `platform-console/`、`tenant-console-shell/` 执行 `pnpm run dev`；浏览器访问 `https://platform.saasforge.test`、`https://console.saasforge.test`，HMR 使用对应 WSS。不要用旧托管状态判断原生进程。
+按 [Console 原生说明](../docs/native-console-development.md)一次性准备证书、hosts 和 CA 信任，独立执行 `bash scripts/local-https-development.sh start edge`。随后分别在 `platform-console/`、`tenant-console-shell/` 执行 `pnpm run dev`；浏览器访问 `https://platform.saas.forge.test`、`https://console.saas.forge.test`，HMR 使用对应 WSS。不要用旧托管状态判断原生进程。
 
 日常验证见[分层验证说明](../docs/local-verification.md)。首次安装浏览器运行时与完整前端 `pnpm run verify` 均属于相应验证的准备或执行，不是每次启动的前置步骤。
 
@@ -84,7 +84,7 @@ bash scripts/local-development.sh status
 bash scripts/local-development.sh frontend stop all
 ```
 
-`setup` 复用有效的本地 CA；服务器证书缺少受控 Host、将在 24 小时内失效或无法通过链/私钥校验时才重签 leaf。证书覆盖 `platform.saasforge.test`、`console.saasforge.test`、`api.saasforge.test`、`remote.saasforge.test`。旧双/三 Host 安装需重新执行 setup；hosts 和 Keychain 变更仍分别要求交互式明确授权，已配置时幂等跳过，非交互环境拒绝系统变更。
+`setup` 复用有效的本地 CA；服务器证书缺少受控 Host、将在 24 小时内失效或无法通过链/私钥校验时才重签 leaf。证书覆盖 `platform.saas.forge.test`、`console.saas.forge.test`、`api.saas.forge.test`、`remote.saas.forge.test`。旧双/三 Host 安装需重新执行 setup；hosts 和 Keychain 变更仍分别要求交互式明确授权，已配置时幂等跳过，非交互环境拒绝系统变更。
 
 `frontend` 必须提供 `start|status|stop` 和 `platform|tenant|all`。Platform Vite 固定监听 `127.0.0.1:5173`，Tenant 固定监听 `127.0.0.1:5174`，均启用 strict port，分别只接受对应受控 Host，HMR 使用对应 HTTPS Origin 的 WSS 443。Edge 通过 `host.docker.internal` 访问两个回环 Vite，将 API 转发到当前 Gateway，并保留浏览器安全头。未知 Host 被拒绝；不得为解决 Docker Desktop 连通性问题将 Vite 改为所有网络接口。
 
@@ -106,7 +106,7 @@ Tenant Origin 下的 `/password-setup`、`/password-setup/app.js`、`/password-s
 
 #### 第四域静态资源验收
 
-开发 Tenant 的 `https://console.saasforge.test/acceptance/static-remote` 从 Remote 加载构建后的两个版本，不加入产品导航。执行 `pnpm --dir consoles run verify:local:static-remote`，在正常受信 Chromium 中验证模块执行、CSS、图片、无凭据 CORS 和 Vite WSS 连接；脱敏证据写入 `.scratch/issue-156/`。准备、旧 Edge 受控升级、版本冻结及 E2E 复用边界见[第四域开发验收说明](../docs/local-static-remote-development.md)。这不是 Manifest、业务 Remote 或父规格 #155 的整体验收。
+开发 Tenant 的 `https://console.saas.forge.test/acceptance/static-remote` 从 Remote 加载构建后的两个版本，不加入产品导航。执行 `pnpm --dir consoles run verify:local:static-remote`，在正常受信 Chromium 中验证模块执行、CSS、图片、无凭据 CORS 和 Vite WSS 连接；脱敏证据写入 `.scratch/issue-156/`。准备、旧 Edge 受控升级、版本冻结及 E2E 复用边界见[第四域开发验收说明](../docs/local-static-remote-development.md)。这不是 Manifest、业务 Remote 或父规格 #155 的整体验收。
 
 #### 状态与恢复
 
@@ -148,7 +148,7 @@ pnpm --filter @saas-forge/tenant-console-shell run dev
 
 1. 验收前保存 `frontend status all`、顶层 `status`，以及当前项目 Edge 的容器身份、运行状态和后端容器启动时间。确认已有受信证书、hosts、依赖和后端就绪；本轮不运行 setup、bootstrap、replace/restore 后端或任何密码重置。
 2. 依次覆盖 Platform-only、Tenant-only、all、单目标停止、all 停止与重复操作，每步读取聚合状态。单目标停止须保留仍被另一 Console 使用的 Edge；前端 stop 不停止后端、不删除容器、Secret 或数据卷，也不终止未知监听者。
-3. 在同一浏览器上下文中，以正常证书校验打开 `https://platform.saasforge.test` 和 `https://console.saasforge.test`。检查页面身份、关键内容、错误覆盖层、console/network，并分别记录真实 `/api/*` 方法、脱敏路径与状态码；API Origin 为 `https://api.saasforge.test`。禁止记录密码、Cookie、Token 或敏感响应体。
+3. 在同一浏览器上下文中，以正常证书校验打开 `https://platform.saas.forge.test` 和 `https://console.saas.forge.test`。检查页面身份、关键内容、错误覆盖层、console/network，并分别记录真实 `/api/*` 方法、脱敏路径与状态码；API Origin 为 `https://api.saas.forge.test`。禁止记录密码、Cookie、Token 或敏感响应体。
 4. 使用既有账号或会话分别登录/恢复两个槽位；刷新一侧后另一侧仍可使用，登出一侧后另一侧刷新仍保持登录，再交换方向验证。缺少现有登录前提就记录阻塞，不创建账号或重置凭据。
 5. 从 Tenant Origin 打开 Password Setup 文档，检查脚本/样式及表单的真实提交是否到达当前 Gateway。只验证不改变密码的失败路径；缺少可安全提交的前提则记录阻塞，不消费有效 Challenge。错误响应仅证明路由，不代表密码设置成功。
 6. 在两个 Console 各临时修改一个可见开发标记，分别观察其受控 WSS Origin 的连接与 HMR 更新，再还原文件。用宿主监听检查证明 5173/5174 仅绑定 `127.0.0.1`，从 Edge 内经 `host.docker.internal` 访问二者，并检查宿主 LAN 地址直连两端口失败。Docker Desktop 无法访问回环 Vite 时停止验收，不回退到 `0.0.0.0`。

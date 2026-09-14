@@ -14,11 +14,11 @@
 
 | 应用 | Main class / classpath | 依赖、凭据及调试步骤 |
 | --- | --- | --- |
-| Gateway | `io.saasforge.gateway.GatewayApplication` / `gateway` | [Gateway/IAM](native-platform-auth-development.md) |
-| IAM | `io.saasforge.iam.IamServiceApplication` / `iam-service` | [Gateway/IAM](native-platform-auth-development.md) |
-| Tenant Access | `io.saasforge.tenantaccess.TenantAccessServiceApplication` / `tenant-access-service` | [Tenant Access](native-tenant-access-development.md) |
-| Entitlement | `io.saasforge.entitlement.EntitlementServiceApplication` / `entitlement-service` | [Entitlement](native-entitlement-development.md) |
-| Audit | `io.saasforge.audit.AuditServiceApplication` / `audit-service` | [Audit](native-audit-development.md) |
+| Gateway | `io.saas.forge.gateway.GatewayApplication` / `gateway` | [Gateway/IAM](native-platform-auth-development.md) |
+| IAM | `io.saas.forge.iam.IamServiceApplication` / `iam-service` | [Gateway/IAM](native-platform-auth-development.md) |
+| Tenant Access | `io.saas.forge.tenantaccess.TenantAccessServiceApplication` / `tenant-access-service` | [Tenant Access](native-tenant-access-development.md) |
+| Entitlement | `io.saas.forge.entitlement.EntitlementServiceApplication` / `entitlement-service` | [Entitlement](native-entitlement-development.md) |
+| Audit | `io.saas.forge.audit.AuditServiceApplication` / `audit-service` | [Audit](native-audit-development.md) |
 
 自身 HTTP 注册端口必须与监听一致，gRPC 使用实例自身的 `grpc.port` metadata；不要配置调用方的下游实例地址或静态回退。
 
@@ -62,7 +62,7 @@ cd consoles/tenant-console-shell
 pnpm run dev
 ```
 
-浏览器打开 `https://platform.saasforge.test` 和 `https://console.saasforge.test`；API 走 `https://api.saasforge.test`，静态 Remote 走第四域。日志直接留在各终端，Ctrl+C 只停止当前 Console，另一个 Console 和 Edge 不随之停止。后端停止使用 IDE Stop；独立入口用 `bash scripts/local-https-development.sh stop edge` 停止，不自动接管或恢复任何应用。
+浏览器打开 `https://platform.saas.forge.test` 和 `https://console.saas.forge.test`；API 走 `https://api.saas.forge.test`，静态 Remote 走第四域。日志直接留在各终端，Ctrl+C 只停止当前 Console，另一个 Console 和 Edge 不随之停止。后端停止使用 IDE Stop；独立入口用 `bash scripts/local-https-development.sh stop edge` 停止，不自动接管或恢复任何应用。
 
 内部 5173/5174 或健康探针地址不作为浏览器入口。Cookie、Origin、Fetch Metadata 由浏览器管理，Console 只调用共享类型化正式 operation。保留精确 CORS、CSRF 和两个 Browser Session Slot；不得用 HTTP localhost、Mock 登录或手工注入安全头替代联调。
 

@@ -140,8 +140,8 @@
                             <inputSpec>${maven.multiModuleProjectDirectory}/saas-forge-contracts/saas-forge-openapi-contracts/v1.yaml</inputSpec>
                             <generatorName>spring</generatorName>
                             <output>${project.build.directory}/generated-sources/openapi</output>
-                            <apiPackage>io.saasforge.entitlement.contract.api</apiPackage>
-                            <modelPackage>io.saasforge.entitlement.contract.model</modelPackage>
+                            <apiPackage>io.saas.forge.entitlement.contract.api</apiPackage>
+                            <modelPackage>io.saas.forge.entitlement.contract.model</modelPackage>
                             <generateApis>true</generateApis>
                             <apisToGenerate>PlatformEntitlementBootstrap</apisToGenerate>
                             <generateModels>true</generateModels>

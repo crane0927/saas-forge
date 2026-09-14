@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="io.saasforge.entitlement.infrastructure.persistence.mapper.EntitlementBootstrapMapper">
+<mapper namespace="io.saas.forge.entitlement.infrastructure.persistence.mapper.EntitlementBootstrapMapper">
     <select id="listPlans" resultType="java.util.UUID">
         SELECT id FROM plans WHERE strpos(code, #{code}) &gt; 0
         <if test="status != null">AND plan_status = #{status}</if>
@@ -20,7 +20,7 @@
     </insert>
 
     <select id="findQuotaDefinition"
-            resultType="io.saasforge.entitlement.infrastructure.persistence.record.QuotaDefinitionRow">
+            resultType="io.saas.forge.entitlement.infrastructure.persistence.record.QuotaDefinitionRow">
         SELECT id,
                code,
                quota_definition_status AS status,
@@ -30,7 +30,7 @@
         WHERE id = #{id}
     </select>
 
-    <select id="listQuotaDefinitions" resultType="io.saasforge.entitlement.infrastructure.persistence.record.QuotaDefinitionRow">
+    <select id="listQuotaDefinitions" resultType="io.saas.forge.entitlement.infrastructure.persistence.record.QuotaDefinitionRow">
         SELECT id, code, quota_definition_status AS status, created_at AS createdAt, updated_at AS updatedAt
         FROM quota_definitions
         WHERE strpos(lower(code), lower(#{code})) &gt; 0
@@ -59,7 +59,7 @@
         VALUES (#{row.planId}, #{row.quotaDefinitionId}, #{row.quotaLimit})
     </insert>
 
-    <select id="findPlan" resultType="io.saasforge.entitlement.infrastructure.persistence.record.PlanRow">
+    <select id="findPlan" resultType="io.saas.forge.entitlement.infrastructure.persistence.record.PlanRow">
         SELECT id,
                code,
                display_name AS displayName,
@@ -71,7 +71,7 @@
     </select>
 
     <select id="findPlanQuotaLimits"
-            resultType="io.saasforge.entitlement.infrastructure.persistence.record.PlanQuotaLimitRow">
+            resultType="io.saas.forge.entitlement.infrastructure.persistence.record.PlanQuotaLimitRow">
         SELECT plan_id AS planId,
                quota_definition_id AS quotaDefinitionId,
                quota_limit AS quotaLimit
@@ -87,7 +87,7 @@
           AND plan_status = 'DRAFT'
     </update>
 
-    <select id="findSubscription" resultType="io.saasforge.entitlement.infrastructure.persistence.record.SubscriptionRow">
+    <select id="findSubscription" resultType="io.saas.forge.entitlement.infrastructure.persistence.record.SubscriptionRow">
         SELECT id, tenant_id AS tenantId, plan_id AS planId, subscription_status AS status,
                ends_at AS endsAt, created_at AS createdAt FROM subscriptions WHERE tenant_id = #{tenantId}
     </select>
@@ -115,7 +115,7 @@
     </insert>
 
     <select id="findQuotaOperation"
-            resultType="io.saasforge.entitlement.infrastructure.persistence.record.QuotaOperationRow">
+            resultType="io.saas.forge.entitlement.infrastructure.persistence.record.QuotaOperationRow">
         SELECT operation_id AS operationId,
                caller_client_id AS callerClientId,
                tenant_id AS tenantId,
@@ -225,7 +225,7 @@
     </insert>
 
     <select id="findIdempotency"
-            resultType="io.saasforge.entitlement.infrastructure.persistence.record.EntitlementIdempotencyRow">
+            resultType="io.saas.forge.entitlement.infrastructure.persistence.record.EntitlementIdempotencyRow">
         SELECT caller_identity_id AS callerIdentityId,
                idempotency_key AS idempotencyKey,
                operation_type AS operationType,

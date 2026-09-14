@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saasforge.test';
+const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saas.forge.test';
 
 // 使用公开 Runtime/Client 连接真实服务；此接口证据与宿主 UI 路径分别记账。
 export async function verifyClientRecovery(context) {
@@ -62,7 +62,7 @@ export async function verifyClientRecovery(context) {
           status: 401,
           contentType: 'application/problem+json',
           body: JSON.stringify({
-            type: 'urn:saasforge:problem:access-token-invalid',
+            type: 'urn:saas.forge:problem:access-token-invalid',
             title: 'Unauthorized',
             status: 401,
             code: 'ACCESS_TOKEN_INVALID',

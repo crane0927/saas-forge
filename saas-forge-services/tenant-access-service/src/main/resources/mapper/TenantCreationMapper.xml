@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="io.saasforge.tenantaccess.infrastructure.persistence.mapper.TenantCreationMapper">
+<mapper namespace="io.saas.forge.tenantaccess.infrastructure.persistence.mapper.TenantCreationMapper">
     <select id="setOperationTarget" resultType="string">
         SELECT set_config('app.tenant_id', CAST(#{tenantId} AS TEXT), true)
     </select>
@@ -11,7 +11,7 @@
     </insert>
 
     <select id="findTenant"
-            resultType="io.saasforge.tenantaccess.infrastructure.persistence.record.TenantRow">
+            resultType="io.saas.forge.tenantaccess.infrastructure.persistence.record.TenantRow">
         SELECT id,
                display_name AS displayName,
                tenant_status AS status,
@@ -39,7 +39,7 @@
     </insert>
 
     <select id="findIdempotency"
-            resultType="io.saasforge.tenantaccess.infrastructure.persistence.record.TenantCreationIdempotencyRow">
+            resultType="io.saas.forge.tenantaccess.infrastructure.persistence.record.TenantCreationIdempotencyRow">
         SELECT caller_identity_id AS callerIdentityId,
                idempotency_key AS idempotencyKey,
                request_fingerprint AS requestFingerprint,

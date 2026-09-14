@@ -28,7 +28,7 @@
 
 ## 真实本地运行证据
 
-使用开发者启动的服务和受信 HTTPS 入口 `https://platform.saasforge.test/tenants`，开发者完成登录。内置 Chromium 浏览器观察到：
+使用开发者启动的服务和受信 HTTPS 入口 `https://platform.saas.forge.test/tenants`，开发者完成登录。内置 Chromium 浏览器观察到：
 
 - 初始页面进入 A 布局，列表读取失败；重试能够触发同一错误状态，查询区保留。
 - 开发者提供 Tenant Access 日志：`list_platform_tenants(character varying, unknown, unknown, integer) does not exist`。

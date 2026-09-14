@@ -16,7 +16,7 @@
 
     <properties>
         <maven.deploy.skip>false</maven.deploy.skip>
-        <saasforge.public-api-boundary.skip>false</saasforge.public-api-boundary.skip>
+        <saas.forge.public-api-boundary.skip>false</saas.forge.public-api-boundary.skip>
     </properties>
 
     <dependencies>

@@ -8,7 +8,7 @@
 
 - macOS、Docker Desktop，Node 24.14.1、pnpm 11.22.0，仓库已有 Playwright Chromium。
 - 未提供 Browser 技能，使用 Playwright；浏览器上下文显式设置 `ignoreHTTPSErrors: false`。交互浏览器视口为 1360 × 900。
-- 正式 Origin：`https://platform.saasforge.test`、`https://console.saasforge.test`、`https://api.saasforge.test`；两个 Console 在同一浏览器上下文中运行。
+- 正式 Origin：`https://platform.saas.forge.test`、`https://console.saas.forge.test`、`https://api.saas.forge.test`；两个 Console 在同一浏览器上下文中运行。
 - 开始时 Platform/Tenant 均 STOPPED，Edge RUNNING。受限沙箱最初报告 Edge UNAVAILABLE，获得 Docker 只读访问后确认其为 RUNNING，因此不将最初输出判为环境故障。
 - 五个后端均为 CONTAINER、READY、Nacos 实例数 1。只操作受管前端和当前项目 Edge；未运行 setup、bootstrap、后端 replace/restore、数据库或凭据维护。
 - Password Setup 只使用内存中新生成、从未签发的随机无效 Challenge 和临时表单值，不消费有效链接、不修改现有密码。报告不保存 Cookie、Token、密码或敏感响应体。
@@ -23,7 +23,7 @@
 | 双槽位刷新与登出隔离          | **BLOCKED**：Tenant 无现有账号，不能验证双侧认证、双向登出和刷新互不干扰；未尝试创建账号或重置凭据                                                                        |
 | Password Setup 文档与资源     | Tenant Origin 的 GET `/password-setup`、`/password-setup/app.js`、`/password-setup/styles.css` 均为 200，类型分别为 text/html、text/javascript、text/css                  |
 | Password Setup 实际提交       | 点击正式页面“设置密码”按钮，POST `/api/v1/auth/password-setups` 返回 400、application/problem+json，页面显示链接无效错误；证明经过 Gateway 的拒绝路径，不代表成功设置密码 |
-| 双 WSS / HMR                  | 连接分别为 `wss://platform.saasforge.test`、`wss://console.saasforge.test`；在各自 app.tsx 临时加入可见标记，浏览器分别观察到更新，无需重建镜像；文件均已还原             |
+| 双 WSS / HMR                  | 连接分别为 `wss://platform.saas.forge.test`、`wss://console.saas.forge.test`；在各自 app.tsx 临时加入可见标记，浏览器分别观察到更新，无需重建镜像；文件均已还原             |
 | loopback 监听                 | `lsof -nP -iTCP:5173 -iTCP:5174 -sTCP:LISTEN` 显示两个 Node 监听仅为 127.0.0.1                                                                                            |
 | Edge 到宿主 Vite              | 在原 Edge 容器内通过 Node HTTP，以各自受控 Host 访问 `host.docker.internal:5173/5174`，均返回 200                                                                         |
 | LAN 隔离                      | 对宿主当时 en 接口 IPv4 地址直连 5173、5174，均为 ECONNREFUSED；未放宽监听地址                                                                                            |

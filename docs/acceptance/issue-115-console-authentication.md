@@ -2,7 +2,7 @@
 
 > 当前阶段范围已由 [ADR 0046](../adr/0046-development-supports-chrome-and-jdk17.md) 调整为桌面 Chrome 当前稳定版与 JDK 17；Chromium 保留日常功能与视觉测试。本文旧矩阵的执行结果属于历史证据，不作为当前多浏览器或 JDK 21 要求。现行复现入口见 [本地验证说明](../local-verification.md)。
 
-状态：**2026-09-03，提交 `5023f24` 的 Verify 与完整五渠道产品聚合均已通过。** CI 使用已获批准的 `saasforge.example.com` 对照根域；本地仍使用 `saasforge.test`。远端 Issue 原有固定域名条款尚未调整，#115 / #108 及 MVP 完成状态未变更。
+状态：**2026-09-03，提交 `5023f24` 的 Verify 与完整五渠道产品聚合均已通过。** CI 使用已获批准的 `saas.forge.example.com` 对照根域；本地仍使用 `saas.forge.test`。远端 Issue 原有固定域名条款尚未调整，#115 / #108 及 MVP 完成状态未变更。
 
 | 最新门禁 | 当前直接结果 |
 | --- | --- |
@@ -49,10 +49,10 @@ mise exec node@24.14.1 -- bash scripts/verify-console-authentication-e2e.sh --pr
 mise exec node@24.14.1 -- bash scripts/verify-console-authentication-e2e.sh
 ```
 
-本地默认域名解析如下；经确认的 CI 对照使用同样的三个前缀与 `saasforge.example.com` 根域：
+本地默认域名解析如下；经确认的 CI 对照使用同样的三个前缀与 `saas.forge.example.com` 根域：
 
 ```text
-127.0.0.1 platform.saasforge.test console.saasforge.test api.saasforge.test
+127.0.0.1 platform.saas.forge.test console.saas.forge.test api.saas.forge.test
 ```
 
 预检中的证书匹配/有效期检查不等于浏览器信任通过；必须由各浏览器开启正常证书验证后实际导航证明。预检检查 443 是否已有监听者，实际端口绑定由 Docker 完成；非 root Node 不能绑定低端口不应误判为 Docker 部署失败。
@@ -65,7 +65,7 @@ Node 侧夹具请求同样保持证书验证；`NODE_EXTRA_CA_CERTS` 指向公�
 
 | 检查                            | 结果                         | 直接证据                                                                                                                               |
 | ------------------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| 首条真实 Chromium 产品测试      | RED，1 条失败，0 条跳过      | 在 `platform.saasforge.test` 导航时得到 `net::ERR_CONNECTION_CLOSED`，未到达登录页                                                     |
+| 首条真实 Chromium 产品测试      | RED，1 条失败，0 条跳过      | 在 `platform.saas.forge.test` 导航时得到 `net::ERR_CONNECTION_CLOSED`，未到达登录页                                                     |
 | 本地 TLS 材料                   | 阻塞                         | 未提供 `SF_ACCEPTANCE_TLS_CERT` / `SF_ACCEPTANCE_TLS_KEY`                                                                              |
 | 三域名解析                      | 阻塞                         | Platform、Console、API 分别解析为 `198.18.1.4`、`198.18.1.5`、`198.18.1.6`，并非要求的回环地址                                         |
 | Chromium / Chrome / WebKit 启动 | 通过启动预检，产品行为未执行 | Playwright 启动并关闭成功；不能当作认证通过                                                                                            |
@@ -87,7 +87,7 @@ mise exec node@24.14.1 -- node --test integration-test/console-authentication.te
 
 上述环境阻塞记录保留为首轮原始证据。用户随后批准本地证书信任及 hosts 配置，并确认不在本机安装或排查 Firefox/Edge。
 
-- 已生成只适用于 `.saasforge.test` 的本地 CA 和覆盖三个域名的服务器证书；私钥保存在 Git 忽略的 `deploy/compose/.secrets/console-authentication/` 中。
+- 已生成只适用于 `.saas.forge.test` 的本地 CA 和覆盖三个域名的服务器证书；私钥保存在 Git 忽略的 `deploy/compose/.secrets/console-authentication/` 中。
 - CA 已加入当前用户钥匙串信任；服务器证书有效期 90 天，CA 有效期 365 天。
 - 已备份 `/etc/hosts` 至 `/etc/hosts.saas-forge-backup-20260902141459`，然后追加三个域名到 `127.0.0.1` 的映射，保留已有条目。
 - `SF_ACCEPTANCE_TARGET=local` 预检通过：Chromium `151.0.7922.34`、Chrome `152.0.7977.66`、WebKit `26.5` 均可启动。
@@ -244,15 +244,15 @@ CI 的 Linux 浏览器信任按官方入口配置：[Chromium NSS](https://chrom
 
 CI 安装的是 libsoup `3.4.4-5ubuntu0.7`。[libsoup Cookie 接收逻辑](https://github.com/GNOME/libsoup/blob/3.4.4/libsoup/cookies/soup-cookie-jar.c) 通过基础域判断第三方 Cookie；[基础域实现](https://github.com/GNOME/libsoup/blob/master/libsoup/soup-tld.c) 对未识别顶级域返回空值，Cookie 接收逻辑随后比较完整主机名。这与 `.test` 下两个不同子域被当作第三方、macOS WebKit 成功而 Linux 失败的现象一致，但尚未完成更换根域的对照实验，不能宣称最终根因或修复已证实。
 
-建议的下一步是仅在隔离 CI 中以 `platform.saasforge.example.com`、`console.saasforge.example.com`、`api.saasforge.example.com` 做对照，临时 hosts 仍仅指向 127.0.0.1，TLS 与 Cookie 安全属性不变，本机现有配置不变。Issue #115 明确写死 `.saasforge.test`，因此该实验和后续验收域名调整需要用户确认；尚未实施，远端 Issue 未修改。
+建议的下一步是仅在隔离 CI 中以 `platform.saas.forge.example.com`、`console.saas.forge.example.com`、`api.saas.forge.example.com` 做对照，临时 hosts 仍仅指向 127.0.0.1，TLS 与 Cookie 安全属性不变，本机现有配置不变。Issue #115 明确写死 `.saas.forge.test`，因此该实验和后续验收域名调整需要用户确认；尚未实施，远端 Issue 未修改。
 
 ## 经确认的 CI 根域对照
 
-用户已确认仅在 CI 对照使用 `platform.saasforge.example.com`、`console.saasforge.example.com` 与 `api.saasforge.example.com`。`SF_ACCEPTANCE_ROOT_DOMAIN` 默认仍为 `saasforge.test`；CI 明确设置为 `saasforge.example.com`，同步临时证书 SAN/CA 约束、hosts、Gateway/IAM 根域、三个入口和浏览器夹具。代理只接受配置根域下的三个 Host，根域只允许上述两个值；HttpOnly/Secure/SameSite、Origin/Fetch Metadata 和 TLS 校验保持原样。测试账号邮箱与 JWT issuer 作为固定身份数据保持原值。
+用户已确认仅在 CI 对照使用 `platform.saas.forge.example.com`、`console.saas.forge.example.com` 与 `api.saas.forge.example.com`。`SF_ACCEPTANCE_ROOT_DOMAIN` 默认仍为 `saas.forge.test`；CI 明确设置为 `saas.forge.example.com`，同步临时证书 SAN/CA 约束、hosts、Gateway/IAM 根域、三个入口和浏览器夹具。代理只接受配置根域下的三个 Host，根域只允许上述两个值；HttpOnly/Secure/SameSite、Origin/Fetch Metadata 和 TLS 校验保持原样。测试账号邮箱与 JWT issuer 作为固定身份数据保持原值。
 
 新增 Linux libsoup 公共函数对照观察，只输出两组公开域名是否具有相同基础域，不输出 Cookie 或凭据。本地 12 条边界/诊断测试、相关 ESLint、JS/Shell 语法、YAML 和 diff 检查通过；使用占位配置验证两个根域均准确传入 Gateway、IAM 和三个入口。尚待本次 CI 的真实产品结果；未修改本机 hosts、信任库或浏览器安装，未修改远端 Issue 验收条款。
 
-提交 `1efe67b` 的 [Verify](https://github.com/crane0927/saas-forge/actions/runs/33635862151) 全部通过。[产品对照](https://github.com/crane0927/saas-forge/actions/runs/33635862213) 直接输出 `saasforge.test sharedBase=false`、`saasforge.example.com sharedBase=true`。WebKit 首次改密及其后的双槽位、Membership、Tenant Switch、多标签页、Lease 回退、路由错误与正式 Client 场景已进入并通过；共执行 16 条，13 通过、3 失败（两个叶子断言失败及其父测试）。剩余断言位于存储安全检查和请求错误检查，二者的会话键白名单正则仍写死 `.saasforge.test`。本次只将这两处改为配置根域下的精确键名比较，继续限制 PLATFORM/TENANT、generation/logoutPending 以及原有值校验；相关 lint/格式通过，需下一轮 CI 复验。
+提交 `1efe67b` 的 [Verify](https://github.com/crane0927/saas-forge/actions/runs/33635862151) 全部通过。[产品对照](https://github.com/crane0927/saas-forge/actions/runs/33635862213) 直接输出 `saas.forge.test sharedBase=false`、`saas.forge.example.com sharedBase=true`。WebKit 首次改密及其后的双槽位、Membership、Tenant Switch、多标签页、Lease 回退、路由错误与正式 Client 场景已进入并通过；共执行 16 条，13 通过、3 失败（两个叶子断言失败及其父测试）。剩余断言位于存储安全检查和请求错误检查，二者的会话键白名单正则仍写死 `.saas.forge.test`。本次只将这两处改为配置根域下的精确键名比较，继续限制 PLATFORM/TENANT、generation/logoutPending 以及原有值校验；相关 lint/格式通过，需下一轮 CI 复验。
 
 提交 `9600669` 的[产品验收](https://github.com/crane0927/saas-forge/actions/runs/33637759472)中，WebKit、Chromium 均为 16/16、0 失败/跳过，证明根域对照和存储检查已通过。Firefox 随后在初始导航阶段 6/6 失败，尚未进入认证断言，Chrome/Edge 产品渠道未执行。[Verify](https://github.com/crane0927/saas-forge/actions/runs/33637759471) 的 Nacos 初始化首次失败于 `nacos-init` 退出 1，同一提交单独重跑该任务后 4m23s 通过，其他门禁均通过；首次初始化失败的具体原因尚未确定，未修改 Nacos 代码或配置。
 
@@ -286,7 +286,7 @@ CI 安装的是 libsoup `3.4.4-5ubuntu0.7`。[libsoup Cookie 接收逻辑](https
 
 ## 验收证据与剩余事项
 
-以下勾选表示已在批准的 CI 示例根域下取得完整产品证据；不表示已改写或关闭远端 Issue，也不将其自动等同于原文写死 `.saasforge.test` 的域名条款。
+以下勾选表示已在批准的 CI 示例根域下取得完整产品证据；不表示已改写或关闭远端 Issue，也不将其自动等同于原文写死 `.saas.forge.test` 的域名条款。
 
 - [x] 全新 Compose 数据卷、真实服务及三 Origin 的受信 TLS 产品入口。
 - [x] Platform / Tenant 同时登录、独立 Refresh Cookie、内存 Access Token 与独立刷新/登出。
@@ -299,5 +299,5 @@ CI 安装的是 libsoup `3.4.4-5ubuntu0.7`。[libsoup Cookie 接收逻辑](https
 - [x] 根/路由/请求错误分层、生产脱敏、键盘、焦点、读屏与窄屏。
 - [x] 三引擎核心认证与 Chrome/Edge 发布渠道；Chromium 视觉快照的本地证据见前文，CI 未将非 Chromium 视觉跳过等同于核心行为通过。
 - [x] 两个生产构建、workspace、Maven/契约/服务及 Fresh Compose 聚合验证全部通过。
-- [ ] 确认是否将“本地 `.saasforge.test`、CI `.saasforge.example.com`，均使用受信 TLS 和同等受控 Origin/Cookie 边界”纳入 #115 正式验收条款。
+- [ ] 确认是否将“本地 `.saas.forge.test`、CI `.saas.forge.example.com`，均使用受信 TLS 和同等受控 Origin/Cookie 边界”纳入 #115 正式验收条款。
 - [ ] 完成正式条款与前置 Issue 的最终核对后，再处理 #115 / #108 和 MVP 完成状态。

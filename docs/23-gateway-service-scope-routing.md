@@ -114,7 +114,7 @@ Registry 顶层包含 `registryVersion` 和 `entries`。每个 entry 只包含�
 - `spring.application.name` 和 Nacos discovery service；
 - `dev/test/staging/prod` 应用专属 Nacos资源；
 - Compose与 Helm可部署清单；
-- OpenAPI `x-saasforge-service`；
+- OpenAPI `x-saas.forge-service`；
 - Gateway discovery ACL。
 
 `gatewayRouteTargetAllowed=false` 的已注册服务可以没有公开 operation。值为 `true` 的服务必须至少拥有一个正式 operation。Nacos只出现实例永远不能增加 Route Catalog条目。
@@ -207,7 +207,7 @@ Tenant Switch 与 Context Selection 使用 `TenantRefreshCookieAuth`，Initial P
 采用根 POM管理版本的 `swagger-parser-v3` 解析 OpenAPI 3.1与引用；子模块不得声明版本。构建必须拒绝：
 
 - 解析错误、未解析引用或未知 Security Scheme；
-- 缺 path、method、operationId、`x-saasforge-service` 或认证元数据；
+- 缺 path、method、operationId、`x-saas.forge-service` 或认证元数据；
 - 未登记、命名非法或不允许路由的 serviceId；
 - serviceId与 module、artifact、Nacos、部署清单不一致；
 - operationId重复；

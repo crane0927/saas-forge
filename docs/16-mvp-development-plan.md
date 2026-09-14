@@ -108,7 +108,7 @@ flowchart TD
 - [x] 在[租户架构](05-tenant-architecture.md#tenant-context)、[API 设计](08-api-design.md#v1-资源边界)、[SDK 设计](09-sdk-design.md#身份与上下文)和[安全设计](12-security-design.md#授权租户与数据隔离)中重申租户安全边界：用户请求不得通过请求头、查询参数、请求体或语义等价别名传入/覆盖 Tenant；此类输入以 `400` 拒绝。服务身份只用 `client_id` 与显式 `scope` 授权，不建立或伪造用户上下文；缺少所需 scope 以 `403` 拒绝。
 - [x] 在 `saas-forge-contracts/saas-forge-openapi-contracts/v1.yaml` 定义实施阶段 2、3 所需的 `auth`、Tenant 管理、JWKS 以及管理员初始化所需的最小权益前置链路；第 3 阶段不需要独立 Runtime 端点。Permission、Feature、Quota Runtime 操作和后续资源契约在对应阶段开始前评审，并以兼容方式加入同一 v1 契约；决策见 [ADR 0013](adr/0013-v1-openapi-contracts-follow-delivery-prerequisites.md)。
 - [x] 在 `saas-forge-contracts/saas-forge-protobuf-contracts` 定义 IAM↔Tenant Access 所需的 Membership 即时校验接口；在 `saas-forge-contracts/saas-forge-event-contracts` 定义统一 CloudEvents JSON 信封、审计事件和缓存失效事件的版本规则。
-- [x] 建立 spec-first 代码生成流程：服务端 Spring MVC 接口骨架、`sdk-core` Java REST Client 与 `consoles/shared/api-client` TypeScript API Client 都由 `saas-forge-contracts/saas-forge-openapi-contracts/v1.yaml` 生成且不提交。每个 operation 以唯一 `x-saasforge-service` 声明归属；手写 Controller 只能实现生成接口、不得自行声明 HTTP 路由；Maven `verify` 重生成并编译/类型检查全部 Client，禁止实现反向修改正式契约。决策见 [ADR 0015](adr/0015-openapi-is-the-source-of-generated-rest-code.md)。
+- [x] 建立 spec-first 代码生成流程：服务端 Spring MVC 接口骨架、`sdk-core` Java REST Client 与 `consoles/shared/api-client` TypeScript API Client 都由 `saas-forge-contracts/saas-forge-openapi-contracts/v1.yaml` 生成且不提交。每个 operation 以唯一 `x-saas.forge-service` 声明归属；手写 Controller 只能实现生成接口、不得自行声明 HTTP 路由；Maven `verify` 重生成并编译/类型检查全部 Client，禁止实现反向修改正式契约。决策见 [ADR 0015](adr/0015-openapi-is-the-source-of-generated-rest-code.md)。
 - [x] 增加 REST、Protobuf 与事件的兼容性检查，阻止破坏性 v1 变更。
 - [x] **先发布数据库建模与迁移规范，再创建业务表。** [数据库设计与规范](11-database-design.md)已覆盖表/列/索引/约束的命名，类型、可空性、默认值和时区，UUIDv7 主键，外键的服务内边界，状态/软删除/历史记录的适用规则，以及 Flyway 不可变版本、前向修复和数据回填约定。
 - [x] 明确公共持久化字段的适用矩阵：独立实体默认使用 `id`，Tenant 范围表必须使用非空 `tenant_id`，`created_at`、`updated_at`、`deleted_at` 与 `status` 按数据语义使用；全局表和平台表不得为了“统一”而伪造 `tenant_id`。`created_by`、`updated_by` 等操作者字段由具体审计/查询需求逐表评审。
@@ -131,7 +131,7 @@ flowchart TD
 - [x] 按 [Console 认证 Runtime 与浏览器会话规格](28-console-authentication-runtime.md)建立共享认证状态机、类型化 HTTP Client、Problem Details 映射、全局导航和分层错误边界；两个 Console 复用同一实现，分别在受控 Origin 维护绑定 Login Context Intent 的 Browser Session Slot 与内存 Access Token。交付顺序固定为“契约→Gateway/IAM 安全→无 UI Runtime→共享 React Shell→Platform→Tenant/Tenant Switch→多 Origin/多标签页/Fresh Compose 验收”；只有全部切片与最终浏览器证据成立时才能勾选。
 - [x] 按 [Console 国际化基线](29-console-internationalization.md)建立 `zh-CN` 与 `en-US` 国际化基线：浏览器语言决定初始 Locale，用户切换只保存为非敏感本地 UI 偏好，Shell 向 Remote 传递当前 Locale；构建门禁保证双语翻译键一致。
 - [x] 建立由 Design System 版本化构建期常量提供的完整 Platform Brand Profile，以及“Runtime 只发布权威 Context 快照、Design System 唯一解析、共享 React Shell 唯一应用”的品牌运行时缝。未取得权威 Tenant Context、Context 读取中、切换已提交但新 Context 未恢复，或 Tenant Brand Profile 任一字段结构、颜色、受控素材引用及加载结果无效时，均完整使用平台品牌；只有一个不可变 Resolved Brand Profile 可以同时驱动显示名称、Logo、favicon、标签页标题和浅色/深色 Brand Token Set。完整链路已实现，并通过五浏览器 Fresh Compose 聚合验收，证据见 [Issue #147 验收记录](acceptance/issue-147-brand-runtime.md)；详见 [Design System 规范](25-design-system.md#4-主题与品牌)、[Console 认证 Runtime 与浏览器会话规格](28-console-authentication-runtime.md#54-tenant-context-switch) 与 [ADR 0042](adr/0042-browser-surfaces-atomically-apply-one-resolved-brand.md)。
-- [x] 在开发与端到端环境建立 `platform.saasforge.test`、`console.saasforge.test`、`api.saasforge.test` 与 `remote.saasforge.test` 的本地受信 TLS、精确 Origin、Cookie、CSRF、CORS 和 Remote 静态资源拓扑，不得以不同 `localhost` 端口作为阶段浏览器验收替代。开发三浏览器与 Fresh Compose 五浏览器证据见 [Issue #159 验收记录](acceptance/issue-159-four-domain-matrix.md)。
+- [x] 在开发与端到端环境建立 `platform.saas.forge.test`、`console.saas.forge.test`、`api.saas.forge.test` 与 `remote.saas.forge.test` 的本地受信 TLS、精确 Origin、Cookie、CSRF、CORS 和 Remote 静态资源拓扑，不得以不同 `localhost` 端口作为阶段浏览器验收替代。开发三浏览器与 Fresh Compose 五浏览器证据见 [Issue #159 验收记录](acceptance/issue-159-four-domain-matrix.md)。
   - 本项完成边界为四域名受信 HTTPS 与浏览器安全、静态资源交付：通过真实浏览器验证 API Cookie、CSRF、CORS，以及 Tenant Console 从 Remote 版本化路径无凭据加载真实静态资源，并验证不允许的 Origin 无法通过 CORS 读取。Manifest 审核启用、Shell 加载业务 Remote 与 Project/Task 闭环由第 3 阶段验收；本项静态资源证据不能替代这些验收。
   - 静态资源验收通过不加入产品导航的验收专用入口，实际加载版本化路径下的最小 ES Module、CSS 和图片，验证模块执行、样式生效、图片解码、无凭据请求及 CORS 拒绝路径。
   - 开发与 E2E 共用同一浏览器拓扑契约、安全策略和 Remote 静态制品，允许域名后的运行方式不同：开发保留 Console 的 Vite/HMR，Remote 提供构建制品；E2E 使用构建制品、独立 Compose 项目的全新数据卷和隔离浏览器上下文。`localhost` 与容器端口只作为内部代理或服务通信地址，不能作为阶段浏览器验收入口；E2E 清理仅作用于本次验收项目。
@@ -307,7 +307,7 @@ flowchart TD
 ### 8. 本地交付与发布强化
 
 - [ ] 将第 1～7 阶段持续演进的 Docker Compose 收敛为发布拓扑：Gateway、四个服务、两个控制台、Example、含四个逻辑数据库和受限账号的 PostgreSQL、Redis、Kafka、分离存储边界的 S3 兼容存储及 OpenTelemetry Collector；不得把本项作为两个 Console 或 TLS 拓扑的首次交付。
-- [ ] 强化健康检查、初始化迁移、开发用受控密钥注入、`saasforge.test` 本地 TLS/域名拓扑、可重复的种子/清理策略和一条 Quick Start 命令；Quick Start 必须覆盖本地域名解析与证书信任前置条件，单节点依赖仅用于本地环境。
+- [ ] 强化健康检查、初始化迁移、开发用受控密钥注入、`saas.forge.test` 本地 TLS/域名拓扑、可重复的种子/清理策略和一条 Quick Start 命令；Quick Start 必须覆盖本地域名解析与证书信任前置条件，单节点依赖仅用于本地环境。
 - [ ] 接入结构化日志、Trace、Metric 和健康探针；至少能关联 Gateway、服务调用、Kafka 事件和 Audit 的 `traceId`。
 - [ ] 将 Gateway 强化为唯一公网入口并实现 Redis 令牌桶限流，按 IP、Identity、Client、Tenant 维度使用环境化阈值；领域服务不开放公网端口。
 - [ ] 将数据库迁移、Redis Key Registry 和日志字段白名单接入 CI：迁移须符合服务数据库边界与 RLS 门禁，新增 Redis Key 须登记 TTL/所有者，日志测试须证明敏感字段不会输出。
@@ -319,7 +319,7 @@ flowchart TD
 ### 9. 全链路验收与 MVP 发布门禁
 
 - [ ] 单元、集成、契约、前端、端到端、安全与性能测试均按 [测试策略](13-testing-strategy.md) 落地；全仓库行覆盖率 ≥ 80%、分支覆盖率 ≥ 70%，IAM、Tenant Context、RLS、授权和配额行覆盖率 ≥ 90%。
-- [ ] 用 Playwright 从全新数据卷在 `saasforge.test` Compose 拓扑执行完整核心端到端闭环，覆盖 Platform Console、Tenant Console Shell 与全部 MVP Remote，验证 host-only Refresh Token Cookie、SameSite/CSRF/CORS 拒绝路径，以及菜单授权、Remote 加载和拒绝/恢复路径。
+- [ ] 用 Playwright 从全新数据卷在 `saas.forge.test` Compose 拓扑执行完整核心端到端闭环，覆盖 Platform Console、Tenant Console Shell 与全部 MVP Remote，验证 host-only Refresh Token Cookie、SameSite/CSRF/CORS 拒绝路径，以及菜单授权、Remote 加载和拒绝/恢复路径。
 - [ ] 执行 `zh-CN` 与 `en-US` 跨模块发布回归，验证 Locale 切换、翻译键完整性、关键布局稳定性、Tenant Context 品牌原子切换，以及相同场景在不同 Console/Remote 中保持统一样式和交互语义。
 - [ ] 用 Testcontainers 执行 RLS 强制门禁：Tenant A 上下文不可访问 Tenant B，缺上下文默认拒绝；同时验证用户/服务 Token 的越权、过期、撤销与 Redis 故障路径。
 - [ ] 验证 Permission 与 Feature 组合拒绝、Subscription 到期、Quota 并发不超额和 `operationId` 幂等；验证审计只追加且不含敏感字段。

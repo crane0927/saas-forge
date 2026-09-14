@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 
-const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saasforge.test';
+const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saas.forge.test';
 const api = `https://api.${rootDomain}`;
 const names = ['__Host-sf_platform_refresh', '__Host-sf_tenant_refresh'];
 

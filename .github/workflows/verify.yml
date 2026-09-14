@@ -58,7 +58,7 @@ jobs:
       POSTGRES_ADMIN_PASSWORD: postgres-test-password
       IAM_MIGRATOR_PASSWORD: iam-migrator-test-password
       IAM_APP_PASSWORD: iam-app-test-password
-      IAM_JWT_ISSUER: https://api.saasforge.test
+      IAM_JWT_ISSUER: https://api.saas.forge.test
       IAM_JWT_PEM_KEY_VERSION_REF: local/ci/pem/1
       IAM_JWT_PEM_PRIVATE_KEY_FILE: .secrets/ci-jwt-private-key.pem
       TENANT_ACCESS_MIGRATOR_PASSWORD: tenant-access-migrator-test-password

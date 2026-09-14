@@ -2,7 +2,7 @@ services:
   postgres:
     image: postgres:18
     environment:
-      POSTGRES_DB: saasforge
+      POSTGRES_DB: saas.forge
       POSTGRES_USER: ${POSTGRES_ADMIN_USER:?POSTGRES_ADMIN_USER is required}
       POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD is required}
       IAM_MIGRATOR_PASSWORD: ${IAM_MIGRATOR_PASSWORD:?IAM_MIGRATOR_PASSWORD is required}
@@ -147,7 +147,7 @@ services:
 
   iam-platform-admin-bootstrap:
     profiles: ["bootstrap"]
-    image: saasforge/iam-service:local
+    image: saas.forge/iam-service:local
     build:
       context: ../..
       dockerfile: deploy/compose/Dockerfile
@@ -158,12 +158,12 @@ services:
         condition: service_completed_successfully
     entrypoint:
       - java
-      - -Dloader.main=io.saasforge.iambootstrap.PlatformAdminBootstrapApplication
+      - -Dloader.main=io.saas.forge.iambootstrap.PlatformAdminBootstrapApplication
       - -jar
       - /app/application.jar
     command:
-      - --saasforge.iam.bootstrap.platform-admin.email-file=/run/secrets/platform-admin-email
-      - --saasforge.iam.bootstrap.platform-admin.password-file=/run/secrets/platform-admin-password
+      - --saas.forge.iam.bootstrap.platform-admin.email-file=/run/secrets/platform-admin-email
+      - --saas.forge.iam.bootstrap.platform-admin.password-file=/run/secrets/platform-admin-password
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/iam_db
       SPRING_DATASOURCE_USERNAME: iam_app
@@ -185,7 +185,7 @@ services:
 
   iam-platform-admin-credential-reset:
     profiles: ["credential-reset"]
-    image: saasforge/iam-service:local
+    image: saas.forge/iam-service:local
     build:
       context: ../..
       dockerfile: deploy/compose/Dockerfile
@@ -196,12 +196,12 @@ services:
         condition: service_completed_successfully
     entrypoint:
       - java
-      - -Dloader.main=io.saasforge.iambootstrap.PlatformAdminCredentialResetApplication
+      - -Dloader.main=io.saas.forge.iambootstrap.PlatformAdminCredentialResetApplication
       - -jar
       - /app/application.jar
     command:
-      - --saasforge.iam.bootstrap.platform-admin-reset.request-id-file=/run/secrets/platform-admin-reset-request-id
-      - --saasforge.iam.bootstrap.platform-admin-reset.password-file=/run/secrets/platform-admin-reset-password
+      - --saas.forge.iam.bootstrap.platform-admin-reset.request-id-file=/run/secrets/platform-admin-reset-request-id
+      - --saas.forge.iam.bootstrap.platform-admin-reset.password-file=/run/secrets/platform-admin-reset-password
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/iam_db
       SPRING_DATASOURCE_USERNAME: iam_app
@@ -223,7 +223,7 @@ services:
 
   iam-reserved-service-client-bootstrap:
     profiles: ["service-client-bootstrap"]
-    image: saasforge/iam-service:local
+    image: saas.forge/iam-service:local
     build:
       context: ../..
       dockerfile: deploy/compose/Dockerfile
@@ -234,16 +234,16 @@ services:
         condition: service_completed_successfully
     entrypoint:
       - java
-      - -Dloader.main=io.saasforge.iambootstrap.ReservedServiceClientBootstrapApplication
+      - -Dloader.main=io.saas.forge.iambootstrap.ReservedServiceClientBootstrapApplication
       - -jar
       - /app/application.jar
     command:
-      - --saasforge.iam.bootstrap.service-clients.iam.id-file=/run/secrets/iam-client-id
-      - --saasforge.iam.bootstrap.service-clients.iam.secret-file=/run/secrets/iam-client-secret
-      - --saasforge.iam.bootstrap.service-clients.tenant-access.id-file=/run/secrets/tenant-access-client-id
-      - --saasforge.iam.bootstrap.service-clients.tenant-access.secret-file=/run/secrets/tenant-access-client-secret
-      - --saasforge.iam.bootstrap.service-clients.entitlement.id-file=/run/secrets/entitlement-client-id
-      - --saasforge.iam.bootstrap.service-clients.entitlement.secret-file=/run/secrets/entitlement-client-secret
+      - --saas.forge.iam.bootstrap.service-clients.iam.id-file=/run/secrets/iam-client-id
+      - --saas.forge.iam.bootstrap.service-clients.iam.secret-file=/run/secrets/iam-client-secret
+      - --saas.forge.iam.bootstrap.service-clients.tenant-access.id-file=/run/secrets/tenant-access-client-id
+      - --saas.forge.iam.bootstrap.service-clients.tenant-access.secret-file=/run/secrets/tenant-access-client-secret
+      - --saas.forge.iam.bootstrap.service-clients.entitlement.id-file=/run/secrets/entitlement-client-id
+      - --saas.forge.iam.bootstrap.service-clients.entitlement.secret-file=/run/secrets/entitlement-client-secret
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/iam_db
       SPRING_DATASOURCE_USERNAME: iam_app
@@ -282,7 +282,7 @@ services:
 
   iam-reserved-service-client-replacement:
     profiles: ["service-client-replacement"]
-    image: saasforge/iam-service:local
+    image: saas.forge/iam-service:local
     build:
       context: ../..
       dockerfile: deploy/compose/Dockerfile
@@ -293,15 +293,15 @@ services:
         condition: service_completed_successfully
     entrypoint:
       - java
-      - -Dloader.main=io.saasforge.iambootstrap.ReservedServiceClientReplacementApplication
+      - -Dloader.main=io.saas.forge.iambootstrap.ReservedServiceClientReplacementApplication
       - -jar
       - /app/application.jar
     command:
-      - --saasforge.iam.replacement.reserved-client.replacement-request-id=${IAM_RESERVED_CLIENT_REPLACEMENT_REQUEST_ID:-}
-      - --saasforge.iam.replacement.reserved-client.service-key=${IAM_RESERVED_CLIENT_REPLACEMENT_SERVICE_KEY:-}
-      - --saasforge.iam.replacement.reserved-client.old-client-id=${IAM_RESERVED_CLIENT_REPLACEMENT_OLD_CLIENT_ID:-}
-      - --saasforge.iam.replacement.reserved-client.new-client-id=${IAM_RESERVED_CLIENT_REPLACEMENT_NEW_CLIENT_ID:-}
-      - --saasforge.iam.replacement.reserved-client.new-secret-file=/run/secrets/replacement-client-secret
+      - --saas.forge.iam.replacement.reserved-client.replacement-request-id=${IAM_RESERVED_CLIENT_REPLACEMENT_REQUEST_ID:-}
+      - --saas.forge.iam.replacement.reserved-client.service-key=${IAM_RESERVED_CLIENT_REPLACEMENT_SERVICE_KEY:-}
+      - --saas.forge.iam.replacement.reserved-client.old-client-id=${IAM_RESERVED_CLIENT_REPLACEMENT_OLD_CLIENT_ID:-}
+      - --saas.forge.iam.replacement.reserved-client.new-client-id=${IAM_RESERVED_CLIENT_REPLACEMENT_NEW_CLIENT_ID:-}
+      - --saas.forge.iam.replacement.reserved-client.new-secret-file=/run/secrets/replacement-client-secret
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/iam_db
       SPRING_DATASOURCE_USERNAME: iam_app
@@ -360,7 +360,7 @@ services:
       - ../../saas-forge-services/audit-service/src/main/resources/db/migration:/flyway/sql:ro
 
   iam-service:
-    image: saasforge/iam-service:local
+    image: saas.forge/iam-service:local
     build:
       context: ../..
       dockerfile: deploy/compose/Dockerfile
@@ -390,7 +390,7 @@ services:
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
       SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
-      BROWSER_ROOT_DOMAIN: saasforge.test
+      BROWSER_ROOT_DOMAIN: saas.forge.test
       IAM_JWT_ISSUER: ${IAM_JWT_ISSUER:?IAM_JWT_ISSUER is required}
       IAM_JWT_PEM_KEY_VERSION_REF: ${IAM_JWT_PEM_KEY_VERSION_REF:?IAM_JWT_PEM_KEY_VERSION_REF is required}
       IAM_JWT_PEM_PRIVATE_KEY_LOCATION: file:/run/secrets/iam-jwt-private-key.pem
@@ -403,8 +403,8 @@ services:
       SAASFORGE_SERVICE_CLIENT_SECRET_FILE: /run/secrets/service-client-secret
       SMTP_HOST: mailpit
       SMTP_PORT: 1025
-      SMTP_FROM: no-reply@saasforge.test
-      PASSWORD_SETUP_PAGE_URI: https://console.saasforge.test/password-setup
+      SMTP_FROM: no-reply@saas.forge.test
+      PASSWORD_SETUP_PAGE_URI: https://console.saas.forge.test/password-setup
     ports:
       - "127.0.0.1:8081:8080"
       - "127.0.0.1:9091:9090"
@@ -422,7 +422,7 @@ services:
         bind: { create_host_path: false }
 
   tenant-access-service:
-    image: saasforge/tenant-access-service:local
+    image: saas.forge/tenant-access-service:local
     build:
       context: ../..
       dockerfile: deploy/compose/Dockerfile
@@ -478,7 +478,7 @@ services:
         bind: { create_host_path: false }
 
   entitlement-service:
-    image: saasforge/entitlement-service:local
+    image: saas.forge/entitlement-service:local
     build:
       context: ../..
       dockerfile: deploy/compose/Dockerfile
@@ -527,7 +527,7 @@ services:
         bind: { create_host_path: false }
 
   audit-service:
-    image: saasforge/audit-service:local
+    image: saas.forge/audit-service:local
     build:
       context: ../..
       dockerfile: deploy/compose/Dockerfile
@@ -559,7 +559,7 @@ services:
 
   audit-isolation-replay:
     profiles: ["audit-isolation-replay"]
-    image: saasforge/audit-service:local
+    image: saas.forge/audit-service:local
     build:
       context: ../..
       dockerfile: deploy/compose/Dockerfile
@@ -572,12 +572,12 @@ services:
         condition: service_healthy
     entrypoint:
       - java
-      - -Dloader.main=io.saasforge.auditreplay.AuditIsolationReplayApplication
+      - -Dloader.main=io.saas.forge.auditreplay.AuditIsolationReplayApplication
       - -cp
       - /app/application.jar
       - org.springframework.boot.loader.launch.PropertiesLauncher
     command:
-      - --saasforge.audit.replay.isolation-id=${AUDIT_ISOLATION_REPLAY_ID:-}
+      - --saas.forge.audit.replay.isolation-id=${AUDIT_ISOLATION_REPLAY_ID:-}
     environment:
       AUDIT_DATABASE_URL: jdbc:postgresql://postgres:5432/audit_db
       AUDIT_DATABASE_USERNAME: audit_app
@@ -585,7 +585,7 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
 
   gateway:
-    image: saasforge/gateway:local
+    image: saas.forge/gateway:local
     build:
       context: ../..
       dockerfile: deploy/compose/Dockerfile

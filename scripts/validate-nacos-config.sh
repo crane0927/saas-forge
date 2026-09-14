@@ -64,9 +64,9 @@ document = YAML.safe_load(File.read(configuration_file), aliases: true)
 abort "#{configuration_file}: YAML 根节点必须是映射" unless document.is_a?(Hash)
 
 component = components.fetch(application)
-revision = document.dig("saasforge", component, "configuration-revision")
+revision = document.dig("saas.forge", component, "configuration-revision")
 if !revision.is_a?(String) || revision.empty?
-  abort "#{configuration_file}: 必须声明 saasforge.#{component}.configuration-revision"
+  abort "#{configuration_file}: 必须声明 saas.forge.#{component}.configuration-revision"
 end
 
 forbidden_key_parts = %w[

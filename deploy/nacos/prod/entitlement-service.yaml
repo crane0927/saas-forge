@@ -1,6 +1,6 @@
-saasforge:
+saas.forge:
   entitlement:
-    configuration-revision: "2"
+    configuration-revision: "3"
 
 security:
   jwt:

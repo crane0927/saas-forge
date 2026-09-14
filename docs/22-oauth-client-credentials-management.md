@@ -193,14 +193,14 @@ IAM 同一制品提供独立非 Web Job，输入固定 UUIDv7 `replacementReques
 
 ## 11. Committed Fact Event
 
-新增并登记以下 CloudEvents JSON Schema，Topic 均为 `saasforge.<environment>.iam-service.events`，Ordering Key 为 `clientId`：
+新增并登记以下 CloudEvents JSON Schema，Topic 均为 `saas.forge.<environment>.iam-service.events`，Ordering Key 为 `clientId`：
 
 | type | 事实 |
 |---|---|
-| `com.saasforge.iam.oauth-client.created.v1` | Runtime 创建或 Reserved Replacement 已提交 |
-| `com.saasforge.iam.client-secret.rotated.v1` | 常规 Secret 轮换已提交 |
-| `com.saasforge.iam.oauth-client.revoked.v1` | Client 首次不可逆吊销已提交 |
-| `com.saasforge.iam.client-secret.issuance-recovered.v1` | 未送达 Secret 已被替代 |
+| `com.saas.forge.iam.oauth-client.created.v1` | Runtime 创建或 Reserved Replacement 已提交 |
+| `com.saas.forge.iam.client-secret.rotated.v1` | 常规 Secret 轮换已提交 |
+| `com.saas.forge.iam.oauth-client.revoked.v1` | Client 首次不可逆吊销已提交 |
+| `com.saas.forge.iam.client-secret.issuance-recovered.v1` | 未送达 Secret 已被替代 |
 
 公共数据白名单包含 `clientId`、`operationId`、动作对应结果、`occurredAt`，恢复事件增加 `originalOperationId`。操作者使用互斥结构：
 

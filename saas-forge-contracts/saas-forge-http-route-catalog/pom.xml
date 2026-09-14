@@ -65,7 +65,7 @@
                                 <classpath/>
                                 <argument>${project.basedir}/src/codegen/java/HttpRouteCatalogGenerator.java</argument>
                                 <argument>${maven.multiModuleProjectDirectory}</argument>
-                                <argument>${project.build.directory}/generated-resources/route-catalog/META-INF/saasforge/http-route-catalog.json</argument>
+                                <argument>${project.build.directory}/generated-resources/route-catalog/META-INF/saas.forge/http-route-catalog.json</argument>
                                 <argument>${route-catalog.registry-overlay}</argument>
                                 <argument>${route-catalog.openapi-overlay}</argument>
                             </arguments>

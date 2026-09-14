@@ -36,7 +36,7 @@
 
 ## Maven Central 发布
 
-公开 Maven 坐标使用 `io.github.crane0927`；Java 包名继续使用 `io.saasforge.*`。原因见 [ADR 0012](adr/0012-maven-coordinates-use-github-namespace.md)。
+公开 Maven 坐标使用 `io.github.crane0927`；Java 包名继续使用 `io.saas.forge.*`。原因见 [ADR 0012](adr/0012-maven-coordinates-use-github-namespace.md)。
 
 Maven Central 发布白名单为：
 

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="io.saasforge.entitlement.infrastructure.persistence.mapper.PlanRecoveryMapper">
+<mapper namespace="io.saas.forge.entitlement.infrastructure.persistence.mapper.PlanRecoveryMapper">
     <sql id="columns">
         id, actor_identity_id AS actor, idempotency_key AS key, operation,
         target_id AS targetId, created_at AS createdAt, replay_until AS replayUntil,
@@ -12,12 +12,12 @@
         VALUES (#{actor}, #{key}, #{operation}, #{targetId}, #{createdAt}, #{replayUntil}, CAST(#{requestBody} AS JSONB))
         ON CONFLICT (actor_identity_id, idempotency_key) DO NOTHING
     </insert>
-    <select id="findByKey" resultType="io.saasforge.entitlement.infrastructure.persistence.record.PlanRecoveryRow">
+    <select id="findByKey" resultType="io.saas.forge.entitlement.infrastructure.persistence.record.PlanRecoveryRow">
         SELECT <include refid="columns"/> FROM plan_recovery
         WHERE actor_identity_id = #{actor} AND idempotency_key = #{key}
     </select>
     <!-- 获锁后必须重新读数据库，不能复用同一 SqlSession 中获锁前的快照。 -->
-    <select id="find" flushCache="true" resultType="io.saasforge.entitlement.infrastructure.persistence.record.PlanRecoveryRow">
+    <select id="find" flushCache="true" resultType="io.saas.forge.entitlement.infrastructure.persistence.record.PlanRecoveryRow">
         SELECT <include refid="columns"/> FROM plan_recovery
         WHERE actor_identity_id = #{actor} AND id = #{id}
     </select>

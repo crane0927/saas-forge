@@ -132,7 +132,7 @@ test("maps a local Gateway only to existing loopback application ports", () => {
   const environment = localAdditionalEnvironment(
     definition,
     {
-      IAM_JWT_ISSUER: "https://api.saasforge.test",
+      IAM_JWT_ISSUER: "https://api.saas.forge.test",
       NACOS_GATEWAY_PASSWORD: "gateway-password",
       NACOS_GATEWAY_USERNAME: "gateway-user",
       SPRING_DATA_REDIS_PASSWORD: "redis-password",
@@ -161,7 +161,7 @@ test("keeps infrastructure settings without injecting downstream service address
   const environment = {
     AUDIT_DATABASE_PASSWORD: "audit-password",
     AUDIT_DATABASE_USERNAME: "audit-user",
-    IAM_JWT_ISSUER: "https://api.saasforge.test",
+    IAM_JWT_ISSUER: "https://api.saas.forge.test",
     NACOS_AUDIT_PASSWORD: "audit-nacos-password",
     NACOS_AUDIT_USERNAME: "audit-nacos-user",
     NACOS_ENTITLEMENT_PASSWORD: "entitlement-nacos-password",
@@ -412,14 +412,14 @@ test("maps only IAM runtime settings to host-reachable infrastructure", () => {
   const environment = localIamEnvironment(
     {
       environment: {
-        BROWSER_ROOT_DOMAIN: "saasforge.test",
-        IAM_JWT_ISSUER: "https://api.saasforge.test",
+        BROWSER_ROOT_DOMAIN: "saas.forge.test",
+        IAM_JWT_ISSUER: "https://api.saas.forge.test",
         IAM_JWT_PEM_KEY_VERSION_REF: "local/dev/pem/1",
         NACOS_IAM_PASSWORD: "iam-password",
         NACOS_IAM_USERNAME: "iam-dev",
         PASSWORD_SETUP_PAGE_URI:
-          "https://console.saasforge.test/password-setup",
-        SMTP_FROM: "no-reply@saasforge.test",
+          "https://console.saas.forge.test/password-setup",
+        SMTP_FROM: "no-reply@saas.forge.test",
         SPRING_DATA_REDIS_PASSWORD: "redis-password",
         SPRING_DATASOURCE_PASSWORD: "iam-app-password",
         SPRING_DATASOURCE_USERNAME: "iam_app",

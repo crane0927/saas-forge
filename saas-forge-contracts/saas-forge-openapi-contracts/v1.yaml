@@ -21,7 +21,7 @@ paths:
     get:
       tags: [Authentication]
       operationId: getCurrentSession
-      x-saasforge-service: iam-service
+      x-saas.forge-service: iam-service
       summary: Read the current Platform Identity and authorization
       description: |
         Uses only a verified Platform User Access Token. Reads authoritative IAM
@@ -50,8 +50,8 @@ paths:
     get:
       tags: [Authentication]
       operationId: getCurrentTenantContext
-      x-saasforge-service: iam-service
-      x-saasforge-java-sdk: true
+      x-saas.forge-service: iam-service
+      x-saas.forge-java-sdk: true
       summary: Read the current Tenant Context without rotating the browser session
       description: |
         Uses only the verified User Access Token to select the current Membership and Tenant.
@@ -80,7 +80,7 @@ paths:
     post:
       tags: [Authentication]
       operationId: login
-      x-saasforge-service: iam-service
+      x-saas.forge-service: iam-service
       summary: Start a browser session with email and password
       description: |
         The request never accepts a Tenant or Membership identifier. A user with one
@@ -130,7 +130,7 @@ paths:
     post:
       tags: [Authentication]
       operationId: refreshAccessToken
-      x-saasforge-service: iam-service
+      x-saas.forge-service: iam-service
       security:
         - PlatformRefreshCookieAuth: []
         - TenantRefreshCookieAuth: []
@@ -172,7 +172,7 @@ paths:
     post:
       tags: [Authentication]
       operationId: changeInitialPassword
-      x-saasforge-service: iam-service
+      x-saas.forge-service: iam-service
       security: [{ PlatformRefreshCookieAuth: [] }]
       summary: Replace an initial password and end the restricted session
       description: |
@@ -205,7 +205,7 @@ paths:
     post:
       tags: [Authentication]
       operationId: establishPassword
-      x-saasforge-service: iam-service
+      x-saas.forge-service: iam-service
       summary: Establish the first Password Credential with a one-time Challenge
       description: |
         This anonymous endpoint accepts no Identity, Tenant, Membership, or email.
@@ -229,7 +229,7 @@ paths:
     post:
       tags: [Authentication]
       operationId: selectAuthenticationContext
-      x-saasforge-service: iam-service
+      x-saas.forge-service: iam-service
       security: [{ TenantRefreshCookieAuth: [] }]
       summary: Complete a pending Tenant context selection
       description: |
@@ -267,7 +267,7 @@ paths:
     post:
       tags: [Authentication]
       operationId: logout
-      x-saasforge-service: iam-service
+      x-saas.forge-service: iam-service
       summary: Revoke the browser Refresh Token
       description: |
         Idempotently ends only the current browser session. The Refresh Token cookie is optional so
@@ -313,7 +313,7 @@ paths:
     post:
       tags: [Authentication]
       operationId: switchTenantContext
-      x-saasforge-service: iam-service
+      x-saas.forge-service: iam-service
       security: [{ TenantRefreshCookieAuth: [] }]
       summary: Select or switch the session Membership
       description: |
@@ -346,8 +346,8 @@ paths:
     post:
       tags: [Authentication]
       operationId: issueClientCredentialsToken
-      x-saasforge-service: iam-service
-      x-saasforge-java-sdk: true
+      x-saas.forge-service: iam-service
+      x-saas.forge-java-sdk: true
       summary: Issue a Client Credentials Access Token
       description: |
         Supports only grant_type=client_credentials. The OAuth Client authenticates
@@ -379,8 +379,8 @@ paths:
     get:
       tags: [Discovery]
       operationId: getJwks
-      x-saasforge-service: iam-service
-      x-saasforge-java-sdk: true
+      x-saas.forge-service: iam-service
+      x-saas.forge-java-sdk: true
       summary: Get current JWT verification keys
       description: Anonymous RS256 verification-key discovery. Private material and internal signing-key metadata are never published.
       responses:
@@ -402,7 +402,7 @@ paths:
     get:
       tags: [Platform tenants]
       operationId: listPlatformTenants
-      x-saasforge-service: tenant-access-service
+      x-saas.forge-service: tenant-access-service
       summary: List Tenants by literal name substring and lifecycle status
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -436,8 +436,8 @@ paths:
     post:
       tags: [Platform tenants]
       operationId: createPlatformTenant
-      x-saasforge-service: tenant-access-service
-      x-saasforge-java-sdk: true
+      x-saas.forge-service: tenant-access-service
+      x-saas.forge-java-sdk: true
       summary: Create a pending Tenant
       description: Requires a Platform Admin user token. The new Tenant is PENDING until administrator initialization succeeds.
       security: [{ UserBearerAuth: [] }]
@@ -470,7 +470,7 @@ paths:
     get:
       tags: [Platform tenants]
       operationId: getPlatformTenant
-      x-saasforge-service: tenant-access-service
+      x-saas.forge-service: tenant-access-service
       summary: Read authoritative Tenant detail
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -498,7 +498,7 @@ paths:
     get:
       tags: [Platform tenants]
       operationId: listTenantCreations
-      x-saasforge-service: tenant-access-service
+      x-saas.forge-service: tenant-access-service
       summary: Find only the current actor creation attempts after losing an in-memory handle
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -528,7 +528,7 @@ paths:
     get:
       tags: [Platform tenants]
       operationId: getTenantCreation
-      x-saasforge-service: tenant-access-service
+      x-saas.forge-service: tenant-access-service
       summary: Read own creation result; missing or expired records never authorize a new creation
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -556,7 +556,7 @@ paths:
     post:
       tags: [Platform tenants]
       operationId: recoverTenantCreation
-      x-saasforge-service: tenant-access-service
+      x-saas.forge-service: tenant-access-service
       summary: Continue the original creation with its server-stored actor, Key and request; never starts a new operation
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -593,7 +593,7 @@ paths:
     get:
       tags: [Platform tenants]
       operationId: getTenantAdministratorInitialization
-      x-saasforge-service: tenant-access-service
+      x-saas.forge-service: tenant-access-service
       summary: Read initialization business progress and the historical initial Membership
       description: |
         Requires current Platform Admin authorization. Does not expose administrator email,
@@ -623,7 +623,7 @@ paths:
     post:
       tags: [Platform tenants]
       operationId: recoverTenantAdministratorInitialization
-      x-saasforge-service: tenant-access-service
+      x-saas.forge-service: tenant-access-service
       summary: Continue the original actor's durable initialization
       description: |
         Rechecks current Platform Admin authorization and original actor ownership.
@@ -671,8 +671,8 @@ paths:
     post:
       tags: [Platform tenants]
       operationId: initializeTenantAdministrator
-      x-saasforge-service: tenant-access-service
-      x-saasforge-java-sdk: true
+      x-saas.forge-service: tenant-access-service
+      x-saas.forge-java-sdk: true
       summary: Initialize the first Tenant Administrator
       description: |
         Requires a Platform Admin. The Tenant Access workflow verifies or creates the
@@ -715,7 +715,7 @@ paths:
     get:
       tags: [Platform tenants]
       operationId: getTenantAdministratorPasswordSetup
-      x-saasforge-service: tenant-access-service
+      x-saas.forge-service: tenant-access-service
       summary: Read authoritative initial administrator notification status
       description: Requires a Platform Admin. Mail service acceptance never proves inbox delivery. Recovery actions belong only to the original resend actor.
       security: [{ UserBearerAuth: [] }]
@@ -747,7 +747,7 @@ paths:
     post:
       tags: [Platform tenants]
       operationId: recoverTenantAdministratorPasswordSetup
-      x-saasforge-service: tenant-access-service
+      x-saas.forge-service: tenant-access-service
       summary: Continue the original pending notification resend
       description: Reauthorizes the original actor and uses only the persisted original Key. Missing or expired records never create a new resend.
       security: [{ UserBearerAuth: [] }]
@@ -784,8 +784,8 @@ paths:
     post:
       tags: [Platform tenants]
       operationId: resendTenantAdministratorPasswordSetup
-      x-saasforge-service: tenant-access-service
-      x-saasforge-java-sdk: true
+      x-saas.forge-service: tenant-access-service
+      x-saas.forge-java-sdk: true
       summary: Resend the initial Tenant Administrator password setup email
       description: |
         Requires a Platform Admin. Tenant Access resolves the Identity only through
@@ -818,7 +818,7 @@ paths:
     get:
       tags: [Platform tenants]
       operationId: getTenantLifecycle
-      x-saasforge-service: tenant-access-service
+      x-saas.forge-service: tenant-access-service
       summary: Read authoritative Tenant lifecycle progress and allowed actions
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -837,7 +837,7 @@ paths:
     post:
       tags: [Platform tenants]
       operationId: continueTenantLifecycle
-      x-saasforge-service: tenant-access-service
+      x-saas.forge-service: tenant-access-service
       summary: Continue the existing lifecycle operation without creating another operation
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -862,8 +862,8 @@ paths:
     post:
       tags: [Platform tenants]
       operationId: suspendTenant
-      x-saasforge-service: tenant-access-service
-      x-saasforge-java-sdk: true
+      x-saas.forge-service: tenant-access-service
+      x-saas.forge-java-sdk: true
       summary: Suspend an active Tenant
       description: Requires a Platform Admin. Suspension revokes matching sessions before the Tenant becomes SUSPENDED.
       security: [{ UserBearerAuth: [] }]
@@ -897,8 +897,8 @@ paths:
     delete:
       tags: [Platform tenants]
       operationId: resumeTenant
-      x-saasforge-service: tenant-access-service
-      x-saasforge-java-sdk: true
+      x-saas.forge-service: tenant-access-service
+      x-saas.forge-java-sdk: true
       summary: Remove the current Tenant suspension
       description: Requires a Platform Admin. Resuming never restores revoked sessions.
       security: [{ UserBearerAuth: [] }]
@@ -934,8 +934,8 @@ paths:
     post:
       tags: [Platform tenants]
       operationId: recoverTenantSuspension
-      x-saasforge-service: tenant-access-service
-      x-saasforge-java-sdk: true
+      x-saas.forge-service: tenant-access-service
+      x-saas.forge-java-sdk: true
       summary: Resume an exhausted Tenant suspension workflow
       description: |
         Requires a Platform Admin. Continues the existing fail-closed suspension workflow without
@@ -970,7 +970,7 @@ paths:
     get:
       tags: [Platform entitlement bootstrap]
       operationId: listQuotaDefinitionOperations
-      x-saasforge-service: entitlement-service
+      x-saas.forge-service: entitlement-service
       summary: Find only the current actor quota definition operation attempts after losing an in-memory handle
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -1000,7 +1000,7 @@ paths:
     get:
       tags: [Platform entitlement bootstrap]
       operationId: getQuotaDefinitionOperation
-      x-saasforge-service: entitlement-service
+      x-saas.forge-service: entitlement-service
       summary: Read own quota definition operation result; missing or expired records never authorize a new quota definition operation
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -1028,7 +1028,7 @@ paths:
     post:
       tags: [Platform entitlement bootstrap]
       operationId: recoverQuotaDefinitionOperation
-      x-saasforge-service: entitlement-service
+      x-saas.forge-service: entitlement-service
       summary: Continue the original quota definition operation with its server-stored actor, Key and request; never starts a new operation
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -1065,7 +1065,7 @@ paths:
     get:
       tags: [Platform entitlement bootstrap]
       operationId: listQuotaDefinitions
-      x-saasforge-service: entitlement-service
+      x-saas.forge-service: entitlement-service
       summary: List Quota Definitions by literal code substring and status
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -1099,8 +1099,8 @@ paths:
     post:
       tags: [Platform entitlement bootstrap]
       operationId: createQuotaDefinition
-      x-saasforge-service: entitlement-service
-      x-saasforge-java-sdk: true
+      x-saas.forge-service: entitlement-service
+      x-saas.forge-java-sdk: true
       summary: Create the max_users Quota Definition in DRAFT state
       description: Once registered, the actor and Key identify the original operation. After its 24-hour replay window, this entrypoint also rejects that Key with QUOTA_DEFINITION_RECOVERY_EXPIRED; read the actor-private operation record to verify the result instead of starting again.
       security: [{ UserBearerAuth: [] }]
@@ -1132,7 +1132,7 @@ paths:
     get:
       tags: [Platform entitlement bootstrap]
       operationId: getQuotaDefinition
-      x-saasforge-service: entitlement-service
+      x-saas.forge-service: entitlement-service
       summary: Read authoritative Quota Definition detail
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -1160,8 +1160,8 @@ paths:
     post:
       tags: [Platform entitlement bootstrap]
       operationId: activateQuotaDefinition
-      x-saasforge-service: entitlement-service
-      x-saasforge-java-sdk: true
+      x-saas.forge-service: entitlement-service
+      x-saas.forge-java-sdk: true
       summary: Activate a DRAFT Quota Definition
       description: Once registered, the actor and Key identify the original operation. After its 24-hour replay window, this entrypoint also rejects that Key with QUOTA_DEFINITION_RECOVERY_EXPIRED; read the actor-private operation record to verify the result instead of starting again.
       security: [{ UserBearerAuth: [] }]
@@ -1196,7 +1196,7 @@ paths:
     get:
       tags: [Platform entitlement bootstrap]
       operationId: listSubscriptionOperations
-      x-saasforge-service: entitlement-service
+      x-saas.forge-service: entitlement-service
       summary: Find only the current actor Subscription operation attempts after losing an in-memory handle
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -1227,7 +1227,7 @@ paths:
     get:
       tags: [Platform entitlement bootstrap]
       operationId: getSubscriptionOperation
-      x-saasforge-service: entitlement-service
+      x-saas.forge-service: entitlement-service
       summary: Read own Subscription operation result; missing or expired records never authorize a new Subscription operation
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -1255,7 +1255,7 @@ paths:
     post:
       tags: [Platform entitlement bootstrap]
       operationId: recoverSubscriptionOperation
-      x-saasforge-service: entitlement-service
+      x-saas.forge-service: entitlement-service
       summary: Continue the original Subscription operation with its server-stored actor, Key and request; never starts a new operation
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -1292,7 +1292,7 @@ paths:
     get:
       tags: [Platform entitlement bootstrap]
       operationId: listPlanOperations
-      x-saasforge-service: entitlement-service
+      x-saas.forge-service: entitlement-service
       summary: Find only the current actor Plan operation attempts after losing an in-memory handle
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -1322,7 +1322,7 @@ paths:
     get:
       tags: [Platform entitlement bootstrap]
       operationId: getPlanOperation
-      x-saasforge-service: entitlement-service
+      x-saas.forge-service: entitlement-service
       summary: Read own Plan operation result; missing or expired records never authorize a new Plan operation
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -1350,7 +1350,7 @@ paths:
     post:
       tags: [Platform entitlement bootstrap]
       operationId: recoverPlanOperation
-      x-saasforge-service: entitlement-service
+      x-saas.forge-service: entitlement-service
       summary: Continue the original Plan operation with its server-stored actor, Key and request; never starts a new operation
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -1387,7 +1387,7 @@ paths:
     get:
       tags: [Platform entitlement bootstrap]
       operationId: getPlan
-      x-saasforge-service: entitlement-service
+      x-saas.forge-service: entitlement-service
       summary: Read authoritative Plan detail
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -1415,7 +1415,7 @@ paths:
     get:
       tags: [Platform entitlement bootstrap]
       operationId: listPlans
-      x-saasforge-service: entitlement-service
+      x-saas.forge-service: entitlement-service
       summary: List Plans by literal code substring and status
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -1449,8 +1449,8 @@ paths:
     post:
       tags: [Platform entitlement bootstrap]
       operationId: createPlan
-      x-saasforge-service: entitlement-service
-      x-saasforge-java-sdk: true
+      x-saas.forge-service: entitlement-service
+      x-saas.forge-java-sdk: true
       summary: Create a DRAFT Plan with its max_users limit
       description: New requests require max_users at least 1. Original actor/Key and exact fields may replay a retained historical zero result without granting again. Registered operations cannot restart after their 24-hour replay deadline; stable results remain readable through plan-operations.
       security: [{ UserBearerAuth: [] }]
@@ -1482,8 +1482,8 @@ paths:
     post:
       tags: [Platform entitlement bootstrap]
       operationId: activatePlan
-      x-saasforge-service: entitlement-service
-      x-saasforge-java-sdk: true
+      x-saas.forge-service: entitlement-service
+      x-saas.forge-java-sdk: true
       summary: Activate a DRAFT Plan
       description: New activations require max_users at least 1. Retained historical operation results replay unchanged; no automatic increase is performed.
       security: [{ UserBearerAuth: [] }]
@@ -1518,7 +1518,7 @@ paths:
     get:
       tags: [Platform entitlement bootstrap]
       operationId: getTenantSubscription
-      x-saasforge-service: entitlement-service
+      x-saas.forge-service: entitlement-service
       summary: Read the Tenant subscription and authoritative max_users usage
       description: Entitlement-owned read. Null subscription means no grant; failures never mean absent subscription or zero usage. Effectiveness is evaluated at observedAt separately from persisted ACTIVE. No Tenant lifecycle facts are inferred.
       security: [{ UserBearerAuth: [] }]
@@ -1544,8 +1544,8 @@ paths:
     post:
       tags: [Platform entitlement bootstrap]
       operationId: createInitialSubscription
-      x-saasforge-service: entitlement-service
-      x-saasforge-java-sdk: true
+      x-saas.forge-service: entitlement-service
+      x-saas.forge-java-sdk: true
       summary: Create the first active Subscription for a Tenant
       description: Requires a Platform Admin and an ACTIVE Plan with max_users at least 1 for new grants. Retained original-operation replays and existing zero-quota entitlements are unchanged. This batch supports only immediate ACTIVE Subscriptions.
       security: [{ UserBearerAuth: [] }]
@@ -1578,7 +1578,7 @@ paths:
     get:
       tags: [OAuth clients]
       operationId: listOAuthClientOperations
-      x-saasforge-service: iam-service
+      x-saas.forge-service: iam-service
       summary: Discover current actor's completed credential operations without returning credentials
       description: Absence is not proof that a lost request did not commit. No Secret, digest, original Key or request is returned.
       security: [{ UserBearerAuth: [] }]
@@ -1603,7 +1603,7 @@ paths:
     post:
       tags: [OAuth clients]
       operationId: recoverOAuthClientOperation
-      x-saasforge-service: iam-service
+      x-saas.forge-service: iam-service
       summary: Explicitly replace a lost Secret using its actor-owned operation identity
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -1627,7 +1627,7 @@ paths:
     get:
       tags: [OAuth clients]
       operationId: getOAuthClientCredentialStatus
-      x-saasforge-service: iam-service
+      x-saas.forge-service: iam-service
       summary: Read authoritative rotation deadline and permitted management actions
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -1647,7 +1647,7 @@ paths:
     get:
       tags: [OAuth clients]
       operationId: listOAuthClients
-      x-saasforge-service: iam-service
+      x-saas.forge-service: iam-service
       summary: List non-sensitive OAuth Client details
       description: Requires current Platform Admin authorization. Literal case-sensitive name substring, type and status filters; fixed ID ascending order. Opaque cursors bind the resource and filters and expire after 24 hours. No Secret material is returned.
       security: [{ UserBearerAuth: [] }]
@@ -1683,8 +1683,8 @@ paths:
     post:
       tags: [OAuth clients]
       operationId: createOAuthClient
-      x-saasforge-service: iam-service
-      x-saasforge-java-sdk: true
+      x-saas.forge-service: iam-service
+      x-saas.forge-java-sdk: true
       summary: Create an OAuth Client and reveal its Secret once
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -1715,8 +1715,8 @@ paths:
     get:
       tags: [OAuth clients]
       operationId: getOAuthClient
-      x-saasforge-service: iam-service
-      x-saasforge-java-sdk: true
+      x-saas.forge-service: iam-service
+      x-saas.forge-java-sdk: true
       summary: Read non-sensitive OAuth Client details
       security: [{ UserBearerAuth: [] }]
       parameters:
@@ -1738,8 +1738,8 @@ paths:
     post:
       tags: [OAuth clients]
       operationId: rotateOAuthClientSecret
-      x-saasforge-service: iam-service
-      x-saasforge-java-sdk: true
+      x-saas.forge-service: iam-service
+      x-saas.forge-java-sdk: true
       summary: Rotate an OAuth Client Secret and reveal the new Secret once
       description: The previous and new Secret overlap for the service-controlled rotation window; revocation ends all Client access immediately.
       security: [{ UserBearerAuth: [] }]
@@ -1765,8 +1765,8 @@ paths:
     post:
       tags: [OAuth clients]
       operationId: recoverOAuthClientSecret
-      x-saasforge-service: iam-service
-      x-saasforge-java-sdk: true
+      x-saas.forge-service: iam-service
+      x-saas.forge-java-sdk: true
       summary: Replace one lost OAuth Client Secret issuance result
       description: The original successful create or rotation can be recovered once by its original actor within ten minutes. No prior plaintext is retained or replayed.
       security: [{ UserBearerAuth: [] }]
@@ -1797,8 +1797,8 @@ paths:
     post:
       tags: [OAuth clients]
       operationId: revokeOAuthClient
-      x-saasforge-service: iam-service
-      x-saasforge-java-sdk: true
+      x-saas.forge-service: iam-service
+      x-saas.forge-java-sdk: true
       summary: Irreversibly revoke an OAuth Client
       security: [{ UserBearerAuth: [] }]
       parameters:

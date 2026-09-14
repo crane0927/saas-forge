@@ -40,14 +40,14 @@ spring:
         port: ${server.port}
   config:
     import: ${SAASFORGE_SECRETS_IMPORT:configtree:./deploy/compose/.secrets/native-local/audit/}
-saasforge:
+saas.forge:
   environment: ${SAASFORGE_ENVIRONMENT:dev}
   audit:
     required-migration-version: '5'
-    iam-session-topic: saasforge.${saasforge.environment}.iam-service.events
-    tenant-access-topic: saasforge.${saasforge.environment}.tenant-access-service.events
-    iam-session-isolation-topic: saasforge.${saasforge.environment}.audit-service.iam-session-isolations
-    tenant-isolation-topic: saasforge.${saasforge.environment}.audit-service.tenant-isolations
+    iam-session-topic: saas.forge.${saas.forge.environment}.iam-service.events
+    tenant-access-topic: saas.forge.${saas.forge.environment}.tenant-access-service.events
+    iam-session-isolation-topic: saas.forge.${saas.forge.environment}.audit-service.iam-session-isolations
+    tenant-isolation-topic: saas.forge.${saas.forge.environment}.audit-service.tenant-isolations
 server:
   address: ${AUDIT_BIND_ADDRESS:127.0.0.1}
   port: ${AUDIT_HTTP_PORT:8084}

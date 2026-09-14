@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="io.saasforge.entitlement.infrastructure.persistence.mapper.SubscriptionRecoveryMapper">
+<mapper namespace="io.saas.forge.entitlement.infrastructure.persistence.mapper.SubscriptionRecoveryMapper">
     <sql id="columns">
         id, actor_identity_id AS actor, idempotency_key AS key, tenant_id AS tenantId,
         plan_id AS planId, ends_at AS endsAt, created_at AS createdAt, replay_until AS replayUntil,
@@ -11,12 +11,12 @@
         VALUES (#{actor}, #{key}, #{tenantId}, #{planId}, #{endsAt}, #{createdAt}, #{replayUntil})
         ON CONFLICT (actor_identity_id, idempotency_key) DO NOTHING
     </insert>
-    <select id="findByKey" resultType="io.saasforge.entitlement.infrastructure.persistence.record.SubscriptionRecoveryRow">
+    <select id="findByKey" resultType="io.saas.forge.entitlement.infrastructure.persistence.record.SubscriptionRecoveryRow">
         SELECT <include refid="columns"/> FROM subscription_recovery
         WHERE actor_identity_id = #{actor} AND idempotency_key = #{key}
     </select>
     <!-- 获锁后重新读取，避免同一 SqlSession 的旧快照。 -->
-    <select id="find" flushCache="true" resultType="io.saasforge.entitlement.infrastructure.persistence.record.SubscriptionRecoveryRow">
+    <select id="find" flushCache="true" resultType="io.saas.forge.entitlement.infrastructure.persistence.record.SubscriptionRecoveryRow">
         SELECT <include refid="columns"/> FROM subscription_recovery WHERE actor_identity_id = #{actor} AND id = #{id}
     </select>
     <select id="tryLock" resultType="boolean">

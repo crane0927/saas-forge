@@ -27,14 +27,14 @@ Audit 使用两个既有消费组，不能为了获得验收结果改组名或�
 
 | 输入 topic（默认 dev） | 消费组 |
 | --- | --- |
-| `saasforge.dev.iam-service.events` | `audit-service.iam-session-events` |
-| `saasforge.dev.tenant-access-service.events` | `audit-service.tenant-events` |
+| `saas.forge.dev.iam-service.events` | `audit-service.iam-session-events` |
+| `saas.forge.dev.tenant-access-service.events` | `audit-service.tenant-events` |
 
-两个隔离 topic 分别为 `saasforge.dev.audit-service.iam-session-isolations` 和 `saasforge.dev.audit-service.tenant-isolations`。使用已准备的 topic 与最小 ACL。原生实例与容器实例冲突由开发者处理；验证暂停期间积压时，确认没有其他 Audit 实例继续消费。
+两个隔离 topic 分别为 `saas.forge.dev.audit-service.iam-session-isolations` 和 `saas.forge.dev.audit-service.tenant-isolations`。使用已准备的 topic 与最小 ACL。原生实例与容器实例冲突由开发者处理；验证暂停期间积压时，确认没有其他 Audit 实例继续消费。
 
 ## IDE Run / Debug / 重启
 
-1. 在 IDEA 同步 Maven，创建 Spring Boot 配置：主类 `io.saasforge.audit.AuditServiceApplication`，classpath `audit-service`，Active profiles 留空。
+1. 在 IDEA 同步 Maven，创建 Spring Boot 配置：主类 `io.saas.forge.audit.AuditServiceApplication`，classpath `audit-service`，Active profiles 留空。
 2. 配置上述环境变量或 configtree，只保留 IDE Build 前置步骤，直接 Run/Debug。无需 package、后台 JAR 或 replace/restore。
 3. 检查 `http://127.0.0.1:8084/actuator/health/readiness` 返回 200/UP。它同时要求 Nacos 已确认注册、V5 迁移可见、Kafka 可连接、两个 Consumer 均取得目标分区；liveness 只检查进程存活。这里的内部 HTTP 仅用于健康探测，不是浏览器业务入口。
 4. 可在 `IamSessionKafkaConsumer.consume` 或 `TenantAccessKafkaConsumer.consume` 设置断点，观察正式来源事件抵达后继续执行。长时间暂停可能触发 Kafka rebalance，完成消费及就绪恢复后再记录结果。
@@ -51,7 +51,7 @@ Audit 使用两个既有消费组，不能为了获得验收结果改组名或�
    SELECT event_id, occurred_at, topic, published_at
    FROM iam_outbox_events
    WHERE occurred_at >= :'operation_started_at'::timestamptz
-     AND event_snapshot->>'type' = 'com.saasforge.iam.session.started.v1'
+     AND event_snapshot->>'type' = 'com.saas.forge.iam.session.started.v1'
      AND ordering_key = :'identity_id'
    ORDER BY occurred_at DESC;
    ```

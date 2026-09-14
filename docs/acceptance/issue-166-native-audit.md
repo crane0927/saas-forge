@@ -30,7 +30,7 @@
 
 ### 正式登录事件消费
 
-开发者通过现有 Platform Console 完成正式登录，IAM Outbox 产生 `com.saasforge.iam.session.started.v1`：
+开发者通过现有 Platform Console 完成正式登录，IAM Outbox 产生 `com.saas.forge.iam.session.started.v1`：
 
 | 观测项 | 结果（UTC） |
 | --- | --- |
@@ -38,7 +38,7 @@
 | 来源发生时间 | `2026-09-10T09:33:48Z` |
 | Outbox published_at | `2026-09-10T09:33:50.714663Z` |
 | Audit recorded_at / consumed_at | `2026-09-10T09:33:50.814703Z` |
-| Audit Record | 一条，source=`urn:saasforge:iam-service`，action=`SESSION_STARTED`，result=`SUCCESS` |
+| Audit Record | 一条，source=`urn:saas.forge:iam-service`，action=`SESSION_STARTED`，result=`SUCCESS` |
 | 资源 | `REFRESH_TOKEN_FAMILY` / `01a08aaa-9047-7d52-ad20-803b29038df2` |
 | 去重记录 | 一条，consumer_name=`audit-service.iam-session-events` |
 

@@ -3,13 +3,13 @@ export const frontendTargets = Object.freeze({
     label: "Platform",
     package: "@saas-forge/platform-console",
     port: 5173,
-    host: "platform.saasforge.test",
+    host: "platform.saas.forge.test",
   }),
   tenant: Object.freeze({
     label: "Tenant",
     package: "@saas-forge/tenant-console-shell",
     port: 5174,
-    host: "console.saasforge.test",
+    host: "console.saas.forge.test",
   }),
 });
 

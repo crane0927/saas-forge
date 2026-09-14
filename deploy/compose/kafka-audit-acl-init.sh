@@ -33,11 +33,11 @@ done
     --bootstrap-server "$bootstrap_server" --command-config "$admin_config" >/dev/null
 
 for topic in \
-    saasforge.dev.iam-service.events \
-    saasforge.dev.tenant-access-service.events \
-    saasforge.dev.entitlement-service.events \
-    saasforge.dev.audit-service.iam-session-isolations \
-    saasforge.dev.audit-service.tenant-isolations; do
+    saas.forge.dev.iam-service.events \
+    saas.forge.dev.tenant-access-service.events \
+    saas.forge.dev.entitlement-service.events \
+    saas.forge.dev.audit-service.iam-session-isolations \
+    saas.forge.dev.audit-service.tenant-isolations; do
     "$kafka_bin/kafka-topics.sh" --bootstrap-server "$bootstrap_server" \
         --command-config "$admin_config" --create --if-not-exists \
         --topic "$topic" --partitions 1 --replication-factor 1 >/dev/null
@@ -50,20 +50,20 @@ grant_acl() {
         --command-config "$admin_config" --add --allow-principal "User:${principal}" "$@" >/dev/null
 }
 
-grant_acl iam-service --producer --topic saasforge.dev.iam-service.events
-grant_acl tenant-access-service --producer --topic saasforge.dev.tenant-access-service.events
-grant_acl entitlement-service --producer --topic saasforge.dev.entitlement-service.events
+grant_acl iam-service --producer --topic saas.forge.dev.iam-service.events
+grant_acl tenant-access-service --producer --topic saas.forge.dev.tenant-access-service.events
+grant_acl entitlement-service --producer --topic saas.forge.dev.entitlement-service.events
 
-for topic in saasforge.dev.iam-service.events saasforge.dev.tenant-access-service.events; do
+for topic in saas.forge.dev.iam-service.events saas.forge.dev.tenant-access-service.events; do
     grant_acl audit-service --operation Describe --topic "$topic"
     grant_acl audit-replay --producer --topic "$topic"
 done
-grant_acl audit-service --consumer --topic saasforge.dev.iam-service.events \
+grant_acl audit-service --consumer --topic saas.forge.dev.iam-service.events \
     --group audit-service.iam-session-events
-grant_acl audit-service --consumer --topic saasforge.dev.tenant-access-service.events \
+grant_acl audit-service --consumer --topic saas.forge.dev.tenant-access-service.events \
     --group audit-service.tenant-events
-grant_acl audit-service --producer --topic saasforge.dev.audit-service.iam-session-isolations
-grant_acl audit-service --producer --topic saasforge.dev.audit-service.tenant-isolations
+grant_acl audit-service --producer --topic saas.forge.dev.audit-service.iam-session-isolations
+grant_acl audit-service --producer --topic saas.forge.dev.audit-service.tenant-isolations
 grant_acl audit-service --operation Describe --cluster
 
 # Replay Job 只能回投两个已确认来源 Topic，不能写隔离 Topic或消费任意 Topic。

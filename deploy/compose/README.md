@@ -56,13 +56,13 @@ docker compose ps --all
 ### 浏览器访问前提
 
 1. 构建并分别托管 `consoles/platform-console/dist` 与 `consoles/tenant-console-shell/dist`，构建方法见 [Console README](../../consoles/README.md)。当前默认 Compose 不负责这一步。
-2. 本地 `platform.saasforge.test`、`console.saasforge.test`、`api.saasforge.test` 均解析到 `127.0.0.1`，经浏览器信任的 TLS 证书在 HTTPS 443 提供访问；前两者分别指向两个前端，API 入口反向代理到 Gateway。不能用不同的 HTTP localhost 端口代替这组入口。
+2. 本地 `platform.saas.forge.test`、`console.saas.forge.test`、`api.saas.forge.test` 均解析到 `127.0.0.1`，经浏览器信任的 TLS 证书在 HTTPS 443 提供访问；前两者分别指向两个前端，API 入口反向代理到 Gateway。不能用不同的 HTTP localhost 端口代替这组入口。
 3. 部署时将两个前端的 `/runtime-config.json` 替换为以下内容。构建制品中的原始文件是故意非法的模板，未替换时页面会停在配置错误状态。
 
    ```json
    {
      "schemaVersion": 1,
-     "apiBaseUrl": "https://api.saasforge.test"
+     "apiBaseUrl": "https://api.saas.forge.test"
    }
    ```
 
@@ -90,7 +90,7 @@ bash scripts/local-development.sh status
 bash scripts/local-development.sh frontend stop all
 ```
 
-`setup` 复用有效的本地 CA；服务器证书缺少受控 Host、将在 24 小时内失效或无法通过链/私钥校验时才重签 leaf。证书覆盖 `platform.saasforge.test`、`console.saasforge.test`、`api.saasforge.test`、`remote.saasforge.test`。旧双/三 Host 安装需重新执行 setup；hosts 和 Keychain 变更仍分别要求交互式明确授权，已配置时幂等跳过，非交互环境拒绝系统变更。
+`setup` 复用有效的本地 CA；服务器证书缺少受控 Host、将在 24 小时内失效或无法通过链/私钥校验时才重签 leaf。证书覆盖 `platform.saas.forge.test`、`console.saas.forge.test`、`api.saas.forge.test`、`remote.saas.forge.test`。旧双/三 Host 安装需重新执行 setup；hosts 和 Keychain 变更仍分别要求交互式明确授权，已配置时幂等跳过，非交互环境拒绝系统变更。
 
 `frontend` 必须提供 `start|status|stop` 和 `platform|tenant|all`。Platform Vite 固定监听 `127.0.0.1:5173`，Tenant 固定监听 `127.0.0.1:5174`，均启用 strict port，分别只接受对应受控 Host，HMR 使用对应 HTTPS Origin 的 WSS 443。Edge 通过 `host.docker.internal` 访问两个回环 Vite，将 API 转发到当前 Gateway，并保留浏览器安全头。未知 Host 被拒绝；不得为解决 Docker Desktop 连通性问题将 Vite 改为所有网络接口。
 
@@ -152,7 +152,7 @@ pnpm --filter @saas-forge/tenant-console-shell run dev
 
 1. 验收前保存 `frontend status all`、顶层 `status`，以及当前项目 Edge 的容器身份、运行状态和后端容器启动时间。确认已有受信证书、hosts、依赖和后端就绪；本轮不运行 setup、bootstrap、replace/restore 后端或任何密码重置。
 2. 依次覆盖 Platform-only、Tenant-only、all、单目标停止、all 停止与重复操作，每步读取聚合状态。单目标停止须保留仍被另一 Console 使用的 Edge；前端 stop 不停止后端、不删除容器、Secret 或数据卷，也不终止未知监听者。
-3. 在同一浏览器上下文中，以正常证书校验打开 `https://platform.saasforge.test` 和 `https://console.saasforge.test`。检查页面身份、关键内容、错误覆盖层、console/network，并分别记录真实 `/api/*` 方法、脱敏路径与状态码；API Origin 为 `https://api.saasforge.test`。禁止记录密码、Cookie、Token 或敏感响应体。
+3. 在同一浏览器上下文中，以正常证书校验打开 `https://platform.saas.forge.test` 和 `https://console.saas.forge.test`。检查页面身份、关键内容、错误覆盖层、console/network，并分别记录真实 `/api/*` 方法、脱敏路径与状态码；API Origin 为 `https://api.saas.forge.test`。禁止记录密码、Cookie、Token 或敏感响应体。
 4. 使用既有账号或会话分别登录/恢复两个槽位；刷新一侧后另一侧仍可使用，登出一侧后另一侧刷新仍保持登录，再交换方向验证。缺少现有登录前提就记录阻塞，不创建账号或重置凭据。
 5. 从 Tenant Origin 打开 Password Setup 文档，检查脚本/样式及表单的真实提交是否到达当前 Gateway。只验证不改变密码的失败路径；缺少可安全提交的前提则记录阻塞，不消费有效 Challenge。错误响应仅证明路由，不代表密码设置成功。
 6. 在两个 Console 各临时修改一个可见开发标记，分别观察其受控 WSS Origin 的连接与 HMR 更新，再还原文件。用宿主监听检查证明 5173/5174 仅绑定 `127.0.0.1`，从 Edge 内经 `host.docker.internal` 访问二者，并检查宿主 LAN 地址直连两端口失败。Docker Desktop 无法访问回环 Vite 时停止验收，不回退到 `0.0.0.0`。
@@ -184,7 +184,7 @@ bash scripts/local-development.sh restore gateway
 
 `replace` 在停容器前校验目标的固定端口、已成功的迁移（适用时）、Nacos `dev` 配置、受限 Secret、基础设施和依赖服务，以及正式服务名恰有一个健康实例。它不打印凭据、Cookie 或 Token；端口占用、配置不一致、Nacos 重复实例或任何 readiness 失败都会拒绝切换。所有本机 JVM 经回环 Nacos HTTP `8848`、Nacos 3 gRPC `9848`、PostgreSQL `5432`、Redis `6379` 和 Kafka `29092` 复用现有容器化基础设施。
 
-Issue #130 的四个目标只停止选定的应用容器：不会删除卷、停止基础设施或重建其他应用容器。Tenant Access 和 Entitlement 的本机进程通过既有回环 gRPC 端口调用容器化下游；Gateway 的本机进程使用只在 `saasforge.local-replacement.enabled=true` 时生效的负载均衡映射访问这些端口，避免依赖 Docker 内部 IP。Gateway 替换还将 HTTPS Edge 的 `api.saasforge.test` 目标在 Git 忽略的受限文件中从 `gateway:8080` 切到 `host.docker.internal:8080`，无需重启 Edge；该文件只接受这两个固定目标和端口 `8080`。恢复时自动还原容器 Gateway 目标。IAM 保留原有的专用调用方重建行为，以将容器调用方指向本机 IAM。
+Issue #130 的四个目标只停止选定的应用容器：不会删除卷、停止基础设施或重建其他应用容器。Tenant Access 和 Entitlement 的本机进程通过既有回环 gRPC 端口调用容器化下游；Gateway 的本机进程使用只在 `saas.forge.local-replacement.enabled=true` 时生效的负载均衡映射访问这些端口，避免依赖 Docker 内部 IP。Gateway 替换还将 HTTPS Edge 的 `api.saas.forge.test` 目标在 Git 忽略的受限文件中从 `gateway:8080` 切到 `host.docker.internal:8080`，无需重启 Edge；该文件只接受这两个固定目标和端口 `8080`。恢复时自动还原容器 Gateway 目标。IAM 保留原有的专用调用方重建行为，以将容器调用方指向本机 IAM。
 
 若当前开发栈启动于 Issue #130 的 Nacos ACL 变更之前，必须先通过受控初始化流程补充四个替换目标各自的只读实例发现权限；Gateway 仍只发现自身和正式公开路由目标。不要用管理员身份手工修改 ACL：
 
@@ -223,7 +223,7 @@ bash scripts/verify-console-authentication-e2e.sh --preflight
 bash scripts/verify-console-authentication-e2e.sh
 ```
 
-证书必须覆盖 `platform.saasforge.test`、`console.saasforge.test`、`api.saasforge.test` 与 `remote.saasforge.test` 四个本地域名；示例绝对路径须替换为实际文件。预检仅检查环境，不证明登录、四域资源加载或 CORS 拒绝成功。完整脚本创建独立随机项目和全新数据卷，使用构建后的 Console、真实 API、同一份 `consoles/dist/static-remote-acceptance/` Remote 静态制品，经四个受信 HTTPS Origin 操作浏览器；Chromium 用例额外保留 Remote 请求/响应、无凭据加载、CSS 和图片解码证据。结束时只清理本次项目、数据卷和临时 Secret，不保留供后续手动登录的账号或环境。其结果以本次运行输出为准，不能替代开发模式 `verify:local:static-remote` 的 Vite/HMR 证据，也不宣称跨浏览器矩阵或父规格 #155 整体完成。
+证书必须覆盖 `platform.saas.forge.test`、`console.saas.forge.test`、`api.saas.forge.test` 与 `remote.saas.forge.test` 四个本地域名；示例绝对路径须替换为实际文件。预检仅检查环境，不证明登录、四域资源加载或 CORS 拒绝成功。完整脚本创建独立随机项目和全新数据卷，使用构建后的 Console、真实 API、同一份 `consoles/dist/static-remote-acceptance/` Remote 静态制品，经四个受信 HTTPS Origin 操作浏览器；Chromium 用例额外保留 Remote 请求/响应、无凭据加载、CSS 和图片解码证据。结束时只清理本次项目、数据卷和临时 Secret，不保留供后续手动登录的账号或环境。其结果以本次运行输出为准，不能替代开发模式 `verify:local:static-remote` 的 Vite/HMR 证据，也不宣称跨浏览器矩阵或父规格 #155 整体完成。
 
 `EVIDENCE:` 目录中的 `static-remote-chromium.json`（Chrome/Edge 使用对应渠道名）保留 Remote 子测试的脱敏网络、呈现和控制台证据，成功与失败运行均记录状态，Compose 清理不会删除。该 JSON 的通过不代表整轮验收通过；可用 `SF_BRAND_EVIDENCE_DIRECTORY` 指定保留目录。
 
@@ -267,7 +267,7 @@ pbcopy < .secrets/platform-admin-password
 
 ### 2. 重新构建并启动 IAM
 
-IAM 正常服务与 bootstrap 任务共用 `saasforge/iam-service:local`，代码更新后只需构建一次镜像：
+IAM 正常服务与 bootstrap 任务共用 `saas.forge/iam-service:local`，代码更新后只需构建一次镜像：
 
 ```bash
 docker compose build iam-service
@@ -302,7 +302,7 @@ echo "Platform Admin Secret 文件已准备"
 
 ### 4. 在 Platform Console 使用初始密码登录
 
-确认前文的浏览器访问条件已满足，打开 [本地 Platform Console](https://platform.saasforge.test/)，输入引导时使用的管理员邮箱和初始密码，点击“登录”。初始密码只建立受限会话，页面应进入“设置新密码”，此时不能访问平台管理功能。
+确认前文的浏览器访问条件已满足，打开 [本地 Platform Console](https://platform.saas.forge.test/)，输入引导时使用的管理员邮箱和初始密码，点击“登录”。初始密码只建立受限会话，页面应进入“设置新密码”，此时不能访问平台管理功能。
 
 初始密码已过期且尚未建立正式密码时，使用下文的“受限重置 Platform Admin 初始凭证”，不要重新执行首次创建任务。若页面显示会话槽位已有活动会话，先按页面提示退出当前 Platform 会话。
 

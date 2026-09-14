@@ -21,7 +21,7 @@ import './static-remote.test.mjs';
 import { assertOtherSessionUnchanged, verifyBrowserSessions } from './browser-session-security.mjs';
 import { verifyApiSecurity } from './browser-api-security.mjs';
 
-const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saasforge.test';
+const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saas.forge.test';
 
 async function captureBrandEvidence(page, scenario) {
   const directory = process.env.SF_BRAND_EVIDENCE_DIRECTORY;
@@ -176,7 +176,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
     );
   };
   platform.on('response', observeCookie);
-  const email = 'platform-admin@saasforge.test';
+  const email = 'platform-admin@saas.forge.test';
   const initialPassword = (await readFile(process.env.SF_INITIAL_PASSWORD_FILE, 'utf8')).trim();
   const password = `Acceptance-${randomBytes(24).toString('hex')}`;
 
@@ -784,7 +784,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
             `${project}-postgres-1`,
             'psql',
             '-U',
-            'saasforge_console_e2e',
+            'saas.forge_console_e2e',
             '-d',
             'tenant_access_db',
             '-v',
@@ -964,7 +964,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
               `${project}-postgres-1`,
               'psql',
               '-U',
-              'saasforge_console_e2e',
+              'saas.forge_console_e2e',
               '-d',
               'tenant_access_db',
               '-v',

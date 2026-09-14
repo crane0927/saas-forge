@@ -11,9 +11,9 @@ await mkdir(directory, { recursive: true, mode: 0o700 });
 console.info(`EVIDENCE: ${directory}`);
 const results = [];
 const browsers = [['chrome', chromium, 'chrome']];
-const root = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saasforge.test';
-if (root !== 'saasforge.test')
-  throw new Error('development requires the controlled saasforge.test topology');
+const root = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saas.forge.test';
+if (root !== 'saas.forge.test')
+  throw new Error('development requires the controlled saas.forge.test topology');
 let credentialsReady = true;
 for (const name of ['SF_SESSION_EMAIL_FILE', 'SF_SESSION_PASSWORD_FILE']) {
   if (!process.env[name] || !(await readFile(process.env[name], 'utf8').catch(() => '')).trim()) {

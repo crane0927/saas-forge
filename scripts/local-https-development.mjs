@@ -28,13 +28,13 @@ const expectedPnpmVersion = "11.22.0";
 const certificateValiditySeconds = 24 * 60 * 60;
 const certificateAuthorityName = "SaaS Forge Local Development CA";
 const hostsEntry =
-  "127.0.0.1 platform.saasforge.test console.saasforge.test api.saasforge.test remote.saasforge.test # SaaS Forge local HTTPS";
+  "127.0.0.1 platform.saas.forge.test console.saas.forge.test api.saas.forge.test remote.saas.forge.test # SaaS Forge local HTTPS";
 
 export const developmentHosts = Object.freeze([
-  "platform.saasforge.test",
-  "console.saasforge.test",
-  "api.saasforge.test",
-  "remote.saasforge.test",
+  "platform.saas.forge.test",
+  "console.saas.forge.test",
+  "api.saas.forge.test",
+  "remote.saas.forge.test",
 ]);
 
 export function developmentHttpsPaths(repositoryRoot) {
@@ -152,7 +152,7 @@ export async function ensureCertificateMaterial(paths) {
     "-out",
     paths.serverRequest,
     "-subj",
-    "/CN=platform.saasforge.test",
+    "/CN=platform.saas.forge.test",
   ]);
   run("openssl", [
     "x509",
@@ -549,7 +549,7 @@ function doctorPort(paths) {
         "5",
         "--cacert",
         paths.certificateAuthorityCertificate,
-        "https://platform.saasforge.test/",
+        "https://platform.saas.forge.test/",
       ],
       { allowFailure: true },
     );

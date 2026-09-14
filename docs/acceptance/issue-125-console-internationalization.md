@@ -4,7 +4,7 @@
 
 本记录汇总父 PRD #117 与实现票 #118–#124 的直接证据，并记录 #125 的最终集成验证。它只覆盖当前已交付的 Platform Console、Tenant Console、共享组件与静态 Remote 消费夹具；不建设或验收 Manifest、Module Federation、真实 Remote 加载器、运行时语言包服务或后端本地化契约。
 
-Fresh Compose 由 `scripts/verify-console-authentication-e2e.sh` 使用随机项目名、临时 Secret 和全新数据卷创建。每个产品浏览器渠道完成后均执行 `compose down --volumes --remove-orphans`，不读取或删除默认开发栈数据卷。浏览器以正常证书校验访问 `platform.saasforge.test`、`console.saasforge.test` 与 `api.saasforge.test` 的 HTTPS 443 产品拓扑，不使用 localhost 端口替代，也不设置 `ignoreHTTPSErrors`。
+Fresh Compose 由 `scripts/verify-console-authentication-e2e.sh` 使用随机项目名、临时 Secret 和全新数据卷创建。每个产品浏览器渠道完成后均执行 `compose down --volumes --remove-orphans`，不读取或删除默认开发栈数据卷。浏览器以正常证书校验访问 `platform.saas.forge.test`、`console.saas.forge.test` 与 `api.saas.forge.test` 的 HTTPS 443 产品拓扑，不使用 localhost 端口替代，也不设置 `ignoreHTTPSErrors`。
 
 ## 父 PRD 对应表
 

@@ -18,5 +18,5 @@ spring:
         service: platform-mechanism-receiver
         fail-fast: true
 
-saasforge:
+saas.forge:
   environment: ${SAASFORGE_ENVIRONMENT:dev}

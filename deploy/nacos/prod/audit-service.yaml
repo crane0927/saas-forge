@@ -1,6 +1,6 @@
-saasforge:
+saas.forge:
   audit:
-    configuration-revision: "3"
+    configuration-revision: "4"
     consumer:
       max-attempts: 10
       initial-backoff: PT1S

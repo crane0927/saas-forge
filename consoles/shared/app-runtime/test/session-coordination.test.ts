@@ -71,7 +71,7 @@ describe.each(['zh-CN', 'en-US'])(
       body.enqueue(
         new TextEncoder().encode(
           JSON.stringify({
-            type: 'urn:saasforge:problem:revocation-unavailable',
+            type: 'urn:saas.forge:problem:revocation-unavailable',
             title: 'Unavailable',
             detail: 'private',
             status: 503,
@@ -1054,7 +1054,7 @@ function requestUrl(input: RequestInfo | URL): string {
 function problem(status: number, code: string, retryAfter: string) {
   return Response.json(
     {
-      type: `urn:saasforge:problem:${code.toLowerCase().replaceAll('_', '-')}`,
+      type: `urn:saas.forge:problem:${code.toLowerCase().replaceAll('_', '-')}`,
       title: 'Request unavailable',
       detail: 'test-only detail',
       status,

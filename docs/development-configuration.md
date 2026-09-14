@@ -62,7 +62,7 @@ Nacos 只决定连接地址。命名 gRPC 通道继续使用 Spring 的 `spring.
              enabled: false
          discovery:
            enabled: true
-   saasforge:
+   saas.forge:
      <component>:
        configuration-revision: local
    ```

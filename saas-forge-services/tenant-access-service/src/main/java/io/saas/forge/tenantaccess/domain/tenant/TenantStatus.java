@@ -1,0 +1,8 @@
+package io.saas.forge.tenantaccess.domain.tenant;
+
+public enum TenantStatus {
+    PENDING,
+    ACTIVE,
+    SUSPENDED,
+    CLOSED
+}

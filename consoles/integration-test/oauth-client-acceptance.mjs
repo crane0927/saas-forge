@@ -179,8 +179,8 @@ export async function verifyOAuthClients({
           body: JSON.stringify({
             type:
               status === 403
-                ? 'urn:saasforge:problem:platform-admin-required'
-                : 'urn:saasforge:problem:upstream-unavailable',
+                ? 'urn:saas.forge:problem:platform-admin-required'
+                : 'urn:saas.forge:problem:upstream-unavailable',
             title: 'Unavailable',
             status,
             code: status === 403 ? 'PLATFORM_ADMIN_REQUIRED' : 'UPSTREAM_UNAVAILABLE',

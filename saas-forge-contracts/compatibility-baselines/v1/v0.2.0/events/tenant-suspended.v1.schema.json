@@ -1,14 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://saasforge.io/contracts/events/tenant-suspended.v1.schema.json",
+  "$id": "https://saas.forge.io/contracts/events/tenant-suspended.v1.schema.json",
   "title": "Tenant Suspended v1",
   "allOf": [
     { "$ref": "cloudevents-envelope.v1.schema.json" },
     {
       "type": "object",
       "properties": {
-        "type": { "const": "com.saasforge.tenant.suspended.v1" },
-        "source": { "const": "urn:saasforge:tenant-access-service" },
+        "type": { "const": "com.saas.forge.tenant.suspended.v1" },
+        "source": { "const": "urn:saas.forge:tenant-access-service" },
         "data": {
           "type": "object",
           "additionalProperties": false,

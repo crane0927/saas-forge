@@ -1,0 +1,22 @@
+package io.saas.forge.iam.domain.session;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+public interface AccessTokenIssuanceRepository {
+    void create(AccessTokenIssuance issuance);
+
+    Optional<AccessTokenIssuance> findByJti(UUID jti);
+
+    boolean revoke(UUID jti, Instant revokedAt, String reason);
+
+    List<DurableRevocation> findUnexpiredRevocations(Instant at);
+
+    List<AccessTokenIssuance> findUnexpiredByFamilyId(UUID familyId, Instant at);
+
+    List<AccessTokenIssuance> findUnexpiredByKid(String kid, Instant at);
+
+    int revokeUnexpiredByKid(String kid, Instant revokedAt, String reason);
+}

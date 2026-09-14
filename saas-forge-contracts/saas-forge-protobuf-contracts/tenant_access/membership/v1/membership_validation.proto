@@ -1,9 +1,9 @@
 syntax = "proto3";
 
-package io.saasforge.contracts.tenantaccess.membership.v1;
+package io.saas.forge.contracts.tenantaccess.membership.v1;
 
 option java_multiple_files = true;
-option java_package = "io.saasforge.contracts.tenantaccess.membership.v1";
+option java_package = "io.saas.forge.contracts.tenantaccess.membership.v1";
 
 // Tenant Access is the authoritative owner of Membership usability.
 // The service is called synchronously over mTLS by authorized internal callers.

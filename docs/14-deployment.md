@@ -34,7 +34,7 @@ OpenTelemetry Collector
 
 开发 JWT Signing Key 由显式本地初始化生成，保存于 `.gitignore` 的本地密钥目录，并只读挂载给 IAM。Compose 不自动创建或删除该密钥；需要轮换时必须通过显式本地操作重建。该密钥不得用于生产 profile。
 
-开发与端到端测试的 `browser.rootDomain` 固定为 `saasforge.test`：`platform.saasforge.test`、`console.saasforge.test`、`api.saasforge.test`、`remote.saasforge.test` 都解析到 `127.0.0.1`，并经本地受信 TLS 反向代理提供 HTTPS。Quick Start 必须检查或说明本地域名解析与证书信任前置条件；不得用不同 `localhost` 端口替代该安全验收拓扑。
+开发与端到端测试的 `browser.rootDomain` 固定为 `saas.forge.test`：`platform.saas.forge.test`、`console.saas.forge.test`、`api.saas.forge.test`、`remote.saas.forge.test` 都解析到 `127.0.0.1`，并经本地受信 TLS 反向代理提供 HTTPS。Quick Start 必须检查或说明本地域名解析与证书信任前置条件；不得用不同 `localhost` 端口替代该安全验收拓扑。
 
 ## 生产拓扑
 
@@ -67,7 +67,7 @@ Platform Console 和 Tenant Console Shell 的静态制品分别构建。制品�
 
 - PostgreSQL 为四个服务提供独立数据库，需满足 RPO ≤ 5 分钟、RTO ≤ 30 分钟，并定期执行恢复演练。
 - Redis 是 Token 黑名单、会话和登录保护的安全依赖，使用高可用主从与自动故障转移的托管服务或 Sentinel/等效方案。
-- Kafka 至少 3 Broker，主题副本数 3、`min.insync.replicas=2`、生产者 `acks=all`。生产者 topic 固定为 `saasforge.<environment>.<producer-service>.events`；Kafka ACL 仅授予服务写入自己的 topic、读取事件工程注册表允许的 topic，以及消费者自己的隔离 topic 写入权限。
+- Kafka 至少 3 Broker，主题副本数 3、`min.insync.replicas=2`、生产者 `acks=all`。生产者 topic 固定为 `saas.forge.<environment>.<producer-service>.events`；Kafka ACL 仅授予服务写入自己的 topic、读取事件工程注册表允许的 topic，以及消费者自己的隔离 topic 写入权限。
 - Nacos 在本地 Compose 使用单节点；生产使用独立部署的高可用集群或其高可用 HTTPS 接入端点，供 Gateway 与领域服务注册、发现健康实例并读取非敏感运行配置。应用 Chart 仅引用该外部端点，不部署 Nacos Server。
 - S3 兼容对象存储仅保存导出任务的临时结果。导出不按 Tenant/Plan 限额，但任务必须异步、流式处理、通过全局有界队列与单 Tenant 公平调度保护系统；结果文件按配置留存期自动删除。
 
