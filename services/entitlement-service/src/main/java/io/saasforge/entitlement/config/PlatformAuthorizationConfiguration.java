@@ -23,13 +23,6 @@ import org.springframework.web.client.RestClient;
 @Configuration
 public class PlatformAuthorizationConfiguration {
     @Bean
-    @org.springframework.context.annotation.Profile("!local")
-    RestClient entitlementIamRestClient(
-            @Value("${saasforge.entitlement.iam-http-base-url}") String baseUrl) {
-        return RestClient.create(baseUrl);
-    }
-
-    @Bean
     IamServiceAccessTokenProvider entitlementIamServiceAccessTokenProvider(
             RestClient entitlementIamRestClient,
             Clock clock,

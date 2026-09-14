@@ -9,19 +9,24 @@ spring:
       username: ${NACOS_TENANT_ACCESS_USERNAME:?NACOS_TENANT_ACCESS_USERNAME is required}
       password: ${NACOS_TENANT_ACCESS_PASSWORD:?NACOS_TENANT_ACCESS_PASSWORD is required}
       config:
-        server-addr: ${NACOS_SERVER_ADDR:nacos:8848}
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
         namespace: ${NACOS_NAMESPACE:dev}
         ssl:
           enabled: ${NACOS_TLS_ENABLED:false}
       discovery:
-        server-addr: ${NACOS_SERVER_ADDR:nacos:8848}
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
         namespace: ${NACOS_NAMESPACE:dev}
         service: tenant-access-service
+        metadata:
+          grpc.port: ${spring.grpc.server.port}
         fail-fast: true
+        enabled: true
+        ip: ${TENANT_ACCESS_REGISTER_IP:127.0.0.1}
+        port: ${server.port}
   flyway:
     enabled: false
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:127.0.0.1:29092}
     producer:
       acks: all
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
@@ -29,23 +34,34 @@ spring:
   grpc:
     client:
       channels:
-        iam:
-          address: ${IAM_GRPC_ADDRESS:static://iam-service:9090}
-        entitlement:
-          address: ${ENTITLEMENT_GRPC_ADDRESS:static://entitlement-service:9090}
-
+        iam: {}
+        entitlement: {}
+    server:
+      port: ${TENANT_ACCESS_GRPC_PORT:9092}
+  config:
+    import: ${SAASFORGE_SECRETS_IMPORT:configtree:./deploy/compose/.secrets/native-local/tenant-access/}
+  datasource:
+    url: ${TENANT_ACCESS_DATASOURCE_URL:jdbc:postgresql://127.0.0.1:5432/tenant_access_db}
+    username: ${TENANT_ACCESS_DATASOURCE_USERNAME:tenant_access_app}
+    password: ${TENANT_ACCESS_APP_PASSWORD}
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD}
 saasforge:
   environment: ${SAASFORGE_ENVIRONMENT:dev}
   tenant-access:
-    iam-http-base-url: ${IAM_HTTP_BASE_URL:http://iam-service:8080}
     service-client-id-file: ${SAASFORGE_SERVICE_CLIENT_ID_FILE:?SAASFORGE_SERVICE_CLIENT_ID_FILE is required}
     service-client-secret-file: ${SAASFORGE_SERVICE_CLIENT_SECRET_FILE:?SAASFORGE_SERVICE_CLIENT_SECRET_FILE is required}
     iam-service-client-id-file: ${IAM_SERVICE_CLIENT_ID_FILE:?IAM_SERVICE_CLIENT_ID_FILE is required}
     outbox-topic: saasforge.${saasforge.environment}.tenant-access-service.events
-
 mybatis:
   mapper-locations: classpath*:mapper/**/*Mapper.xml
   type-handlers-package: io.saasforge.tenantaccess.infrastructure.persistence.type
+server:
+  address: ${TENANT_ACCESS_BIND_ADDRESS:127.0.0.1}
+  port: ${TENANT_ACCESS_HTTP_PORT:8082}
 
 ---
 spring:

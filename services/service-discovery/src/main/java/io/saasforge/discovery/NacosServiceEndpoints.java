@@ -11,14 +11,14 @@ import org.springframework.http.client.support.HttpRequestWrapper;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
 
-/** 本地联调按次读取健康实例；不使用订阅缓存，发现失败不能继续访问旧地址。 */
+/** 按次读取 Nacos 健康实例；不使用订阅缓存，发现失败不能继续访问旧地址。 */
 public final class NacosServiceEndpoints implements AutoCloseable {
     private final NamingService naming;
     private final String group;
     // 无排队的有界工作池：注册表慢请求不能阻塞调用线程，也不能无限积累本地查询线程。
     private final java.util.concurrent.ThreadPoolExecutor queries = new java.util.concurrent.ThreadPoolExecutor(
             0, 4, 30, java.util.concurrent.TimeUnit.SECONDS, new java.util.concurrent.SynchronousQueue<>(), task -> {
-                Thread thread = new Thread(task, "local-nacos-query");
+                Thread thread = new Thread(task, "nacos-discovery-query");
                 thread.setDaemon(true);
                 return thread;
             });

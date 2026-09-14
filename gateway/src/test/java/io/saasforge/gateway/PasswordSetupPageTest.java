@@ -16,6 +16,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
+        "SAASFORGE_SECRETS_IMPORT=",
         "spring.cloud.nacos.config.enabled=false",
         "spring.cloud.nacos.discovery.enabled=false",
         "saasforge.gateway.configuration-revision=test"

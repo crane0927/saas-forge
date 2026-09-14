@@ -252,14 +252,8 @@ export function assertGrpcHostPortPlan({ iam, tenantAccess, entitlement }) {
 
 export function localIamCallerEnvironment() {
   return {
-    "entitlement-service": {
-      IAM_GRPC_ADDRESS: `static://${dockerHost}:${localGrpcPort}`,
-      IAM_HTTP_BASE_URL: `http://${dockerHost}:${localHttpPort}`,
-    },
-    "tenant-access-service": {
-      IAM_GRPC_ADDRESS: `static://${dockerHost}:${localGrpcPort}`,
-      IAM_HTTP_BASE_URL: `http://${dockerHost}:${localHttpPort}`,
-    },
+    "entitlement-service": {},
+    "tenant-access-service": {},
   };
 }
 
@@ -271,8 +265,8 @@ export function callersAreReady(instancesByService) {
 
 export function localIamEnvironment(inputs, dockerHostAddress) {
   return {
+    SAASFORGE_SECRETS_IMPORT: "",
     BROWSER_ROOT_DOMAIN: inputs.environment.BROWSER_ROOT_DOMAIN,
-    IAM_HTTP_BASE_URL: `http://${localHost}:${localHttpPort}`,
     IAM_JWT_ISSUER: inputs.environment.IAM_JWT_ISSUER,
     IAM_JWT_PEM_KEY_VERSION_REF: inputs.environment.IAM_JWT_PEM_KEY_VERSION_REF,
     IAM_JWT_PEM_PRIVATE_KEY_LOCATION: `file:${inputs.signingKeyFile}`,
@@ -300,7 +294,6 @@ export function localIamEnvironment(inputs, dockerHostAddress) {
     SPRING_DATASOURCE_PASSWORD: inputs.environment.SPRING_DATASOURCE_PASSWORD,
     SPRING_DATASOURCE_URL: `jdbc:postgresql://${localHost}:5432/iam_db`,
     SPRING_DATASOURCE_USERNAME: inputs.environment.SPRING_DATASOURCE_USERNAME,
-    TENANT_ACCESS_GRPC_ADDRESS: `static://${localHost}:${inputs.grpcPorts.tenantAccess}`,
   };
 }
 
@@ -376,19 +369,8 @@ function composeWithIamLocalCallers(context, paths, ...arguments_) {
 }
 
 function iamLocalCallersOverride() {
-  return [
-    "services:",
-    ...Object.entries(localIamCallerEnvironment()).flatMap(
-      ([service, environment]) => [
-        `  ${service}:`,
-        "    environment:",
-        ...Object.entries(environment).map(
-          ([name, value]) => `      ${name}: \"${value}\"`,
-        ),
-      ],
-    ),
-    "",
-  ].join("\n");
+  // 保留旧验收状态的恢复入口；调用方不再接收任何下游地址覆盖。
+  return ["services:", ...localIamCallers.map((service) => `  ${service}: {}`), ""].join("\n");
 }
 
 async function hasIamLocalCallersOverride(paths) {
@@ -1107,6 +1089,7 @@ function additionalRuntimePaths(root, definition) {
 
 export function localAdditionalEnvironment(definition, environment, inputs) {
   const nacos = {
+    SAASFORGE_SECRETS_IMPORT: "",
     NACOS_NAMESPACE: "dev",
     NACOS_SERVER_ADDR: `${localHost}:${inputs.nacosPort}`,
     NACOS_TLS_ENABLED: "false",
@@ -1134,9 +1117,6 @@ export function localAdditionalEnvironment(definition, environment, inputs) {
   if (definition.service === "tenant-access-service") {
     return {
       ...nacos,
-      ENTITLEMENT_GRPC_ADDRESS: `static://${localHost}:9093`,
-      IAM_GRPC_ADDRESS: `static://${localHost}:9091`,
-      IAM_HTTP_BASE_URL: `http://${localHost}:8081`,
       IAM_JWT_ISSUER: environment.IAM_JWT_ISSUER,
       IAM_SERVICE_CLIENT_ID_FILE:
         inputs.secretFiles["/run/secrets/iam-service-client-id"],
@@ -1160,8 +1140,6 @@ export function localAdditionalEnvironment(definition, environment, inputs) {
   if (definition.service === "entitlement-service") {
     return {
       ...nacos,
-      IAM_GRPC_ADDRESS: `static://${localHost}:9091`,
-      IAM_HTTP_BASE_URL: `http://${localHost}:8081`,
       IAM_JWT_ISSUER: environment.IAM_JWT_ISSUER,
       NACOS_ENTITLEMENT_PASSWORD: environment.NACOS_ENTITLEMENT_PASSWORD,
       NACOS_ENTITLEMENT_USERNAME: environment.NACOS_ENTITLEMENT_USERNAME,
@@ -1177,7 +1155,6 @@ export function localAdditionalEnvironment(definition, environment, inputs) {
       SPRING_DATASOURCE_URL: `jdbc:postgresql://${localHost}:5432/entitlement_db`,
       SPRING_DATASOURCE_USERNAME: environment.SPRING_DATASOURCE_USERNAME,
       SPRING_GRPC_SERVER_PORT: String(definition.grpcPort),
-      TENANT_ACCESS_GRPC_ADDRESS: `static://${localHost}:9092`,
     };
   }
   return {

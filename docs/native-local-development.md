@@ -10,7 +10,7 @@
 2. 数据库管理员独立检查迁移状态并执行需要的前向迁移。IDE 应用不执行 Flyway，更新代码后重启不能补齐数据库表。既有 Compose 数据库可参照 [Entitlement 的 info → migrate 示例](native-entitlement-development.md#更新代码后的数据库迁移)，其余服务使用对应迁移任务。历史 checksum 错误按仓库迁移规则调查，不重置数据或盲目 repair。
 3. 由已有受控初始化流程准备 Signing Key、Service Client、Platform Admin、Nacos 工作负载及最小 naming 读取权限。既有环境复用有效身份；配置缺失不意味着允许重置账号或重复执行管理员初始化。IAM、Tenant Access、Entitlement 的跨服务权限分别见下表说明。
 4. 按[开发配置说明](development-configuration.md)在 IDE 配置连接参数和应用独立的受限凭据目录。业务配置统一从当前开发 Nacos 读取，不再复制个人配置模板；本地文件替代模式仅按文档显式启用。
-5. IDE 导入并同步 Maven，使用 JDK 17 和模块 classpath，激活 `local`（普通 Java 配置可用 `--spring.profiles.active=local`）。仅保留普通 Build 前置动作，不添加 package、托管脚本或 Compose 启动任务。
+5. IDE 导入并同步 Maven，使用 JDK 17 和模块 classpath，无需激活任何 profile。仅保留普通 Build 前置动作，不添加 package、托管脚本或 Compose 启动任务。
 
 | 应用 | Main class / classpath | 依赖、凭据及调试步骤 |
 | --- | --- | --- |

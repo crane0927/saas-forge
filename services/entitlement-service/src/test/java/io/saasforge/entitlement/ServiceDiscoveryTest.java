@@ -20,7 +20,7 @@ import io.saasforge.contracts.tenantaccess.provisioning.v1.InitialSubscriptionEl
 import io.saasforge.contracts.tenantaccess.provisioning.v1.TenantProvisioningQueryServiceGrpc;
 import io.saasforge.entitlement.application.subscription.TenantEligibilityGateway;
 import io.saasforge.entitlement.application.subscription.TenantEligibilityUnavailableException;
-import io.saasforge.entitlement.config.LocalServiceDiscoveryConfiguration;
+import io.saasforge.entitlement.config.ServiceDiscoveryConfiguration;
 import io.saasforge.entitlement.infrastructure.grpc.GrpcTenantEligibilityGateway;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -32,7 +32,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.web.client.RestClient;
 
-class LocalServiceDiscoveryTest {
+class ServiceDiscoveryTest {
     @Test
     void iamHttpClientFollowsDiscoveryAndRejectsMissingHealthyTargets() throws Exception {
         NamingService naming = mock(NamingService.class);
@@ -90,8 +90,12 @@ class LocalServiceDiscoveryTest {
         NacosServiceManager manager = mock(NacosServiceManager.class);
         when(manager.getNamingService()).thenReturn(naming);
         return new ApplicationContextRunner()
-                .withPropertyValues("spring.profiles.active=local")
-                .withUserConfiguration(LocalServiceDiscoveryConfiguration.class)
+                .withBean(org.springframework.grpc.client.ChannelCredentialsProvider.class,
+                            () -> name -> io.grpc.InsecureChannelCredentials.create())
+                    .withBean(org.springframework.grpc.client.ClientInterceptorsConfigurer.class,
+                            () -> new org.springframework.grpc.client.ClientInterceptorsConfigurer(
+                                    new org.springframework.context.support.StaticApplicationContext()))
+                .withUserConfiguration(ServiceDiscoveryConfiguration.class)
                 .withBean(NacosServiceManager.class, () -> manager)
                 .withInitializer(application -> {
                     NacosDiscoveryProperties properties = mock(NacosDiscoveryProperties.class);

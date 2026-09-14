@@ -6,20 +6,33 @@ spring:
       username: ${NACOS_GATEWAY_USERNAME:?NACOS_GATEWAY_USERNAME is required}
       password: ${NACOS_GATEWAY_PASSWORD:?NACOS_GATEWAY_PASSWORD is required}
       config:
-        server-addr: ${NACOS_SERVER_ADDR:nacos:8848}
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
         namespace: ${NACOS_NAMESPACE:dev}
         ssl:
           enabled: ${NACOS_TLS_ENABLED:false}
       discovery:
-        server-addr: ${NACOS_SERVER_ADDR:nacos:8848}
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
         namespace: ${NACOS_NAMESPACE:dev}
         service: gateway
         fail-fast: true
+        enabled: true
+        ip: ${GATEWAY_REGISTER_IP:127.0.0.1}
+        port: ${server.port}
+  config:
+    import: ${SAASFORGE_SECRETS_IMPORT:configtree:./deploy/compose/.secrets/native-local/gateway/}
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD}
 browser:
   rootDomain: ${BROWSER_ROOT_DOMAIN:saasforge.test}
-
 saasforge:
   environment: ${SAASFORGE_ENVIRONMENT:dev}
+server:
+  address: ${GATEWAY_BIND_ADDRESS:0.0.0.0}
+  port: ${GATEWAY_HTTP_PORT:8080}
+
 ---
 spring:
   config:

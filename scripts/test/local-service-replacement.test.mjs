@@ -42,16 +42,10 @@ test("requires the fixed, unique loopback gRPC host-port assignments", () => {
   );
 });
 
-test("routes container callers to the documented Docker Desktop host entry", () => {
+test("does not inject downstream addresses into container callers", () => {
   assert.deepEqual(localIamCallerEnvironment(), {
-    "entitlement-service": {
-      IAM_GRPC_ADDRESS: "static://host.docker.internal:9091",
-      IAM_HTTP_BASE_URL: "http://host.docker.internal:8081",
-    },
-    "tenant-access-service": {
-      IAM_GRPC_ADDRESS: "static://host.docker.internal:9091",
-      IAM_HTTP_BASE_URL: "http://host.docker.internal:8081",
-    },
+    "entitlement-service": {},
+    "tenant-access-service": {},
   });
 });
 
@@ -163,7 +157,7 @@ test("maps a local Gateway only to existing loopback application ports", () => {
   );
 });
 
-test("maps every local downstream contract to its fixed loopback port", () => {
+test("keeps infrastructure settings without injecting downstream service addresses", () => {
   const environment = {
     AUDIT_DATABASE_PASSWORD: "audit-password",
     AUDIT_DATABASE_USERNAME: "audit-user",
@@ -204,13 +198,13 @@ test("maps every local downstream contract to its fixed loopback port", () => {
     inputs,
   );
 
-  assert.equal(tenant.IAM_GRPC_ADDRESS, "static://127.0.0.1:9091");
-  assert.equal(tenant.ENTITLEMENT_GRPC_ADDRESS, "static://127.0.0.1:9093");
-  assert.equal(entitlement.IAM_GRPC_ADDRESS, "static://127.0.0.1:9091");
-  assert.equal(
-    entitlement.TENANT_ACCESS_GRPC_ADDRESS,
-    "static://127.0.0.1:9092",
-  );
+  assert.equal(tenant.SAASFORGE_SECRETS_IMPORT, "");
+  assert.equal(entitlement.SAASFORGE_SECRETS_IMPORT, "");
+  assert.equal(audit.SAASFORGE_SECRETS_IMPORT, "");
+  assert.equal(tenant.IAM_GRPC_ADDRESS, undefined);
+  assert.equal(tenant.ENTITLEMENT_GRPC_ADDRESS, undefined);
+  assert.equal(entitlement.IAM_GRPC_ADDRESS, undefined);
+  assert.equal(entitlement.TENANT_ACCESS_GRPC_ADDRESS, undefined);
   assert.equal(audit.KAFKA_BOOTSTRAP_SERVERS, "127.0.0.1:29092");
   assert.equal(
     audit.AUDIT_DATABASE_URL,
@@ -440,6 +434,7 @@ test("maps only IAM runtime settings to host-reachable infrastructure", () => {
     "192.168.65.254",
   );
 
+  assert.equal(environment.SAASFORGE_SECRETS_IMPORT, "");
   assert.equal(environment.SERVER_PORT, "8081");
   assert.equal(environment.SPRING_GRPC_SERVER_PORT, "9091");
   assert.equal(environment.SPRING_CLOUD_NACOS_DISCOVERY_IP, "192.168.65.254");
@@ -451,10 +446,7 @@ test("maps only IAM runtime settings to host-reachable infrastructure", () => {
   assert.equal(environment.SPRING_DATA_REDIS_HOST, "127.0.0.1");
   assert.equal(environment.KAFKA_BOOTSTRAP_SERVERS, "127.0.0.1:29092");
   assert.equal(environment.SMTP_HOST, "127.0.0.1");
-  assert.equal(
-    environment.TENANT_ACCESS_GRPC_ADDRESS,
-    "static://127.0.0.1:9092",
-  );
+  assert.equal(environment.TENANT_ACCESS_GRPC_ADDRESS, undefined);
   assert.equal(
     environment.IAM_JWT_PEM_PRIVATE_KEY_LOCATION,
     "file:/secure/iam-key.pem",

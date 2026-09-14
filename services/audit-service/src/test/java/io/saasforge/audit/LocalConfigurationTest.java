@@ -18,6 +18,8 @@ class LocalConfigurationTest {
     @Test
     void loadsPersonalConfigurationWithoutConfigCenterAndKeepsConsumerReadiness() throws Exception {
         Files.copy(Path.of("src/main/resources/application.yaml"), directory.resolve("application.yaml"));
+        var secrets = Files.createDirectory(directory.resolve("secrets"));
+        Files.writeString(secrets.resolve("AUDIT_DATABASE_PASSWORD"), "test-secret");
         var personalConfiguration = directory.resolve("application-local-file.yaml");
         Files.copy(Path.of("../../deploy/nacos/dev/audit-service.yaml"), personalConfiguration);
         Files.writeString(personalConfiguration, """
@@ -27,30 +29,27 @@ class LocalConfigurationTest {
                 spring.cloud.nacos.config.import-check.enabled: "false"
                 spring.cloud.nacos.discovery.enabled: "true"
                 saasforge.audit.configuration-revision: "local"
-                spring.cloud.nacos.discovery.ip: "${AUDIT_REGISTER_IP}"
-                spring.cloud.nacos.discovery.port: "${AUDIT_HTTP_PORT}"
-                server.port: "${AUDIT_HTTP_PORT}"
-                spring.datasource.url: "${AUDIT_DATABASE_URL}"
-                spring.datasource.username: "audit_app"
-                spring.kafka.bootstrap-servers: "${KAFKA_BOOTSTRAP_SERVERS}"
                 """, StandardOpenOption.APPEND);
         new ApplicationContextRunner()
                 .withInitializer(new ConfigDataApplicationContextInitializer())
                 .withUserConfiguration(RequiredNacosConfiguration.class)
                 .withPropertyValues(
-                        "spring.profiles.active=local,local-file",
+                        "SAASFORGE_SECRETS_IMPORT=configtree:" + secrets + "/",
+                        "spring.profiles.active=local-file",
                         "spring.config.location=" + directory.toUri(),
                         "NACOS_SERVER_ADDR=127.0.0.1:1",
                         "NACOS_AUDIT_USERNAME=test",
                         "NACOS_AUDIT_PASSWORD=test",
                         "AUDIT_DATABASE_URL=jdbc:postgresql://database.example:5544/audit_db",
-                        "AUDIT_DATABASE_PASSWORD=test",
                         "KAFKA_BOOTSTRAP_SERVERS=broker.example:39092",
                         "AUDIT_HTTP_PORT=8184",
                         "AUDIT_REGISTER_IP=192.0.2.4")
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     var environment = context.getEnvironment();
+                    assertThat(environment.getProperty("spring.datasource.password")).isEqualTo("test-secret");
+                    assertThat(environment.getProperty("server.port")).isEqualTo("8184");
+                    assertThat(environment.getProperty("spring.cloud.nacos.discovery.port")).isEqualTo("8184");
                     assertThat(environment.getProperty("spring.config.import", "")).doesNotContain("nacos:");
                     assertThat(environment.getProperty("spring.cloud.nacos.config.enabled")).isEqualTo("false");
                     assertThat(environment.getProperty("spring.cloud.nacos.discovery.enabled")).isEqualTo("true");
@@ -77,8 +76,8 @@ class LocalConfigurationTest {
                 .withInitializer(new ConfigDataApplicationContextInitializer())
                 .withUserConfiguration(RequiredNacosConfiguration.class)
                 .withPropertyValues(
-                        "spring.profiles.active=local",
                         "spring.config.location=" + directory.toUri(),
+                        "SAASFORGE_SECRETS_IMPORT=",
                         "spring.cloud.nacos.config.server-addr=127.0.0.1:1",
                         "spring.cloud.nacos.username=test",
                         "spring.cloud.nacos.password=test",

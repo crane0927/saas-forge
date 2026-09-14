@@ -25,6 +25,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
+        "SAASFORGE_SECRETS_IMPORT=",
         "spring.cloud.nacos.config.enabled=false",
         "spring.cloud.nacos.discovery.enabled=false",
         "spring.cloud.loadbalancer.cache.enabled=false",

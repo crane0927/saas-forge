@@ -4,14 +4,14 @@ spring:
   flyway:
     enabled: false
   datasource:
-    url: ${AUDIT_DATABASE_URL:jdbc:postgresql://postgres:5432/audit_db}
+    url: ${AUDIT_DATABASE_URL:jdbc:postgresql://127.0.0.1:5432/audit_db}
     username: ${AUDIT_DATABASE_USERNAME:audit_app}
-    password: ${AUDIT_DATABASE_PASSWORD:?AUDIT_DATABASE_PASSWORD is required}
+    password: ${AUDIT_DATABASE_PASSWORD}
     hikari:
       connection-timeout: 3000
       validation-timeout: 1000
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:127.0.0.1:29092}
     properties:
       request.timeout.ms: 3000
       default.api.timeout.ms: 3000
@@ -26,24 +26,31 @@ spring:
       username: ${NACOS_AUDIT_USERNAME:?NACOS_AUDIT_USERNAME is required}
       password: ${NACOS_AUDIT_PASSWORD:?NACOS_AUDIT_PASSWORD is required}
       config:
-        server-addr: ${NACOS_SERVER_ADDR:nacos:8848}
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
         namespace: ${NACOS_NAMESPACE:dev}
         ssl:
           enabled: ${NACOS_TLS_ENABLED:false}
       discovery:
-        server-addr: ${NACOS_SERVER_ADDR:nacos:8848}
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
         namespace: ${NACOS_NAMESPACE:dev}
         service: audit-service
         fail-fast: true
-
+        enabled: true
+        ip: ${AUDIT_REGISTER_IP:127.0.0.1}
+        port: ${server.port}
+  config:
+    import: ${SAASFORGE_SECRETS_IMPORT:configtree:./deploy/compose/.secrets/native-local/audit/}
 saasforge:
   environment: ${SAASFORGE_ENVIRONMENT:dev}
   audit:
-    required-migration-version: "5"
+    required-migration-version: '5'
     iam-session-topic: saasforge.${saasforge.environment}.iam-service.events
     tenant-access-topic: saasforge.${saasforge.environment}.tenant-access-service.events
     iam-session-isolation-topic: saasforge.${saasforge.environment}.audit-service.iam-session-isolations
     tenant-isolation-topic: saasforge.${saasforge.environment}.audit-service.tenant-isolations
+server:
+  address: ${AUDIT_BIND_ADDRESS:127.0.0.1}
+  port: ${AUDIT_HTTP_PORT:8084}
 
 ---
 spring:

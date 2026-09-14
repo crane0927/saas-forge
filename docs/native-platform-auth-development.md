@@ -4,9 +4,9 @@
 
 ## 个人配置
 
-按[开发配置说明](development-configuration.md)设置 IDE 连接参数；`local` 默认读取各自的 Nacos dev 配置，不保留实际本地业务 YAML 或模板。只有同时激活 `local-file` 才使用自己按文档创建的个人文件。
+按[开发配置说明](development-configuration.md)设置 IDE 连接参数；默认读取各自的 Nacos dev 配置，不保留实际本地业务 YAML 或模板。只有显式激活 `local-file` 才使用自己按文档创建的个人文件。
 
-凭据通过各应用独立的环境变量或受限 configtree 提供；IDE 的 `SPRING_APPLICATION_JSON` 只保存连接参数和引用。私密文件名是对应属性名，例如 `NACOS_IAM_PASSWORD`，目录 700、文件 600。不导入整份 Compose 管理员环境。
+凭据通过各应用独立的环境变量或受限 configtree 提供；`application.yaml` 保存连接参数与占位符，本机默认值及凭据目录导入已在 YAML 中，IDE 工作目录设为仓库根目录即可。私密文件名是对应属性名，例如 `NACOS_IAM_PASSWORD`，目录 700、文件 600。不导入整份 Compose 管理员环境。
 
 | 应用 | 必需值或引用 |
 | --- | --- |
@@ -30,10 +30,10 @@ Maven 项目使用根 POM 支持的 JDK 17。首次导入并同步 Maven，使�
 
 | 配置 | Main class | 模块 classpath | Active profiles |
 | --- | --- | --- | --- |
-| Gateway | `io.saasforge.gateway.GatewayApplication` | `gateway` | `local` |
-| IAM | `io.saasforge.iam.IamServiceApplication` | `iam-service` | `local` |
+| Gateway | `io.saasforge.gateway.GatewayApplication` | `gateway` | 留空 |
+| IAM | `io.saasforge.iam.IamServiceApplication` | `iam-service` | 留空 |
 
-普通 Java Application 运行配置没有 Active profiles 栏时，只需填程序参数 `--spring.profiles.active=local`。IDE 启动前动作保留普通 Build，不添加 Maven package、Compose 或托管脚本。`local` 保留本机服务发现并读取 Nacos；`local-file` 仅用于显式选择本地业务文件。若曾按旧说明设置 `spring.config.additional-location` 指向模块 `config/`，请移除该参数。
+普通 Java Application 无需填写 profile 参数；移除旧的 `--spring.profiles.active=local`。IDE 启动前动作保留普通 Build，不添加 Maven package、Compose 或托管脚本。默认通过 Nacos 发现服务并读取配置；`local-file` 仅用于显式选择本地业务文件。若曾按旧说明设置 `spring.config.additional-location` 指向模块 `config/`，请移除该参数。
 
 先 Debug IAM，再 Debug Gateway。两个主类可同时运行，分别停止和重启；日志留在对应 IDE Console。Gateway 默认 HTTP 8080，IAM 默认 HTTP 8081、gRPC 9091。用 `GATEWAY_HTTP_PORT`、`IAM_HTTP_PORT`、`IAM_GRPC_PORT` 调整监听；`GATEWAY_REGISTER_IP`、`IAM_REGISTER_IP` 决定注册表发布的地址，必须从调用方可达。注册 HTTP 端口随对应 HTTP 监听端口变化。
 

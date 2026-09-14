@@ -378,6 +378,12 @@ services:
       mailpit:
         condition: service_started
     environment:
+      SAASFORGE_SECRETS_IMPORT: ""
+      SERVER_ADDRESS: 0.0.0.0
+      SERVER_PORT: 8080
+      SPRING_CLOUD_NACOS_DISCOVERY_IP: ""
+      SPRING_GRPC_SERVER_PORT: 9090
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/iam_db
       SPRING_DATASOURCE_USERNAME: iam_app
       SPRING_DATASOURCE_PASSWORD: ${IAM_APP_PASSWORD:?IAM_APP_PASSWORD is required}
@@ -430,6 +436,12 @@ services:
       redis:
         condition: service_healthy
     environment:
+      SAASFORGE_SECRETS_IMPORT: ""
+      SERVER_ADDRESS: 0.0.0.0
+      SERVER_PORT: 8080
+      SPRING_CLOUD_NACOS_DISCOVERY_IP: ""
+      SPRING_GRPC_SERVER_PORT: 9090
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tenant_access_db
       SPRING_DATASOURCE_USERNAME: tenant_access_app
       SPRING_DATASOURCE_PASSWORD: ${TENANT_ACCESS_APP_PASSWORD:?TENANT_ACCESS_APP_PASSWORD is required}
@@ -480,6 +492,11 @@ services:
       redis:
         condition: service_healthy
     environment:
+      SAASFORGE_SECRETS_IMPORT: ""
+      SERVER_ADDRESS: 0.0.0.0
+      SERVER_PORT: 8080
+      SPRING_CLOUD_NACOS_DISCOVERY_IP: ""
+      SPRING_GRPC_SERVER_PORT: 9090
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/entitlement_db
       SPRING_DATASOURCE_USERNAME: entitlement_app
       SPRING_DATASOURCE_PASSWORD: ${ENTITLEMENT_APP_PASSWORD:?ENTITLEMENT_APP_PASSWORD is required}
@@ -524,6 +541,10 @@ services:
       kafka:
         condition: service_healthy
     environment:
+      SAASFORGE_SECRETS_IMPORT: ""
+      SERVER_ADDRESS: 0.0.0.0
+      SERVER_PORT: 8080
+      SPRING_CLOUD_NACOS_DISCOVERY_IP: ""
       NACOS_SERVER_ADDR: nacos:8848
       NACOS_NAMESPACE: dev
       NACOS_TLS_ENABLED: "false"
@@ -571,6 +592,10 @@ services:
       args:
         MODULE: gateway
     environment:
+      SAASFORGE_SECRETS_IMPORT: ""
+      SERVER_ADDRESS: 0.0.0.0
+      SERVER_PORT: 8080
+      SPRING_CLOUD_NACOS_DISCOVERY_IP: ""
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
       SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}

@@ -33,8 +33,8 @@ class DiscoveredGrpcChannelTest {
         Server first = server("first");
         Server second = server("second");
         try (var endpoints = new NacosServiceEndpoints(naming, "DEFAULT_GROUP");
-             var channel = new DiscoveredGrpcChannel(endpoints,
-                "tenant-access-service")) {
+             var channel = new DiscoveredGrpcChannel(endpoints, "tenant-access-service",
+                     (host, endpointPort) -> io.grpc.ManagedChannelBuilder.forAddress(host, endpointPort).usePlaintext().build())) {
             when(naming.selectInstances("tenant-access-service", "DEFAULT_GROUP", true, false))
                     .thenReturn(List.of(instance(first.getPort())))
                     .thenReturn(List.of(instance(second.getPort())));
@@ -51,8 +51,8 @@ class DiscoveredGrpcChannelTest {
         NamingService naming = mock(NamingService.class);
         Server server = server("available");
         try (var endpoints = new NacosServiceEndpoints(naming, "DEFAULT_GROUP");
-             var channel = new DiscoveredGrpcChannel(endpoints,
-                "tenant-access-service")) {
+             var channel = new DiscoveredGrpcChannel(endpoints, "tenant-access-service",
+                     (host, endpointPort) -> io.grpc.ManagedChannelBuilder.forAddress(host, endpointPort).usePlaintext().build())) {
             when(naming.selectInstances("tenant-access-service", "DEFAULT_GROUP", true, false))
                     .thenReturn(List.of(instance(server.getPort())))
                     .thenReturn(List.of())
@@ -78,7 +78,8 @@ class DiscoveredGrpcChannelTest {
         instance.setMetadata(port == null ? Map.of() : Map.of("grpc.port", port));
         when(naming.selectInstances("iam-service", "DEFAULT_GROUP", true, false)).thenReturn(List.of(instance));
         try (var endpoints = new NacosServiceEndpoints(naming, "DEFAULT_GROUP");
-             var channel = new DiscoveredGrpcChannel(endpoints, "iam-service")) {
+             var channel = new DiscoveredGrpcChannel(endpoints, "iam-service",
+                     (host, endpointPort) -> io.grpc.ManagedChannelBuilder.forAddress(host, endpointPort).usePlaintext().build())) {
             assertThatThrownBy(() -> call(channel)).isInstanceOf(io.grpc.StatusRuntimeException.class)
                     .satisfies(error -> assertThat(io.grpc.Status.fromThrowable(error).getCode())
                             .isEqualTo(io.grpc.Status.Code.UNAVAILABLE));
@@ -110,7 +111,8 @@ class DiscoveredGrpcChannelTest {
         when(naming.selectInstances("iam-service", "DEFAULT_GROUP", true, false))
                 .thenReturn(List.of(instance(server.getPort())));
         try (var endpoints = new NacosServiceEndpoints(naming, "DEFAULT_GROUP");
-             var channel = new DiscoveredGrpcChannel(endpoints, "iam-service")) {
+             var channel = new DiscoveredGrpcChannel(endpoints, "iam-service",
+                     (host, endpointPort) -> io.grpc.ManagedChannelBuilder.forAddress(host, endpointPort).usePlaintext().build())) {
             assertThatThrownBy(() -> call(channel)).isInstanceOf(io.grpc.StatusRuntimeException.class)
                     .satisfies(error -> assertThat(io.grpc.Status.fromThrowable(error).getCode())
                             .isEqualTo(io.grpc.Status.Code.UNAUTHENTICATED));
@@ -134,7 +136,8 @@ class DiscoveredGrpcChannelTest {
             return List.of();
         });
         try (var endpoints = new NacosServiceEndpoints(naming, "DEFAULT_GROUP");
-             var channel = new DiscoveredGrpcChannel(endpoints, "iam-service")) {
+             var channel = new DiscoveredGrpcChannel(endpoints, "iam-service",
+                     (host, endpointPort) -> io.grpc.ManagedChannelBuilder.forAddress(host, endpointPort).usePlaintext().build())) {
             org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(java.time.Duration.ofSeconds(1), () -> {
                 assertThatThrownBy(() -> ClientCalls.blockingUnaryCall(channel, METHOD,
                         CallOptions.DEFAULT.withDeadlineAfter(100, TimeUnit.MILLISECONDS), "membership"))

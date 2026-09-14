@@ -5,26 +5,29 @@ import io.grpc.CallOptions;
 import io.grpc.Channel;
 import io.grpc.ClientCall;
 import io.grpc.ManagedChannel;
-import io.grpc.ManagedChannelBuilder;
 import io.grpc.MethodDescriptor;
 import io.grpc.Status;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BiFunction;
 
 /**
- * 仅供 local profile 的明文内部 gRPC；每次调用确认注册表，端口取被调用实例的 grpc.port 元数据。
+ * 每次调用确认 Nacos 注册表，端口取被调用实例的 grpc.port 元数据；通道工厂负责传输安全。
  * 复用当前连接，地址变化时关闭旧连接；无健康实例、发现异常或元数据缺失均失败关闭。
  */
 public final class DiscoveredGrpcChannel extends Channel implements AutoCloseable {
     private final NacosServiceEndpoints endpoints;
     private final String serviceId;
+    private final BiFunction<String, Integer, ManagedChannel> channels;
     private ManagedChannel current;
     private String currentHost;
     private int currentPort;
     private boolean closed;
 
-    public DiscoveredGrpcChannel(NacosServiceEndpoints endpoints, String serviceId) {
+    public DiscoveredGrpcChannel(NacosServiceEndpoints endpoints, String serviceId,
+            BiFunction<String, Integer, ManagedChannel> channels) {
         this.endpoints = endpoints;
         this.serviceId = serviceId;
+        this.channels = channels;
     }
 
     @Override
@@ -43,7 +46,7 @@ public final class DiscoveredGrpcChannel extends Channel implements AutoCloseabl
                 if (deadline.isExpired()) throw new IllegalStateException("Call deadline exceeded");
                 if (current == null || !instance.getIp().equals(currentHost) || port != currentPort) {
                     if (current != null) current.shutdown();
-                    current = ManagedChannelBuilder.forAddress(instance.getIp(), port).usePlaintext().build();
+                    current = channels.apply(instance.getIp(), port);
                     currentHost = instance.getIp();
                     currentPort = port;
                 }

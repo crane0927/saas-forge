@@ -14,6 +14,23 @@ import org.junit.jupiter.api.Test;
 
 class NacosServiceEndpointsTest {
     @Test
+    void ignoresUnhealthyDisabledAndZeroWeightInstances() throws Exception {
+        NamingService naming = mock(NamingService.class);
+        Instance unhealthy = instance(8081);
+        unhealthy.setHealthy(false);
+        Instance disabled = instance(8082);
+        disabled.setEnabled(false);
+        Instance zeroWeight = instance(8083);
+        zeroWeight.setWeight(0);
+        Instance available = instance(8084);
+        when(naming.selectInstances("iam-service", "DEFAULT_GROUP", true, false))
+                .thenReturn(List.of(unhealthy, disabled, zeroWeight, available));
+        try (var endpoints = new NacosServiceEndpoints(naming, "DEFAULT_GROUP")) {
+            assertThat(endpoints.select("iam-service")).isSameAs(available);
+        }
+    }
+
+    @Test
     void httpClientFollowsRegisteredPortWithoutChangingCallerConfiguration() throws Exception {
         NamingService naming = mock(NamingService.class);
         HttpServer first = server("first");

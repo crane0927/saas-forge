@@ -9,19 +9,24 @@ spring:
       username: ${NACOS_IAM_USERNAME:?NACOS_IAM_USERNAME is required}
       password: ${NACOS_IAM_PASSWORD:?NACOS_IAM_PASSWORD is required}
       config:
-        server-addr: ${NACOS_SERVER_ADDR:nacos:8848}
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
         namespace: ${NACOS_NAMESPACE:dev}
         ssl:
           enabled: ${NACOS_TLS_ENABLED:false}
       discovery:
-        server-addr: ${NACOS_SERVER_ADDR:nacos:8848}
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
         namespace: ${NACOS_NAMESPACE:dev}
         service: iam-service
+        metadata:
+          grpc.port: ${spring.grpc.server.port}
         fail-fast: true
+        enabled: true
+        ip: ${IAM_REGISTER_IP:127.0.0.1}
+        port: ${server.port}
   flyway:
     enabled: false
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:127.0.0.1:29092}
     producer:
       acks: all
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
@@ -30,18 +35,27 @@ spring:
     client:
       channels:
         tenant-access:
-          address: ${TENANT_ACCESS_GRPC_ADDRESS:static://tenant-access-service:9090}
           default-deadline: PT3S
-
+    server:
+      port: ${IAM_GRPC_PORT:9091}
+  config:
+    import: ${SAASFORGE_SECRETS_IMPORT:configtree:./deploy/compose/.secrets/native-local/iam/}
+  datasource:
+    url: ${IAM_DATASOURCE_URL:jdbc:postgresql://127.0.0.1:5432/iam_db}
+    username: ${IAM_DATASOURCE_USERNAME:iam_app}
+    password: ${IAM_APP_PASSWORD}
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD}
 browser:
-  rootDomain: ${BROWSER_ROOT_DOMAIN:?BROWSER_ROOT_DOMAIN is required}
-
+  rootDomain: ${BROWSER_ROOT_DOMAIN:saasforge.test}
 saasforge:
   environment: ${SAASFORGE_ENVIRONMENT:dev}
   iam:
     service-client-id-file: ${SAASFORGE_SERVICE_CLIENT_ID_FILE:?SAASFORGE_SERVICE_CLIENT_ID_FILE is required}
     service-client-secret-file: ${SAASFORGE_SERVICE_CLIENT_SECRET_FILE:?SAASFORGE_SERVICE_CLIENT_SECRET_FILE is required}
-    tenant-access-grpc-target: tenant-access
     password-setup:
       page-uri: ${PASSWORD_SETUP_PAGE_URI:}
       smtp:
@@ -55,6 +69,9 @@ saasforge:
 mybatis:
   mapper-locations: classpath*:mapper/**/*Mapper.xml
   type-handlers-package: io.saasforge.iam.infrastructure.persistence.type
+server:
+  address: ${IAM_BIND_ADDRESS:127.0.0.1}
+  port: ${IAM_HTTP_PORT:8081}
 
 ---
 spring:

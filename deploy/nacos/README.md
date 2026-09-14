@@ -45,11 +45,14 @@ bash scripts/publish-nacos-config.sh <environment>
 | 身份 | 配置权限 | 服务发现权限 |
 | --- | --- | --- |
 | `gateway-<environment>` | 读 `gateway.yaml` | 写 `gateway`；读 `iam-service`、`tenant-access-service`、`entitlement-service` |
-| `<service>-<environment>`（四个领域服务） | 只读自己的 `<service>.yaml` | 只写自己的稳定服务名 |
+| `iam-service-<environment>` | 只读 `iam-service.yaml` | 写自身；读 `tenant-access-service` |
+| `tenant-access-service-<environment>` | 只读 `tenant-access-service.yaml` | 写自身；读 `iam-service`、`entitlement-service` |
+| `entitlement-service-<environment>` | 只读 `entitlement-service.yaml` | 写自身；读 `iam-service`、`tenant-access-service` |
+| `audit-service-<environment>` | 只读 `audit-service.yaml` | 写自身 |
 | `config-publisher-<environment>` | 只写五个已声明配置资源 | 无 |
 | `breakglass-config-<environment>` | 只写五个已声明配置资源 | 无 |
 
-工作负载角色不得有配置写权限、`console/*` 权限或通配符权限。发布角色不拥有服务注册/发现权限；生产角色的凭据只能注入受保护 GitHub Environment 的发布工作流。`nacos-init` 在本地 Compose 中按该矩阵创建 `dev` 身份，并由 CI 使用五个独立工作负载身份实测读取和拒绝发布的边界。
+各角色还可按既有就绪/验收要求读取自身实例。各环境上线统一发现前，须确认上述跨服务 naming 读取权限；本次不自动修改远端环境 ACL。工作负载角色不得有配置写权限、`console/*` 权限或通配符权限。发布角色不拥有服务注册/发现权限；生产角色的凭据只能注入受保护 GitHub Environment 的发布工作流。`nacos-init` 在本地 Compose 中按该矩阵创建 `dev` 身份，并由 CI 使用五个独立工作负载身份实测读取和拒绝发布的边界。
 
 ## Console 应急与回写
 

@@ -9,36 +9,52 @@ spring:
       username: ${NACOS_ENTITLEMENT_USERNAME:?NACOS_ENTITLEMENT_USERNAME is required}
       password: ${NACOS_ENTITLEMENT_PASSWORD:?NACOS_ENTITLEMENT_PASSWORD is required}
       config:
-        server-addr: ${NACOS_SERVER_ADDR:nacos:8848}
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
         namespace: ${NACOS_NAMESPACE:dev}
         ssl:
           enabled: ${NACOS_TLS_ENABLED:false}
       discovery:
-        server-addr: ${NACOS_SERVER_ADDR:nacos:8848}
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
         namespace: ${NACOS_NAMESPACE:dev}
         service: entitlement-service
+        metadata:
+          grpc.port: ${spring.grpc.server.port}
         fail-fast: true
+        enabled: true
+        ip: ${ENTITLEMENT_REGISTER_IP:127.0.0.1}
+        port: ${server.port}
   flyway:
     enabled: false
   grpc:
     client:
       channels:
-        iam:
-          address: ${IAM_GRPC_ADDRESS:static://iam-service:9090}
-        tenant-access:
-          address: ${TENANT_ACCESS_GRPC_ADDRESS:static://tenant-access-service:9090}
-
+        iam: {}
+        tenant-access: {}
+    server:
+      port: ${ENTITLEMENT_GRPC_PORT:9093}
+  config:
+    import: ${SAASFORGE_SECRETS_IMPORT:configtree:./deploy/compose/.secrets/native-local/entitlement/}
+  datasource:
+    url: ${ENTITLEMENT_DATASOURCE_URL:jdbc:postgresql://127.0.0.1:5432/entitlement_db}
+    username: ${ENTITLEMENT_DATASOURCE_USERNAME:entitlement_app}
+    password: ${ENTITLEMENT_APP_PASSWORD}
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD}
 saasforge:
   environment: ${SAASFORGE_ENVIRONMENT:dev}
   entitlement:
-    iam-http-base-url: ${IAM_HTTP_BASE_URL:http://iam-service:8080}
     service-client-id-file: ${SAASFORGE_SERVICE_CLIENT_ID_FILE:?SAASFORGE_SERVICE_CLIENT_ID_FILE is required}
     service-client-secret-file: ${SAASFORGE_SERVICE_CLIENT_SECRET_FILE:?SAASFORGE_SERVICE_CLIENT_SECRET_FILE is required}
     outbox-topic: saasforge.${saasforge.environment}.entitlement-service.events
-
 mybatis:
   mapper-locations: classpath*:mapper/**/*Mapper.xml
   type-handlers-package: io.saasforge.entitlement.infrastructure.persistence.type
+server:
+  address: ${ENTITLEMENT_BIND_ADDRESS:127.0.0.1}
+  port: ${ENTITLEMENT_HTTP_PORT:8083}
 
 ---
 spring:

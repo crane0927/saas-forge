@@ -4,7 +4,7 @@
 
 ## 独立准备与个人配置
 
-按[开发配置说明](development-configuration.md)设置 IDE 连接参数和凭据目录。激活 `local`，默认从当前开发 Nacos 读取业务配置；不保留实际本地业务 YAML 或模板。只有显式激活 `local,local-file` 才按文档自行创建个人业务配置。
+按[开发配置说明](development-configuration.md)设置 IDE 连接参数和凭据目录。直接启动，默认从当前开发 Nacos 读取业务配置；不保留实际本地业务 YAML 或模板。只有显式激活 `local-file` 才按文档自行创建个人业务配置。
 
 按实际环境填写以下配置；默认地址仅适用于依赖已映射到本机的情况：
 
@@ -19,7 +19,7 @@
 | `SAASFORGE_ENVIRONMENT` | 默认 `dev`，必须与来源服务的 topic 环境一致 |
 | `AUDIT_HTTP_PORT` / `AUDIT_REGISTER_IP` / `AUDIT_BIND_ADDRESS` | 默认 `8084` / `127.0.0.1` / `127.0.0.1`，仅定义自身实例 |
 
-密码和 Kafka SASL/TLS 材料通过 IDE 环境变量或外部受限 Spring configtree 注入，不写入个人 YAML。使用 configtree 时，在 IDE JSON 中设置 `"spring.config.import": "configtree:/absolute/path/to/audit-secrets/"`，每个文件名为对应属性名；目录权限 700、文件 600。仅提供 Audit 运行需要的身份，不导入整份 Compose 管理员环境。需要 Kafka 认证时使用既有 `spring.kafka.properties.security.protocol`、`sasl.mechanism`、`sasl.jaas.config` 等属性；值从实际环境取得，不降低 broker 的认证策略。
+密码和 Kafka SASL/TLS 材料通过 IDE 环境变量或外部受限 Spring configtree 注入，不写入个人 YAML。默认从仓库根目录下的 `deploy/compose/.secrets/native-local/audit/` 导入 configtree；自定义目录时可覆盖 `SAASFORGE_SECRETS_IMPORT=configtree:/absolute/path/to/audit-secrets/`，每个文件名为对应属性名；目录权限 700、文件 600。仅提供 Audit 运行需要的身份，不导入整份 Compose 管理员环境。需要 Kafka 认证时使用既有 `spring.kafka.properties.security.protocol`、`sasl.mechanism`、`sasl.jaas.config` 等属性；值从实际环境取得，不降低 broker 的认证策略。
 
 数据库、迁移、Kafka topic/ACL 和 Nacos 身份由独立准备流程完成。管理员使用已有 Audit Flyway 迁移入口；应用始终 `spring.flyway.enabled=false`，不得配置 migrator 或管理员账号。现有 V5 就绪检查需要读取迁移历史，运行账号对 `audit_records` 和 `audit_consumed_events` 仍仅有 SELECT/INSERT。隔离与重放表沿用已有授权，不扩大为通用写权限。
 
@@ -34,7 +34,7 @@ Audit 使用两个既有消费组，不能为了获得验收结果改组名或�
 
 ## IDE Run / Debug / 重启
 
-1. 在 IDEA 同步 Maven，创建 Spring Boot 配置：主类 `io.saasforge.audit.AuditServiceApplication`，classpath `audit-service`，Active profiles `local`。
+1. 在 IDEA 同步 Maven，创建 Spring Boot 配置：主类 `io.saasforge.audit.AuditServiceApplication`，classpath `audit-service`，Active profiles 留空。
 2. 配置上述环境变量或 configtree，只保留 IDE Build 前置步骤，直接 Run/Debug。无需 package、后台 JAR 或 replace/restore。
 3. 检查 `http://127.0.0.1:8084/actuator/health/readiness` 返回 200/UP。它同时要求 Nacos 已确认注册、V5 迁移可见、Kafka 可连接、两个 Consumer 均取得目标分区；liveness 只检查进程存活。这里的内部 HTTP 仅用于健康探测，不是浏览器业务入口。
 4. 可在 `IamSessionKafkaConsumer.consume` 或 `TenantAccessKafkaConsumer.consume` 设置断点，观察正式来源事件抵达后继续执行。长时间暂停可能触发 Kafka rebalance，完成消费及就绪恢复后再记录结果。

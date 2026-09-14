@@ -23,13 +23,6 @@ import org.springframework.web.client.RestClient;
 @Configuration
 public class PlatformAuthorizationConfiguration {
     @Bean
-    @org.springframework.context.annotation.Profile("!local")
-    RestClient tenantAccessIamRestClient(
-            @Value("${saasforge.tenant-access.iam-http-base-url}") String baseUrl) {
-        return RestClient.create(baseUrl);
-    }
-
-    @Bean
     IamServiceAccessTokenProvider tenantAccessIamServiceAccessTokenProvider(
             RestClient tenantAccessIamRestClient,
             Clock clock,

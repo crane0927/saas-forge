@@ -18,6 +18,8 @@ class LocalConfigurationTest {
     @Test
     void loadsPersonalConfigurationWithoutConfigCenterAndKeepsDiscovery() throws Exception {
         Files.copy(Path.of("src/main/resources/application.yaml"), directory.resolve("application.yaml"));
+        var secrets = Files.createDirectory(directory.resolve("secrets"));
+        Files.writeString(secrets.resolve("ENTITLEMENT_APP_PASSWORD"), "test-secret");
         var personalConfiguration = directory.resolve("application-local-file.yaml");
         Files.copy(Path.of("../../deploy/nacos/dev/entitlement-service.yaml"), personalConfiguration);
         Files.writeString(personalConfiguration, """
@@ -27,13 +29,15 @@ class LocalConfigurationTest {
                 spring.cloud.nacos.config.import-check.enabled: "false"
                 spring.cloud.nacos.discovery.enabled: "true"
                 saasforge.entitlement.configuration-revision: "local"
-                spring.cloud.nacos.discovery.metadata.grpc.port: "9093"
                 """, StandardOpenOption.APPEND);
         new ApplicationContextRunner()
                 .withInitializer(new ConfigDataApplicationContextInitializer())
                 .withUserConfiguration(RequiredNacosConfiguration.class)
                 .withPropertyValues(
-                        "spring.profiles.active=local,local-file",
+                        "SAASFORGE_SECRETS_IMPORT=configtree:" + secrets + "/",
+                        "ENTITLEMENT_HTTP_PORT=8183",
+                        "ENTITLEMENT_GRPC_PORT=9093",
+                        "spring.profiles.active=local-file",
                         "spring.config.location=" + directory.toUri(),
                         "NACOS_SERVER_ADDR=127.0.0.1:1",
                         "NACOS_ENTITLEMENT_USERNAME=test",
@@ -43,6 +47,9 @@ class LocalConfigurationTest {
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     var environment = context.getEnvironment();
+                    assertThat(environment.getProperty("spring.datasource.password")).isEqualTo("test-secret");
+                    assertThat(environment.getProperty("server.port")).isEqualTo("8183");
+                    assertThat(environment.getProperty("spring.cloud.nacos.discovery.port")).isEqualTo("8183");
                     assertThat(environment.getProperty("spring.cloud.nacos.config.enabled")).isEqualTo("false");
                     assertThat(environment.getProperty("spring.cloud.nacos.discovery.enabled")).isEqualTo("true");
                     assertThat(environment.getProperty("saasforge.entitlement.configuration-revision")).isEqualTo("local");
@@ -60,8 +67,8 @@ class LocalConfigurationTest {
                 .withInitializer(new ConfigDataApplicationContextInitializer())
                 .withUserConfiguration(RequiredNacosConfiguration.class)
                 .withPropertyValues(
-                        "spring.profiles.active=local",
                         "spring.config.location=" + directory.toUri(),
+                        "SAASFORGE_SECRETS_IMPORT=",
                         "spring.cloud.nacos.config.server-addr=127.0.0.1:1",
                         "spring.cloud.nacos.username=test",
                         "spring.cloud.nacos.password=test",

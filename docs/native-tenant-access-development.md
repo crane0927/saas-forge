@@ -4,7 +4,7 @@
 
 ## 个人配置与独立准备
 
-按[开发配置说明](development-configuration.md)设置 IDE 连接参数和凭据目录。激活 `local`，默认从当前开发 Nacos 读取业务配置；不保留实际本地业务 YAML 或模板。只有显式激活 `local,local-file` 才按文档自行创建个人业务配置。
+按[开发配置说明](development-configuration.md)设置 IDE 连接参数和凭据目录。直接启动，默认从当前开发 Nacos 读取业务配置；不保留实际本地业务 YAML 或模板。只有显式激活 `local-file` 才按文档自行创建个人业务配置。
 
 Tenant Access 必需凭据由环境变量或权限受限的外部 Spring configtree 注入：
 
@@ -30,7 +30,7 @@ Tenant Access 必需凭据由环境变量或权限受限的外部 Spring configt
 
 全新 dev 环境的 `deploy/compose/nacos-init.sh` 已包含这两项。非 dev namespace/角色使用实际值，不照抄 dev。应用间不授予对方配置读取、发布或注册权限。`scripts/verify-nacos-acl.sh` 验证双向发现读取并保留配置隔离检查；它需要相应工作负载凭据，不应给 IDE 应用提供管理员凭据。实例列表检查使用 [Nacos Client API](https://nacos.io/docs/latest/manual/user/open-api/)。
 
-**IAM 与 Tenant Access 的 IDE 启动设置均须包含以下 metadata**；开发配置说明中的 JSON 已包含对应属性。元数据来自本实例的 gRPC 监听端口，不是调用方的下游地址配置：
+**IAM 与 Tenant Access 的 `application.yaml` 已包含以下 metadata**，无需在 IDE 重复填写。元数据来自本实例的 gRPC 监听端口，不是调用方的下游地址配置：
 
 ```yaml
 spring:
@@ -41,11 +41,11 @@ spring:
           grpc.port: ${spring.grpc.server.port}
 ```
 
-HTTP 目标取实例 IP 与 HTTP 注册端口；gRPC 目标取同一实例 IP 与 `grpc.port`。local 模式每次调用直接查询健康实例，不依赖订阅缓存；发现异常、无健康实例、缺少或非法 gRPC 端口时明确拒绝，不回退默认容器地址。已建立的 gRPC 连接也必须先通过这次发现查询。内部 gRPC 在 local 中为明文且有 3 秒调用上限；浏览器仍经受信 HTTPS。非 local 配置保留原有通道与 TLS 配置，不因此改变测试/生产行为。
+HTTP 目标取实例 IP 与 HTTP 注册端口；gRPC 目标取同一实例 IP 与 `grpc.port`。每次调用直接查询 Nacos 健康实例，不依赖订阅缓存；发现异常、无健康实例、缺少或非法 gRPC 端口时明确拒绝，不回退默认容器地址。已建立的 gRPC 连接也必须先通过这次发现查询。gRPC 地址由 Nacos 提供，传输安全沿用各命名通道的 TLS/SSL Bundle 配置；调用最多 3 秒，浏览器仍经受信 HTTPS。
 
 ## IDE Run / Debug
 
-保留 Gateway 与 IAM 的运行配置。新增 Java/Spring Boot 配置：主类 `io.saasforge.tenantaccess.TenantAccessServiceApplication`，classpath `tenant-access-service`，Active profiles `local`（或参数 `--spring.profiles.active=local`）。只保留 IDE Build，不添加 package、后台 JAR 或 replace/restore 前置任务。
+保留 Gateway 与 IAM 的运行配置。新增 Java/Spring Boot 配置：主类 `io.saasforge.tenantaccess.TenantAccessServiceApplication`，classpath `tenant-access-service`，Active profiles 留空。只保留 IDE Build，不添加 package、后台 JAR 或 replace/restore 前置任务。
 
 Tenant Access 默认 HTTP 8082、gRPC 9092、注册 IP `127.0.0.1`。可配置 `TENANT_ACCESS_HTTP_PORT`、`TENANT_ACCESS_GRPC_PORT`、`TENANT_ACCESS_REGISTER_IP`、`TENANT_ACCESS_BIND_ADDRESS`。IAM 的对应变量见前一切片说明。注册地址必须从调用方可达；同一个服务本机与容器冲突由开发者处理，本入口不自动停容器或接管进程。
 
