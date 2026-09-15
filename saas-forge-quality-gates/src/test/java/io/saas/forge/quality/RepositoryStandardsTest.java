@@ -20,6 +20,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -69,6 +71,8 @@ class RepositoryStandardsTest {
             "^urn:saas\\.forge:[a-z][a-z0-9-]*-service$");
     private static final Pattern EVENT_TOPIC = Pattern.compile(
             "^saas\\.forge\\.<environment>\\.[a-z][a-z0-9-]*-service\\.events$");
+    private static final Pattern DECLARED_EVENT_TYPE = Pattern.compile(
+            "String\\s+EVENT_TYPE\\s*=\\s*\"(com\\.saas\\.forge[^\"]+)\"");
     private static final Pattern CONSUMER_NAME = Pattern.compile(
             "^[a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9-]*)+$");
     private static final Pattern MAPPER_NAMESPACE = Pattern.compile(
@@ -373,6 +377,45 @@ class RepositoryStandardsTest {
 
     private static boolean isAcceptanceRoute(HttpRouteCatalog.Route route) {
         return route.path().startsWith("/__test/");
+    }
+
+    /**
+     * 服务产出的事件必须在事件工程注册表中登记。只校验"产出 → 登记"这一个方向：注册表允许登记
+     * 由运行时拼接类型的事件，例如 {@code EntitlementEventFactory} 用
+     * {@code "com.saas.forge.plan." + action + ".v1"} 组装类型，静态扫描看不到常量，
+     * 因此反方向会误报。这同时是本门禁的盲区：动态拼接的类型不会在此被校验。
+     */
+    @Test
+    void producedEventTypesAreRegisteredInEngineeringRegistry() throws Exception {
+        JsonNode registry = readJson(REPOSITORY.resolve(
+                "saas-forge-contracts/saas-forge-event-contracts/engineering-registry.json"));
+        Set<String> registeredEvents = new HashSet<>();
+        for (JsonNode entry : registry.path("entries")) {
+            registeredEvents.add(requiredText(entry, "type",
+                    Path.of("saas-forge-contracts/saas-forge-event-contracts/engineering-registry.json")));
+        }
+        assertFalse(registeredEvents.isEmpty(), "事件工程注册表不得为空");
+
+        Map<String, String> producedEvents = new TreeMap<>();
+        for (String serviceArtifact : SERVICE_ARTIFACTS) {
+            Path serviceRoot = REPOSITORY.resolve("saas-forge-services").resolve(serviceArtifact).resolve("src/main/java");
+            for (Path javaFile : filesUnder(serviceRoot, ".java")) {
+                String source = Files.readString(javaFile, StandardCharsets.UTF_8);
+                Matcher matcher = DECLARED_EVENT_TYPE.matcher(source);
+                while (matcher.find()) {
+                    producedEvents.putIfAbsent(matcher.group(1), REPOSITORY.relativize(javaFile).toString());
+                }
+            }
+        }
+        assertFalse(producedEvents.isEmpty(), "未扫描到任何 EVENT_TYPE 常量声明，必须复核扫描范围");
+
+        Set<String> unregisteredEvents = new TreeSet<>(producedEvents.keySet());
+        unregisteredEvents.removeAll(registeredEvents);
+        assertTrue(unregisteredEvents.isEmpty(),
+                "以下事件由服务产出但未登记到 engineering-registry.json，必须补登记或删除该 EVENT_TYPE 常量: "
+                        + unregisteredEvents.stream()
+                                .map(type -> type + " (" + producedEvents.get(type) + ")")
+                                .toList());
     }
 
     @Test

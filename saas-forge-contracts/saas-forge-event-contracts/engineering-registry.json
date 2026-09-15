@@ -170,6 +170,15 @@
       ]
     },
     {
+      "type": "com.saas.forge.iam.sessions-revoked.v1",
+      "producerService": "iam-service",
+      "source": "urn:saas.forge:iam-service",
+      "schema": "saas-forge-contracts/saas-forge-event-contracts/iam-sessions-revoked.v1.schema.json",
+      "topic": "saas.forge.<environment>.iam-service.events",
+      "orderingKey": "revocationRequestId",
+      "allowedConsumers": []
+    },
+    {
       "type": "com.saas.forge.iam.refresh-replay-detected.v1",
       "producerService": "iam-service",
       "source": "urn:saas.forge:iam-service",
@@ -182,6 +191,15 @@
           "consumerName": "audit-service.iam-refresh-security-events"
         }
       ]
+    },
+    {
+      "type": "com.saas.forge.tenant.administrator-initialized.v1",
+      "producerService": "tenant-access-service",
+      "source": "urn:saas.forge:tenant-access-service",
+      "schema": "saas-forge-contracts/saas-forge-event-contracts/tenant-administrator-initialized.v1.schema.json",
+      "topic": "saas.forge.<environment>.tenant-access-service.events",
+      "orderingKey": "tenantId",
+      "allowedConsumers": []
     },
     {
       "type": "com.saas.forge.tenant.created.v1",
