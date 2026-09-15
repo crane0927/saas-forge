@@ -66,11 +66,22 @@ test('platform official login supports theme, language, authentication and logou
   await page.getByRole('heading', { name: 'Platform 总览', exact: true }).waitFor();
   assert.equal(logins, 1);
   await verifyPage(page, 'home-dark');
-  await page.getByRole('combobox', { name: 'Language / 语言' }).press('Enter');
-  await page.getByRole('option', { name: 'English', exact: true }).click();
+  assert.equal(await page.getByRole('button', { name: '搜索菜单', exact: true }).count(), 1);
+  assert.equal(await page.getByRole('button', { name: '全屏', exact: true }).count(), 1);
+  await page.getByRole('button', { name: '搜索菜单', exact: true }).click();
+  const searchDialog = page.getByRole('dialog', { name: '搜索菜单', exact: true });
+  await searchDialog.getByRole('textbox', { name: '搜索菜单名称', exact: true }).fill('Tenant');
+  await searchDialog.getByRole('button', { name: 'Tenant', exact: true }).waitFor();
+  await page.keyboard.press('Escape');
+  await searchDialog.waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: '主题配置', exact: true }).click();
+  await page.getByRole('radio', { name: '跟随系统', exact: true }).click();
+  await page.getByRole('button', { name: '主题配置', exact: true }).click();
+  await page.getByRole('button', { name: '切换语言', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'English', exact: true }).click();
   await page.getByRole('heading', { name: 'Platform overview', exact: true }).waitFor();
-  await page.getByRole('combobox', { name: 'Language / 语言' }).press('Enter');
-  await page.getByRole('option', { name: '简体中文', exact: true }).click();
+  await page.getByRole('button', { name: 'Switch language', exact: true }).click();
+  await page.getByRole('menuitem', { name: '简体中文', exact: true }).click();
 
   await page.getByRole('button', { name: '切换主题', exact: true }).click();
   await verifyPage(page, 'home-light');

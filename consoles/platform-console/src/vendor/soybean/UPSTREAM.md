@@ -20,11 +20,13 @@ The Platform application adapts the pinned application's directory structure and
 
 `materials/libs/admin-layout`, `materials/libs/page-tab`, and `materials/types` are copied from `packages/materials/src`; `reset.css` is copied from `src/styles/css/reset.css`. These are retained verbatim except `page-tab/chrome-tab-bg.vue` (both halves directly reference the same geometry, avoiding stale nested SVG `currentColor` after a theme change), and `page-tab/shared.ts`: its two color helpers use CSS `color-mix`, avoiding the unrelated `@sa/color`/`@sa/utils` dependencies. The adapted files outside this vendor directory are project-owned and are checked by lint and typechecking.
 
+The platform header uses one local `SaasIcon` component for the complete toolbar. Its SVG bodies follow the pinned upstream icon shapes, keeping size, color and accessibility behavior consistent without adding a runtime icon dependency.
+
 ## Intentional product differences
 
 - SaaS Forge name, logo, favicon and blue brand replace Soybean's identity. Dark text uses a lighter brand shade to satisfy contrast requirements.
 - Only supported product authentication and routes are exposed. Template demo token persistence and demo API clients are not imported.
-- Locale selection retains its accessible combobox and both supported languages; no unrelated layout configuration, search, notifications or demo user-profile actions are exposed.
+- Locale selection retains an accessible icon trigger and both supported languages. The header also keeps the upstream-style menu search, fullscreen toggle and theme configuration entry, while omitting notifications and demo user-profile actions.
 - The existing business pages temporarily retain `@saas-forge/admin` and its styles/ICU resources. `App.vue` supplies their context with exactly the same Runtime and exit guards as the migrated application. There is no old/new product switch or second mount. These dependencies remain pending later migration tickets under #190.
 
 Source derivation and build success alone do not constitute the fixed-version visual or real-authentication acceptance required by #191.

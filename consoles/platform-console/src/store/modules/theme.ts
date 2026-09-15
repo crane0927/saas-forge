@@ -20,9 +20,12 @@ export const useThemeStore = defineStore('theme', () => {
   media.addEventListener('change', changed);
   onScopeDispose(() => media.removeEventListener('change', changed));
   function toggleThemeScheme() {
-    themeScheme.value = darkMode.value ? 'light' : 'dark';
+    setThemeScheme(darkMode.value ? 'light' : 'dark');
+  }
+  function setThemeScheme(value: 'light' | 'dark' | 'auto') {
+    themeScheme.value = value;
     try {
-      localStorage.setItem('sf:ui:theme', themeScheme.value);
+      localStorage.setItem('sf:ui:theme', value);
     } catch {
       /* 不影响本页切换。 */
     }
@@ -48,6 +51,7 @@ export const useThemeStore = defineStore('theme', () => {
     darkMode,
     themeScheme,
     toggleThemeScheme,
+    setThemeScheme,
     themeColor: '#2563EB',
     header: { height: 56 },
     sider: { width: 220, collapsedWidth: 64 },

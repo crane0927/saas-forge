@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import { ElButton, ElBreadcrumb, ElBreadcrumbItem } from 'element-plus';
-import { Fold, Expand, SwitchButton } from '@element-plus/icons-vue';
+import { Fold, Expand } from '@element-plus/icons-vue';
 import { computed } from 'vue';
 import { useRoute } from 'vue-router';
 import { useAppStore } from '../../../store/modules/app';
 import { $t } from '../../../locales';
 import LangSwitch from '../../../components/common/LangSwitch.vue';
 import ThemeSchemaSwitch from '../../../components/common/ThemeSchemaSwitch.vue';
+import GlobalSearch from './global-search.vue';
+import FullScreen from './full-screen.vue';
+import ThemeSettings from './theme-settings.vue';
+import SaasIcon from '../../../components/common/SaasIcon.vue';
 defineProps<{ busy: boolean }>();
 defineEmits<{ logout: [] }>();
 const appStore = useAppStore();
@@ -32,12 +36,11 @@ const current = computed(
       >
     </div>
     <div class="h-full flex-y-center justify-end gap-8px">
-      <LangSwitch /><ThemeSchemaSwitch /><ElButton
+      <GlobalSearch /><FullScreen /><LangSwitch /><ThemeSchemaSwitch /><ThemeSettings /><ElButton
         text
-        :icon="SwitchButton"
         :loading="busy"
         @click="$emit('logout')"
-        >{{ $t('logout') }}</ElButton
+        ><SaasIcon name="logout" />{{ $t('logout') }}</ElButton
       >
     </div>
   </header>

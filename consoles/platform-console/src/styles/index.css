@@ -2,6 +2,10 @@
 :root {
   --primary-color: #2563eb;
 }
+.sf-icon {
+  display: block;
+  flex: none;
+}
 .text-primary {
   color: var(--primary-color);
 }
@@ -22,6 +26,30 @@
 }
 .shadow-tab {
   box-shadow: var(--console-header-shadow);
+}
+.global-search-result {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 10px;
+  color: var(--el-text-color-primary);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.global-search-result:hover,
+.global-search-result:focus-visible {
+  color: var(--el-color-primary);
+  background: var(--el-fill-color-light);
+}
+.theme-settings-title {
+  margin-bottom: 12px;
+  color: var(--el-text-color-primary);
+  font-weight: 600;
 }
 .card-wrapper {
   border-radius: 8px;

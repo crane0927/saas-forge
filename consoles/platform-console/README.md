@@ -17,6 +17,7 @@ pnpm --dir consoles run generate:api
 
 - `main.ts` / `App.vue` 安装 Vue I18n、Pinia、Router，并在配置校验成功后创建本 Realm 唯一的 PLATFORM Runtime。登录、刷新恢复、首次改密和退出均通过该 Runtime。
 - `/login`、`/change-password` 使用官方登录结构，`/` 展示真实会话和业务快捷入口；原 Tenant、Quota Definition、Plan、OAuth Client 路由和抽屉保持可用。
+- 后台顶栏沿用 Soybean 的图标工具区：菜单搜索、全屏切换、语言选择、明暗主题切换和主题配置均保留；搜索只针对当前平台路由，不创建额外 API 请求。
 - 密码设置链接属于 TENANT 契约。平台 `/password-setup` 会清除 URL 敏感片段并显示不可用，不保存、不消费、不转发 challenge；租户端单次消费流程保持原样。
 - 新应用使用模板 Vue I18n 机制，ICU 消息通过固定版本自定义编译器处理；不支持的 Locale 安全回退到英文。只持久化非敏感语言与主题偏好。
 - 未迁移业务页面暂用 `@saas-forge/admin` / `@saas-forge/i18n`；`App.vue` 将同一 Runtime 和离页守卫传给这些页面。旧认证应用不挂载，无产品切换开关。后续迁移按父 Issue #190 删除剩余消费者依赖。
