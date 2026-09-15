@@ -9,7 +9,7 @@ The SaaS Forge frontend workspace: two independently deployed Vue 3 consoles usi
 - **Shared foundations**: strict runtime configuration, session recovery, login, initial password change, logout, cross-tab session coordination, and consistent components and interactions.
 
 > [!NOTE]
-> The current implementation primarily delivers console hosts and authentication. Platform `/` is an overview page and `/oauth-clients` remains a placeholder; Tenant `/` is a workspace page. Product business Remotes, Manifest, and Module Federation are not integrated. Existing routes do not imply complete business administration features.
+> The current implementation primarily delivers the console hosts, authentication, and the platform-side business administration pages. Platform already provides overview, Tenant (list, creation, detail), Plan, Quota Definition, and OAuth Client management plus its operation history; Tenant `/` is a workspace page. Product business Remotes, Manifest, and Module Federation are not integrated, so the Tenant side still has no complete business administration features. Existing routes do not imply complete business administration features.
 
 ## Quick start
 
@@ -48,7 +48,7 @@ pnpm run dev:platform
 pnpm run dev:tenant
 ```
 
-Both commands delegate to the application’s `pnpm run dev`. Startup checks that the generated client is complete and matches its formal inputs; it does not run Maven. Run `pnpm run generate:api` again after contract changes. Logs stay in the current terminal; Ctrl+C stops that application independently. Open the trusted HTTPS entry printed in the terminal. To explore shared components separately, start the Design System showcase:
+Both commands delegate to the application’s `pnpm run dev`. Startup checks that the generated client is complete and matches its formal inputs; it does not run Maven. Run `pnpm run generate:api` again after contract changes. Logs stay in the current terminal; Ctrl+C stops that application independently. Open the trusted HTTPS entry printed in the terminal. Verify the shared layout with `pnpm --filter @saas-forge/admin run test:browser`.
 
 > [!IMPORTANT]
 > Development servers serve only the frontend; they do not start Gateway, IAM, or databases. Their `/runtime-config.json` supplies the fixed API Origin `https://api.saas.forge.test`. Real authentication also requires trusted HTTPS, correct DNS resolution, Gateway security configuration, and provisioned accounts. Default HTTP localhost pages are not a substitute for controlled browser Origins. See the [native development guide](../docs/native-local-development.md) and [Console / independent HTTPS Edge guide](../docs/native-console-development.md) for environment setup.
@@ -94,7 +94,7 @@ Each Console has its own `platform-vite.pid|log` or `tenant-vite.pid|log` under 
 
 The package-level `pnpm --filter @saas-forge/tenant-console-shell run dev` command remains available for foreground debugging. If it occupies 5174, managed lifecycle reports UNMANAGED and refuses to terminate it. Foreground HTTP debugging is not controlled HTTPS acceptance.
 
-On the Tenant Origin, `/password-setup`, `/password-setup/app.js`, `/password-setup/styles.css`, and `/api/v1/auth/password-setups` route exactly to the active Gateway, preserving query strings and browser request headers. Gateway controls page and asset content types, cache headers, and API error responses. Other Tenant paths and HMR continue to reach Tenant Vite.
+On the Tenant Origin, `/password-setup/app.js`, `/password-setup/styles.css`, and `/api/v1/auth/password-setups` route exactly to the active Gateway, preserving query strings and browser request headers. Gateway controls page and asset content types, cache headers, and API error responses. The bare `/password-setup` path, other Tenant paths, and HMR continue to reach Tenant Vite.
 
 These paths share the active target file with the API Host. After `bash scripts/local-development.sh replace gateway`, they follow the local Gateway; after `restore gateway`, they return to the container without changing the browser URL or restarting Edge. A missing or invalid target file or an unreachable target returns 502, with no fallback to Vite or another Gateway; unknown Hosts return 421. When first upgrading these routes, stop both Consoles and start them again as described above to load the new Edge script.
 
@@ -161,6 +161,7 @@ Report passed, failed, and blocked checks separately. Script tests or earlier Pl
 | [`shared/api-client/`](shared/api-client/)                                                      | Stateless TypeScript REST client with a stable public package entry                                                         |
 | [`shared/app-runtime/`](shared/app-runtime/README.md)                                           | UI-framework- and router-independent configuration, bootstrap, authentication state machine, and controlled typed API calls |
 | [`shared/admin/`](shared/admin/)                                                                | Soybean layout, authentication UI, locale, validated branding, and recovery panels.                                         |
+| [`shared/i18n/`](shared/i18n/)                                                                  | Locale registry, locale matching, message definitions, ICU translation, and date/number/money formatting                    |
 | [`business-remotes/admin-consumer-fixture/`](business-remotes/admin-consumer-fixture/README.md) | A Remote fixture for shared UI consumer verification, not a product Remote                                                  |
 | `test/`, `browser-test/`, `integration-test/`                                                   | Workspace boundary, browser consumer, and session/product integration tests                                                 |
 
@@ -181,9 +182,10 @@ Run all commands below from `consoles/`.
 | `pnpm run typecheck`                      | Recursive strict TypeScript checks, including the generated client                                               |
 | `pnpm run lint` / `pnpm run format:check` | ESLint / Prettier checks for handwritten sources and documentation, excluding generated output                   |
 | `pnpm run test`                           | Static workspace boundaries and package tests, excluding the root browser suite                                  |
-| `pnpm run test:browser:chromium`          | Chromium tests for the Design System, consumers, and cross-tab sessions                                          |
+| `pnpm run validate:i18n`                  | Validate keys, parameters, and ICU syntax consistency across every locale resource                               |
+| `pnpm run test:browser:chromium`          | Chromium tests for shared admin, consumers, and cross-tab sessions                                               |
 | `pnpm run test:browser:compatibility`     | Chrome consumer compatibility tests                                                                              |
-| `pnpm run build`                          | Generate the client, build workspace packages, and verify Design System artifact boundaries                      |
+| `pnpm run build`                          | Generate the client, build workspace packages, and verify shared admin artifact boundaries                       |
 | `pnpm run verify`                         | Generate the client, then run the complete frontend verification pipeline                                        |
 | `pnpm run verify:workspace`               | The same frontend pipeline without generation, reused by Maven and other flows that already generated the client |
 

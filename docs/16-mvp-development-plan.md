@@ -124,6 +124,8 @@ flowchart TD
 
 **Console 工程、共享交互与浏览器基线**
 
+> **历史标注（完整重写排在第 2 批）**：本节的 `[x]` 是 Vue 切换前的完成记录，下列各项的名字与依赖已不成立——第 2 项"唯一共享 Design System 包"、第 4 项"Ant Design 6.6.2"、第 5 项交付顺序中的"共享 React Shell"、第 7 项"Design System 版本化构建期常量 / 共享 React Shell 唯一应用"。当前载体是 `@saas-forge/admin`（Vue 3 + Element Plus + Soybean Admin），见 [ADR 0050](adr/0050-consoles-adopt-soybean-element-plus.md)；第 7 项的"五浏览器 Fresh Compose"属 ADR 0046 前的事实，按 ADR 0046 保留原记录但不再是现行兼容要求。第 7 项的品牌链路本身已实现，包名以 [Console 认证 Runtime](28-console-authentication-runtime.md) 与 [Console 国际化基线](29-console-internationalization.md) 的当前描述为准；第 8 项的四域拓扑（含 `remote.saas.forge.test` 静态资源域）与当前实现一致，未失效。
+
 - [x] 建立最终产品形态的 Platform Console、Tenant Console Shell 与共享 Runtime；通过稳定包入口接入生成的 TypeScript API Client，形成可独立构建、发布静态制品和测试的应用 Shell，不建设一次性验收 Console。此项不证明登录、真实 API、受控 TLS Origin、Remote 或 Playwright 浏览器闭环。
 - [x] 建立唯一共享 Design System 包，统一颜色、排版、间距、图标、表单、表格、反馈、空态、加载态、错误态、危险操作确认、键盘与焦点恢复；Platform Console、Tenant Console 和 Remote 不得覆盖全局样式或重复实现同类组件。具体规则见 [Design System 规范](25-design-system.md)，共享边界与版本治理见 [ADR 0037](adr/0037-browser-surfaces-use-one-shared-design-system.md)。
 - [ ] 提供响应式栅格和标准分栏布局；以桌面管理场景为主，窄屏不得破坏核心流程，并满足语义化控件、键盘操作、可见焦点和基础无障碍要求。

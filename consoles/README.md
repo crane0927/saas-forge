@@ -9,7 +9,7 @@ SaaS Forge 的前端工作区：两个独立部署的 Vue 3 控制台，采用 S
 - **共享基础能力**：严格运行配置、会话恢复、登录、首次改密、退出、多标签页会话协调，以及统一的组件与交互规则。
 
 > [!NOTE]
-> 当前主要交付控制台宿主与认证能力。Platform 的 `/` 为总览页，`/oauth-clients` 仍是占位入口；Tenant 的 `/` 为工作台。产品业务 Remote、Manifest 与 Module Federation 尚未接入，不能将现有路由视为完整业务管理功能。
+> 当前主要交付控制台宿主、认证能力与平台侧业务管理页面。Platform 已提供总览、Tenant（列表、创建、详情）、Plan、Quota Definition、OAuth Client 管理及其操作记录入口；Tenant 的 `/` 为工作台。产品业务 Remote、Manifest 与 Module Federation 尚未接入，因此 Tenant 端仍不含完整业务管理功能，不能将现有路由视为完整业务管理功能。
 
 ## 快速开始
 
@@ -94,7 +94,7 @@ bash scripts/local-development.sh frontend stop all
 
 包级 `pnpm --filter @saas-forge/tenant-console-shell run dev` 仍可前台调试；占用 5174 时，统一生命周期报告 UNMANAGED 并拒绝终止它。前台 HTTP 调试不能替代受控 HTTPS 验收。
 
-Tenant Origin 下的 `/password-setup`、`/password-setup/app.js`、`/password-setup/styles.css` 和 `/api/v1/auth/password-setups` 精确转发到当前活动 Gateway，查询参数与浏览器请求头原样保留；页面和资源的内容类型、缓存头及 API 错误响应由 Gateway 决定。其他 Tenant 路径和 HMR 继续进入 Tenant Vite。
+Tenant Origin 下的 `/password-setup/app.js`、`/password-setup/styles.css` 和 `/api/v1/auth/password-setups` 精确转发到当前活动 Gateway，查询参数与浏览器请求头原样保留；页面和资源的内容类型、缓存头及 API 错误响应由 Gateway 决定。裸 `/password-setup` 与其余 Tenant 路径、HMR 继续进入 Tenant Vite。
 
 这些路径与 API Host 共用活动目标文件；`bash scripts/local-development.sh replace gateway` 后跟随本地 Gateway，`restore gateway` 后回到容器，无需修改浏览器 URL 或重启 Edge。目标文件缺失、非法或目标不可达时返回 502，不回退到 Vite 或其他 Gateway；未知 Host 返回 421。首次升级路由时，按前述步骤停止两个 Console 后重新启动，以加载新的 Edge 脚本。
 
@@ -161,6 +161,7 @@ pnpm --filter @saas-forge/tenant-console-shell run dev
 | [`shared/api-client/`](shared/api-client/)                                                      | 无状态 TypeScript REST Client，只公开稳定包入口                            |
 | [`shared/app-runtime/`](shared/app-runtime/README.md)                                           | 不依赖 UI 框架或路由的运行配置、Bootstrap、认证状态机和受控类型化 API 调用 |
 | [`shared/admin/`](shared/admin/)                                                                | Soybean 布局、认证界面、语言、受控品牌和操作恢复。                         |
+| [`shared/i18n/`](shared/i18n/)                                                                  | 语言注册表、Locale 匹配、消息定义、ICU 翻译与日期/数值/金额格式化          |
 | [`business-remotes/admin-consumer-fixture/`](business-remotes/admin-consumer-fixture/README.md) | 仅用于验证共享 UI 消费边界的 Remote 夹具，不是产品 Remote                  |
 | `test/`、`browser-test/`、`integration-test/`                                                   | 工作区边界、浏览器消费与会话/产品集成测试                                  |
 
@@ -181,9 +182,10 @@ pnpm --filter @saas-forge/tenant-console-shell run dev
 | `pnpm run typecheck`                      | 递归执行严格 TypeScript 检查，包含生成 Client                        |
 | `pnpm run lint` / `pnpm run format:check` | 手写代码与文档的 ESLint / Prettier 检查；生成物不参与                |
 | `pnpm run test`                           | 工作区静态边界检查与各包测试，不包含根浏览器套件                     |
-| `pnpm run test:browser:chromium`          | Design System、消费者及多标签页会话的 Chromium 测试                  |
+| `pnpm run validate:i18n`                  | 校验各语言资源的键、参数与 ICU 语法一致性                            |
+| `pnpm run test:browser:chromium`          | 共享 admin、消费者及多标签页会话的 Chromium 测试                     |
 | `pnpm run test:browser:compatibility`     | 运行 Chrome 消费者兼容测试                                           |
-| `pnpm run build`                          | 生成 Client、递归生产构建并检查 Design System 制品边界               |
+| `pnpm run build`                          | 生成 Client、递归生产构建并检查共享 admin 制品边界                   |
 | `pnpm run verify`                         | 生成 Client，再执行完整前端聚合门禁                                  |
 | `pnpm run verify:workspace`               | 不生成 Client，直接执行同一个前端聚合门禁，供 Maven 等已生成流程复用 |
 

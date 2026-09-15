@@ -30,18 +30,21 @@ Gateway 的凭据分类由正式 OpenAPI 操作的 `security` 声明生成或校
 
 ## v1 资源边界
 
-以下路径是 v1 的资源分组，具体请求/响应 Schema 以 OpenAPI 3.1 文件为准。
+以下路径是 v1 当前实际冻结的资源分组，共 51 条 path，具体请求/响应 Schema 以 OpenAPI 3.1 文件为准。
 
 | 路径前缀 | 服务 | 资源与操作 |
 |---|---|---|
-| `/api/v1/auth` | IAM | 登录、刷新、登出、Tenant 切换、Password Setup Challenge 兑换 |
+| `/api/v1/auth` | IAM | 当前会话与 Context 读取、登录、刷新、登出、首次改密、Password Setup Challenge 兑换、Tenant Context 选择与切换（9 条 path） |
 | `/oauth2/token` | IAM | 仅服务间 Client Credentials；不承载面向用户的第三方授权登录 |
 | `/.well-known/jwks.json` | IAM | 版本化 JWKS 公钥发布 |
-| `/api/v1/platform/oauth-clients` | IAM | Platform Admin 管理服务 OAuth Client、Secret 轮换、签发恢复和不可逆吊销 |
-| `/api/v1/platform` | Tenant Access、Entitlement | Tenant、平台管理员、Plan、Subscription、Feature、Quota 定义和能力注册 |
-| `/api/v1/tenant` | Tenant Access | Membership、Organization、Role、Permission、邀请、未认证的 Invitation 激活与租户设置 |
-| `/api/v1/runtime` | Tenant Access、Entitlement | 业务系统的 Permission / Feature 查询与 Quota `check`、`consume`、`release` |
-| `/api/v1/audit` | Audit | 经过授权的审计查询与导出任务 |
+| `/api/v1/platform/oauth-clients` | IAM | Platform Admin 管理服务 OAuth Client：列表、详情、创建、Secret 轮换、签发恢复、凭据状态与不可逆吊销 |
+| `/api/v1/platform` | Tenant Access、Entitlement | Tenant 及其创建、管理员初始化、密码投递、生命周期与冻结恢复，Plan、Quota Definition、Subscription，以及这些变更操作的 operation 与 recovery 资源 |
+
+以下能力已在规划中但**不属于当前 v1 契约**，实现前必须先按 [ADR 0013](adr/0013-v1-openapi-contracts-follow-delivery-prerequisites.md) 的前置评审追加契约与兼容性基线：
+
+- `/api/v1/tenant`：Membership、Organization、Role、Permission、Invitation 激活与租户设置；
+- `/api/v1/runtime`：业务系统的 Permission / Feature 查询与 Quota `check`、`consume`、`release`；
+- `/api/v1/audit`：经授权的审计查询与导出任务。
 
 用户 Token 的 Tenant 由已验证的 `membershipId` 决定。用户请求不得通过请求头、查询参数、请求体或任何语义等价别名传入或覆盖 Tenant；这类输入必须作为字段校验失败以 `400` 拒绝，而非静默忽略。Tenant 切换接口只接受目标 `membershipId`，由 IAM 校验后建立新上下文，不接受 Tenant 标识。
 
@@ -49,7 +52,7 @@ Client Credentials 的身份与授权语义只限 `client_id` 与显式 `scope`�
 
 OAuth Client 管理只接受 Platform Admin 的 Platform User Access Token。Client 创建、Secret 轮换或签发恢复只在首次成功响应中展示 Secret；它们不适用普通响应体重放，具体接口与安全例外见 [OAuth 2.0 Client Credentials 管理规格](22-oauth-client-credentials-management.md)。
 
-Tenant 切换为 IAM 的 `POST /api/v1/auth/tenant-switches`：请求固定通过 Tenant Browser Session Slot 的 `__Host-sf_tenant_refresh` Cookie 定位当前 `USER_TENANT` Family，Body 只携带目标 `membershipId`，Bearer Access Token 不参与定位。IAM 必须同步向 Tenant Access 分别验证当前与目标 Membership 属于该 Identity、仍启用且所属 Tenant 可访问；实际切换撤销该 Family 切换前签发且未过期的全部 User Access Token，只更新该 Family 的上下文并返回 `204 No Content`。Tenant Console Shell 随后调用 Tenant 槽位刷新取得新 Access Token；`204` 后旧 Token 不可回滚，刷新完成前不得发送业务请求或再次切换。Invitation 激活为 Tenant Access 的 `POST /api/v1/tenant/invitation-activations`：它不接受客户端提供的 Tenant 上下文，而是由 Invitation 令牌解析所属 Tenant。初始管理员 Password Setup Challenge 由 IAM 的 `POST /api/v1/auth/password-setups` 匿名兑换；Platform Admin 请求首次投递或重发使用 Tenant Access 的 `POST /api/v1/platform/tenants/{tenantId}/administrator-password-setups`，后者不得返回 Token、邮箱或投递内容。
+Tenant 切换为 IAM 的 `POST /api/v1/auth/tenant-switches`：请求固定通过 Tenant Browser Session Slot 的 `__Host-sf_tenant_refresh` Cookie 定位当前 `USER_TENANT` Family，Body 只携带目标 `membershipId`，Bearer Access Token 不参与定位。IAM 必须同步向 Tenant Access 分别验证当前与目标 Membership 属于该 Identity、仍启用且所属 Tenant 可访问；实际切换撤销该 Family 切换前签发且未过期的全部 User Access Token，只更新该 Family 的上下文并返回 `204 No Content`。Tenant Console Shell 随后调用 Tenant 槽位刷新取得新 Access Token；`204` 后旧 Token 不可回滚，刷新完成前不得发送业务请求或再次切换。Invitation 激活规划为 Tenant Access 的 `POST /api/v1/tenant/invitation-activations`，它不接受客户端提供的 Tenant 上下文，而是由 Invitation 令牌解析所属 Tenant；该端点尚未进入 v1 契约，属第 4 阶段范围。初始管理员 Password Setup Challenge 由 IAM 的 `POST /api/v1/auth/password-setups` 匿名兑换；Platform Admin 请求首次投递或重发使用 Tenant Access 的 `POST /api/v1/platform/tenants/{tenantId}/administrator-password-setups`，后者不得返回 Token、邮箱或投递内容。
 
 Password Setup 邮件链接只允许使用 `https://console.<root>/password-setup#token=<token>`，其中 Token 为 43 字符无填充 Base64URL。Token 不得放入查询参数；控制台读取 Fragment 后立即从地址栏移除，并仅通过 `POST /api/v1/auth/password-setups` 的 JSON Body 提交。该端点不接受 Identity、Membership、Tenant 或邮箱字段。
 
@@ -59,7 +62,7 @@ IAM 的 JWKS 响应以 `Cache-Control: max-age=300` 发布。验证方遇到未�
 
 ### 命名、标识与 JSON 表示
 
-- 资源路径使用小写 `kebab-case` 复数名词；JSON 字段与查询参数使用 `lowerCamelCase`；枚举和稳定业务错误码使用 `UPPER_SNAKE_CASE`。`/api/v1/tenant` 是由当前认证上下文解析出的单例 Tenant 作用域，不是集合；其下的真实资源仍使用复数。`auth`、`platform`、`runtime` 与 `audit` 是既定能力边界，不以其单复数形式推断资源语义。
+- 资源路径使用小写 `kebab-case` 复数名词；JSON 字段与查询参数使用 `lowerCamelCase`；枚举和稳定业务错误码使用 `UPPER_SNAKE_CASE`。`auth`、`platform`、`oauth-clients` 与标准路径 `oauth2`、`.well-known` 是既定能力边界，不以其单复数形式推断资源语义。规划中的 `/api/v1/tenant` 是由当前认证上下文解析出的单例 Tenant 作用域，不是集合；其下的真实资源仍使用复数。`runtime` 与 `audit` 是同一规划口径下的能力边界。
 - 独立实体 ID、`Idempotency-Key` 和其他声明为 UUIDv7 的标识符，均使用 RFC 9562 的 36 位、小写、连字符分隔文本形式；拒绝大写、无连字符或其他 UUID 文本表示。
 - 时间点使用 UTC RFC 3339 字符串，固定三位毫秒并以 `Z` 结尾，例如 `2026-08-17T09:30:45.123Z`；拒绝无时区或非 UTC 偏移的时间、Unix 时间戳和浮点秒。纯日历日期使用 `YYYY-MM-DD`，不得附加时间或时区。
 - 所有精确小数使用非科学计数法的十进制 JSON 字符串，例如 `"12.3400"`；不得使用 JSON number、`NaN` 或 `Infinity`，服务按字段业务精度校验。金额使用 `{"amount":"12.34","currency":"CNY"}`，其中 `currency` 为大写 ISO 4217 三字母代码；不得将金额和币种拼为一个字符串，也不得省略币种。

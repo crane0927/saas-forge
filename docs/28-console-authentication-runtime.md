@@ -1,8 +1,10 @@
 # Console 认证 Runtime 与浏览器会话规格
 
-**状态：认证 Runtime、双 Browser Session Slot、两个 Console 认证 Shell、Tenant Context Switch 与多标签页协调已有实现与验收记录；五项品牌统一解析、素材预加载与 React Shell 原子应用已实现，证据见 [Issue #147 验收记录](acceptance/issue-147-brand-runtime.md)。本文是规格而不是当前构建通过证据。**
+**状态：认证 Runtime、双 Browser Session Slot、两个 Console 认证 Shell、Tenant Context Switch 与多标签页协调已有实现与验收记录；品牌统一解析、素材预加载与原子应用已实现，证据见 [Issue #147 验收记录](acceptance/issue-147-brand-runtime.md)。本文是规格而不是当前构建通过证据。**
 
-本规格定义 Platform Console 与 Tenant Console Shell 共用的认证状态机、HTTP Client、Problem Details 映射、路由守卫、全局导航、错误边界和浏览器验收语义。浏览器会话决策见 [ADR 0038](adr/0038-browser-sessions-use-intent-bound-slots.md)，共享前端边界见 [ADR 0039](adr/0039-consoles-share-one-authentication-runtime.md)，品牌解析与原子应用见 [ADR 0042](adr/0042-browser-surfaces-atomically-apply-one-resolved-brand.md)，视觉与交互继续遵守 [Design System 规范](25-design-system.md)。
+> **包名更新**：本文原先以自建 `@saas-forge/design-system` 与共享 React Shell 表述共享 UI 边界，二者已按 [ADR 0050](adr/0050-consoles-adopt-soybean-element-plus.md) 替换为 `@saas-forge/admin`（Vue 3 + Element Plus + Soybean Admin）。正文已按当前仓库更新，认证语义、会话槽位、幂等与品牌原子应用规则不变。
+
+本规格定义 Platform Console 与 Tenant Console Shell 共用的认证状态机、HTTP Client、Problem Details 映射、路由守卫、全局导航、错误边界和浏览器验收语义。浏览器会话决策见 [ADR 0038](adr/0038-browser-sessions-use-intent-bound-slots.md)，共享前端边界见 [ADR 0039](adr/0039-consoles-share-one-authentication-runtime.md)，品牌解析与原子应用见 [ADR 0042](adr/0042-browser-surfaces-atomically-apply-one-resolved-brand.md)，视觉与交互遵守 [ADR 0050](adr/0050-consoles-adopt-soybean-element-plus.md) 与 [Console 设计规范](25-design-system.md)。
 
 ## 1. 目标与非目标
 
@@ -27,7 +29,7 @@
 - `PLATFORM` 槽位使用 `__Host-sf_platform_refresh`，`TENANT` 槽位使用 `__Host-sf_tenant_refresh`。
 - Platform Origin 只能提交 `PLATFORM`，Tenant Origin 只能提交 `TENANT`；Origin 不代替 Role、Membership 或 Family Purpose 验证。
 - Initial Credential Session 使用 Platform 槽位；Tenant Context 选择与切换使用 Tenant 槽位。
-- Platform Brand Profile 是未建立权威 Tenant Context 时的完整默认品牌；Resolved Brand Profile 是 Design System 对一份平台或 Tenant Profile 解析成功后产生的唯一不可变运行时品牌。
+- Platform Brand Profile 是未建立权威 Tenant Context 时的完整默认品牌；Resolved Brand Profile 是品牌解析器对一份平台或 Tenant Profile 解析成功后产生的唯一不可变运行时品牌。当前解析器位于 `consoles/shared/admin` 的 `brand/resolved-brand.ts`。
 - 每个页面 Realm 仅一个 Console Authentication Runtime；每个 Runtime 仅持有宿主固定 Intent 对应槽位的 Access Token。
 - Token、密码、Membership 候选、Problem 与返回路径不得进入浏览器持久存储。
 
@@ -35,9 +37,8 @@
 
 | 边界 | 拥有 | 不拥有 |
 |---|---|---|
-| `@saas-forge/app-runtime` | Runtime Config、纯 TypeScript 认证状态机、内存 Token、`ConsoleApiClient`、Problem 规范化 | React、页面、导航视图、全局 CSS |
-| 共享 React Shell 包 | Runtime Provider、认证路由守卫、全局导航组合、品牌运行时原子应用、根/路由错误边界 | Token 持久化、品牌解析、领域 API、Manifest/Remote 生命周期 |
-| `@saas-forge/design-system` | 认证、导航、错误与恢复的唯一视觉/交互组件，Brand Profile 唯一解析器与 Brand Token Set | 认证事实、Tenant Context 权威、HTTP、路由决策 |
+| `@saas-forge/app-runtime` | Runtime Config、纯 TypeScript 认证状态机、内存 Token、`ConsoleApiClient`、Problem 规范化 | Vue/React 组件、页面、导航视图、全局 CSS |
+| `@saas-forge/admin` | Runtime Provider、认证路由守卫、全局导航组合、品牌运行时原子应用、根/路由错误边界、认证与导航的唯一视觉/交互组件、Brand Profile 唯一解析器与 Brand Token Set | Token 持久化、认证事实、Tenant Context 权威、HTTP、路由决策、领域 API、Manifest/Remote 生命周期 |
 | Console 宿主 | 固定 Intent、应用名称、本地路由表、本地导航项与默认首页 | 第二套认证/HTTP/错误实现 |
 
 `ConsoleApiClient` 以生成 Client 作为内部契约实现，只暴露正式类型化 operation。消费者不得设置任意 Base URL、Cookie、`Origin`、Fetch Metadata、`Authorization` 或安全请求头，也不得获得携带凭据的通用 `fetch`。HttpOnly Cookie、`Origin` 和 Fetch Metadata 可保留在正式安全契约中，但不得出现为 Console 或 Remote 必须伪造的业务调用参数。
@@ -93,7 +94,7 @@
 4. 否则冷启动自动执行一次所选槽位刷新：成功进入相应稳定状态，无效会话进入 `anonymous`，可恢复 `409/503` 或网络不可判定进入独立恢复界面。
 5. 不使用后台计时器持续刷新。下一业务请求前发现 Token 剩余不超过 30 秒时，先刷新。
 
-[租户访问产品规格](31-console-tenant-access-and-oauth-client-management.md#闲置页面的主动提示)另行要求闲置且正常运行的 Tenant 页面在冻结生效后 30 秒内主动提示并遮蔽受保护内容。共享 React Shell 使用无凭据 Worker 每 20 秒触发共享 Runtime 的正式 Tenant Context 读取，并以 5 秒截止遮蔽无法确认的状态；Worker 无法启动或运行失败时遮蔽工作台并提示重新加载。主动核验不刷新 Token、不延长会话寿命；休眠、断网或页面恢复执行后先核验再展示内容。实际 Chrome 前台与长时间后台证据见 [Issue #181 验证记录](acceptance/issue-181-console-access-management.md)。
+[租户访问产品规格](31-console-tenant-access-and-oauth-client-management.md#闲置页面的主动提示)另行要求闲置且正常运行的 Tenant 页面在冻结生效后 30 秒内主动提示并遮蔽受保护内容。`@saas-forge/admin` 使用无凭据 Worker 每 20 秒触发共享 Runtime 的正式 Tenant Context 读取，并以 5 秒截止遮蔽无法确认的状态；Worker 无法启动或运行失败时遮蔽工作台并提示重新加载。主动核验不刷新 Token、不延长会话寿命；休眠、断网或页面恢复执行后先核验再展示内容。实际 Chrome 前台与长时间后台证据见 [Issue #181 验证记录](acceptance/issue-181-console-access-management.md)。
 
 ### 5.3 登录、密码与 Context 选择
 
@@ -109,9 +110,9 @@ Tenant Context Switch 是单一不可回滚的客户端转换：
 1. 在 Tenant 槽位锁内以稳定 Idempotency-Key 调用 Switch；
 2. 收到 `204` 后立即清除旧 Access Token 与旧 Tenant Context、切回完整 Platform Brand Profile、阻止业务请求，且只允许继续刷新；
 3. 刷新可恢复失败时保留“切换已提交，等待刷新”状态，不恢复已被服务端撤销的旧 Token；
-4. 成功取得新 Token 后才广播新状态，Runtime 一次发布新 Tenant Context 及其原始品牌快照；Shell 在 Design System 解析完整 Profile 并预加载 Logo/favicon 成功后，才以单一 Resolved Brand Profile 原子更新路由可用性、导航与全部品牌表面。
+4. 成功取得新 Token 后才广播新状态，Runtime 一次发布新 Tenant Context 及其原始品牌快照；Console 在 `@saas-forge/admin` 的品牌解析器解析完整 Profile 并预加载 Logo/favicon 成功后，才以单一 Resolved Brand Profile 原子更新路由可用性、导航与全部品牌表面。
 
-原子应用要求显示名称、Logo、favicon、标签页标题和 Brand Token Set 均来自同一 Resolved Brand Profile，不要求浏览器将 favicon 的绘制与 React/CSS 放在同一帧。任一字段、受控引用或素材加载失败时整份回退 Platform Brand Profile，不恢复旧 Tenant 品牌，也不阻断已合法建立的新 Tenant Context。
+原子应用要求显示名称、Logo、favicon、标签页标题和 Brand Token Set 均来自同一 Resolved Brand Profile，不要求浏览器将 favicon 的绘制与 Vue/CSS 渲染放在同一帧。任一字段、受控引用或素材加载失败时整份回退 Platform Brand Profile，不恢复旧 Tenant 品牌，也不阻断已合法建立的新 Tenant Context。
 
 ### 5.5 登出
 
@@ -166,15 +167,15 @@ Tenant Context Switch 是单一不可回滚的客户端转换：
 - 共享 Shell 维护路由矩阵：`anonymous` 只进入登录，`passwordChangeRequired` 只进入 Platform 首次改密，`contextSelectionRequired` 只进入 Tenant 选择，`authenticated` 才能进入受保护路由和全局导航。
 - 认证依赖的可恢复 `409/503` 或网络不可判定显示独立全页恢复界面，保留已知会话事实，不伪装成未登录。
 - 未认证进入受保护页时，只在内存保留经验证的应用相对路径；登录成功后返回，页面重载导致路径丢失时进入宿主默认首页。不接受绝对 URL、协议相对 URL 或外部 Origin。
-- 本切片只建立两个 Console 的共享导航框架、认证状态接入和宿主本地导航项；Manifest/Remote 注册留给第 3 阶段。菜单可见性永远不代替服务端授权。
-- 错误分为三层：根 Runtime 崩溃只提供安全重载；路由/未来 Remote 渲染失败隔离当前模块并允许返回导航或重载模块；请求 Problem 是正常页面状态，不抛入 React Error Boundary。
+- 本切片只建立两个 Console 的共享导航框架、认证状态接入和宿主本地导航项；Manifest/Remote 注册尚未实现，`consoles/business-remotes/` 目前只有验收夹具。菜单可见性永远不代替服务端授权。
+- 错误分为三层：根 Runtime 崩溃只提供安全重载；路由渲染失败隔离当前模块并允许返回导航或重载模块；请求 Problem 是正常页面状态，不抛入应用级错误边界。
 - 生产错误边界不直接输出原始 Error、响应体或堆栈；可选脱敏 Reporter 只接收错误分类、应用/路由标识和已有 `traceId`。
 
-## 10. 实现与验收缺口
+## 10. 实现与验收现状
 
-当前仓库中，Tenant Context Switch 与 Password Setup 已有显式浏览器来源校验调用，但登录、刷新和登出尚无直接实现证据证明其完整执行 JSON、CSRF 值、精确 Origin 和 Fetch Metadata 拒绝。共享 Client 发送正确请求不能弥补服务端缺口；Gateway/IAM 安全切片必须在两个 Console 真实浏览器验收前完成并提供正向与每一拒绝分支的测试。
+登录、刷新和登出的浏览器安全拒绝已具备直接实现证据：Gateway 的 `browserAuthenticationOperationsRequireTheCompleteControlledRequestShape` 覆盖这三个 operation 的 JSON Content-Type、`X-SF-CSRF`、精确受控 Origin 与非 cross-site Fetch Metadata 拒绝，`rejectedCorsPreflightRemainsABrowserRejectionInsteadOfAnUpstreamFailure` 覆盖预检被拒仍归为浏览器拒绝而非上游失败；IAM 的 `AuthenticationHttpIT` 覆盖双 Cookie 设置与清除、Family Purpose、旧 Cookie 清理、已活动槽位冲突等会话侧分支。共享 Client 发送正确请求仍不构成安全验收，每一拒绝分支必须保留 Gateway/IAM 直接测试。
 
-品牌链路已形成五项统一应用：Runtime 只发布权威 Context 与品牌快照，Design System 唯一解析并预加载受控素材，共享 React Shell 整份应用名称、Logo、favicon、标题与主题；同一 Session 内的 Context 读取使用独立代次丢弃迟到结果。旧消费入口与直接字段读取受到构建门禁约束，无效品牌整份回退且保留合法 Context。实现与五浏览器 Fresh Compose 证据见 [Issue #147 验收记录](acceptance/issue-147-brand-runtime.md)；品牌写入 API 与动态 Remote 加载不属于此次验收范围。
+品牌链路已形成五项统一应用：Runtime 只发布权威 Context 与品牌快照，`@saas-forge/admin` 唯一解析并预加载受控素材，Console 应用壳整份应用名称、Logo、favicon、标题与主题；同一 Session 内的 Context 读取使用独立代次丢弃迟到结果。旧消费入口与直接字段读取受到构建门禁约束，无效品牌整份回退且保留合法 Context。React 时代的实现与浏览器证据见 [Issue #147 验收记录](acceptance/issue-147-brand-runtime.md)（浏览器矩阵已按 [ADR 0046](adr/0046-development-supports-chrome-and-jdk17.md) 收缩为桌面 Chrome）；品牌写入 API 与动态 Remote 加载不属于此次验收范围。
 
 ## 11. 验收矩阵
 
@@ -222,7 +223,7 @@ Platform 总览通过同一 Runtime 的 `ConsoleApiClient.getCurrentSession()` �
 1. ADR、术语与正式认证契约；
 2. Gateway/IAM 双槽位及浏览器安全拒绝；
 3. 无 UI 的认证状态机、HTTP Client 与 Problem 映射；
-4. 共享 React Provider、路由守卫、导航和错误边界；
+4. Console 应用壳的 Provider、路由守卫、导航和错误边界；
 5. Platform Console 接入；
 6. Tenant Console 接入及 Tenant Switch；
 7. 多 Origin、多标签页与 Fresh Compose 聚合浏览器验收。

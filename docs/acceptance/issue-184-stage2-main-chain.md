@@ -2,6 +2,11 @@
 
 关联 [Issue #184](https://github.com/crane0927/saas-forge/issues/184) 与父规格 [#183](https://github.com/crane0927/saas-forge/issues/183)。
 
+> [!IMPORTANT]
+> **证据时效边界**：本文全部绿色结果（含下文"第十八轮完整通过"）的基线是 `adaaf43c109067355e4153c4fe6d79476105393e`，它是 `8d4c570`（2026-09-15，切换正式业务页面至 Vue 并清除旧 UI）的**祖先**。该提交同时把 `consoles/integration-test/stage2-main-chain.mjs` 的选择器由 `.ant-select-dropdown` / `.sf-form-field` 改为 `.el-select-dropdown` / `.el-form-item`，并在提交信息中声明"真实后端、四域联调及 Fresh Compose 未执行"。
+>
+> 因此：**本文的通过结论只证明切换前的 React/Ant Design 控制台，不证明当前 Vue 3 + Element Plus 控制台。** 当前 Vue 制品与更新后的选择器组合尚无整轮 Stage-2 主链证据，重新验收属于 Issue #184 / #183 未完成的范围。不得据本文勾选或关闭相关 Issue。除这一时效边界外，下文记录的失败基线、第五至第十七轮问题定位与运维结论仍有效。
+
 ## 运行入口
 
 ```bash
@@ -76,7 +81,7 @@ HTTPS 已缩小到单个 Node TLS 容器，复用同一受信证书与 `127.0.0.
 
 Nacos 的历史失败为工作负载配置读取未在 30 次尝试内成功。四次仅含 Nacos 与真实初始化客户端的 Fresh 复现均通过，初始化耗时约 2.8–4.4 秒，**尚未确认历史超时根因**。本次仅为最终失败增加数字响应码/固定分类，保持原权限、重试次数及非空配置条件；没有通过放宽超时掩盖问题。初始化回归 3 项通过，包含响应码可见但配置/凭据不可见；Nacos 配置校验、Shell 语法、相关入口检查及新增脚本 ESLint/Prettier 均通过。临时诊断脚本未纳入仓库。
 
-第十八轮 `bash scripts/verify-console-authentication-e2e.sh --stage2-product` **退出码 0，完整产品与 Chrome 门禁通过**：
+第十八轮 `bash scripts/verify-console-authentication-e2e.sh --stage2-product` **退出码 0，完整产品与 Chrome 门禁通过**（适用边界见开头"证据时效边界"：该结果对应切换前的 React/Ant Design 控制台与旧选择器）：
 
 - 项目 `saas-forge-console-1789399964-55969-1e8451`，全新卷；Nacos 初始化、四域 HTTPS、中文主链 7/7、4 条 Audit 关联、清理和最终 Chrome 门禁均通过，未知主链错误 0。
 - HTTPS 报告 `recovered: false`，即本轮正常启动通过，未触发恢复；不能把这一轮称为实际故障恢复演练。

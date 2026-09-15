@@ -52,9 +52,11 @@ These operations require deployed frontends, HTTPS entry points, healthy backend
 | Set a Tenant administrator's first password                                                                  | Password Setup link in a Mailpit email | Administrator initialization must have sent a still-valid link; return to Tenant Console to log in afterward                           |
 | Create the Platform Admin or reset its initial credential                                                    | Compose one-shot tasks below           | No platform UI; the restricted reset cannot reset an established regular password                                                      |
 | Bootstrap reserved service OAuth Clients or replace revoked Clients                                          | Compose one-shot tasks below           | No platform UI                                                                                                                         |
-| Manage OAuth Clients, create Tenants, configure Quota/Plan or Subscription, initialize Tenant administrators | Formal backend APIs                    | No working management pages yet; platform `/oauth-clients` is only a placeholder                                                       |
+| Manage OAuth Clients (list, create, detail, Secret rotation and recovery, revocation, operation history)     | Platform Console `/oauth-clients`      | Requires a Platform Admin session; the operation history page only lists committed operations and never replays a Secret |
+| Manage Tenants, Plans, and Quota Definitions                                                                | Platform Console `/tenants`, `/plans`, `/quota-definitions` | Requires a Platform Admin session; covers list, creation, and detail                  |
+| Manage Subscriptions or initialize Tenant administrators                                                    | Formal backend APIs                    | No platform UI yet; API coverage does not mean corresponding UI features exist        |
 
-The platform home and Tenant workspace currently show authentication status only, without a statistics Dashboard or business management actions. See the [Tenant lifecycle acceptance script](../../scripts/verify-tenant-lifecycle-e2e.sh) for API examples; API coverage in that script does not mean corresponding UI features exist.
+The Platform Console home page provides an overview. The Tenant workspace currently shows authentication status only, without a statistics Dashboard or business management actions. See the [Tenant lifecycle acceptance script](../../scripts/verify-tenant-lifecycle-e2e.sh) for API examples; API coverage in that script does not mean corresponding UI features exist.
 
 ### Browser access prerequisites
 
@@ -328,11 +330,11 @@ For a custom Secret path, remove the corresponding old file. Do not remove activ
 
 ### 6. Log in again and check the session
 
-1. Enter the administrator email and regular password on the login page. Successful login opens “Platform 总览” (Platform overview), which currently shows only authentication status.
+1. Enter the administrator email and regular password on the login page. Successful login opens “Platform 总览” (Platform overview).
 2. Reload and confirm that session recovery returns to the home page. If a network failure leaves recovery uncertain, use “重试恢复” (Retry recovery).
 3. Select “退出登录” (Log out) and confirm the login page appears. Retry through the UI if logout fails. Reloading should not restore the ended Platform session.
 
-These UI actions call the formal APIs; manual login/password-change requests and Access Token inspection are unnecessary. Never write passwords, Tokens, or cookies to `.env`, Git, logs, or chat messages. The `OAuth Client` menu is still a placeholder and cannot create, rotate, or revoke Clients.
+These UI actions call the formal APIs; manual login/password-change requests and Access Token inspection are unnecessary. Never write passwords, Tokens, or cookies to `.env`, Git, logs, or chat messages. The `OAuth Client` menu can now list, create, and show Clients, rotate or recover Secrets, and revoke Clients; a Secret is shown only in the first successful response, and the operation history page never replays it.
 
 ## Explicit reserved service OAuth Client bootstrap
 

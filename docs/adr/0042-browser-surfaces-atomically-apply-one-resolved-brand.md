@@ -7,3 +7,5 @@ Tenant Access 继续按 [ADR 0036](0036-tenant-access-owns-controlled-tenant-bra
 Tenant Context Switch 提交后立即清除旧 Tenant 品牌并完整回到 Platform Brand Profile；只有新 Context、Profile 与素材均有效时才提交新 Resolved Brand Profile。“原子”表示全部品牌表面始终来自同一个已解析 Profile，不承诺浏览器将 favicon 与 React/CSS 在同一帧绘制。任一字段、受控引用或素材加载失败都使整份 Tenant Profile 失效并回退平台品牌，但不阻断已合法建立的 Tenant Context。拒绝只暴露稳定、不含原始值的原因码与可测试回调；本决策不前移新的前端遥测系统。
 
 品牌快照不进入浏览器持久存储或跨标签页消息，接收页继续从禁止缓存的 Current Tenant Context 权威回读。除 Session Slot 代次外，Context/品牌读取使用本页单调读取代次防止同一 Context 的迟到旧响应回填。第 4 阶段管理页预览只能在隔离容器中复用解析器，保存成功后以 revision/ETag 与权威返回或回读更新真实 Shell，不使用时间戳猜测新旧。实际平台 Logo/favicon 素材必须在实现前另行确认，验收夹具不是产品品牌。
+
+本文的包所有权名称已随 [ADR 0050](0050-consoles-adopt-soybean-element-plus.md) 更新：品牌解析位于 `consoles/shared/admin` 的 `brand/resolved-brand.ts`，运行时应用缝是 `shared/admin` 的 `mountConsole` 与各 Console 入口；`@saas-forge/design-system` 与共享 React Shell 已退出，`app-runtime` 继续只发布无 UI 的权威 Context 快照与原始品牌快照。品牌唯一解析、单份不可变 Resolved Brand Profile、失败时整份回退平台品牌、不进入浏览器持久存储等决策继续有效。

@@ -12,4 +12,6 @@ IAM 在第一次调用 Tenant Access 前持久化 Family 级根工作流；同�
 
 本切片的完成证据必须包含真实 IAM↔Tenant Access gRPC、保留服务 Client 与精确 Scope、PostgreSQL 18 权威 Membership 查询，以及 IAM PostgreSQL/Redis 撤销与 Refresh 闭环；Mock 只用于超时、非法响应、提交失败和重试耗尽等故障注入。Gateway 与浏览器不属于本切片验收。
 
-本决策直接改造已冻结的 `POST /api/v1/auth/tenant-switches`，以 Cookie-only 会话定位取代基线中“Access Token 或 Refresh Token Cookie”的认证描述。该操作在当前服务端尚未实现而只会落到生成接口的默认 `501`，但仓库无法证明不存在已按旧描述生成的外部消费者；因此这是对 [ADR 0016](0016-v1-contracts-use-reviewed-repository-baselines.md) 的单操作显式覆盖，历史基线快照仍保持不可修改，其余 v1 契约不获得兼容性豁免。
+本决策直接改造已冻结的 `POST /api/v1/auth/tenant-switches`，以 Cookie-only 会话定位取代基线中“Access Token 或 Refresh Token Cookie”的认证描述。该操作已在 IAM 的 `AuthenticationController` 中实现，并由 `iam_tenant_context_switches` 工作流迁移交付，不再落到生成接口的默认 `501`；覆盖仍然成立，因为该变更发生在契约冻结之后而历史基线快照保持不可修改，因此这是对 [ADR 0016](0016-v1-contracts-use-reviewed-repository-baselines.md) 的单操作显式覆盖，其余 v1 契约不获得兼容性豁免。
+
+上面第 9、13 段记录的“Gateway 与浏览器不属于本切片验收”是当时的切片边界，后续切片已补齐：真实浏览器的 `tenant-switches:204 → refresh:200` 链路，以及撤销 Token、Redis 不可用、越权 Tenant 切换与 Tenant 冻结后旧 Token 拒绝等路径，见 [Stage 2 浏览器验收](../32-stage2-browser-acceptance.md) 与 [Issue #115 验收记录](../acceptance/issue-115-console-authentication.md)。

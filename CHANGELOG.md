@@ -1,12 +1,21 @@
 # 变更记录
 
-本项目遵循语义化版本。尚未发布稳定版本。
+本项目遵循语义化版本。尚未发布稳定版本，因此下列内容仍归入 Unreleased。
+
+本文只维护面向使用者的里程碑级摘要；逐次改动的完整历史以 Git 提交与 GitHub Issues 为准。以下条目描述仓库当前已有的能力，不代表其中每一项都已通过完整验收或具备生产支持，未完成范围见 [ROADMAP.md](ROADMAP.md) 与开放 Issues。
 
 ## Unreleased
 
 ### Added
 
-- 初始化 Maven 多模块项目骨架。
+- Maven 多模块骨架：Gateway、IAM、Tenant Access、Entitlement、Audit、`saas-forge-service-discovery` 支持库、契约模块、Java SDK/Starter 与 `saas-forge-quality-gates`。
+- 契约与治理：OpenAPI 3.1 v1 契约与兼容性基线、Protobuf 契约、CloudEvents 事件契约与 HTTP 路由目录。
+- IAM：浏览器认证（登录、刷新、登出、首次改密、Password Setup Challenge）、双 Browser Session Slot、Tenant Context 选择与切换、OAuth Client 凭据管理与 JWKS 发布。
+- Tenant Access：Tenant 创建与生命周期、管理员初始化与密码投递、冻结与恢复、Tenant 品牌档案。
+- Entitlement：Plan、Quota Definition 与 Subscription，含激活、恢复与计量幂等。
+- Audit：成功事实消费、只追加审计记录与隔离处置。
+- 前端：Platform Console 与 Tenant Console Shell 两个 Vue 3 + Element Plus 控制台，共享 `@saas-forge/admin`、`@saas-forge/app-runtime`、`@saas-forge/api-client`、`@saas-forge/i18n`，含 `zh-CN`/`en-US` 国际化基线与跨标签页会话协调。
+- 交付与验证：原生本地开发入口、最小 Compose 基础设施拓扑、`deploy/acceptance` 组合验收、Nacos 配置清单、Helm 接入契约、systemd 单元与共享 Dockerfile。
 
 ### Changed
 

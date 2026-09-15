@@ -51,7 +51,7 @@
 
 ### Console 国际化资源
 
-- Design System 自有消息资源必须按可独立 tree-shake 的组件模块拆分；新增或移动资源目录必须接入 `consoles/scripts/validate-i18n-resources.mjs`，并通过 `pnpm --dir consoles run validate:i18n` 与 `pnpm --dir consoles run build:workspace`。不得因共享翻译入口将未使用组件文案打入 Console 或 Remote 首屏制品。
+- `@saas-forge/admin` 自有消息资源必须按可独立 tree-shake 的组件模块拆分（例如 `shared/admin/src/messages/authentication/`、`messages/recovery/`）；新增或移动资源目录必须接入 `consoles/scripts/validate-i18n-resources.mjs`，并通过 `pnpm --dir consoles run validate:i18n` 与 `pnpm --dir consoles run build:workspace`。不得因共享翻译入口将未使用组件文案打入 Console 或 Remote 首屏制品。
 
 ### Issue tracker
 

@@ -41,7 +41,7 @@ Tenant ── Subscription Version
 
 ## 当前状态
 
-当前仓库处于分阶段实现期：Maven 多模块构建、Gateway、四个领域服务、SDK/Starter、契约目录和最小 Docker Compose 运行拓扑均已建立；IAM、Tenant Access 与 Entitlement 已落地部分领域切片。通用 Tenant RBAC、Feature 运行时闭环和 Audit 业务能力仍未完整实现，领域定义不代表对应功能已经全部交付。
+当前仓库处于分阶段实现期。已建立 Maven 多模块构建（Gateway、四个领域服务、服务发现支持库、SDK/Starter、契约模块与质量门）、最小 Compose 基础设施拓扑和两个 Vue 3 控制台。已交付并有验收记录的切片包括：IAM 的浏览器认证、会话槽位与 OAuth Client 管理；Tenant Access 的 Tenant 创建与生命周期、管理员密码投递、品牌档案；Entitlement 的 Plan、Quota Definition 与 Subscription。通用 Tenant RBAC（Organization、Role、Permission 目录与 Invitation 激活）、Feature 运行时闭环、Audit 查询与导出、业务 Remote 仍未实现；领域定义不代表对应功能已经全部交付。当前开放工作见 GitHub Issues。
 
 ## 本地开发
 
@@ -66,16 +66,17 @@ cd ..
 ## 目录
 
 - gateway/：唯一公网入口模块。
-- saas-forge-services/：IAM、Tenant Access、Entitlement 与 Audit 服务。
-- saas-forge-contracts/：OpenAPI、Protobuf 与事件契约。
+- saas-forge-services/：IAM、Tenant Access、Entitlement、Audit 与 `saas-forge-service-discovery`。
+- saas-forge-contracts/：HTTP 路由目录、OpenAPI、Protobuf 与事件契约。
 - saas-forge-sdk/：Java SDK、BOM 与 Spring Boot Starter。
-- consoles/：Platform Console、Tenant Console Shell、业务 Remote 与共享前端边界。
-- examples/：官方示例的预留位置。
-- deploy/：Compose、Helm 与 systemd 交付物的预留位置。
+- saas-forge-quality-gates/：JaCoCo 聚合等工程门禁。
+- consoles/：Platform Console、Tenant Console Shell 与共享前端包；`business-remotes/` 目前只有验收夹具，尚无产品 Remote。
+- examples/：官方示例的预留位置，随 SDK 与领域闭环具备后实现。
+- deploy/：Compose 基础设施、验收组合、Nacos 配置清单、Helm 接入契约、systemd 与共享 Dockerfile。
 
 ## Compose 集成验收
 
-完整 Compose 用于演示、集成验收和专项复现；日常应用启停使用上述原生流程。最小运行拓扑包含 Gateway、四个领域服务、PostgreSQL、Redis、Kafka、OpenTelemetry Collector 与四个 Flyway 迁移任务；对象存储将在第 6 阶段加入。使用方式见 [deploy/README.md](deploy/README.md)。
+完整 Compose 用于演示、集成验收和专项复现；日常应用启停使用上述原生流程。`deploy/compose` 只提供共享基础设施：PostgreSQL、Redis、Kafka、Mailpit、OpenTelemetry Collector 与 Nacos，其中不包含应用服务或迁移任务。Gateway、四个领域服务和各自的 Flyway 迁移任务在各目录自己的 `compose.yaml` 中独立启停；跨服务集成验收由 `deploy/acceptance` 组合复用这些服务定义。S3 兼容对象存储不早于第 6 阶段加入。使用方式见 [deploy/README.md](deploy/README.md)。
 
 详细的产品、领域、架构、安全与部署约束见 docs/。
 

@@ -36,15 +36,15 @@ Secret 路径为绝对路径，文件建议 600、父目录 700。使用已初�
 
 升级 #174 时继续前进到 V6，新增 `plan_recovery` 并导入已有 Plan 稳定响应及原保留期。历史零额度保持可读且不改变，新的创建/激活/订阅要求上限至少 1。请先完成独立迁移，再使用新版 Plan 页面与恢复接口。
 
-若使用仓库既有 Compose PostgreSQL 和已配置的受限凭据，可独立运行迁移容器：
+若使用仓库既有 Compose PostgreSQL 和已配置的受限凭据，可在该服务自己的 Compose 文件目录独立运行迁移容器：
 
 ```bash
-cd deploy/compose
+cd saas-forge-services/entitlement-service
 docker compose run --rm --no-deps entitlement-migrate info
 docker compose run --rm --no-deps entitlement-migrate migrate
 ```
 
-该命令只执行 Entitlement 的 Flyway 迁移，不启停 IDE 应用，也不替换 HTTPS Edge。外部数据库使用对应环境的受控 Flyway 发布流程，不把 Compose 设为必经步骤。若历史校验失败，先按迁移不可变规则调查，不使用 repair 或重建数据绕过。
+`entitlement-migrate` 只定义在 `saas-forge-services/entitlement-service/compose.yaml`（验收场景另见 `deploy/acceptance/compose.yaml`），`deploy/compose` 下没有该服务，在仓库根的 `deploy/compose` 执行会报 `no such service`。该命令只执行 Entitlement 的 Flyway 迁移，不启停 IDE 应用，也不替换 HTTPS Edge。外部数据库使用对应环境的受控 Flyway 发布流程，不把 Compose 设为必经步骤。若历史校验失败，先按迁移不可变规则调查，不使用 repair 或重建数据绕过。
 
 ## IDEA Run / Debug / 重启
 

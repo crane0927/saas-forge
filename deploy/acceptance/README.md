@@ -52,9 +52,11 @@ docker compose ps --all
 | 设置 Tenant 管理员的首次密码                                                  | Mailpit 邮件中的 Password Setup 链接 | 管理员初始化已触发邮件，且链接仍有效；设置成功后返回 Tenant Console 登录                     |
 | Platform Admin 创建、初始凭证受限重置                                         | 本文的 Compose 一次性任务            | 没有平台页面入口；受限重置不能用于已建立正式密码的账号                                       |
 | 保留服务 OAuth Client 引导、已吊销 Client 替换                                | 本文的 Compose 一次性任务            | 没有平台页面入口                                                                             |
-| OAuth Client 管理、Tenant 创建、Quota/Plan、Subscription、Tenant 管理员初始化 | 正式后端 API                         | 尚无可操作的管理页面；平台 `/oauth-clients` 仅为占位入口                                     |
+| OAuth Client 管理（列表、创建、详情、Secret 轮换与恢复、吊销、操作记录）      | Platform Console `/oauth-clients`    | 需要 Platform Admin 会话；操作记录页只展示已提交的操作，不重放 Secret                        |
+| Tenant 与 Plan、Quota Definition 管理                                         | Platform Console `/tenants`、`/plans`、`/quota-definitions` | 需要 Platform Admin 会话；涵盖列表、创建与详情                                            |
+| Subscription 管理、Tenant 管理员初始化                                        | 正式后端 API                         | 尚无平台页面入口；不能将接口能力视为已交付的页面功能                                         |
 
-平台首页和 Tenant 工作台当前只展示认证状态，不含统计 Dashboard 或业务管理操作。API 调用示例可参考 [Tenant 生命周期验收脚本](../../scripts/verify-tenant-lifecycle-e2e.sh)，不能将脚本中的接口能力视为已交付的页面功能。
+Platform Console 首页提供总览，Tenant 工作台当前只展示认证状态，不含统计 Dashboard 或业务管理操作。API 调用示例可参考 [Tenant 生命周期验收脚本](../../scripts/verify-tenant-lifecycle-e2e.sh)，不能将脚本中的接口能力视为已交付的页面功能。
 
 ### 浏览器访问前提
 
@@ -328,11 +330,11 @@ rm .secrets/platform-admin-password
 
 ### 6. 重新登录并检查会话
 
-1. 在登录页输入管理员邮箱与正式密码，点击“登录”，应进入“Platform 总览”。当前首页只有认证状态说明。
+1. 在登录页输入管理员邮箱与正式密码，点击“登录”，应进入“Platform 总览”。
 2. 刷新页面，确认会话恢复后仍能进入首页。网络故障导致恢复结果不确定时，使用页面的“重试恢复”。
 3. 点击“退出登录”，应回到登录页；若退出失败，按页面提示重试。再次刷新不应恢复已退出的 Platform 会话。
 
-上述步骤已由前端接入正式 API，无需手动执行登录、改密请求或读取 Access Token。密码、Token 和 Cookie 不得写入 `.env`、Git、日志或聊天记录。`OAuth Client` 菜单目前只有占位说明，不能用于创建、轮换或吊销 Client。
+上述步骤已由前端接入正式 API，无需手动执行登录、改密请求或读取 Access Token。密码、Token 和 Cookie 不得写入 `.env`、Git、日志或聊天记录。`OAuth Client` 菜单已可用于列出、创建、查看详情、轮换或恢复 Secret 以及吊销 Client；Secret 只在首次成功响应中展示一次，操作记录页不重放 Secret。
 
 ## 显式引导保留服务 OAuth Client
 

@@ -15,7 +15,7 @@ audit-service          → audit_db
 
 每个逻辑数据库只使用默认 `public` Schema。集群引导必须撤销 `PUBLIC` 对数据库的默认权限及对 `public` 的 `CREATE` 权限；`*_migrator` 获得 `public` 的 `USAGE`、`CREATE`，`*_app` 只获得 `USAGE`。业务表、序列和 `flyway_schema_history` 均由 `*_migrator` 所有；每个建表迁移显式授予 `*_app` 所需的表 DML 与序列权限。运行时账号不得在任何 Schema 创建对象。
 
-独立领域实体默认使用 PostgreSQL 18 原生 `uuidv7()` 生成 UUIDv7 主键，首个建表迁移应声明 `id uuid NOT NULL DEFAULT uuidv7()`；应用插入时不传入 `id`，以 `INSERT ... RETURNING` 取得生成值。API 以 UUID 字符串传输。字段是否存在由数据语义决定，不通过跨服务 `BaseEntity` 或共享持久化模型强制统一。
+独立领域实体默认使用 PostgreSQL 18 原生 `uuidv7()` 生成 UUIDv7 主键，首个建表迁移应声明 `id uuid NOT NULL DEFAULT uuidv7()`；应用插入时不传入 `id`，以 `INSERT ... RETURNING` 取得生成值。标识必须在数据库事务开始前确定时——幂等目标、Outbox 聚合引用、Tenant 与工作流标识——改由应用以同一 UUIDv7 算法生成并显式插入 `id`，此类表不声明 `DEFAULT uuidv7()`。API 以 UUID 字符串传输。字段是否存在由数据语义决定，不通过跨服务 `BaseEntity` 或共享持久化模型强制统一。
 
 ## 建模与命名规范
 
@@ -48,16 +48,18 @@ audit-service          → audit_db
 
 ## 逻辑数据模型
 
+以下表清单与当前 Flyway 迁移一致；**规划中但尚未建表**的能力在各行末尾单独标注，实现前必须先按 [ADR 0013](adr/0013-v1-openapi-contracts-follow-delivery-prerequisites.md) 追加契约与迁移。
+
 | 数据库 | 主要表 | 关键关系与约束 |
 |---|---|---|
-| `iam_db` | `identities`、`credentials`、`refresh_tokens`、`oauth_clients`、`oauth_client_secrets`、OAuth Client 管理幂等/保留身份替换记录、`signing_key_metadata` | `identities.email` 规范化后全局唯一；密码仅保存 Argon2id 哈希；Refresh Token 和 Client Secret 仅保存哈希；已轮换 Refresh Token 的摘要保留至其 Family 绝对到期后才可清理；`oauth_clients` 区分固定内部 Scope 的 `RESERVED_SERVICE` 与仅允许 Runtime Scope 的 `RUNTIME_SERVICE`，吊销不可逆；Secret 签发幂等记录永久保留但不保存 Secret、摘要或完整响应；`signing_key_metadata` 保存唯一 `kid`、KMS/HSM Key Version 引用、JWKS 的公开 `n`/`e` 与生命周期时间，私钥不入库 |
-| `tenant_access_db` | `tenants`、`memberships`、`organizations`、`organization_units`、`roles`、`permissions`、`role_permissions`、`membership_roles`、`invitations`、`capability_registrations` | Membership 唯一关联 Identity 与 Tenant；Role 绑定 Membership；权限按命名空间、资源、动作定义；邀请保存一次性、限时激活状态 |
-| `entitlement_db` | `plans`、`plan_features`、`plan_quotas`、`subscriptions`、`subscription_entitlement_snapshots`、`quota_definitions`、`quota_usages`、`quota_operations` | 一个 Tenant 任一时刻仅一个生效 Subscription；套餐变更产生新的订阅版本和不可变权益快照；`quota_operations.operation_id` 为全局唯一 UUIDv7，保证计量幂等 |
-| `audit_db` | `audit_records`、消费去重与隔离处置表、`export_jobs` | `audit_records` 只追加，只保存来源事实明确提供的 Actor、Tenant、Action、Resource、Timestamp、Result 与白名单 Metadata；不得为缺失的 Request ID、IP、User Agent、Membership 或 Tenant 伪造值。消费去重与隔离处置按可变性分表；`export_jobs` 仅保存任务元数据，不保存导出结果文件 |
+| `iam_db` | `iam_identities`、`iam_credentials`、`iam_refresh_token_families`、`iam_refresh_tokens`、`iam_access_token_issuances`、`iam_revocation_fences`、`iam_user_session_revocations`、`iam_user_session_fence_releases`、`iam_oauth_clients`、`iam_oauth_client_secrets`、`iam_oauth_client_management_operations`、`iam_reserved_service_client_replacements`、`iam_signing_keys`、`iam_password_setup_challenges`、`iam_password_setup_deliveries`、`iam_tenant_context_switches`、`iam_platform_role_assignments`、`iam_platform_admin_bootstrap_facts`、`iam_identity_provisioning_facts`、`iam_platform_admin_credential_reset_facts`、`iam_outbox_events` | `iam_identities.normalized_email` 全局唯一；密码仅保存 Argon2id 哈希；Refresh Token 与 Client Secret 仅保存哈希；已轮换 Refresh Token 的摘要保留至其 Family 绝对到期后才可清理；`iam_oauth_clients` 区分固定内部 Scope 的 `RESERVED_SERVICE` 与仅允许 Runtime Scope 的 `RUNTIME_SERVICE`，吊销不可逆；Secret 签发幂等记录永久保留但不保存 Secret、摘要或完整响应；`iam_signing_keys` 保存唯一 `kid`、公钥 `n`/`e` 与生命周期时间，生产私钥不入库（KMS 适配器尚未实现，见 [ADR 0008](adr/0008-production-jwt-signing-uses-kms.md)）。**规划未建表**：无 |
+| `tenant_access_db` | `tenants`、`memberships`、`tenant_roles`、`membership_role_assignments`、`tenant_brand_profiles`、`tenant_creation_idempotency`、`tenant_creation_recovery`、`initial_tenant_administrators`、`tenant_administrator_initialization_workflows`、`administrator_password_setup_workflows`、`password_setup_delivery_work_items`、`tenant_lifecycle_workflows`、`tenant_suspension_recovery_idempotency`、`tenant_access_outbox_events` | Membership 唯一关联 Identity 与 Tenant；`tenant_roles` 是本服务内的静态角色定义，经 `membership_role_assignments` 绑定 Membership；品牌档案与 `tenants` 一对一。**规划未建表**：`organizations`、`organization_units`、`permissions`、`role_permissions`、`invitations`、`capability_registrations`（Organization、通用权限目录与 Invitation 激活均未实现） |
+| `entitlement_db` | `plans`、`plan_quotas`、`subscriptions`、`quota_definitions`、`quota_usages`、`quota_operations`、`entitlement_bootstrap_idempotency`、`plan_recovery`、`quota_definition_recovery`、`subscription_recovery`、`entitlement_outbox_events` | 当前每个 Tenant 只有一个可授予权益的 Subscription（`UNIQUE (tenant_id)` 且状态受 `CHECK` 限定为 `ACTIVE`），额度上限实时从 `plan_quotas` 读取；`quota_operations.operation_id` 为全局唯一 UUIDv7，保证计量幂等。**规划未建表**：`plan_features`、`subscription_entitlement_snapshots`（Feature 运行时闭环与订阅版本化属于阶段 5，见 [ADR 0004](adr/0004-subscriptions-use-immutable-entitlement-versions.md)） |
+| `audit_db` | `audit_records`、`audit_consumed_events`、`audit_consumer_isolations`、`audit_isolation_attempts`、`audit_isolation_deliveries`、`audit_isolation_replays` | `audit_records` 只追加，只保存来源事实明确提供的 Actor、Tenant、Action、Resource、Timestamp、Result 与白名单 Metadata；不得为缺失的 Request ID、IP、User Agent、Membership 或 Tenant 伪造值。消费去重与隔离处置按可变性分表。**规划未建表**：`export_jobs`（导出任务元数据，审计导出尚未实现，见 [ADR 0023](adr/0023-audit-records-use-append-only-runtime-privileges.md)） |
 
 具体字段、枚举与 OpenAPI / Protobuf Schema 须在实现前同步评审；任一服务不得以外键约束、`JOIN`、FDW、`dblink` 或其他跨数据库访问机制耦合另一服务数据库。
 
-`audit_app` 对 `audit_records` 只被授予 `SELECT`、`INSERT`，不得获得 `UPDATE`、`DELETE`、`TRUNCATE`，也不使用软删除；创建该表的迁移必须显式维持此权限。`export_jobs` 是可变任务元数据，按其状态迁移所需权限单独授予。迁移账号保留架构演进责任，但不得修改已进入主分支或发布版本的迁移。
+`audit_app` 对 `audit_records` 只被授予 `SELECT`、`INSERT`，不得获得 `UPDATE`、`DELETE`、`TRUNCATE`，也不使用软删除；创建该表的迁移必须显式维持此权限。`export_jobs` 尚未建表；实现导出任务时它作为可变任务元数据，必须按其状态迁移所需权限单独授予，并且只保存任务元数据、不保存导出结果文件。迁移账号保留架构演进责任，但不得修改已进入主分支或发布版本的迁移。
 
 `audit_records` 同时容纳 Platform级、Tenant级和跨 Tenant合规记录，`tenant_id` 只在来源事实明确提供时填写，因此可空且不启用 Tenant RLS；该例外不适用于其他业务表。未来 Audit查询必须在服务层执行显式授权。完整模型、消费表权限与直接验收见 [Audit成功事实消费规格](24-audit-success-fact-consumption.md)和 [ADR 0035](adr/0035-audit-records-do-not-use-tenant-rls.md)。
 

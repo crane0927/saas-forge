@@ -1,8 +1,10 @@
 # Console 国际化基线
 
-状态：已确认，待实施。Q1–Q14 已完成确认，包含公开接口、交付顺序及验收矩阵。本文不代表功能已实现或验收通过。
+状态：已实现。Q1–Q14 的公开接口、交付顺序及验收矩阵已按本文交付，PRD [Issue #117](https://github.com/crane0927/saas-forge/issues/117) 已关闭；资源门禁 `pnpm --dir consoles run validate:i18n` 已接入 `build:workspace` 与 `verify:workspace`。本文继续作为实施规格；包名与当前实现状态见下方说明与[当前仓库事实与衔接点](#当前仓库事实与衔接点)。
 
-关联：[MVP 开发计划](16-mvp-development-plan.md)、[Design System](25-design-system.md)、[认证 Runtime](28-console-authentication-runtime.md)、[Locale 偏好边界 ADR](adr/0040-console-locale-is-a-local-ui-preference.md)。
+> **包名更新**：本文原先以 `@saas-forge/react-shell` 与 `@saas-forge/design-system` 表述共享 UI 载体，二者已按 [ADR 0050](adr/0050-consoles-adopt-soybean-element-plus.md) 替换为 `@saas-forge/admin`（Vue 3 + Element Plus + Soybean Admin）。正文已按当前仓库更新，语言解析、偏好存储、资源门禁与回退语义不变。
+
+关联：[MVP 开发计划](16-mvp-development-plan.md)、[Console 设计规范](25-design-system.md)、[认证 Runtime](28-console-authentication-runtime.md)、[Locale 偏好边界 ADR](adr/0040-console-locale-is-a-local-ui-preference.md)。
 
 PRD：[Issue #117 — 建立 Console 中英文国际化基线与可扩展 Locale 契约](https://github.com/crane0927/saas-forge/issues/117)，属于阶段交付总计划 #88。
 
@@ -45,7 +47,7 @@ PRD：[Issue #117 — 建立 Console 中英文国际化基线与可扩展 Locale
 
 ### 6. Remote 与资源归属
 
-- Shell 独占语言选择和偏好写入，Remote 只消费当前 Locale，不改变全局语言。
+- 各 Console 入口独占语言选择和偏好写入，Remote 只消费当前 Locale，不改变全局语言。
 - 公共组件、共享 Shell 分别维护自己的公共文案；各 Console、Remote 维护各自业务文案。
 - 资源使用独立命名空间，Remote 不得覆盖其他模块资源。
 - 本次制定 Locale 传递契约，并用现有静态 Remote 消费夹具验证初始语言、即时更新和表单状态保留。
@@ -97,12 +99,15 @@ PRD：[Issue #117 — 建立 Console 中英文国际化基线与可扩展 Locale
 
 ## 当前仓库事实与衔接点
 
-- `DesignSystemProvider` 已支持 `zh-CN` / `en-US`，默认 `zh-CN`，目前映射底层组件语言并设置包装元素的 `lang`；两个 Console 尚未传入当前 Locale，HTML 的 `lang` 固定为 `zh-CN`。
-- 共享组件与 React Shell 仍有直接书写的中文文案；只切换底层组件语言不足以完成上述覆盖范围。
-- 当前 Remote 消费夹具由宿主静态导入，尚无 Locale 接口；计划第 3、7 阶段负责真实 Manifest/Remote 加载与治理，本切片按上文限定的夹具范围验收。
-- 认证规格已要求 Problem 映射输出稳定本地语义键和安全参数，完整双语资源属于本切片。
-- 现有浏览器存储安全验收只允许会话代次与登出待确认标记；实施时需要为独立语言偏好增加严格取值校验，并继续拒绝敏感状态持久化。
-- 配置加载或验证失败页在认证 Runtime 创建前即可出现；语言初始化若仅放在 `AuthenticationShell` 内，将无法覆盖这些界面。两个 Console 的根错误边界与 Design System Provider 的嵌套位置目前也不一致，需要验证根故障路径是否仍能获取语言。
+- `@saas-forge/i18n`（`consoles/shared/i18n`）提供 `SupportedLocale`、语言注册表、`resolveLocale`、`defineMessages`、`createTranslator` 与 `formatDate`/`formatInstant`/`formatNumber`/`formatMoney`；注册表位于 `src/locale-registry.json`，当前默认语言是 `en-US`。
+- `@saas-forge/admin` 在 `runtime/context.ts` 中以 `resolveLocale(navigator.languages)` 初始化 Locale、读写 `sf:ui:locale`，并在变化时同步 `document.documentElement.lang`；`useShellText()` 通过 `createTranslator({ namespace, locale, messages })` 翻译公共文案，公共资源按模块拆在 `src/messages/authentication/` 与 `src/messages/recovery/`。
+- 两个 Console 各自维护业务资源并传给共享 Runtime：`tenant-console-shell` 在 `main.ts` 中用 `createTranslator` 构造导航文案后交给 `mountConsole`；`platform-console` 在 `src/messages/` 声明 `platformMessages` 并在 `use-platform.ts` 中接入。
+- platform-console 另有模板自带的 `src/locales/`（`vue-i18n` + `intl-messageformat`），负责官方登录页与后台壳文案；它自行匹配浏览器语言并读写同一个 `sf:ui:locale` 键，与 `@saas-forge/admin` 的 Locale 是两个独立引用。**这是已知缺口**：同一页面的两处语言状态可能不同步，收敛方向见 [ADR 0051](adr/0051-consoles-use-complete-soybean-applications.md) 与 Issue #199。
+- 资源门禁 `consoles/scripts/validate-i18n-resources.mjs` 自动发现任一层级 `src/messages`、`src/locales` 下含 JSON 的目录，检查缺失/多余键、重复键、非字符串值、空白消息、ICU 语法、参数类型一致性与未允许的富文本标签；`build:workspace` 与 `verify:workspace` 均已接入，`en-US` 作为键的基准集合。
+- 静态 Remote 消费夹具（`business-remotes/admin-consumer-fixture`）由宿主传入只读 `locale` 属性；真实 Manifest/Remote 加载尚未实现，其语言验收仍属后续阶段。
+- 认证规格已要求 Problem 映射输出稳定本地语义键和安全参数，二者共用本切片的中英文资源。
+- 浏览器存储安全验收已放行 `sf:ui:locale` 并限定为已启用语言枚举，继续拒绝其他敏感状态持久化。
+- 配置加载或验证失败页在认证 Runtime 创建前即可出现；语言初始化因此在应用入口完成（`platform-console/src/main.ts` 先 `setupI18n(app)` 再挂载），根故障路径仍可取得语言。
 
 ## 已确认的实现契约
 
@@ -112,18 +117,18 @@ PRD：[Issue #117 — 建立 Console 中英文国际化基线与可扩展 Locale
 
 | 所属 | 公开接口或输入 | 责任 |
 | --- | --- | --- |
-| 新增 `@saas-forge/i18n`，位于 `consoles/shared/i18n` | `SupportedLocale`、语言注册表、`resolveLocale` | 纯 TypeScript；统一语言匹配、启用列表与类型，不导入 React、Ant Design、认证 Runtime 或访问浏览器存储 |
-| 同一共享包 | `createTranslator(catalog, locale)` 返回类型化消息查找函数 | 封装 ICU、命名空间、参数校验与英文回退；资源按所属模块显式传入，不提供全局可变资源注册服务 |
+| `@saas-forge/i18n`，位于 `consoles/shared/i18n` | `SupportedLocale`、语言注册表、`resolveLocale`、`defineMessages` | 纯 TypeScript；统一语言匹配、启用列表与类型，不导入 Vue/React 组件库、认证 Runtime 或访问浏览器存储 |
+| 同一共享包 | `createTranslator({ namespace, locale, messages })` 返回 `translator.translate` | 封装 ICU、命名空间、参数校验与英文回退；资源按所属模块显式传入，不提供全局可变资源注册服务 |
 | 同一共享包 | `formatDate`、`formatInstant`、`formatNumber`、`formatMoney`，显式接收 Locale | 分别处理日历日期、时间点、数值、金额；时间点可显式传入已知时区，否则采用浏览器默认时区 |
-| `@saas-forge/react-shell` | `ConsoleLocaleProvider`、宿主专用 `useConsoleLocale`，返回当前 Locale、启用语言及 `setLocale` | 在认证启动之前管理唯一页面语言状态、偏好读写、事件订阅及清理、文档 `lang`；用于两个 Console 的一致集成 |
-| `@saas-forge/design-system` | 现有 `DesignSystemProvider.locale` | 统一派生公共组件默认文案与底层组件语言；只消费 Shell 传入的值，不独立检测语言或写入偏好 |
+| `@saas-forge/admin` | `useLocale()`（`runtime/context.ts`，当前为包内接口）与 `useShellText()`，返回当前 Locale、`setLocale` 与公共文案查找 | 在认证启动之前管理唯一页面语言状态、偏好读写、事件订阅及清理、文档 `lang`；用于两个 Console 的一致集成 |
+| Console 应用壳 | 底层组件语言由 Element Plus 的 `ElConfigProvider` 承接，模板文案由 `platform-console/src/locales/` 的 `vue-i18n` 实例提供 | 只消费共享 Runtime 的 Locale；模板实例不得成为第二份偏好来源（见上节已知缺口） |
 | Remote 根组件 | 只读 `locale: SupportedLocale` 属性 | 初次挂载和切换时由宿主传入；Remote 通过共享包翻译自己的资源，不获取语言写接口 |
 
 - 公开包只有受控稳定入口；页面不直接依赖 ICU 库，不复制匹配、存储或回退逻辑。`app-runtime` 继续只提供错误语义和安全参数，不持有 Locale 或翻译后的文案。
 - 浏览器持久键采用 `sf:ui:locale`，值只能是已启用 Locale 的精确标识，例如 `zh-CN`；不保存账号、Tenant、来源列表、时间戳或整份偏好对象，不写 Cookie、URL、sessionStorage 或认证跨页消息。
 - 非规范存储值和未启用语言值不作为有效偏好；浏览器候选按语言标签规范处理，使用 `navigator.languages` 的顺序，缺失时采用 `navigator.language`，仍无匹配则 `en-US`。
 - 写入只发生在用户显式选择时；自动检测结果不写回存储。读取其他标签页的结果不触发再次写入，避免同步循环。写入失败的本页选择保持到下一次明确选择、成功读到更新后的存储状态或刷新；暂时无法读取时不清空本页选择。
-- 语言选项显示语言自称，首版为“简体中文”和“English”；选择器使用 Design System 现有受控控件组合，登录前后使用一致语义。
+- 语言选项显示语言自称，首版为“简体中文”和“English”；选择器使用 Element Plus 现有受控控件组合，登录前后使用一致语义。
 - Locale 改变不更换组件 `key`、认证 Runtime 或路由实例，不重新挂载 Remote；已显示提示保存语义键和参数，在渲染时翻译。焦点保持在当前控件，不把语言变化当成路由跳转。
 - 基础资源随 Shell 打包，Remote 自有资源随 Remote 制品打包；切换已挂载 Remote 的语言不另行下载资源。新语言需同时提供公共组件语言适配；未来右向左语言须另行完成方向与布局验收，不能仅注册语言便宣称支持。
 - 基础安全恢复文案按语言注册表覆盖已启用语言；国际化自身失败也不会影响已有恢复操作的含义。应用脚本完全未加载的网络故障不视为可由应用语言切换器处理。
@@ -132,12 +137,12 @@ PRD：[Issue #117 — 建立 Console 中英文国际化基线与可扩展 Locale
 
 ### 14. 资源和门禁
 
-- 各包以统一的 `src/locales/<Locale>.json` 存放扁平的语义键到 ICU 消息映射，所属包名作为命名空间；公共包也遵循此规则。`en-US` 为键的基准集合，所有已启用语言必须具备完整资源。
+- 各包在 `src/messages/<module>/` 或 `src/locales/` 下以 `<Locale>.json` 存放扁平的语义键到 ICU 消息映射，所属包名作为命名空间；公共包按可独立 tree-shake 的模块拆分资源。`en-US` 为键的基准集合，所有已启用语言必须具备完整资源。
 - 开发者使用类型化键调用，不依赖按中文原文生成键或运行时拼接未知键；资源中的业务参数不参与生成键。
 - 门禁自动发现 Console、官方 Remote 和共享文案包，资源缺失的消费者不能被静默跳过；检查缺失/多余键、重复键、非字符串值、空白消息、ICU 语法、参数名与使用类型一致性、未允许的富文本标签。
 - 复数分支可以不同，参数的语义与类型应相同；需要的 `other` 分支仍必须存在。分支内部也要递归检查参数。
 - 门禁以失败退出码阻止构建，不将运行时英文回退视为翻译完成。测试夹具故意引入坏资源，证明各类缺陷确实会被拒绝。
-- `build:workspace` 与 `verify:workspace` 必须接入翻译校验，并保留现有工作区、Design System 消费及浏览器门禁；发布 CI 使用同一门禁。单包直接构建是局部开发证据，不能作为绕过工作区门禁的发布路径。
+- `build:workspace` 与 `verify:workspace` 必须接入翻译校验，并保留现有工作区、`@saas-forge/admin` 消费及浏览器门禁；发布 CI 使用同一门禁。单包直接构建是局部开发证据，不能作为绕过工作区门禁的发布路径。
 - 安全存储断言仅增加 `sf:ui:locale` 和已启用语言枚举，不以通配前缀放行其他存储值。Remote 消费边界校验拒绝使用宿主语言写接口或自行保存偏好。
 - 新语言验收可在测试配置中临时启用第三语言，证明精确匹配、类型/注册一致性和资源缺失拒绝；生产启用列表仍只有 `zh-CN`、`en-US`。
 
@@ -159,14 +164,16 @@ PRD：[Issue #117 — 建立 Console 中英文国际化基线与可扩展 Locale
 - 行为与状态保持测试通过调用方使用的公开接口或实际页面执行，不以私有 reducer、组件内部状态或函数调用顺序替代验收。
 - 浏览器检查使用 Chromium 日常测试与 Chrome 产品验收，优先覆盖本切片的语言、同步和格式化能力；可复用既有认证安全证据，发生影响时运行相关回归。
 - 真实 Console 验收复用 Fresh Compose 认证环境和脚本，以专用测试环境证明核心路径；不删除用户已有环境的数据卷。记录页面、操作、相关 API 结果、刷新后结果及 console 错误情况，不收集敏感原始值。
-- 所有表格项当前均为待验收要求。文档完成、静态夹具通过或单独构建成功，都不能据此勾选产品国际化完成项；真实 Remote 加载后的语言验收继续保留在第 3、7 阶段。
+- 表格项的行为要求长期有效。第 1～4 项已随 Issue #117 交付；第 5 项的逐项证据与真实 Remote 加载后的语言验收仍按阶段记录，真实 Remote 加载器尚未实现。
 
 ### 16. 交付顺序与完成条件
 
 1. 共享语言注册、消息/格式化公开接口与资源门禁，并验证第三语言扩展缝。
-2. Design System 默认文案、组件语言与最小安全恢复文案。
-3. 共享 React Shell 的语言初始化、偏好同步及认证文案。
+2. `@saas-forge/admin` 的公共组件默认文案、组件语言与最小安全恢复文案。
+3. 各 Console 入口的语言初始化、偏好同步及认证文案。
 4. 两个 Console 与静态 Remote 夹具接入，落实状态保持和故障路径。
 5. 双语界面审阅、工作区/构建门禁和受控 Origin 浏览器验收，保存逐项证据。
 
-本次设计不新增 IAM/用户资料语言字段、后端本地化 API、跨 Origin 偏好服务、翻译管理后台、动态下载语言包、真实 Remote 加载器、时区设置或其他产品能力。只有以上适用验收证据齐全后，才可勾选开发计划中的国际化项；本文档整体确认仅冻结实施规格。
+本次设计不新增 IAM/用户资料语言字段、后端本地化 API、跨 Origin 偏好服务、翻译管理后台、动态下载语言包、真实 Remote 加载器、时区设置或其他产品能力。
+
+[ADR 0051](adr/0051-consoles-use-complete-soybean-applications.md) 与 Issue #199 计划把自建 i18n 收敛到模板机制；在该迁移落地前，`@saas-forge/i18n` 与 `@saas-forge/admin` 的 Locale 仍是两个 Console 与共享组件的现行实现。

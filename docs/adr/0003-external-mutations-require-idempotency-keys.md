@@ -1,3 +1,5 @@
 # 外部状态变更必须携带幂等键
 
 所有外部可见的创建和状态变更请求必须携带 `Idempotency-Key`；读取请求不要求该请求头。键按外部调用方跨全部状态变更接口唯一：用户令牌使用 `identityId`，服务令牌使用 `client_id`；未认证的 Invitation 激活请求在验证令牌后使用 `invitationId`。同键重试完全相同的请求时，服务原样重放首次完成请求的 HTTP 状态码和响应体，而不重新执行业务操作；首个业务 `4xx` 也是需重放的稳定结果。同一键若对应不同 HTTP 方法、规范化路径或规范化请求体，则以 `409` / `IDEMPOTENCY_KEY_REUSED` 拒绝。首次请求尚未完成时的同键重复请求以 `409` / `IDEMPOTENCY_REQUEST_IN_PROGRESS` 和 `Retry-After` 立即拒绝。仅 `2xx` 和业务 `4xx` 是可重放稳定结果；尚未进入业务处理的格式或字段校验 `400`，以及无持久完成记录的基础设施 `5xx`，均不缓存并释放键，修正后可沿用原键；已提交业务变更与幂等完成记录必须同一事务写入。幂等记录自首次完成起保留 24 小时，到期后同一键可视为新请求。此规则使重试具备统一契约，并防止客户端误将同一键用于第二个变更操作。
+
+本文的适用范围由后续决策收窄：登录与登出明确不使用通用 HTTP 幂等记录，正式契约中它们的 `Idempotency-Key` 已标记为忽略或废弃，见 [ADR 0026](0026-authentication-token-rotation-uses-retry-aware-semantics.md)；OAuth Client Secret 签发是 24 小时留存与响应重放的窄安全例外，成功响应不重放 Secret，见 [ADR 0033](0033-oauth-client-management-uses-immediate-revocation-and-replacement-recovery.md)；已登记的恢复型操作超过 24 小时重放期限后不得按“同一键可视为新请求”重新开始，见 [ADR 0045](0045-console-operation-recovery-is-server-authoritative.md)。“业务资源创建与状态变更必须携带幂等键、同键稳定重放、不同语义返回 `409`”等规则继续有效。

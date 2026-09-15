@@ -14,23 +14,27 @@ node consoles/scripts/check-api-client.mjs
 bash scripts/verify-frontend-workspace.sh --package @saas-forge/platform-console
 ```
 
-入口执行该包现有 `verify`：类型检查、lint、格式检查、单元测试、构建串行完成。任一步失败即停止并返回非零；后续步骤是未执行，不是通过。Tenant Shell 可选择 `@saas-forge/tenant-console-shell`。精确包名拼错、通配符、额外参数或包没有 `verify` 都必须失败。Design System 的包级 `verify` 本身包含浏览器测试，不应移除。
+入口执行该包现有 `verify`：类型检查、lint、格式检查、单元测试、构建串行完成。任一步失败即停止并返回非零；后续步骤是未执行，不是通过。Tenant Shell 可选择 `@saas-forge/tenant-console-shell`。精确包名拼错、通配符、额外参数或包没有 `verify` 都必须失败。`@saas-forge/admin` 的浏览器检查不在任何 `verify` 链内，必须显式执行 `pnpm --filter @saas-forge/admin run test:browser`。
 
 循环开发时可先执行包内单文件测试，再执行包级 `verify`：
 
 ```bash
 pnpm --dir consoles --filter @saas-forge/platform-console run typecheck
-# 用该包内实际测试路径替换 <test-file>，不要写 --if-present 掩盖缺失脚本。
-pnpm --dir consoles --filter @saas-forge/platform-console exec vitest run <test-file>
+# Platform Console 使用 node:test，测试文件位于 consoles/integration-test/。
+pnpm --dir consoles --filter @saas-forge/platform-console exec node --test ../integration-test/console-vue-products.test.mjs
+# @saas-forge/admin 使用 vitest，测试文件位于该包内。
+pnpm --dir consoles --filter @saas-forge/admin exec vitest run <test-file>
 ```
 
-共享模块变化必须覆盖消费者。用 `pnpm --dir consoles --filter '...@saas-forge/react-shell' list --depth -1` 查看自身和传递消费者，然后执行：
+用该包内实际测试路径替换 `<test-file>`，不要写 `--if-present` 掩盖缺失脚本。
+
+共享模块变化必须覆盖消费者。用 `pnpm --dir consoles --filter '...@saas-forge/admin' list --depth -1` 查看自身和传递消费者，然后执行：
 
 ```bash
-pnpm --dir consoles --workspace-concurrency=1 --filter '...@saas-forge/react-shell' run verify
+pnpm --dir consoles --workspace-concurrency=1 --filter '...@saas-forge/admin' run verify
 ```
 
-`...` 前缀选消费者，后缀选依赖，不可混淆。包级入口不自动扩大范围。`api-client` 没有 `verify`，其契约或生成逻辑变化走下述完整前端与跨服务契约验证，不把仅有的 typecheck 当作完整验证。样式、交互与可访问性变化增加对应真实浏览器检查；共享布局、Design System 和认证消费者变化按下表升级。
+`...` 前缀选消费者，后缀选依赖，不可混淆。`@saas-forge/admin` 与 `@saas-forge/api-client` 自身没有 `verify`，pnpm 会静默跳过它们，所以改动这两个包时还要单独执行各自的实际脚本（`@saas-forge/admin` 为 `typecheck`、`test`、`test:browser`、`lint`；`@saas-forge/api-client` 只有 `typecheck`）。包级入口不自动扩大范围。`api-client` 的契约或生成逻辑变化走下述完整前端与跨服务契约验证，不把仅有的 typecheck 当作完整验证。样式、交互与可访问性变化增加对应真实浏览器检查；共享布局、`@saas-forge/admin` 和认证消费者变化按下表升级。
 
 ## 后端日常流程
 
@@ -57,9 +61,9 @@ pnpm --dir consoles --workspace-concurrency=1 --filter '...@saas-forge/react-she
 | --- | --- |
 | 认证、Cookie、CORS、CSRF、Browser Session Slot | Gateway、IAM、受影响服务测试与真实 HTTPS 浏览器认证/会话场景；`pnpm --dir consoles run verify:local:session-security` 及对应 Issue 的安全矩阵，不能由包级单测代替 |
 | OpenAPI、Protobuf、事件或跨服务调用 | 生产者与消费者的单元、契约、集成测试；`./mvnw verify` 的兼容性/工程门禁；前端消费者执行 `pnpm --dir consoles run verify` |
-| Flyway | 遵守迁移不可变规则；`java script/FlywayMigrationGenerator.java validate` 与对应数据库迁移/隔离集成测试 |
+| Flyway | 遵守迁移不可变规则；对应数据库的迁移与隔离集成测试（Testcontainers），必要时以 Fresh Compose 复现迁移执行 |
 | Nacos | 对应 revision 递增；`bash scripts/validate-nacos-config.sh` 与相关服务验证；权限、发布或恢复变更补相应专项入口 |
-| Design System 国际化资源新增或移动 | 更新资源校验入口；`pnpm --dir consoles run validate:i18n` 与 `pnpm --dir consoles run build:workspace`，保留 tree-shake 检查 |
+| 共享 UI 国际化资源新增或移动 | 更新 `consoles/scripts/validate-i18n-resources.mjs` 的发现范围；`pnpm --dir consoles run validate:i18n` 与 `pnpm --dir consoles run build:workspace`，保留 tree-shake 检查 |
 | 共享 UI/布局、浏览器行为 | 消费者包级验证与对应浏览器测试；日常使用 Chromium，稳定画面变化执行 `pnpm --dir consoles run test:visual` 的固定 Linux 比较，详见[共享测试基线](console-testing-baseline.md)；必要的产品验收使用 Chrome |
 | 具体 Issue / PRD 明确要求的本地、fresh 或端到端验收 | 除兼容矩阵按 ADR 0046 收缩外，原要求继续有效 |
 

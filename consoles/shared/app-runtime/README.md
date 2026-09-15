@@ -22,5 +22,5 @@ Remote 逻辑。
 Access Token 与计算后的到期时间只保存在 Runtime 闭包内；消费方不能读取 Token、取得通用凭据型
 `fetch`、覆盖 API Origin，或注入 Cookie、Origin、Fetch Metadata、Authorization 等安全请求头。
 
-启动与认证状态的用户界面由 `@saas-forge/design-system` 和后续共享 React Shell 拥有。消费方只把本包的
-安全状态映射到公共视觉组件，不能在本包增加 React 组件、CSS 或其他视觉实现。
+启动与认证状态的用户界面由 `@saas-forge/admin` 及两个 Console 入口拥有。消费方只把本包的
+安全状态映射到公共视觉组件，不能在本包增加 Vue 组件、CSS 或其他视觉实现。
