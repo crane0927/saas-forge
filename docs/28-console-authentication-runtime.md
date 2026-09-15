@@ -1,5 +1,7 @@
 # Console 认证 Runtime 与浏览器会话规格
 
+> **目标更新**：本文的双 Console、登录前 Intent、独立槽位退出属于现行 v1 与历史规格。#201/#202 已确认新版统一 Console，协议见[统一认证方案](unified-authentication-protocol.md)与 [ADR 0052](adr/0052-unified-console-authentication-uses-versioned-session-protocol.md)（已确认、未实施）。本文既有验收仍仅证明原版本，不证明新版已完成；历史基线与一次性兼容例外不变。
+
 **状态：认证 Runtime、双 Browser Session Slot、两个 Console 认证 Shell、Tenant Context Switch 与多标签页协调已有实现与验收记录；品牌统一解析、素材预加载与原子应用已实现，证据见 [Issue #147 验收记录](acceptance/issue-147-brand-runtime.md)。本文是规格而不是当前构建通过证据。**
 
 > **包名更新**：本文原先以自建 `@saas-forge/design-system` 与共享 React Shell 表述共享 UI 边界，二者已按 [ADR 0050](adr/0050-consoles-adopt-soybean-element-plus.md) 替换为 `@saas-forge/admin`（Vue 3 + Element Plus + Soybean Admin）。正文已按当前仓库更新，认证语义、会话槽位、幂等与品牌原子应用规则不变。

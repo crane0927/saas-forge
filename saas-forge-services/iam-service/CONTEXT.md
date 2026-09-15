@@ -53,8 +53,20 @@ IAM 为一个 Membership 或 Tenant 建立的安全边界，使目标范围在�
 _Avoid_: Tenant Suspension, Membership status, jti blacklist
 
 **Login Context Intent**:
-浏览器登录时对 Platform 或 Tenant 工作上下文的显式选择；它不携带或证明任何 Role、Membership 或 Tenant 身份。
+旧版浏览器认证中，登录前对 Platform 或 Tenant 工作上下文的显式选择；它不携带或证明任何 Role、Membership 或 Tenant 身份，也不等同于统一登录后的工作上下文选择。
 _Avoid_: Tenant selection, inferred login origin
+
+**Unified Console Session**:
+统一 Console 中绑定一个 Identity 和至多一个当前工作上下文的浏览器会话；同一浏览器的所有 Console 标签页共享它的身份、工作上下文与结束状态。
+_Avoid_: Platform session plus tenant session, account switch, global identity session
+
+**Available Work Context**:
+一个 Identity 当前可选择的平台管理或公司工作范围，分别以 Platform Role 或 Accessible Membership 为授权依据；它是候选资格，不是后续操作的授权承诺。
+_Avoid_: Menu permission, login intent, tenant operation target
+
+**Unselected Console Session**:
+已完成常规凭据认证但尚未建立工作上下文的统一会话，可因没有候选而等待授权，也可等待选择已有候选；它不授予业务访问权限，也不等同于 Initial Credential Session。
+_Avoid_: Anonymous session, initial credential session, platform session
 
 **Platform Role**:
 在 Platform 全局范围内授予权限的角色，与只在单个 Tenant 内生效的 Tenant Role 相互独立。
