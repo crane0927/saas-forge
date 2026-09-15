@@ -1,6 +1,6 @@
 # Console 国际化基线
 
-状态：已实现。Q1–Q14 的公开接口、交付顺序及验收矩阵已按本文交付，PRD [Issue #117](https://github.com/crane0927/saas-forge/issues/117) 已关闭；资源门禁 `pnpm --dir consoles run validate:i18n` 已接入 `build:workspace` 与 `verify:workspace`。本文继续作为实施规格；包名与当前实现状态见下方说明与[当前仓库事实与衔接点](#当前仓库事实与衔接点)。
+状态：公开接口、资源门禁与验收矩阵已实现，**两个 Console 的 Locale 收敛未完成**。Q1–Q14 的公开接口、交付顺序及验收矩阵已按本文交付，PRD [Issue #117](https://github.com/crane0927/saas-forge/issues/117) 已关闭；资源门禁 `pnpm --dir consoles run validate:i18n` 已接入 `build:workspace` 与 `verify:workspace`。本文继续作为实施规格；包名与当前实现状态见下方说明与[当前仓库事实与衔接点](#当前仓库事实与衔接点)，已确认但未达成的项集中在[未达成项](#未达成项)。
 
 > **包名更新**：本文原先以 `@saas-forge/react-shell` 与 `@saas-forge/design-system` 表述共享 UI 载体，二者已按 [ADR 0050](adr/0050-consoles-adopt-soybean-element-plus.md) 替换为 `@saas-forge/admin`（Vue 3 + Element Plus + Soybean Admin）。正文已按当前仓库更新，语言解析、偏好存储、资源门禁与回退语义不变。
 
@@ -100,14 +100,23 @@ PRD：[Issue #117 — 建立 Console 中英文国际化基线与可扩展 Locale
 ## 当前仓库事实与衔接点
 
 - `@saas-forge/i18n`（`consoles/shared/i18n`）提供 `SupportedLocale`、语言注册表、`resolveLocale`、`defineMessages`、`createTranslator` 与 `formatDate`/`formatInstant`/`formatNumber`/`formatMoney`；注册表位于 `src/locale-registry.json`，当前默认语言是 `en-US`。
-- `@saas-forge/admin` 在 `runtime/context.ts` 中以 `resolveLocale(navigator.languages)` 初始化 Locale、读写 `sf:ui:locale`，并在变化时同步 `document.documentElement.lang`；`useShellText()` 通过 `createTranslator({ namespace, locale, messages })` 翻译公共文案，公共资源按模块拆在 `src/messages/authentication/` 与 `src/messages/recovery/`。
+- `@saas-forge/admin` 的 `runtime/context.ts` 提供 `useLocale()`：以 `resolveLocale(navigator.languages)` 初始化 Locale、读写 `sf:ui:locale`，监听 `storage`、`languagechange` 与 `visibilitychange`，并在变化时同步 `document.documentElement.lang`；`useShellText()` 通过 `createTranslator({ namespace, locale, messages })` 翻译公共文案，公共资源按模块拆在 `src/messages/authentication/` 与 `src/messages/recovery/`。该 hook 目前只有 tenant-console-shell 使用（由 `ConsoleApplication.vue` 调用）。
 - 两个 Console 各自维护业务资源并传给共享 Runtime：`tenant-console-shell` 在 `main.ts` 中用 `createTranslator` 构造导航文案后交给 `mountConsole`；`platform-console` 在 `src/messages/` 声明 `platformMessages` 并在 `use-platform.ts` 中接入。
-- platform-console 另有模板自带的 `src/locales/`（`vue-i18n` + `intl-messageformat`），负责官方登录页与后台壳文案；它自行匹配浏览器语言并读写同一个 `sf:ui:locale` 键，与 `@saas-forge/admin` 的 Locale 是两个独立引用。**这是已知缺口**：同一页面的两处语言状态可能不同步，收敛方向见 [ADR 0051](adr/0051-consoles-use-complete-soybean-applications.md) 与 Issue #199。
+- platform-console 的 Locale 由模板自带的 `src/locales/`（`vue-i18n` + `intl-messageformat`）持有：`App.vue` 把这个 `locale` 经 `consoleContextKey` 提供给 `@saas-forge/admin`，因此**同一页面只有一个 Locale 状态，不存在两处并行引用**。tenant-console-shell 走另一条路：`mountConsole` 渲染的 `ConsoleApplication.vue` 调用 `useLocale()` 自建 Locale。两个实现读写同一个 `sf:ui:locale` 键，但行为并不等价，差异见下方[未达成项](#未达成项)。收敛方向见 [ADR 0051](adr/0051-consoles-use-complete-soybean-applications.md) 与 Issue #199。
 - 资源门禁 `consoles/scripts/validate-i18n-resources.mjs` 自动发现任一层级 `src/messages`、`src/locales` 下含 JSON 的目录，检查缺失/多余键、重复键、非字符串值、空白消息、ICU 语法、参数类型一致性与未允许的富文本标签；`build:workspace` 与 `verify:workspace` 均已接入，`en-US` 作为键的基准集合。
 - 静态 Remote 消费夹具（`business-remotes/admin-consumer-fixture`）由宿主传入只读 `locale` 属性；真实 Manifest/Remote 加载尚未实现，其语言验收仍属后续阶段。
 - 认证规格已要求 Problem 映射输出稳定本地语义键和安全参数，二者共用本切片的中英文资源。
 - 浏览器存储安全验收已放行 `sf:ui:locale` 并限定为已启用语言枚举，继续拒绝其他敏感状态持久化。
 - 配置加载或验证失败页在认证 Runtime 创建前即可出现；语言初始化因此在应用入口完成（`platform-console/src/main.ts` 先 `setupI18n(app)` 再挂载），根故障路径仍可取得语言。
+
+### 未达成项
+
+以下各点本文正文已作要求，但当前实现尚未满足。它们既是 [#199](https://github.com/crane0927/saas-forge/issues/199) 需要承接的范围，也是阅读本文时不能把正文当作现状的地方：
+
+- **§12 的"标签页重新激活时重新读取"只在 admin 侧成立**。`@saas-forge/admin` 的 `useLocale()` 监听了 `visibilitychange`（`shared/admin/src/runtime/context.ts`），而 platform-console 的 `src/locales/index.ts` 只监听 `storage` 与 `languagechange`，没有 `visibilitychange`；platform-console 激活标签页后不会重读存储中的最新偏好。
+- **platform-console 的语言集合写死为两个值**。`platform-console/src/locales/index.ts` 用 `type Locale = 'zh-CN' | 'en-US'` 与同值的 `supported()`，不读 `@saas-forge/i18n` 的语言注册表。因此 §5「新语言扩展」在 platform-console 上无法只改注册表完成，必须同时改这个文件。
+- **富文本处理存在分歧**。platform-console 的 `messageCompiler` 用 `IntlMessageFormat(message, locale, undefined, { ignoreTag: true })`，而 `@saas-forge/i18n` 的 `createTranslator` 走自己的 ICU 路径；同一份消息在两个 Console 上的标签处理语义可能不同。
+- **`index.html` 硬编码文档语言**。两个应用的 `index.html` 都写 `lang="zh-CN"`。两个实现都用 `immediate` 的 watcher 在渲染前把 `document.documentElement.lang` 改成实际 Locale，因此影响限于脚本执行前的短暂窗口，以及任何不执行 JS 的消费者（`en-US` 用户会先拿到错误的语言标注）。
 
 ## 已确认的实现契约
 

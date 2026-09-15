@@ -6,6 +6,7 @@
 
 - 按 [ADR 0050](../docs/adr/0050-consoles-adopt-soybean-element-plus.md) 使用 [Soybean Admin Element Plus 官方仓库](https://github.com/soybeanjs/soybean-admin-element-plus)，技术栈为 Vue 3、Element Plus、Vue Router、Pinia、TypeScript 和 Vite。
 - 上游源码固定提交及许可证见 [UPSTREAM.md](shared/admin/src/vendor/soybean/UPSTREAM.md)。沿用上游布局和组件范式，业务页面直接使用 Element Plus。已有 UI 偏好及完整迁移范围见 [实施计划](../docs/plans/console-soybean-element-plus-refactoring.md)。
+- [ADR 0051](../docs/adr/0051-consoles-use-complete-soybean-applications.md) 已确认最终形态是直接基于完整官方应用开发（含登录页、布局、主题与导航），由 Issue #199 追踪。该迁移**尚未实施**：`shared/admin` 与 `shared/i18n` 仍然存在，tenant-console-shell 仍通过 `mountConsole` 挂载自建 `Workspace.vue`。改动这两个包时按"将被迁出"对待，不要在其上继续加深耦合。
 - 两个 Console 共享基础能力与版本，分别保留入口和浏览器安全边界。纯 TypeScript `api-client` 与 `app-runtime` 复用；React 页面与 Hook 迁移为 Vue SFC 和 Composable。
 - 会话凭据由 Runtime 私有持有。适配模板时保留项目认证、原操作恢复、品牌切换、脏表单退出、国际化与无障碍语义。
 - 正式入口已使用 Vue；不得重新引入旧 React 页面、旧 UI 包、Ant Design 工具或双框架兼容层。
@@ -17,7 +18,7 @@
 - 在线文档会更新；当前组件版本见 `shared/admin/package.json` 和锁文件。涉及版本差异时核对安装包类型声明与固定提交，避免照搬在线文档中新版本 API。
 - 在 `consoles` 执行 `pnpm install --frozen-lockfile`。验证命令分三层，按改动范围选择，不要把某一层的通过当成更高层通过：
   - **工作区级**（在 `consoles` 执行，递归或聚合覆盖所有具备该脚本的包）：`pnpm run typecheck`、`pnpm run lint`、`pnpm run format:check`、`pnpm run test`、`pnpm run test:browser:chromium`。完整门禁是 `pnpm run verify`（= `generate:api` + `typecheck` + `lint` + `format:check` + `test` + `test:browser:chromium` + `build:workspace`）。
-  - **单包级**：`@saas-forge/platform-console`、`tenant-console-shell`、`app-runtime`、`i18n` 与 `admin-consumer-fixture` 各有自己的 `verify`。`@saas-forge/admin` **没有** `verify`，只有 `typecheck`、`lint`、`test`、`test:browser`、`build`；其中 `test:browser` 不在任何 `verify` 链中，必须显式执行。`@saas-forge/api-client` 只有 `typecheck`。
+  - **单包级**：7 个 `@saas-forge/*` 工作区包（`admin`、`admin-consumer-fixture`、`api-client`、`app-runtime`、`i18n`、`platform-console`、`tenant-console-shell`）都各有自己的 `verify`。其中 `@saas-forge/admin` 的 `verify` 含 `test:browser`，`@saas-forge/api-client` 的 `verify` 只含 `typecheck`。
   - **仅工作区根具备**：`validate:i18n`、`build:workspace`、`generate:api`、`test:visual`。
   - 用 `pnpm --filter <包> run <脚本>` 时注意：所选包没有该脚本时 pnpm 会**静默跳过并返回退出码 0**。判断"某包的检查是否真的跑过"必须看输出，不能只看退出码。
 - 工作区统一使用 Vue 插件支持的 ESLint 9，根 lint 命令同时检查纯 TypeScript 与 Vue 模块。第三方上游源码保留原样，项目适配代码纳入检查。

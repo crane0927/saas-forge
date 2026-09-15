@@ -10,4 +10,4 @@ MVP 阶段的两个 Console 与全部官方 Remote 必须使用完全相同的 D
 
 共享认证状态、HTTP 和路由组合不归 Design System 所有。[ADR 0039](0039-consoles-share-one-authentication-runtime.md) 保持 `app-runtime` 无 UI，另以共享 React Shell 组合认证 Provider、路由守卫、导航和错误边界；Design System 只继续提供它们使用的唯一视觉与交互实现。
 
-本文的自建 Design System、固定 Ant Design 6.6.2 与共享 React Shell 实现已由 [ADR 0050](0050-consoles-adopt-soybean-element-plus.md) 替代：两个 Console 改用 Vue 3 与 Element Plus，`@saas-forge/design-system`、`@saas-forge/react-shell` 及其门禁脚本已从工作区移除，共享 UI 载体改为 `@saas-forge/admin`。“单一 UI 来源、消费者不得自带同类实现、品牌只能原子改变、`app-runtime` 保持无 UI”等边界原则继续有效。本文提到的 Remote Manifest 版本协商尚未实现，`consoles/business-remotes/` 目前只有验收夹具。
+本文的自建 Design System、固定 Ant Design 6.6.2 与共享 React Shell 实现已由 [ADR 0050](0050-consoles-adopt-soybean-element-plus.md) 替代：两个 Console 改用 Vue 3 与 Element Plus，`@saas-forge/design-system`、`@saas-forge/react-shell` 及其门禁脚本已从工作区移除，共享 UI 载体改为 `@saas-forge/admin`（该载体本身将按 [ADR 0051](0051-consoles-use-complete-soybean-applications.md) 迁入两个官方应用结构，尚未实施）。“单一 UI 来源、消费者不得自带同类实现、品牌只能原子改变、`app-runtime` 保持无 UI”等边界原则继续有效。本文提到的 Remote Manifest 版本协商尚未实现，`consoles/business-remotes/` 目前只有验收夹具。

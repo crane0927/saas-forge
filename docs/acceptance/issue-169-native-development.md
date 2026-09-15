@@ -1,6 +1,8 @@
 # Issue #169：完整原生开发流程与默认文档
 
 > **历史证据**：本文保留当时的验收记录与命令输出，不代表当前实现或当前门禁。其中的前端包名、界面描述与门禁计数可能属于已被 [ADR 0050](../adr/0050-consoles-adopt-soybean-element-plus.md) 替换的自建 Design System / React Shell 时期；当前 Vue 实现与验证入口见 [Console 设计规范](../25-design-system.md)、[Console 认证 Runtime](../28-console-authentication-runtime.md) 与 [测试基线](../console-testing-baseline.md)，复现按 [本地分层验证](../local-verification.md)。
+>
+> **模板裁定（2026-09-15）**：下表条目 2 与本页父规格映射第 1 项的"五份模板""模板检查"**已不成立**。仓库中没有本地配置模板文件，5 处 `maven-jar-plugin` 也不再排除 `application-local.yml.example`；「本地开发」规范与各服务原生启动说明统一为"配置由开发者在 Git 忽略的文件中自行维护，仓库不提供可提交模板"。此处只更正结论，原记录文字按历史事实保留。
 
 2026-09-13，依据 [#169](https://github.com/crane0927/saas-forge/issues/169) 与父规格 [#161](https://github.com/crane0927/saas-forge/issues/161)。本轮开始 HEAD 为 `917039ff54a3d02389196bc7214af5247696d00b`，工作区干净。修改仅涉及开发与验收文档，没有修改应用代码、API、迁移、运行配置、CI 或应用生命周期。
 

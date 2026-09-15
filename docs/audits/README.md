@@ -12,7 +12,7 @@
 
 | 报告 | 审计基线 | 状态 |
 | --- | --- | --- |
-| [historical-decision-noise.md](historical-decision-noise.md) | `2dc1edb`（2026-09-15） | 第 1 批 `cdba104`、第 2 批 `273e4a2` 已落地；第 3 批待决策 |
+| [historical-decision-noise.md](historical-decision-noise.md) | `2dc1edb`（2026-09-15） | 第 1 批 `cdba104`、第 2 批 `273e4a2`、第 3 批 `bc69d16` + `0ee459e` + 本文所在提交，均已落地 |
 
 ## 与 `docs/archive/` 的区别
 
