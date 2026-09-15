@@ -1,8 +1,7 @@
 /* global document, window */
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
-import { createServer } from 'vite';
+import { createConsoleTestServer } from './console-test-server.mjs';
 import { chromium, firefox, webkit } from 'playwright';
 
 // 聚焦默认应用入口的浏览器能力接线；模拟 HTTP 仅用于快速回归，不替代真实 TLS/IAM 验收。
@@ -11,11 +10,7 @@ for (const [application, directory, heading] of [
   ['Tenant', 'tenant-console-shell', 'Tenant 工作台'],
 ]) {
   test(`default ${application} Console entry coordinates a single refresh across native tabs`, async (t) => {
-    const root = fileURLToPath(new URL(`../${directory}`, import.meta.url));
-    const server = await createServer({
-      root,
-      server: { host: '127.0.0.1', port: 0, strictPort: false, hmr: false },
-    });
+    const server = await createConsoleTestServer(directory);
     t.after(() => server.close());
     await server.listen();
     const browser = await { chromium, firefox, webkit }[
@@ -132,11 +127,7 @@ for (const [application, directory, heading] of [
 test('Platform 与 Tenant Console 的 Locale 偏好按 Origin 隔离', async (t) => {
   const [platformServer, tenantServer] = await Promise.all(
     ['platform-console', 'tenant-console-shell'].map(async (directory) => {
-      const root = fileURLToPath(new URL(`../${directory}`, import.meta.url));
-      const server = await createServer({
-        root,
-        server: { host: '127.0.0.1', port: 0, strictPort: false, hmr: false },
-      });
+      const server = await createConsoleTestServer(directory);
       await server.listen();
       return server;
     }),

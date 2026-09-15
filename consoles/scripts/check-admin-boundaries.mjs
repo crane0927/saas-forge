@@ -74,14 +74,19 @@ export async function findBoundaryViolations(root = rootDefault) {
       const source = await readFile(file, 'utf8');
       if (!/\.(?:tsx|ts|vue|js|mjs)$/.test(file)) continue;
       const relative = path.relative(root, file);
+      const applicationEntry = relative === 'platform-console/src/App.vue';
+      const themeEntry = relative === 'platform-console/src/store/modules/theme.ts';
       if (file.endsWith('.tsx')) errors.push(`${relative}: 旧 UI 文件`);
       if (
-        /credentials\s*:|Authorization|X-SF-CSRF|\bCookie\b|new\s+AuthenticationApi|@saas-forge\/api-client|createAuthenticationRuntimeAfterConfig\s*\(/.test(
+        /credentials\s*:|Authorization|X-SF-CSRF|\bCookie\b|new\s+AuthenticationApi|@saas-forge\/api-client/.test(
           source,
         )
       )
         errors.push(`${relative}: 不得实现凭据或第二个 Runtime`);
-      if (/\bfetch\s*\(/.test(source)) errors.push(`${relative}: 业务 HTTP 必须通过 Runtime`);
+      if (!applicationEntry && /createAuthenticationRuntimeAfterConfig\s*\(/.test(source))
+        errors.push(`${relative}: 不得创建第二个 Runtime`);
+      if (!applicationEntry && /\bfetch\s*\(/.test(source))
+        errors.push(`${relative}: 业务 HTTP 必须通过 Runtime`);
       if (
         remote &&
         /localStorage|sessionStorage|navigator\.languages|useConsole|useLocale|mountConsole|createAuthenticationRuntime/.test(
@@ -89,7 +94,13 @@ export async function findBoundaryViolations(root = rootDefault) {
         )
       )
         errors.push(`${relative}: Remote 只能消费宿主传入的语言及主题`);
-      errors.push(...brandBoundaryViolations(source, relative, { remote }));
+      errors.push(
+        ...brandBoundaryViolations(source, relative, {
+          remote,
+          providerEntry: applicationEntry,
+          themeEntry,
+        }),
+      );
     }
   }
   const report = await adminDependencyReport(root);
@@ -270,7 +281,8 @@ export function brandBoundaryViolations(source, file, options = {}) {
     if (
       ts.isBinaryExpression(node) &&
       node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-      node.left.getText(sourceFile) === 'document.title'
+      node.left.getText(sourceFile) === 'document.title' &&
+      !options.themeEntry
     ) {
       report(node, '消费者不得独立应用品牌标题。');
     }
@@ -279,11 +291,13 @@ export function brandBoundaryViolations(source, file, options = {}) {
   visit(sourceFile);
   if (
     file.endsWith('.vue') &&
+    !options.providerEntry &&
     [...providerAliases].some((name) => new RegExp('<' + name + '(?:\\s|/|>)').test(source))
   )
     violations.push(`${file}: 消费者不得安装主题 Provider`);
   if (
     file.endsWith('.vue') &&
+    !options.providerEntry &&
     /<ElConfigProvider|<link[^>]+rel=["']icon|["']\/brands\//.test(source)
   )
     violations.push(`${file}: 消费者不得安装主题或引用品牌素材`);

@@ -12,7 +12,13 @@ const ui = [
 ];
 export default tseslint.config(
   {
-    ignores: ['**/.generated/**', '**/dist/**', '**/node_modules/**', 'shared/admin/src/vendor/**'],
+    ignores: [
+      '**/.generated/**',
+      '**/dist/**',
+      '**/node_modules/**',
+      'shared/admin/src/vendor/**',
+      'platform-console/src/vendor/**',
+    ],
   },
   {
     files: ['**/*.{js,mjs,cjs}'],

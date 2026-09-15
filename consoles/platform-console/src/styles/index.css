@@ -1,0 +1,51 @@
+@import '@saas-forge/admin/styles.css';
+:root {
+  --primary-color: #2563eb;
+}
+.text-primary {
+  color: var(--primary-color);
+}
+.text-secondary {
+  color: var(--el-text-color-regular);
+}
+.bg-container {
+  background: var(--console-container);
+}
+.bg-layout {
+  background: var(--console-layout);
+}
+.shadow-header {
+  box-shadow: var(--console-header-shadow);
+}
+.shadow-sider {
+  box-shadow: var(--console-sider-shadow);
+}
+.shadow-tab {
+  box-shadow: var(--console-header-shadow);
+}
+.card-wrapper {
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 3%);
+}
+.login-page {
+  min-height: 540px;
+}
+.login-page .el-card {
+  border-radius: 12px;
+}
+.login-page .el-alert {
+  margin-bottom: 16px;
+}
+:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 2px;
+}
+html.dark .text-primary {
+  color: #93c5fd;
+}
+html.dark .el-select__placeholder {
+  color: var(--el-text-color-primary);
+}
+html.dark .el-menu-item.is-active {
+  color: #93c5fd;
+}

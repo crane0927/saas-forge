@@ -5,6 +5,7 @@ export { useAuthenticationRuntime } from './runtime/authentication';
 
 export { mountConsole } from './application/mount';
 export {
+  consoleContextKey,
   useConsole,
   useShellText,
   useRead,

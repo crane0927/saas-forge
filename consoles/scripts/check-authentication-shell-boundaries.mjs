@@ -21,5 +21,10 @@ export async function findAuthenticationShellBoundaryViolations(
       errors.push(`${file}: 非法 HTTP 边界`);
   }
   if (creation !== 1) errors.push('共享 ConsoleApplication 必须只创建一个 Runtime');
+  const platform = await readFile(path.join(root, 'platform-console/src/App.vue'), 'utf8');
+  if ((platform.match(/createAuthenticationRuntimeAfterConfig\s*\(/g) ?? []).length !== 1)
+    errors.push('Platform App 必须只创建一个 Runtime');
+  const entry = await readFile(path.join(root, 'platform-console/src/main.ts'), 'utf8');
+  if (/mountConsole/.test(entry)) errors.push('Platform 不能同时挂载旧认证应用');
   return errors;
 }

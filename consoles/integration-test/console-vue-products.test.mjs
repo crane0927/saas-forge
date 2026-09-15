@@ -1,8 +1,7 @@
 /* global document, innerWidth */
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
-import { createServer } from 'vite';
+import { createConsoleTestServer } from './console-test-server.mjs';
 import { chromium } from 'playwright';
 
 const id = '019535d9-0000-7000-8000-000000000002';
@@ -29,10 +28,7 @@ const pageOf = (items) => ({ items, nextCursor: null, hasMore: false });
 
 // 正式产品路由与共享类型化 Client；HTTP 模拟证据不代表真实后端验收。
 test('Vue business routes preserve operation recovery, form guards and authoritative reads', async (t) => {
-  const server = await createServer({
-    root: fileURLToPath(new URL('../platform-console', import.meta.url)),
-    server: { host: '127.0.0.1', port: 0, strictPort: false, hmr: false },
-  });
+  const server = await createConsoleTestServer('platform-console');
   await server.listen();
   const browser = await chromium.launch({ channel: process.env.SF_BROWSER_CHANNEL || undefined });
   t.after(async () => {

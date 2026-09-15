@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url';
+import { globSync, readFileSync } from 'node:fs';
 import vue from '@vitejs/plugin-vue';
 import UnoCSS from '@unocss/vite';
 import presetWind3 from '@unocss/preset-wind3';
@@ -34,7 +36,32 @@ function controlledDevelopmentRuntimeConfig(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [controlledDevelopmentRuntimeConfig(), vue(), UnoCSS({ presets: [presetWind3()] })],
+  plugins: [
+    controlledDevelopmentRuntimeConfig(),
+    vue(),
+    UnoCSS({
+      // 首屏即包含异步页面样式；使用 inline 扫描避免 UnoCSS 66 的独立文件 watcher 无法随测试服务器关闭。
+      content: {
+        inline: [
+          () =>
+            [new URL('./src/', import.meta.url), new URL('../shared/admin/src/', import.meta.url)]
+              .flatMap((directory) =>
+                [...globSync('**/*.{vue,ts}', { cwd: fileURLToPath(directory) })].map((file) =>
+                  readFileSync(new URL(file, directory), 'utf8'),
+                ),
+              )
+              .join('\n'),
+        ],
+      },
+      presets: [presetWind3()],
+      shortcuts: {
+        'flex-center': 'flex items-center justify-center',
+        'flex-y-center': 'flex items-center',
+        'i-flex-col': 'inline-flex flex-col',
+        'flex-col-stretch': 'flex flex-col items-stretch',
+      },
+    }),
+  ],
   server: {
     // 正式本地入口只允许经共享 HTTPS Edge 访问，不能把 Vite 暴露到 LAN。
     host: '127.0.0.1',
