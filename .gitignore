@@ -5,6 +5,10 @@ target/
 node_modules/
 .pnpm-store/
 
+# 本地临时工作区：中间笔记、提交前审计报告、本机验证产物
+# 内容不属于交付物，不得作为验收证据；长期结论必须落到 docs/
+.scratch/
+
 # 本地环境与密钥
 .env
 .env.*
@@ -33,7 +37,6 @@ dist/
 coverage/
 playwright-report/
 test-results/
-.scratch/issue-156/
 consoles/shared/api-client/.generated/
 
 # 本地覆盖配置
@@ -42,13 +45,8 @@ application-local.yaml
 application-*.local.yml
 application-*.local.yaml
 
-# 共享视觉验收的临时报告、依赖缓存与失败附件
-.scratch/issue-180-visual/
-.scratch/console-visual-store/
+# 共享视觉验收的失败附件
 .vitest-attachments/
 
 # Optional personal business configuration; created only by the developer.
 application-local-file.*
-
-# Soybean layout browser verification artifacts
-.scratch/soybean-layout/
