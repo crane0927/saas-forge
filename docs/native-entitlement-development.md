@@ -74,7 +74,7 @@ docker compose run --rm --no-deps entitlement-migrate migrate
 聚焦配置及通信回归：
 
 ```bash
-mvn -pl saas-forge-services/entitlement-service,saas-forge-services/tenant-access-service -am \
+./mvnw -pl saas-forge-services/entitlement-service,saas-forge-services/tenant-access-service -am \
   -Dtest=LocalConfigurationTest,ServiceDiscoveryTest,NacosServiceEndpointsTest,DiscoveredGrpcChannelTest \
   -Dsurefire.failIfNoSpecifiedTests=false test
 ```
@@ -82,7 +82,7 @@ mvn -pl saas-forge-services/entitlement-service,saas-forge-services/tenant-acces
 相关模块完整检查：
 
 ```bash
-mvn -pl gateway,saas-forge-services/iam-service,saas-forge-services/tenant-access-service,saas-forge-services/entitlement-service -am verify
+./mvnw -pl gateway,saas-forge-services/iam-service,saas-forge-services/tenant-access-service,saas-forge-services/entitlement-service -am verify
 ```
 
 仓库完整 CI、Fresh Compose 和 Chrome 产品验收独立执行与记录。当前结果见 [Issue #165 验收记录](acceptance/issue-165-native-entitlement.md)。

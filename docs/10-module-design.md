@@ -1,39 +1,50 @@
 # saas-forge 模块设计
 
+> **状态**：本文是设计基线，描述长期有效的目标与约束，不代表对应功能已实现；当前实现状态见 [README 的当前状态](../README.md#当前状态) 与开放 Issues，进度勾选见 [MVP 开发计划](16-mvp-development-plan.md)。涉及前端界面的部分写作于自建 Design System / React Shell 时期，已由 [ADR 0050](adr/0050-consoles-adopt-soybean-element-plus.md) 替代；现行实现是 Vue 3 + Element Plus + Soybean Admin。
+
 ## 顶层结构
+
+以下为当前实际目录结构。Maven 模块以各自的 `pom.xml` 为准；无 `pom.xml` 的目录是文档或契约资料目录，不是 Maven 模块。
 
 ```text
 saas-forge
 ├── saas-forge-services
-│   ├── saas-forge-service-discovery
 │   ├── iam-service
 │   ├── tenant-access-service
 │   ├── entitlement-service
-│   └── audit-service
+│   ├── audit-service
+│   └── saas-forge-service-discovery        # Nacos gRPC 服务发现支持库，不是可部署应用
 ├── gateway
 ├── saas-forge-contracts
-│   ├── saas-forge-http-route-catalog
-│   ├── saas-forge-openapi-contracts
-│   ├── saas-forge-protobuf-contracts
-│   ├── saas-forge-event-contracts
-│   ├── redis
-│   └── logging
+│   ├── saas-forge-http-route-catalog        # Maven 模块
+│   ├── saas-forge-openapi-contracts         # Maven 模块
+│   ├── saas-forge-protobuf-contracts        # Maven 模块
+│   ├── saas-forge-event-contracts           # Maven 模块
+│   ├── compatibility-baselines              # 契约基线资料，非模块
+│   ├── redis / logging / security / services # 契约资料，非模块
 ├── saas-forge-sdk
 │   ├── saas-forge-java
+│   │   ├── saas-forge-bom                   # BOM
+│   │   └── saas-forge-sdk-{core,auth,tenant,permission,feature,quota,audit}
 │   └── saas-forge-starters
+│       └── saas-forge-spring-boot-starter
 ├── saas-forge-quality-gates
-├── test-support
+├── test-support                             # 仅由 Maven profile 激活
 │   ├── platform-mechanism-receiver
 │   └── saas-forge-external-consumer-fixture
 ├── consoles
 │   ├── platform-console
 │   ├── tenant-console-shell
-│   ├── business-remotes
-│   └── shared
-├── examples
+│   ├── shared                               # admin / app-runtime / api-client / i18n
+│   ├── business-remotes                     # 目前只有验收夹具
+│   ├── static-remote-acceptance
+│   └── test / browser-test / integration-test
+├── examples                                 # 目前只有 README，无源码
 ├── deploy
-│   ├── compose
-│   ├── helm
+│   ├── compose                              # 共享基础设施
+│   ├── acceptance                           # 组合验收
+│   ├── docker / postgresql / nacos
+│   ├── helm                                 # 目前只有接入契约文档，无 Chart
 │   └── systemd
 ├── docs
 └── scripts
@@ -47,10 +58,10 @@ API Gateway 是边界组件，不计入领域服务数量。它不持有领域�
 
 | 服务 | 负责的领域 | 独占数据 | 同步协作 |
 |---|---|---|---|
-| `iam-service` | Identity、密码凭据、会话、JWT、Refresh Token、Client Credentials、JWKS | Identity、Credential、Refresh Token、OAuth Client / Secret 元数据、会话与令牌撤销记录 | 登录与 Tenant 切换时调用 Tenant Access 验证 Membership；为 Tenant Access 提供 Identity/凭据建立与会话撤销 |
-| `tenant-access-service` | Tenant、Membership、Organization、RBAC、Permission、邀请、初始管理员初始化 | Tenant、Membership、Organization、Role、Permission、关联表、Invitation、跨服务工作流记录与补偿/重试工作项 | 为 IAM、SDK 提供成员和授权查询；编排管理员初始化、邀请激活、成员禁用与 Tenant 冻结 |
-| `entitlement-service` | Plan、Subscription、Feature、Quota | Plan、订阅版本与权益快照、Quota Definition / Usage / Operation | 为 SDK 提供权益与配额的强一致判定 |
-| `audit-service` | 统一审计、审计查询与导出任务 | 只追加 Audit Record、导出任务元数据 | 消费其他服务与业务系统的已提交领域事实事件 |
+| `iam-service` | Identity、密码凭据、会话、JWT、Refresh Token、Client Credentials、JWKS | Identity、Credential、Refresh Token Family / Token、OAuth Client 与 Secret 元数据、会话与令牌撤销记录、签名密钥元数据 | 登录与 Tenant 切换时调用 Tenant Access 验证 Membership；为 Tenant Access 提供 Identity/凭据建立与会话撤销 |
+| `tenant-access-service` | Tenant、Membership、Tenant 管理员初始化、Tenant 生命周期与品牌档案；Organization、通用 RBAC 目录与 Invitation 激活**未实现** | Tenant、Membership、Tenant Role 与角色绑定、品牌档案、创建/初始化/密码投递/生命周期工作流及补偿记录 | 为 IAM、SDK 提供成员和授权查询；编排管理员初始化、成员禁用与 Tenant 冻结 |
+| `entitlement-service` | Plan、Subscription、Quota Definition 与 Quota 计量；Feature 运行时闭环与订阅版本化**未实现** | Plan 与 `plan_quotas`、Subscription、Quota Definition / Usage / Operation 及幂等与恢复记录 | 为 SDK 提供配额判定；额度上限实时从 Plan 读取，当前没有不可变权益快照 |
+| `audit-service` | 统一审计与成功事实消费；审计查询与导出**未实现** | 只追加 Audit Record、消费去重与隔离处置表 | 消费其他服务与业务系统的已提交领域事实事件 |
 
 服务之间禁止共享领域代码、实体、数据库模型、数据库表和迁移。跨服务共享物仅为版本化 OpenAPI / Protobuf / 事件契约、Redis 安全基础设施契约、日志 Schema、通用安全与可观测性库以及构建 BOM。契约类型在服务边界映射为各服务自己的内部模型。
 
@@ -69,9 +80,13 @@ All services → Kafka Outbox → Audit / cache invalidation consumers
 
 ## 前端模块
 
-`platform-console` 与 `tenant-console-shell` 是独立部署应用。Shell 统一处理登录、Tenant 切换、路由、菜单、错误边界和共享依赖；业务模块以 Module Federation Remote 独立构建、独立部署。
+`platform-console` 与 `tenant-console-shell` 是两个独立部署的 Vue 3 + Element Plus 应用，共享 `@saas-forge/admin`（Soybean 布局、认证界面、品牌与 Locale）、`@saas-forge/app-runtime`（无 UI 认证状态机）、`@saas-forge/api-client`（生成式 REST Client）与 `@saas-forge/i18n`。它们在各自受控 Origin 独立运行；允许的浏览器来源只有 `platform.<root>` 与 `console.<root>`。`consoles/business-remotes/admin-consumer-fixture` 只是验证共享 UI 消费边界的夹具。
 
-Remote 仅能由经审核的版本化 Manifest 加载。Manifest 由业务模块 CI 以 Client Credentials 注册，包含远程入口、页面、菜单、Permission 与 Feature；平台管理员只能审核、启停和查看。Remote 只能使用 Shell 暴露的认证 API 与共享 HTTP Client，不能读取或存储 Token。
+以下属于**设计目标、尚未实现**，不得按已交付对待：
+
+- 业务模块以 Module Federation Remote 独立构建、独立部署；仓库当前无任何 Module Federation 配置或产品 Remote。
+- 仅由经审核的版本化 Manifest 加载 Remote：Manifest 由业务模块 CI 以 Client Credentials 注册，包含远程入口、页面、菜单、Permission 与 Feature，平台管理员只能审核、启停和查看。
+- Remote 只能使用宿主暴露的认证 API 与共享 HTTP Client，不能读取或存储 Token。该约束在 Remote 真正实现后仍然适用。
 
 ## 模块依赖方向
 

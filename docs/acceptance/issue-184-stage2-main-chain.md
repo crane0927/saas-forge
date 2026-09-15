@@ -1,5 +1,7 @@
 # Issue #184：中文身份与 Tenant 主链
 
+> **历史证据**：本文保留当时的验收记录与命令输出，不代表当前实现或当前门禁。其中的前端包名、界面描述与门禁计数可能属于已被 [ADR 0050](../adr/0050-consoles-adopt-soybean-element-plus.md) 替换的自建 Design System / React Shell 时期；当前 Vue 实现与验证入口见 [Console 设计规范](../25-design-system.md)、[Console 认证 Runtime](../28-console-authentication-runtime.md) 与 [测试基线](../console-testing-baseline.md)，复现按 [本地分层验证](../local-verification.md)。
+
 关联 [Issue #184](https://github.com/crane0927/saas-forge/issues/184) 与父规格 [#183](https://github.com/crane0927/saas-forge/issues/183)。
 
 > [!IMPORTANT]

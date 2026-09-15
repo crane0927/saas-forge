@@ -1,5 +1,7 @@
 # 登录页视觉改造记录
 
+> **已归档**：本文描述的实现与界面已被删除，仅作为历史证据保留。其中引用的 `consoles/shared/design-system`、`consoles/shared/react-shell` 与 React/Ant Design 页面已由 [ADR 0050](../adr/0050-consoles-adopt-soybean-element-plus.md) 替代为 Vue 3 + Element Plus + Soybean Admin。当前实现见 [Console 设计规范](../25-design-system.md)、[Console 认证 Runtime](../28-console-authentication-runtime.md) 与 [本地分层验证](../local-verification.md)。
+
 日期：2026-09-11。经设计访谈、隔离原型和两次角标调整确认后实施。权威规则在 [Design System 规范](../25-design-system.md)，本记录不创建第二套规范。
 
 ## 实现范围

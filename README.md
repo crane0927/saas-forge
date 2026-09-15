@@ -76,7 +76,7 @@ cd ..
 
 ## Compose 集成验收
 
-完整 Compose 用于演示、集成验收和专项复现；日常应用启停使用上述原生流程。`deploy/compose` 只提供共享基础设施：PostgreSQL、Redis、Kafka、Mailpit、OpenTelemetry Collector 与 Nacos，其中不包含应用服务或迁移任务。Gateway、四个领域服务和各自的 Flyway 迁移任务在各目录自己的 `compose.yaml` 中独立启停；跨服务集成验收由 `deploy/acceptance` 组合复用这些服务定义。S3 兼容对象存储不早于第 6 阶段加入。使用方式见 [deploy/README.md](deploy/README.md)。
+完整 Compose 用于演示、集成验收和专项复现；日常应用启停使用上述原生流程。`deploy/compose` 只提供共享基础设施：PostgreSQL、Redis、Kafka、Mailpit、OpenTelemetry Collector 与 Nacos，其中不包含应用服务或迁移任务。Gateway、四个领域服务和各自的 Flyway 迁移任务在各目录自己的 `compose.yaml` 中独立启停；跨服务集成验收由 `deploy/acceptance` 组合复用这些服务定义。S3 兼容对象存储按 [ADR 0036](docs/adr/0036-tenant-access-owns-controlled-tenant-brand-profiles.md) 随第 4 阶段 Tenant 品牌素材引入，第 6 阶段在分离的存储边界内复用承载 Audit 导出。使用方式见 [deploy/README.md](deploy/README.md)。
 
 详细的产品、领域、架构、安全与部署约束见 docs/。
 

@@ -1,5 +1,7 @@
 # Redis Key Registry
 
+> **状态**：本文是设计基线，描述长期有效的目标与约束，不代表对应功能已实现；当前实现状态见 [README 的当前状态](../README.md#当前状态) 与开放 Issues，进度勾选见 [MVP 开发计划](16-mvp-development-plan.md)。
+
 Redis 仅承载安全状态、限流状态和可重建缓存，不承载领域真相。所有平台 Redis Key 必须先登记后使用，登记文件位于 `saas-forge-contracts/redis/registry`，并由 `saas-forge-contracts/redis/registry.schema.json` 约束。
 
 ## Key 格式与所有权

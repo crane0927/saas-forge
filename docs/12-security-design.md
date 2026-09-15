@@ -1,5 +1,7 @@
 # saas-forge 安全设计
 
+> **状态**：本文是设计基线，描述长期有效的目标与约束，不代表对应功能已实现；当前实现状态见 [README 的当前状态](../README.md#当前状态) 与开放 Issues，进度勾选见 [MVP 开发计划](16-mvp-development-plan.md)。涉及前端界面的部分写作于自建 Design System / React Shell 时期，已由 [ADR 0050](adr/0050-consoles-adopt-soybean-element-plus.md) 替代；现行实现是 Vue 3 + Element Plus + Soybean Admin。
+
 ## 合规与安全基线
 
 首期以中国境内的个人信息保护法、数据安全法、网络安全法和等保定级评估为基线。最终等保等级必须在实施前定级，并按实际定级结论建设；不预设具体等级。

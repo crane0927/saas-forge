@@ -1,5 +1,7 @@
 # Issue #191 验证记录
 
+> **历史证据**：本文保留当时的验收记录与命令输出，不代表当前实现或当前门禁。其中的前端包名、界面描述与门禁计数可能属于已被 [ADR 0050](../adr/0050-consoles-adopt-soybean-element-plus.md) 替换的自建 Design System / React Shell 时期；当前 Vue 实现与验证入口见 [Console 设计规范](../25-design-system.md)、[Console 认证 Runtime](../28-console-authentication-runtime.md) 与 [测试基线](../console-testing-baseline.md)，复现按 [本地分层验证](../local-verification.md)。
+
 ## 实现
 
 - 分支：`codex/issue-191`；提交：`3967013`。
@@ -18,6 +20,8 @@
 - 模拟截图位于 `/tmp/issue191-evidence/`；这些截图不证明真实后端行为。
 
 ## 真实环境（2026-09-15）
+
+> 登录页范围说明：本记录「自动验证」与「真实环境」描述的登录页是当前正式 Soybean 登录页（官方波浪背景、居中卡片、品牌区与圆角主按钮）。它取代 [登录页视觉改造记录](../archive/console-login-ui.md)（仓库路径 `docs/acceptance/console-login-ui.md`）中的登录页描述：那份早期记录描述的是已被删除的自建登录 Shell（`LoginLayout` 系统名称右上角入口角标），仅作为历史保留，不代表当前登录页。
 
 - 用户自行将平台前端切换至当前 worktree；未接管其后端或 Gateway 生命周期。
 - HTTPS `/src/main.ts` 与本机 Vite 均返回200，确认返回本次 `App.vue` 入口，旧 mountConsole 未挂载。此项仅为代码来源证明。

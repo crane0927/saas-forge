@@ -1,5 +1,7 @@
 # saas-forge 套餐、功能与配额设计
 
+> **状态**：本文是设计基线，描述长期有效的目标与约束，不代表对应功能已实现；当前实现状态见 [README 的当前状态](../README.md#当前状态) 与开放 Issues，进度勾选见 [MVP 开发计划](16-mvp-development-plan.md)。
+
 ## Plan
 
 Plan 是 SaaS 产品面向客户销售或授权的套餐，例如 LIS 的试用版、基础版、专业版和旗舰版。一个部署实例只承载一个产品，因此 Plan 不属于 Application。Plan 关联 Feature、Quota、套餐配置和套餐状态。`ACTIVE` Plan 的配置更新只影响之后创建的 Subscription；既有 Subscription 使用自己的不可变权益快照，MVP 不引入 Plan 版本实体。

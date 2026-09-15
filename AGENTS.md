@@ -53,6 +53,24 @@
 
 - `@saas-forge/admin` 自有消息资源必须按可独立 tree-shake 的组件模块拆分（例如 `shared/admin/src/messages/authentication/`、`messages/recovery/`）；新增或移动资源目录必须接入 `consoles/scripts/validate-i18n-resources.mjs`，并通过 `pnpm --dir consoles run validate:i18n` 与 `pnpm --dir consoles run build:workspace`。不得因共享翻译入口将未使用组件文案打入 Console 或 Remote 首屏制品。
 
+### 文档与证据的权威顺序
+
+本仓库的文档跨越了多次实现变更，**文档描述的是目标，不一定是现状**。判断"当前实现了什么"时按以下顺序取证，冲突时以序号小的为准：
+
+1. **代码与配置**：根 `pom.xml` 与各模块 `pom.xml`、Flyway 迁移 SQL、`saas-forge-contracts/saas-forge-openapi-contracts/v1.yaml`、各 `package.json`、`compose.yaml`、`.github/workflows/`。
+2. **`CONTEXT-MAP.md`、各 `CONTEXT.md` 与 `docs/adr/`**：领域语言与已生效的决策。
+3. **`README.md` 的「当前状态」段与最新验收记录**：实现进度与实测结果。
+4. **`docs/NN-*.md` 设计文档**：设计基线与约束，不代表已实现；文首状态横幅会指出已知失效范围。
+5. **`docs/archive/`**：载体已被删除的历史文档，**只能用于追溯，不得作为实现或勾选依据**。
+
+引用任何包名、目录或脚本前，先确认它在工作区中真实存在。文档中的前端包名（如 `@saas-forge/design-system`）、依赖版本、浏览器矩阵与门禁计数最容易过期。
+
+### 工作区与临时文件
+
+- `.scratch/` 是**未纳入 Git 的本地临时工作区**，用于放中间笔记与提交前的审计报告。它不被 `.gitignore` 忽略，因此必须显式避免提交。
+- `.scratch/` 中的内容不属于交付物，**不得作为验收证据引用**，也不得假设其他环境或后续会话仍能读到；需要长期保留的结论必须落到 `docs/`。
+- 构建产物（`target/`、`dist/`、`node_modules/`）同样不提交。清理工作区残留前，先用 `git ls-files` 确认目标未被跟踪。
+
 ### Issue tracker
 
 问题与 PRD 通过本仓库的 GitHub Issues 跟踪。详见 `docs/agents/issue-tracker.md`。

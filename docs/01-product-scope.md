@@ -1,5 +1,7 @@
 # saas-forge 产品范围
 
+> **状态**：本文是设计基线，描述长期有效的目标与约束，不代表对应功能已实现；当前实现状态见 [README 的当前状态](../README.md#当前状态) 与开放 Issues，进度勾选见 [MVP 开发计划](16-mvp-development-plan.md)。涉及前端界面的部分写作于自建 Design System / React Shell 时期，已由 [ADR 0050](adr/0050-consoles-adopt-soybean-element-plus.md) 替代；现行实现是 Vue 3 + Element Plus + Soybean Admin。
+
 ## 产品能力边界
 
 `saas-forge` 负责 SaaS 通用能力：Tenant、用户与身份认证、组织、角色、权限、套餐、订阅、功能授权、配额、审计、平台管理、租户管理，以及业务系统的 SDK 接入。

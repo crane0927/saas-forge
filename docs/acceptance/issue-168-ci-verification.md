@@ -1,5 +1,7 @@
 # CI 完整门禁去重（Issue #168）
 
+> **历史证据**：本文保留当时的验收记录与命令输出，不代表当前实现或当前门禁。其中的前端包名、界面描述与门禁计数可能属于已被 [ADR 0050](../adr/0050-consoles-adopt-soybean-element-plus.md) 替换的自建 Design System / React Shell 时期；当前 Vue 实现与验证入口见 [Console 设计规范](../25-design-system.md)、[Console 认证 Runtime](../28-console-authentication-runtime.md) 与 [测试基线](../console-testing-baseline.md)，复现按 [本地分层验证](../local-verification.md)。
+
 > 当前阶段范围已由 [ADR 0046](../adr/0046-development-supports-chrome-and-jdk17.md) 调整为桌面 Chrome 当前稳定版与 JDK 17；Chromium 保留日常功能与视觉测试。本文旧矩阵的执行结果属于历史证据，不作为当前多浏览器或 JDK 21 要求。现行复现入口见 [本地验证说明](../local-verification.md)。
 
 依据 #161、#167 与 ADR 0044。实现基点为 `d20360927816a71c7c234e4a941fcc462808f29a`，不改变 #155、#159 的验收条件或状态。
@@ -61,6 +63,8 @@ bash scripts/verify-console-authentication-e2e.sh --development
 
 ## 实际记录
 
+本节全部 `.scratch/issue-168/**` 引用都是本机临时证据：`.scratch/` 是仓库未跟踪的本地临时目录（不受 Git 跟踪），相关目录与文件现已不存在，其他读者无法从仓库复现。原始记录照原样保留为历史事实；可复现的现行入口是本节列出的命令与 [本地验证说明](../local-verification.md)，证据目录由调用者通过 `SF_BRAND_EVIDENCE_DIRECTORY` 自行指定。
+
 调整前同一源码 `f789f6b215ed740176bd226efb308d9ebd31f178`：
 
 | CI 运行 | 状态 | 实际耗时 |
@@ -70,13 +74,13 @@ bash scripts/verify-console-authentication-e2e.sh --development
 | 同上专项 | success | Tenant fresh 865 秒；Nacos 248 秒（job 时间） |
 | [认证 34432705190](https://github.com/crane0927/saas-forge/actions/runs/34432705190) | success | job 2106 秒，完整验收脚本 step 2000 秒；日志 RUN/PASS 时间戳确认其中 Maven 727.471 秒，额外 Remote 构建 0.280 秒 |
 
-来源为 GitHub jobs 的 startedAt/completedAt，精度为秒，不含排队；并行 job 耗时不能相加当作墙钟耗时。原始读取存于 `.scratch/issue-168/before-*-run.json`，认证阶段时间戳分析见 `before-authentication-stage-times.json`。这两个旧运行只用于调整前基线，不能作为当前修改的通过证据。
+来源为 GitHub jobs 的 startedAt/completedAt，精度为秒，不含排队；并行 job 耗时不能相加当作墙钟耗时。原始读取存于 `.scratch/issue-168/before-*-run.json`，认证阶段时间戳分析见 `before-authentication-stage-times.json`（均为本机临时证据，已不存在，不可复现）。这两个旧运行只用于调整前基线，不能作为当前修改的通过证据。
 
 当前验证：
 
-- PASS：真实 `--product` 入口隔离文件系统回归，缺少八类前置文件及歧义 JAR 均在环境初始化前失败；与现有 pnpm/Maven 入口回归合计 16/16、0 skipped。红灯与绿灯记录位于 `.scratch/issue-168/`。
+- PASS：真实 `--product` 入口隔离文件系统回归，缺少八类前置文件及歧义 JAR 均在环境初始化前失败；与现有 pnpm/Maven 入口回归合计 16/16、0 skipped。红灯与绿灯记录位于 `.scratch/issue-168/`（本机临时证据，已不存在，不可复现）。
 - PASS：修改工作流的 YAML 解析、Bash 语法、`git diff --check`。
-- PASS：本机 `./mvnw --batch-mode --no-transfer-progress verify` 退出 0，26 个 Reactor 模块全部 SUCCESS；Maven 641 tests、0 failures、0 errors、0 skipped，前端全工作区类型检查、lint、格式、单元测试、Chromium 与构建门禁通过。macOS 27.0 arm64、JDK 17.0.12、Node 24.14.1、pnpm 11.22.0，复用已有依赖/构建缓存及 Docker；墙钟 414.56 秒，单命令最大 RSS 1,214,447,616 bytes（不是所有子进程或 Docker VM 总和）。原始记录 `.scratch/issue-168/full-verify.log`；本机时间不能与旧 CI 直接相减宣称加速。
+- PASS：本机 `./mvnw --batch-mode --no-transfer-progress verify` 退出 0，26 个 Reactor 模块全部 SUCCESS；Maven 641 tests、0 failures、0 errors、0 skipped，前端全工作区类型检查、lint、格式、单元测试、Chromium 与构建门禁通过。macOS 27.0 arm64、JDK 17.0.12、Node 24.14.1、pnpm 11.22.0，复用已有依赖/构建缓存及 Docker；墙钟 414.56 秒，单命令最大 RSS 1,214,447,616 bytes（不是所有子进程或 Docker VM 总和）。原始记录 `.scratch/issue-168/full-verify.log`（本机临时证据，已不存在，不可复现）；本机时间不能与旧 CI 直接相减宣称加速。
 - PASS：源码 `2a1d7ae502e7b267068c4739acba8c34c5f3244b` 的 [Verify 34465680489](https://github.com/crane0927/saas-forge/actions/runs/34465680489) 实际完成，8 个必要 job 全部 success；JDK 17/21、独立四浏览器、五渠道 Fresh 产品及 Nacos/Tenant 专项均执行。
 
 ### 调整后真实 CI
@@ -91,7 +95,7 @@ bash scripts/verify-console-authentication-e2e.sh --development
 
 调整前 9 个 job，累计 5218 job-seconds；调整后 8 个 job，累计 4627 job-seconds。完整 Maven 从三次变为两次。最长 job 从 2106 秒变为 2199 秒，**本次观测没有证明整体墙钟提速**。基线与本次之间还包含 #163–#167 等实现，且 runner、缓存与网络存在差异；这些是实际观测值，不是相同源码 A/B 测试，不据此计算或承诺优化比例。
 
-[脱敏 artifact 10148655272](https://github.com/crane0927/saas-forge/actions/runs/34465680489/artifacts/10148655272) 对应同一源码；核对副本为 `.scratch/issue-168/ci-evidence/`。`acceptance-run.json` 的 `commit` 与 CI SHA 一致、`dirty=false`、`target=ci`、`scope=--product`、`status=passed`，五个产品渠道、四个产品环境兼容渠道、镜像、TLS 就绪及 Compose reset 全部 passed；最终 passed 由成功清理后的出口记录。独立 Maven step 的 success 与此 JSON 合并构成本次完整 CI 证据，不改写 scope。
+[脱敏 artifact 10148655272](https://github.com/crane0927/saas-forge/actions/runs/34465680489/artifacts/10148655272) 对应同一源码；核对副本为 `.scratch/issue-168/ci-evidence/`（本机临时证据，已不存在，不可复现）。`acceptance-run.json` 的 `commit` 与 CI SHA 一致、`dirty=false`、`target=ci`、`scope=--product`、`status=passed`，五个产品渠道、四个产品环境兼容渠道、镜像、TLS 就绪及 Compose reset 全部 passed；最终 passed 由成功清理后的出口记录。独立 Maven step 的 success 与此 JSON 合并构成本次完整 CI 证据，不改写 scope。
 
 | 产品渠道 | 实际版本 | 安全探针 | 未预期错误 / 页面错误 | Remote 资源与策略 |
 | --- | --- | --- | --- | --- |
@@ -103,7 +107,7 @@ bash scripts/verify-console-authentication-e2e.sh --development
 
 失败传播证据来自 CI 中执行的真实入口负向回归：JDK 21 日志记录 16/16、0 failures、0 skipped；覆盖默认前端检查返回 41、指定包失败、真实 Maven 遇到不兼容 Node 返回 1，以及缺少八类制品或歧义 JAR 返回 1 且未开始环境初始化。两个 JDK 的该步骤均 success；结合默认步骤成功前置条件、直接执行脚本、无 `continue-on-error` 与无吞错汇总，保留必要失败到门禁的传播。没有故意破坏顶层 workflow 制造失败，也没有把本机回归冒称 CI 日志。
 
-JDK 17/21 CI 完整 Maven 日志各核对 641 tests、0 failures、0 errors、0 skipped。五个产品渠道的脱敏 TAP 各为 33/33、0 failures、0 cancelled、0 skipped；两个 JDK 中的入口回归各为 16/16。原始 job/step 元数据为 `.scratch/issue-168/after-verify-run.json`，受限原始日志为 `ci-jdk21.log` 与 `ci-jdk17-authentication.log`；只公开上述统计和白名单 artifact。
+JDK 17/21 CI 完整 Maven 日志各核对 641 tests、0 failures、0 errors、0 skipped。五个产品渠道的脱敏 TAP 各为 33/33、0 failures、0 cancelled、0 skipped；两个 JDK 中的入口回归各为 16/16。原始 job/step 元数据为 `.scratch/issue-168/after-verify-run.json`，受限原始日志为 `ci-jdk21.log` 与 `ci-jdk17-authentication.log`（均位于已不存在的本机临时目录，不可复现）；只公开上述统计和白名单 artifact。
 
 本切片的 CI 验收证据已齐全；开发四域、IDE 与其他专项证据仍独立记录。本次没有修改 #168、父 #161 或其他 Issue 的状态。此后的验收文档提交不冒称已由上述源码运行重新验证。
 

@@ -16,7 +16,7 @@ This directory provides the minimum saas-forge local runtime topology for develo
 - Redis, single-node KRaft Kafka, single-node Nacos, and the OpenTelemetry Collector
 - Separate named volumes for PostgreSQL, Redis, and Kafka
 
-S3-compatible object storage is outside this topology and will be introduced in phase 6. The Collector currently uses only the `debug` exporter; Prometheus, Loki, Tempo, and Grafana are not deployed.
+S3-compatible object storage is outside this topology. Per [ADR 0036](../../docs/adr/0036-tenant-access-owns-controlled-tenant-brand-profiles.md) a minimal capability arrives in phase 4 with tenant brand assets, and phase 6 reuses it for audit exports behind a separate storage boundary. The Collector currently uses only the `debug` exporter; Prometheus, Loki, Tempo, and Grafana are not deployed.
 
 ## Start the stack
 

@@ -1,5 +1,7 @@
 # Issue #115：Console 真实产品聚合验收
 
+> **历史证据**：本文保留当时的验收记录与命令输出，不代表当前实现或当前门禁。其中的前端包名、界面描述与门禁计数可能属于已被 [ADR 0050](../adr/0050-consoles-adopt-soybean-element-plus.md) 替换的自建 Design System / React Shell 时期；当前 Vue 实现与验证入口见 [Console 设计规范](../25-design-system.md)、[Console 认证 Runtime](../28-console-authentication-runtime.md) 与 [测试基线](../console-testing-baseline.md)，复现按 [本地分层验证](../local-verification.md)。
+
 > 当前阶段范围已由 [ADR 0046](../adr/0046-development-supports-chrome-and-jdk17.md) 调整为桌面 Chrome 当前稳定版与 JDK 17；Chromium 保留日常功能与视觉测试。本文旧矩阵的执行结果属于历史证据，不作为当前多浏览器或 JDK 21 要求。现行复现入口见 [本地验证说明](../local-verification.md)。
 
 状态：**2026-09-03，提交 `5023f24` 的 Verify 与完整五渠道产品聚合均已通过。** CI 使用已获批准的 `saas.forge.example.com` 对照根域；本地仍使用 `saas.forge.test`。远端 Issue 原有固定域名条款尚未调整，#115 / #108 及 MVP 完成状态未变更。

@@ -62,11 +62,11 @@ Tenant Access 默认 HTTP 8082、gRPC 9092、注册 IP `127.0.0.1`。可配置 `
 ## 自动化验证
 
 ```bash
-mvn -pl saas-forge-services/saas-forge-service-discovery,saas-forge-services/tenant-access-service,saas-forge-services/iam-service -am \
+./mvnw -pl saas-forge-services/saas-forge-service-discovery,saas-forge-services/tenant-access-service,saas-forge-services/iam-service -am \
   -Dtest=LocalConfigurationTest,NacosServiceEndpointsTest,DiscoveredGrpcChannelTest,SecurityAdapterTest,ReservedIamServiceAccessTokenProviderTest \
   -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
-相关边界的完整模块检查使用 `mvn -pl gateway,saas-forge-services/iam-service,saas-forge-services/tenant-access-service -am verify`。测试会使用临时数据库/Redis/Kafka 等 Testcontainers；它不托管日常应用。仓库完整 CI、Fresh Compose 和 Chrome 产品验收继续独立。
+相关边界的完整模块检查使用 `./mvnw -pl gateway,saas-forge-services/iam-service,saas-forge-services/tenant-access-service -am verify`。测试会使用临时数据库/Redis/Kafka 等 Testcontainers；它不托管日常应用。仓库完整 CI、Fresh Compose 和 Chrome 产品验收继续独立。
 
 验收记录见 [Issue #164](acceptance/issue-164-native-tenant-access.md)，明确区分自动化、真实 IDE/浏览器和未执行项。

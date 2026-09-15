@@ -1,5 +1,7 @@
 # Issue #173：Quota Definition 创建、激活与复用
 
+> **历史证据**：本文保留当时的验收记录与命令输出，不代表当前实现或当前门禁。其中的前端包名、界面描述与门禁计数可能属于已被 [ADR 0050](../adr/0050-consoles-adopt-soybean-element-plus.md) 替换的自建 Design System / React Shell 时期；当前 Vue 实现与验证入口见 [Console 设计规范](../25-design-system.md)、[Console 认证 Runtime](../28-console-authentication-runtime.md) 与 [测试基线](../console-testing-baseline.md)，复现按 [本地分层验证](../local-verification.md)。
+
 ## 结果
 
 2026-09-12 本地实现、回归及真实 Chrome/Fresh Compose 验收完成。产品套件 **35/35 通过**，随后 Compose 重置及 Chrome 浏览器门禁通过，正式脚本退出码 0。通过的源码提交为 `652a788d775be167f2b55f392f217f947406390d`，启动时 tracked 工作区干净；后续提交仅更新文档与证据。

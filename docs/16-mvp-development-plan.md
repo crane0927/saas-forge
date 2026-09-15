@@ -1,5 +1,7 @@
 # MVP 开发计划清单
 
+> **状态**：本文是设计基线，描述长期有效的目标与约束，不代表对应功能已实现；当前实现状态见 [README 的当前状态](../README.md#当前状态) 与开放 Issues。涉及前端界面的部分写作于自建 Design System / React Shell 时期，已由 [ADR 0050](adr/0050-consoles-adopt-soybean-element-plus.md) 替代；现行实现是 Vue 3 + Element Plus + Soybean Admin。勾选项只表示当时该条目的证据成立，**不表示当前仍可直接复用**；引用已删除包、依赖或浏览器矩阵的历史证据按原事实保留。
+
 ## 目标、边界与当前起点
 
 本计划以 [产品范围](01-product-scope.md) 定义的 MVP 闭环为验收目标：
@@ -10,7 +12,7 @@
 → Tenant Context、Permission、Feature、Quota 校验 → 执行业务 → 审计可查询
 ```
 
-当前仓库已完成第 1、2 阶段的大部分后端契约、服务、数据、安全与诊断型端到端切片，并已建立可独立构建的 Platform Console、Tenant Console Shell、共享 Runtime 与生成 API Client。共享认证已实现登录、首次改密、刷新、恢复和登出，并有部分真实受信 HTTPS 浏览器证据，见 [Browser Session 安全验收记录](acceptance/issue-158-browser-session-security.md)；不能再将应用宿主视为完全没有登录或真实 API 能力。Tenant/Entitlement 产品页面及必要权威读取仍有缺口，局部认证证据不代表本计划完整产品与浏览器闭环通过。Gateway 的 Password Setup 静态页不能替代最终 Console 产品路径。原有后端勾选保留，未完成专项验收的 Console 与浏览器事项保持未完成。
+当前仓库已完成第 1、2 阶段的大部分后端契约、服务、数据、安全与诊断型端到端切片；两个 Console 已切换为 Vue 3 + Element Plus（[ADR 0050](adr/0050-consoles-adopt-soybean-element-plus.md)），共享认证已实现登录、首次改密、刷新、恢复、登出与 Tenant 选择/切换，并有真实受信 HTTPS 浏览器证据，见 [Browser Session 安全验收记录](acceptance/issue-158-browser-session-security.md)。Platform 侧已交付 Tenant 创建与生命周期、管理员初始化与密码投递、Plan、Quota Definition、Subscription 与 OAuth Client 管理页面；Tenant 侧仍只有工作台，Organization、通用 RBAC 目录、Invitation 激活、Feature 运行时闭环、Audit 查询与导出、业务 Remote 均未实现。局部认证证据不代表本计划完整产品与浏览器闭环通过：第 2 阶段主链的绿色证据基线早于 Vue 切换，需按 [Issue #184](acceptance/issue-184-stage2-main-chain.md) 的时效边界重跑。Gateway 的 Password Setup 静态页不能替代最终 Console 产品路径。原有后端勾选保留，未完成专项验收的 Console 与浏览器事项保持未完成。
 
 MVP 不包含完整支付/账单/发票、公共注册和外部身份源、多语言 SDK、Schema Per Tenant 或 Database Per Tenant 隔离、CLI，以及 Helm/systemd 的完整生产交付。后两项在架构与配置上保持兼容，但按照 [路线图](15-roadmap.md) 中 Phase 1 的范围，不作为 MVP 发布阻塞项。
 
@@ -18,13 +20,13 @@ MVP 不包含完整支付/账单/发票、公共注册和外部身份源、多�
 
 ## MVP 完成定义
 
-- 本地执行 Docker Compose 后，可访问 Platform Console、Tenant Console Shell、官方 Project SaaS Example 与全部运行依赖。
-- 平台管理员可创建 Feature、Quota Definition、Plan、Tenant、Subscription，并为租户初始化管理员。
-- 租户管理员可创建组织、邀请并激活成员、创建租户角色、授权 Permission；平台角色与租户角色互不越权。
+- 本地执行 Docker Compose 后，可访问 Platform Console、Tenant Console Shell、官方 Project SaaS Example 与全部运行依赖。**Example 与对象存储尚未实现**，`examples/` 当前只有 README。
+- 平台管理员可创建 Feature、Quota Definition、Plan、Tenant、Subscription，并为租户初始化管理员。Tenant 创建/生命周期、Plan、Quota Definition、Subscription 与管理员初始化已实现；**Feature 定义与运行时闭环未实现**。
+- 租户管理员可创建组织、邀请并激活成员、创建租户角色、授权 Permission；平台角色与租户角色互不越权。**Organization、Invitation 激活与通用 Permission 目录未实现**；已实现的是 Tenant 内静态角色与角色绑定。
 - Example 的业务 API 只能通过 Java SDK/Starter 获取可信 Tenant Context，并同时正确执行 Permission、Feature 与 Quota 校验；不同租户的数据经应用层和 PostgreSQL RLS 双重隔离。
-- 登录、租户切换、授权/权益拒绝、配额操作和关键业务操作产生可查询审计记录。
+- 登录、租户切换、授权/权益拒绝、配额操作和关键业务操作产生可查询审计记录。**审计查询与导出未实现**；已实现的是成功事实消费与只追加审计记录。
 - 第 1～6 阶段分别交付对应的最终产品页面，并从全新 Compose 数据卷通过真实 Console、Gateway、服务和运行依赖完成核心成功与重要拒绝/恢复路径；接口调用、Mock、生成 Client 或 curl E2E 不能单独证明阶段产品闭环完成。
-- Platform Console、Tenant Console Shell 与业务 Remote 共享同一 Design System、认证/HTTP/错误语义和中英文国际化基线；相同场景不得出现无领域依据的样式或操作逻辑差异。
+- Platform Console、Tenant Console Shell 与业务 Remote 共享同一 UI 载体（`@saas-forge/admin`）、认证/HTTP/错误语义和中英文国际化基线；相同场景不得出现无领域依据的样式或操作逻辑差异。**业务 Remote 尚未实现**。
 - `./mvnw verify`、契约、集成、端到端、安全、性能与质量门禁全部通过，具体门禁见“9. 全链路验收与 MVP 发布门禁”。
 
 
@@ -124,25 +126,23 @@ flowchart TD
 
 **Console 工程、共享交互与浏览器基线**
 
-> **历史标注（完整重写排在第 2 批）**：本节的 `[x]` 是 Vue 切换前的完成记录，下列各项的名字与依赖已不成立——第 2 项"唯一共享 Design System 包"、第 4 项"Ant Design 6.6.2"、第 5 项交付顺序中的"共享 React Shell"、第 7 项"Design System 版本化构建期常量 / 共享 React Shell 唯一应用"。当前载体是 `@saas-forge/admin`（Vue 3 + Element Plus + Soybean Admin），见 [ADR 0050](adr/0050-consoles-adopt-soybean-element-plus.md)；第 7 项的"五浏览器 Fresh Compose"属 ADR 0046 前的事实，按 ADR 0046 保留原记录但不再是现行兼容要求。第 7 项的品牌链路本身已实现，包名以 [Console 认证 Runtime](28-console-authentication-runtime.md) 与 [Console 国际化基线](29-console-internationalization.md) 的当前描述为准；第 8 项的四域拓扑（含 `remote.saas.forge.test` 静态资源域）与当前实现一致，未失效。
-
-- [x] 建立最终产品形态的 Platform Console、Tenant Console Shell 与共享 Runtime；通过稳定包入口接入生成的 TypeScript API Client，形成可独立构建、发布静态制品和测试的应用 Shell，不建设一次性验收 Console。此项不证明登录、真实 API、受控 TLS Origin、Remote 或 Playwright 浏览器闭环。
-- [x] 建立唯一共享 Design System 包，统一颜色、排版、间距、图标、表单、表格、反馈、空态、加载态、错误态、危险操作确认、键盘与焦点恢复；Platform Console、Tenant Console 和 Remote 不得覆盖全局样式或重复实现同类组件。具体规则见 [Design System 规范](25-design-system.md)，共享边界与版本治理见 [ADR 0037](adr/0037-browser-surfaces-use-one-shared-design-system.md)。
-- [ ] 提供响应式栅格和标准分栏布局；以桌面管理场景为主，窄屏不得破坏核心流程，并满足语义化控件、键盘操作、可见焦点和基础无障碍要求。
-- [x] 使用已通过隔离原型比较并经用户确认的 Ant Design 6.6.2 作为底层组件基础，只允许由共享 Design System 封装和暴露；Console 与 Remote 不得直接依赖或覆盖 Ant Design。
-- [x] 按 [Console 认证 Runtime 与浏览器会话规格](28-console-authentication-runtime.md)建立共享认证状态机、类型化 HTTP Client、Problem Details 映射、全局导航和分层错误边界；两个 Console 复用同一实现，分别在受控 Origin 维护绑定 Login Context Intent 的 Browser Session Slot 与内存 Access Token。交付顺序固定为“契约→Gateway/IAM 安全→无 UI Runtime→共享 React Shell→Platform→Tenant/Tenant Switch→多 Origin/多标签页/Fresh Compose 验收”；只有全部切片与最终浏览器证据成立时才能勾选。
-- [x] 按 [Console 国际化基线](29-console-internationalization.md)建立 `zh-CN` 与 `en-US` 国际化基线：浏览器语言决定初始 Locale，用户切换只保存为非敏感本地 UI 偏好，Shell 向 Remote 传递当前 Locale；构建门禁保证双语翻译键一致。
-- [x] 建立由 Design System 版本化构建期常量提供的完整 Platform Brand Profile，以及“Runtime 只发布权威 Context 快照、Design System 唯一解析、共享 React Shell 唯一应用”的品牌运行时缝。未取得权威 Tenant Context、Context 读取中、切换已提交但新 Context 未恢复，或 Tenant Brand Profile 任一字段结构、颜色、受控素材引用及加载结果无效时，均完整使用平台品牌；只有一个不可变 Resolved Brand Profile 可以同时驱动显示名称、Logo、favicon、标签页标题和浅色/深色 Brand Token Set。完整链路已实现，并通过五浏览器 Fresh Compose 聚合验收，证据见 [Issue #147 验收记录](acceptance/issue-147-brand-runtime.md)；详见 [Design System 规范](25-design-system.md#4-主题与品牌)、[Console 认证 Runtime 与浏览器会话规格](28-console-authentication-runtime.md#54-tenant-context-switch) 与 [ADR 0042](adr/0042-browser-surfaces-atomically-apply-one-resolved-brand.md)。
-- [x] 在开发与端到端环境建立 `platform.saas.forge.test`、`console.saas.forge.test`、`api.saas.forge.test` 与 `remote.saas.forge.test` 的本地受信 TLS、精确 Origin、Cookie、CSRF、CORS 和 Remote 静态资源拓扑，不得以不同 `localhost` 端口作为阶段浏览器验收替代。开发三浏览器与 Fresh Compose 五浏览器证据见 [Issue #159 验收记录](acceptance/issue-159-four-domain-matrix.md)。
-  - 本项完成边界为四域名受信 HTTPS 与浏览器安全、静态资源交付：通过真实浏览器验证 API Cookie、CSRF、CORS，以及 Tenant Console 从 Remote 版本化路径无凭据加载真实静态资源，并验证不允许的 Origin 无法通过 CORS 读取。Manifest 审核启用、Shell 加载业务 Remote 与 Project/Task 闭环由第 3 阶段验收；本项静态资源证据不能替代这些验收。
+- [x] 建立最终产品形态的 Platform Console、Tenant Console Shell 与共享 Runtime；通过稳定包入口接入生成的 TypeScript API Client，形成可独立构建、发布静态制品和测试的应用 Shell，不建设一次性验收 Console。此项不证明登录、真实 API、受控 TLS Origin、Remote 或真实浏览器产品闭环。
+- [x] 建立唯一共享 UI 载体（当前为 `@saas-forge/admin`，Vue 3 + Element Plus + Soybean Admin），统一颜色、排版、间距、图标、表单、表格、反馈、空态、加载态、错误态、危险操作确认、键盘与焦点恢复；Platform Console、Tenant Console 和 Remote 不得覆盖全局样式或重复实现同类组件。共享边界与替代关系见 [ADR 0050](adr/0050-consoles-adopt-soybean-element-plus.md)；原自建 `@saas-forge/design-system` 与固定 Ant Design 6.6.2 已删除，见 [ADR 0037](adr/0037-browser-surfaces-use-one-shared-design-system.md) 的替代说明。
+- [ ] 提供响应式栅格和标准分栏布局；以桌面管理场景为主，窄屏不得破坏核心流程，并满足语义化控件、键盘操作、可见焦点和基础无障碍要求。**现状：Soybean 布局已提供侧栏与内容区，并有 1024 / 1440 两个宽度的浅色与深色快照；窄屏（≤ 768px）与完整无障碍矩阵尚未验证**，因此保持未勾选。
+- [x] 采用 Soybean Admin Element Plus（Vue 3、Element Plus、Vue Router、Pinia、TypeScript、Vite）作为应用结构与组件基础，业务页面直接使用 Element Plus；不重新引入旧 React 页面、旧 UI 包、Ant Design 工具或双框架兼容层。约束见 [ADR 0050](adr/0050-consoles-adopt-soybean-element-plus.md) 与 [consoles/AGENTS.md](../consoles/AGENTS.md)。
+- [x] 按 [Console 认证 Runtime 与浏览器会话规格](28-console-authentication-runtime.md)建立共享认证状态机、类型化 HTTP Client、Problem Details 映射、全局导航和分层错误边界；两个 Console 复用同一实现，分别在受控 Origin 维护绑定 Login Context Intent 的 Browser Session Slot 与内存 Access Token。交付顺序为“契约→Gateway/IAM 安全→无 UI Runtime→共享 admin 应用→Platform→Tenant/Tenant Switch→多 Origin/多标签页/Fresh Compose 验收”；只有全部切片与最终浏览器证据成立时才能勾选。
+- [x] 按 [Console 国际化基线](29-console-internationalization.md)建立 `zh-CN` 与 `en-US` 国际化基线：浏览器语言决定初始 Locale，用户切换只保存为非敏感本地 UI 偏好；构建门禁保证双语翻译键一致。向 Remote 传递 Locale 的部分**随 Remote 实现后才成立**，当前只有静态夹具验证。
+- [x] 建立完整 Platform Brand Profile，以及“Runtime 只发布权威 Context 快照、共享 `@saas-forge/admin` 唯一解析并原子应用”的品牌运行时缝。未取得权威 Tenant Context、Context 读取中、切换已提交但新 Context 未恢复，或 Tenant Brand Profile 任一字段结构、颜色、受控素材引用及加载结果无效时，均完整使用平台品牌；只有一个不可变 Resolved Brand Profile 可以同时驱动显示名称、Logo、favicon、标签页标题和浅色/深色 Brand Token Set。品牌链路已实现；原证据为 React/Ant Design 时期并以五浏览器 Fresh Compose 聚合验收，按 [ADR 0046](adr/0046-development-supports-chrome-and-jdk17.md) 该矩阵不再是现行兼容要求，记录见 [Issue #147 验收记录](acceptance/issue-147-brand-runtime.md)；详见 [Console 设计规范](25-design-system.md#4-主题与品牌)、[Console 认证 Runtime 与浏览器会话规格](28-console-authentication-runtime.md#54-tenant-context-switch) 与 [ADR 0042](adr/0042-browser-surfaces-atomically-apply-one-resolved-brand.md)。
+- [x] 在开发与端到端环境建立 `platform.saas.forge.test`、`console.saas.forge.test`、`api.saas.forge.test` 与 `remote.saas.forge.test` 的本地受信 TLS、精确 Origin、Cookie、CSRF、CORS 和 Remote 静态资源拓扑，不得以不同 `localhost` 端口作为阶段浏览器验收替代。当时的开发三浏览器与 Fresh Compose 五浏览器证据见 [Issue #159 验收记录](acceptance/issue-159-four-domain-matrix.md)，属 ADR 0046 前的历史事实。
+  - 本项完成边界为四域名受信 HTTPS 与浏览器安全、静态资源交付：通过真实浏览器验证 API Cookie、CSRF、CORS，以及 Tenant Console 从 Remote 版本化路径无凭据加载真实静态资源，并验证不允许的 Origin 无法通过 CORS 读取。Manifest 审核启用、Shell 加载业务 Remote 与 Project/Task 闭环由第 7 阶段验收且**尚未实现**；本项静态资源证据不能替代这些验收。
   - 静态资源验收通过不加入产品导航的验收专用入口，实际加载版本化路径下的最小 ES Module、CSS 和图片，验证模块执行、样式生效、图片解码、无凭据请求及 CORS 拒绝路径。
   - 开发与 E2E 共用同一浏览器拓扑契约、安全策略和 Remote 静态制品，允许域名后的运行方式不同：开发保留 Console 的 Vite/HMR，Remote 提供构建制品；E2E 使用构建制品、独立 Compose 项目的全新数据卷和隔离浏览器上下文。`localhost` 与容器端口只作为内部代理或服务通信地址，不能作为阶段浏览器验收入口；E2E 清理仅作用于本次验收项目。
   - 浏览器门禁按 [ADR 0046](adr/0046-development-supports-chrome-and-jdk17.md) 收缩：Chromium 用于日常功能与视觉测试，本地与 CI 的真实产品验收仅使用 Chrome；仍启用正常 TLS 校验，覆盖四域资源加载与安全拒绝路径。
   - Remote 同一版本路径的静态资源内容固定，内容变更使用新版本路径；本项验证两个版本可分别访问，缺失资源返回真实 `404`，不得回退为 Console HTML。完整升级与回退治理仍由后续阶段验收。
   - Remote 是无凭据静态资源源，仅允许 Tenant Console 通过 CORS 读取；不将静态文件定义为需要登录才能下载的私有资源。API 的 CSRF 拒绝必须在服务端阻止操作，不能仅以浏览器无法读取响应作为拒绝证据。
-- [x] 按[共享前端测试基线](13-testing-strategy.md#第-1-阶段共享前端测试基线)建立共享组件测试、无障碍检查、关键稳定状态视觉快照和 Playwright 基础设施；组件与交互状态机覆盖中英文，浏览器测试可从全新 Compose 数据卷执行。
+- [x] 按[共享前端测试基线](13-testing-strategy.md#第-1-阶段共享前端测试基线)建立共享组件测试、无障碍检查、关键稳定状态视觉快照和真实浏览器测试基础设施；浏览器测试可从全新 Compose 数据卷执行。**规划矩阵尚未建成**，现存视觉基线只有 `consoles/browser-test/__screenshots__/admin.browser.test.ts/` 下的 8 张 PNG，详见[测试策略](13-testing-strategy.md#稳定状态视觉矩阵)。
 
-**完成标准：** API、数据库、Redis 与日志基础规范已版本化；最小契约可生成骨架；Compose 能启动基础组件；CI 能构建全仓库并执行契约、迁移和 RLS 测试夹具；两个最终产品 Console 可在受控 TLS/Origin 拓扑启动，共享 Design System、认证/HTTP/错误、布局、双语和 Playwright 基线均有直接验证。当前后端基线已完成，但新增 Console 与浏览器基线未完成，因此本阶段仍为部分完成。
+**完成标准：** API、数据库、Redis 与日志基础规范已版本化；最小契约可生成骨架；Compose 能启动基础组件；CI 能构建全仓库并执行契约、迁移和 RLS 测试夹具；两个最终产品 Console 可在受控 TLS/Origin 拓扑启动，共享 UI 载体、认证/HTTP/错误、双语与真实浏览器基线均有直接验证。后端基线已完成；布局仅在桌面宽度有快照，视觉矩阵仍有缺口（见前两项），因此本阶段仍为部分完成。
 
 ### 2. 身份与租户最小闭环
 
@@ -168,7 +168,7 @@ flowchart TD
   - #171 的原生 Chrome、Fresh Compose、IAM HTTP 与共享 Runtime 证据覆盖认证及恢复；最新提交 CI 再次通过完整认证产品路径。
 - [x] Platform Console 完成“Quota Definition/Plan → Tenant → Subscription → Tenant Administrator 初始化”产品路径，读取结果必须来自真实服务权威状态。
   - #172～#177 完成最小权益、历史零额度兼容、Tenant/Subscription、管理员初始化及独立通知读取/重发；真实 Quota 消费、补偿、恢复和拒绝均有证据。
-  - 验证提交 `ed9b49dbb6bad52d9d11b8a3c88df1c617d9f408` 的 [Verify CI](https://github.com/crane0927/saas-forge/actions/runs/34747247761) 三项门禁全部成功；下载产物确认同 SHA、dirty=false、Chrome/Fresh 全阶段通过。本次仅汇总已有验收，不表示重新运行本机完整环境，也不代表 #165 或整个第 2 阶段完成。
+  - 验证提交 `ed9b49dbb6bad52d9d11b8a3c88df1c617d9f408` 的 [Verify CI](https://github.com/crane0927/saas-forge/actions/runs/34747247761) 三项门禁全部成功；下载产物确认同 SHA、dirty=false、Chrome/Fresh 全阶段通过。**该结论无法从 master 复现**：`ed9b49d`（2026-09-13）只存在于 `feature/161-native-local-development` 分支，不在 `master` 历史中（`git merge-base --is-ancestor ed9b49d HEAD` 为假），且早于 Vue 切换 `8d4c570`，其前端结论只对应当时的 React/Ant Design 控制台。本次仅汇总已有验收，不表示重新运行本机完整环境，也不代表 #165 或整个第 2 阶段完成。
 - [x] Tenant Console 完成“Password Setup → Tenant Administrator 登录 → Accessible Membership 选择 → Tenant Context Switch”，刷新页面后从权威状态恢复当前 Session 与资源上下文。
 - [x] Platform Console 完成 Tenant Suspension、显式恢复和恢复失败处理；Tenant Console 可观察旧 Token 被拒绝、Session 失效及重新登录后的恢复结果。
 - [x] Platform Console 完成 OAuth Client 创建、Secret 一次展示、结果不确定恢复、重叠轮换和吊销；Secret 不得进入浏览器持久存储、日志或重复读取接口。
@@ -291,6 +291,8 @@ flowchart TD
 **完成标准：** 关键闭环操作均能经真实 Console 查询到不可修改的 Audit Record；事件重复消费不产生重复记录；失败事件可重试并进入受监控的隔离/死信路径；导出不阻塞请求且结果文件按配置自动清理，查询、导出、下载和失败恢复均有全新 Compose 浏览器证据。
 
 ### 7. Console 整合集成、Manifest 与 Remote 治理
+
+> **本节整体未实现。** 第 7 阶段依赖 Manifest 生命周期与 Module Federation Remote，二者在仓库中均无实现：`consoles/business-remotes/` 只有验收夹具，无产品 Remote，也没有任何 Module Federation 配置。本节全部条目保持 `[ ]`，不得按已完成或"接近完成"对待。现行的多语言、品牌与错误边界语义见 [Console 国际化基线](29-console-internationalization.md)、[Console 认证 Runtime 与浏览器会话规格](28-console-authentication-runtime.md) 与 [ADR 0042](adr/0042-browser-surfaces-atomically-apply-one-resolved-brand.md)。
 
 **治理与集成**
 

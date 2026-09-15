@@ -1,5 +1,7 @@
 # saas-forge 总体架构
 
+> **状态**：本文是设计基线，描述长期有效的目标与约束，不代表对应功能已实现；当前实现状态见 [README 的当前状态](../README.md#当前状态) 与开放 Issues，进度勾选见 [MVP 开发计划](16-mvp-development-plan.md)。涉及前端界面的部分写作于自建 Design System / React Shell 时期，已由 [ADR 0050](adr/0050-consoles-adopt-soybean-element-plus.md) 替代；现行实现是 Vue 3 + Element Plus + Soybean Admin。
+
 ## 架构概览
 
 `saas-forge` 是单产品 SaaS 的 Control Plane，业务应用是 Business Plane。前者管理租户、访问控制和产品权益；后者执行具体业务。
@@ -31,7 +33,7 @@ saas-forge Server
 
 - `saas-forge` Server、控制台和业务服务可独立开发、部署、扩容和升级。
 - 业务系统通过 API / SDK / Starter 接入平台，禁止以直接读取 `saas-forge` 数据库作为正式集成方式。
-- 平台应独立运行；开发体验目标是执行 `docker compose up -d` 后获得基础服务和管理控制台。
+- 平台应独立运行；**日常开发体验目标是原生启动**（前端 `pnpm run dev`、后端 IDE Run/Debug），见 [ADR 0043](adr/0043-native-local-development-is-separate-from-environment-orchestration.md) 与 [原生开发总入口](native-local-development.md)。Docker Compose 用于集成验收与专项复现，不是日常启停入口。
 
 ## 与传统后台框架的关系
 

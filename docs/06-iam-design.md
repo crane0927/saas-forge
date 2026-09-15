@@ -1,5 +1,7 @@
 # saas-forge IAM 设计
 
+> **状态**：本文是设计基线，描述长期有效的目标与约束，不代表对应功能已实现；当前实现状态见 [README 的当前状态](../README.md#当前状态) 与开放 Issues，进度勾选见 [MVP 开发计划](16-mvp-development-plan.md)。
+
 ## IAM 能力范围
 
 IAM（Identity and Access Management）覆盖身份、登录、密码、Token、Session、租户身份切换、认证、平台管理员身份、租户用户身份、API Key 与 Client Credential。

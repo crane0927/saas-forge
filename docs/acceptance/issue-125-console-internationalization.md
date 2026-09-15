@@ -1,5 +1,7 @@
 # Issue #125 Console 国际化验收证据
 
+> **历史证据**：本文保留当时的验收记录与命令输出，不代表当前实现或当前门禁。其中的前端包名、界面描述与门禁计数可能属于已被 [ADR 0050](../adr/0050-consoles-adopt-soybean-element-plus.md) 替换的自建 Design System / React Shell 时期；当前 Vue 实现与验证入口见 [Console 设计规范](../25-design-system.md)、[Console 认证 Runtime](../28-console-authentication-runtime.md) 与 [测试基线](../console-testing-baseline.md)，复现按 [本地分层验证](../local-verification.md)。
+
 ## 验收边界
 
 本记录汇总父 PRD #117 与实现票 #118–#124 的直接证据，并记录 #125 的最终集成验证。它只覆盖当前已交付的 Platform Console、Tenant Console、共享组件与静态 Remote 消费夹具；不建设或验收 Manifest、Module Federation、真实 Remote 加载器、运行时语言包服务或后端本地化契约。

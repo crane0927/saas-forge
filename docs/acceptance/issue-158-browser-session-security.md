@@ -1,5 +1,7 @@
 # 四域双槽位与 API 安全拒绝验收（Issue #158）
 
+> **历史证据**：本文保留当时的验收记录与命令输出，不代表当前实现或当前门禁。其中的前端包名、界面描述与门禁计数可能属于已被 [ADR 0050](../adr/0050-consoles-adopt-soybean-element-plus.md) 替换的自建 Design System / React Shell 时期；当前 Vue 实现与验证入口见 [Console 设计规范](../25-design-system.md)、[Console 认证 Runtime](../28-console-authentication-runtime.md) 与 [测试基线](../console-testing-baseline.md)，复现按 [本地分层验证](../local-verification.md)。
+
 ## 范围与入口
 
 沿用 ADR 0009、0038、0039 的受控 Origin、Browser Session Slot 和共享认证 Runtime。在同一浏览器上下文中操作真实 Platform Console 与 Tenant Console；成功认证、恢复和登出全部由页面调用正式共享 HTTP Client。攻击探针单独构造非法请求，不向产品接口增加 Cookie、Origin、Fetch Metadata 或 Token 参数。

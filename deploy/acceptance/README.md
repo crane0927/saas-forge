@@ -16,7 +16,7 @@
 - Redis、单节点 KRaft Kafka、单节点 Nacos 与 OpenTelemetry Collector
 - PostgreSQL、Redis、Kafka 的独立命名卷
 
-S3 兼容对象存储不属于当前拓扑，将在第 6 阶段加入。当前 Collector 仅通过 `debug` exporter 输出遥测数据，不部署 Prometheus、Loki、Tempo 或 Grafana。
+S3 兼容对象存储不属于当前拓扑：按 [ADR 0036](../../docs/adr/0036-tenant-access-owns-controlled-tenant-brand-profiles.md) 随第 4 阶段 Tenant 品牌素材引入最小能力，第 6 阶段的 Audit 导出在分离的存储边界内复用。当前 Collector 仅通过 `debug` exporter 输出遥测数据，不部署 Prometheus、Loki、Tempo 或 Grafana。
 
 ## 启动
 

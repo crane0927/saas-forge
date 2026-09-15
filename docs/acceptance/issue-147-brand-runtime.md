@@ -1,5 +1,7 @@
 # Issue #147 完整品牌边界与浏览器验收
 
+> **历史证据**：本文保留当时的验收记录与命令输出，不代表当前实现或当前门禁。其中的前端包名、界面描述与门禁计数可能属于已被 [ADR 0050](../adr/0050-consoles-adopt-soybean-element-plus.md) 替换的自建 Design System / React Shell 时期；当前 Vue 实现与验证入口见 [Console 设计规范](../25-design-system.md)、[Console 认证 Runtime](../28-console-authentication-runtime.md) 与 [测试基线](../console-testing-baseline.md)，复现按 [本地分层验证](../local-verification.md)。
+
 ## 范围与实现
 
 本记录覆盖 #142–#147 的完整品牌运行时链路：Runtime 只发布权威 Tenant Context/原始品牌快照，Design System 唯一解析完整 Profile 与 Token，共享 React Shell 唯一应用名称、Logo、favicon、标签页标题与浅色/深色主题。Console 只整份转交结果；Remote 只继承 Token 和布局。

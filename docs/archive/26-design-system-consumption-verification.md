@@ -1,8 +1,8 @@
 # Design System 消费与浏览器验证记录
 
-> 本文保留迁移前的历史证据；当前 Vue 实现及验证入口见 [Console UI 规范](25-design-system.md) 和 [测试基线](console-testing-baseline.md)。
+> **已归档**：本文描述的实现与界面已被删除，仅作为历史证据保留。其中引用的 `consoles/shared/design-system`、`consoles/shared/react-shell` 与 React/Ant Design 页面已由 [ADR 0050](../adr/0050-consoles-adopt-soybean-element-plus.md) 替代为 Vue 3 + Element Plus + Soybean Admin。当前实现见 [Console 设计规范](../25-design-system.md)、[Console 认证 Runtime](../28-console-authentication-runtime.md) 与 [本地分层验证](../local-verification.md)。
 
-> 当前阶段范围已由 [ADR 0046](adr/0046-development-supports-chrome-and-jdk17.md) 调整为桌面 Chrome 当前稳定版与 JDK 17；Chromium 保留日常功能与视觉测试。本文旧矩阵的执行结果属于历史证据，不作为当前多浏览器或 JDK 21 要求。现行复现入口见 [本地验证说明](local-verification.md)。
+> 当前阶段范围已由 [ADR 0046](../adr/0046-development-supports-chrome-and-jdk17.md) 调整为桌面 Chrome 当前稳定版与 JDK 17；Chromium 保留日常功能与视觉测试。本文旧矩阵的执行结果属于历史证据，不作为当前多浏览器或 JDK 21 要求。现行复现入口见 [本地验证说明](../local-verification.md)。
 
 **状态：Issue #102 的仓库实现与本地 Chromium 证据已建立；Chrome、Edge、Firefox 与 WebKit 由 CI 矩阵在每次 push/PR 重放。**
 

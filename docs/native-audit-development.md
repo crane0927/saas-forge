@@ -74,7 +74,7 @@ Audit 使用两个既有消费组，不能为了获得验收结果改组名或�
 配置及就绪检查：
 
 ```bash
-mvn -pl saas-forge-services/audit-service -am \
+./mvnw -pl saas-forge-services/audit-service -am \
   -Dtest=LocalConfigurationTest,AuditServiceApplicationTest,AuditRuntimeReadinessHealthIndicatorTest \
   -Dsurefire.failIfNoSpecifiedTests=false test
 ```
@@ -82,10 +82,10 @@ mvn -pl saas-forge-services/audit-service -am \
 消费、重投与追加权限集成测试（使用独立 Testcontainers PostgreSQL/Kafka）：
 
 ```bash
-mvn -pl saas-forge-services/audit-service -am -DskipTests package
-mvn -pl saas-forge-services/audit-service -am \
+./mvnw -pl saas-forge-services/audit-service -am -DskipTests package
+./mvnw -pl saas-forge-services/audit-service -am \
   -Dit.test=SessionStartedConsumerPostgreSqlKafkaIT \
   -Dfailsafe.failIfNoSpecifiedTests=false failsafe:integration-test failsafe:verify
 ```
 
-完成改动后运行该模块全套：`mvn -pl saas-forge-services/audit-service -am verify`。这包括所有 Audit 单元与集成测试，不等于完整仓库 CI，也不等于 IDE 现场验收。日常启动不依赖这些打包/验证命令；完整五服务替换矩阵不作为本切片默认验收。结果见 [验收记录](acceptance/issue-166-native-audit.md)。
+完成改动后运行该模块全套：`./mvnw -pl saas-forge-services/audit-service -am verify`。这包括所有 Audit 单元与集成测试，不等于完整仓库 CI，也不等于 IDE 现场验收。日常启动不依赖这些打包/验证命令；完整五服务替换矩阵不作为本切片默认验收。结果见 [验收记录](acceptance/issue-166-native-audit.md)。

@@ -1,9 +1,9 @@
 # Gateway HTTP 验收
 
-Gateway 当前切片以受控下游替身执行外部 HTTP 验收。运行：
+Gateway 当前切片以受控下游替身执行外部 HTTP 验收。在**仓库根目录**运行：
 
 ```bash
-mvn -am -pl gateway test
+./mvnw -am -pl gateway test
 ```
 
 `GatewayJwksRouteTest` 验证 OpenAPI v1 中每个当前 operation 会通过所属服务的发现实例处理，并保留方法、路径、查询参数、允许的请求头、请求体和成功响应透传；同时验证任一所属服务没有健康实例时返回稳定的 `503`、Trace Context 继续或新建，以及客户端提供的转发头不会抵达下游。`GatewayProblemDetailsTest` 验证白名单之外的路由、未声明方法、合格和不合格的下游 Problem Details、连接失败及超时。

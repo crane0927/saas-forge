@@ -1,5 +1,7 @@
 # Issue #180：共享前端测试基线验收
 
+> **历史证据**：本文保留当时的验收记录与命令输出，不代表当前实现或当前门禁。其中的前端包名、界面描述与门禁计数可能属于已被 [ADR 0050](../adr/0050-consoles-adopt-soybean-element-plus.md) 替换的自建 Design System / React Shell 时期；当前 Vue 实现与验证入口见 [Console 设计规范](../25-design-system.md)、[Console 认证 Runtime](../28-console-authentication-runtime.md) 与 [测试基线](../console-testing-baseline.md)，复现按 [本地分层验证](../local-verification.md)。
+
 - 规格：[Issue #180](https://github.com/crane0927/saas-forge/issues/180)。
 - 实现起点：`b49abfee0f4e2620755ba6202a3b74e15d4e86fe`；本记录对应当前实现工作区。
 - 覆盖登记与复现命令：[共享前端测试基线](../console-testing-baseline.md)。
@@ -15,9 +17,11 @@
 | 共享 Shell 会话退出表单保护 | 通过，8/8 | `/tmp/issue180-review-tests.log`；双语脏表单继续/放弃、清洁/保存/卸载后退出 |
 | 新稳定画面浏览器矩阵 | 通过，72/72 | `/tmp/issue180-stable.log`；双语、浅深色、桌面/窄屏，每例 axe 与行为断言 |
 | 认证恢复与失败消费者矩阵 | 通过，16/16 | `/tmp/issue180-auth-browser.log`；每例恢复中→失败→显式重试→匿名登录 |
-| 首次 Linux 候选生成及审阅 | 通过，审阅 129 张 | `.scratch/issue-180-visual/run.tcWJ0N`；使用九张联系表逐项检查文字、布局、内容与焦点后复制 Linux PNG |
-| Linux 正式比对 | 通过，94 个组件＋40 个消费者测试，0 跳过 | `.scratch/issue-180-visual/run.CG8apB/{components,consumers}.json`，`exit-code.txt=0`；无 `--update`，129 张权威基线 |
+| 首次 Linux 候选生成及审阅 | 通过，审阅 129 张（历史 Design System 代际，见下注） | `.scratch/issue-180-visual/run.tcWJ0N`；使用九张联系表逐项检查文字、布局、内容与焦点后复制 Linux PNG |
+| Linux 正式比对 | 通过，94 个组件＋40 个消费者测试，0 跳过（历史 Design System 代际，见下注） | `.scratch/issue-180-visual/run.CG8apB/{components,consumers}.json`，`exit-code.txt=0`；无 `--update`，129 张权威基线 |
 | 缺失基线负向验证 | 按预期失败 | `.scratch/issue-180-visual/run.AF6KOs`，`exit-code.txt=1`；未生成/自动接受缺失基线 |
+
+上表「首次 Linux 候选生成及审阅」「Linux 正式比对」两行的「129 张权威基线」「94 个组件＋40 个消费者测试」及 `.scratch/issue-180-visual/run.CG8apB/{components,consumers}.json` 属于已被删除的自建 Design System / React Shell 代际（该代际随后被 Vue 3 + Element Plus Console 取代）：组件阶段测试随 `consoles/shared/design-system` 及其 `vitest.browser.config.ts` 一并移除，`.scratch/issue-180-visual/run.CG8apB/` 只是仓库未跟踪的 `.scratch/` 本机历史运行目录。现行 `scripts/run-console-visual-container.sh` 只调用 `vitest.consumers.browser.config.ts` 并只产出 `/evidence/consumers.json`，仓库中已不存在组件阶段入口、`components.json` 或 `consoles/shared/design-system`，因此上述组件测试数字与 129 张基线无法在当前仓库复现。本记录保留原数字作为历史事实。当前存活的视觉基线只有 `consoles/browser-test/__screenshots__/admin.browser.test.ts/` 下的 8 张 PNG：认证登录与恢复各中英文两张（`authentication-{en-US,zh-CN}-{login,recovery}-chromium-linux.png`），以及 Soybean 布局在 1024 / 1440 两个宽度下的浅色与深色各一张（`soybean-layout-{light,dark}-{1024,1440}-chromium-linux.png`）。现行入口为 `pnpm --dir consoles run test:browser:consumers` 与 `bash scripts/verify-console-visual.sh`，见 [共享前端测试基线](../console-testing-baseline.md) 和 [测试策略](../13-testing-strategy.md)。
 
 首次红测暴露并修复了三个实现缺陷：启动 Spin 的可访问标签缺少合适角色、Skeleton 向辅助技术暴露空标题，以及危险/主按钮交互颜色对比度不足。修复复用现有语义颜色，后续本机与固定 Linux axe 检查通过。自动扫描与键盘检查是 WCAG 2.2 AA 工程证据，不等于正式无障碍认证。
 
@@ -25,7 +29,7 @@
 
 ## 完整构建与 Fresh Compose
 
-`./mvnw --batch-mode --no-transfer-progress verify` 通过，耗时 8 分 14 秒，日志 `/tmp/issue180-maven.log`。前端类型、lint、格式检查、550 个工作区单测、边界检查和制品构建通过；本机组件浏览器 90 通过/4 截图专用跳过，消费者浏览器 38 通过/2 截图专用跳过。六个截图专用用例已由上述 Linux 正式视觉门禁执行通过。
+`./mvnw --batch-mode --no-transfer-progress verify` 通过，耗时 8 分 14 秒，日志 `/tmp/issue180-maven.log`。前端类型、lint、格式检查、550 个工作区单测、边界检查和制品构建通过；本机组件浏览器 90 通过/4 截图专用跳过（组件阶段测试属于已删除的 Design System 代际，该数字不可复现），消费者浏览器 38 通过/2 截图专用跳过。六个截图专用用例已由上述 Linux 正式视觉门禁执行通过。
 
 443 释放后复用现有 `deploy/compose/.secrets/local-https-development/server.pem` / `server.key`，四域 DNS、正常 TLS 校验与 Chrome 153.0.8010.36 导航预检通过。旧 `local-console-tls.pem` 缺少 Remote SAN，未用于正式验收；没有忽略证书错误或修改信任边界。
 
@@ -49,7 +53,7 @@ bash scripts/verify-console-authentication-e2e.sh --product
 
 首次 SMTP 恢复 503 在未修改代码的复跑中未复现，当时根因尚未确定；后续复现与修复见下节。本记录保留该间歇失败，不以重试通过证明其稳定性已解决；本轮没有为获得通过而跳过测试、延长超时或放宽断言。完整受限诊断保留在 `sf-console-e2e-diagnostics.7TR06F`，不得直接上传原始日志。
 
-远端 [Verify 34791131200](https://github.com/crane0927/saas-forge/actions/runs/34791131200) 对应 `2969536`：JDK 17/Fresh Chrome、Tenant lifecycle Fresh 和 Nacos 三个 Job 通过；视觉 Job 的 94+40 个测试通过，但临时目录清理失败，整个 Job 失败。当时 MVP 对应事项保持未勾选、Issue 保持 OPEN；最终状态见下节。
+远端 [Verify 34791131200](https://github.com/crane0927/saas-forge/actions/runs/34791131200) 对应 `2969536`：JDK 17/Fresh Chrome、Tenant lifecycle Fresh 和 Nacos 三个 Job 通过；视觉 Job 的 94+40 个测试通过（94 个组件测试属于已删除的 Design System 代际，现不可复现），但临时目录清理失败，整个 Job 失败。当时 MVP 对应事项保持未勾选、Issue 保持 OPEN；最终状态见下节。
 
 ## 代码审查
 
@@ -79,7 +83,7 @@ bash scripts/verify-console-authentication-e2e.sh --product
 
 修复为视觉容器显式使用调用者 UID/GID；Corepack 入口与缓存使用容器临时 HOME，避免非 root 进程写入系统目录。继续由宿主清理自己拥有的临时目录，不增加 sudo、全局 chmod 或忽略清理错误，也不修改图片基线或测试阈值。
 
-修复后的本机固定 Linux 视觉通过：94 个组件＋40 个消费者测试全部通过，入口最终退出码 0；记录 `.scratch/issue-180-visual/run.tKUHd0` 与 `/tmp/issue180-visual-user.log`。容器内核对进程、依赖目录及报告均为调用者 `501:20`；退出后临时目录 `sf-visual.fJDivn` 已不存在。Bash 语法及差异检查通过。远端修复提交 CI 后续已通过，见下节。
+修复后的本机固定 Linux 视觉通过：94 个组件＋40 个消费者测试全部通过（94 个组件测试属于已删除的 Design System 代际，现不可复现；现行入口只产出 `consumers.json`），入口最终退出码 0；记录 `.scratch/issue-180-visual/run.tKUHd0` 与 `/tmp/issue180-visual-user.log`（本机未跟踪的临时证据，仓库外不可复现）。容器内核对进程、依赖目录及报告均为调用者 `501:20`；退出后临时目录 `sf-visual.fJDivn` 已不存在。Bash 语法及差异检查通过。远端修复提交 CI 后续已通过，见下节。
 
 ## 最终完成确认（2026-09-14）
 

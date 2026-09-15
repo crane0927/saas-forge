@@ -1,8 +1,8 @@
 # 共享响应式布局消费与浏览器验证记录
 
-> 本文保留迁移前的历史证据；当前 Vue 实现及验证入口见 [Console UI 规范](25-design-system.md) 和 [测试基线](console-testing-baseline.md)。
+> **已归档**：本文描述的实现与界面已被删除，仅作为历史证据保留。其中引用的 `consoles/shared/design-system`、`consoles/shared/react-shell` 与 React/Ant Design 页面已由 [ADR 0050](../adr/0050-consoles-adopt-soybean-element-plus.md) 替代为 Vue 3 + Element Plus + Soybean Admin。当前实现见 [Console 设计规范](../25-design-system.md)、[Console 认证 Runtime](../28-console-authentication-runtime.md) 与 [本地分层验证](../local-verification.md)。
 
-> 当前阶段范围已由 [ADR 0046](adr/0046-development-supports-chrome-and-jdk17.md) 调整为桌面 Chrome 当前稳定版与 JDK 17；Chromium 保留日常功能与视觉测试。本文旧矩阵的执行结果属于历史证据，不作为当前多浏览器或 JDK 21 要求。现行复现入口见 [本地验证说明](local-verification.md)。
+> 当前阶段范围已由 [ADR 0046](../adr/0046-development-supports-chrome-and-jdk17.md) 调整为桌面 Chrome 当前稳定版与 JDK 17；Chromium 保留日常功能与视觉测试。本文旧矩阵的执行结果属于历史证据，不作为当前多浏览器或 JDK 21 要求。现行复现入口见 [本地验证说明](../local-verification.md)。
 
 **状态：Issue #106 的代表性 Remote 消费、静态边界门禁、四浏览器 CI 行为与 Chromium 视觉证据已建立；本机 Darwin/Chromium 抗锯齿基线已独立校准，两个 Console 尚无最终产品业务路由消费。**
 
@@ -12,7 +12,7 @@
 
 验收宿主安装唯一 `DesignSystemProvider` 和 Design System 根入口附带的唯一全局样式。Platform Console、Tenant Console Shell 与 Remote 都声明 `@saas-forge/design-system: workspace:*`，解析到同一正式包版本 `0.1.0`。生产制品门禁要求三个消费者各自只有一个 CSS 文件，且三个文件的内容哈希完全一致。
 
-本票不修改两个 Console 的产品路由。Remote 夹具只能证明公共布局能力与共享消费边界已经交付，不能证明 Platform Console 和 Tenant Console Shell 已在最终产品业务路由中消费这些布局。因此 [MVP 开发计划](16-mvp-development-plan.md)中的“响应式栅格和标准分栏布局”继续保持未完成，父 Issue #103 也不能据此关闭。
+本票不修改两个 Console 的产品路由。Remote 夹具只能证明公共布局能力与共享消费边界已经交付，不能证明 Platform Console 和 Tenant Console Shell 已在最终产品业务路由中消费这些布局。因此 [MVP 开发计划](../16-mvp-development-plan.md)中的“响应式栅格和标准分栏布局”继续保持未完成，父 Issue #103 也不能据此关闭。
 
 ## 2. 静态边界失败用例
 

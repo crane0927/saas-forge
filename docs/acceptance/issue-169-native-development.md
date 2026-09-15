@@ -1,5 +1,7 @@
 # Issue #169：完整原生开发流程与默认文档
 
+> **历史证据**：本文保留当时的验收记录与命令输出，不代表当前实现或当前门禁。其中的前端包名、界面描述与门禁计数可能属于已被 [ADR 0050](../adr/0050-consoles-adopt-soybean-element-plus.md) 替换的自建 Design System / React Shell 时期；当前 Vue 实现与验证入口见 [Console 设计规范](../25-design-system.md)、[Console 认证 Runtime](../28-console-authentication-runtime.md) 与 [测试基线](../console-testing-baseline.md)，复现按 [本地分层验证](../local-verification.md)。
+
 2026-09-13，依据 [#169](https://github.com/crane0927/saas-forge/issues/169) 与父规格 [#161](https://github.com/crane0927/saas-forge/issues/161)。本轮开始 HEAD 为 `917039ff54a3d02389196bc7214af5247696d00b`，工作区干净。修改仅涉及开发与验收文档，没有修改应用代码、API、迁移、运行配置、CI 或应用生命周期。
 
 默认入口为[原生本地开发](../native-local-development.md)，完整复现与 CI 覆盖统一见[分层验证](../local-verification.md)。根 README、贡献指南、Console 中英文 README、部署入口、Compose 中英文说明及脚本目录均区分原生日常流程与旧工具的集成验收职责。Console README 修正了日常启动重复生成 Client 及旧 JDK 矩阵说明。

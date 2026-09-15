@@ -1,12 +1,14 @@
 # saas-forge 部署设计
 
+> **状态**：本文是设计基线，描述长期有效的目标与约束，不代表对应功能已实现；当前实现状态见 [README 的当前状态](../README.md#当前状态) 与开放 Issues，进度勾选见 [MVP 开发计划](16-mvp-development-plan.md)。涉及前端界面的部分写作于自建 Design System / React Shell 时期，已由 [ADR 0050](adr/0050-consoles-adopt-soybean-element-plus.md) 替代；现行实现是 Vue 3 + Element Plus + Soybean Admin。
+
 ## 交付形态
 
 | 场景 | 交付方式 | 定位 |
 |---|---|---|
-| 本地开发与体验 | Docker Compose | 启动完整开发依赖，支持 Example 与 E2E |
-| 标准生产 | Kubernetes + Helm | 领域服务独立扩缩容、滚动发布与高可用 |
-| 兼容交付 | 虚拟机裸部署文档与 `systemd` 示例 | 适配不使用 Kubernetes 的环境；遵循相同网络、密钥、备份和监控要求 |
+| 本地开发与体验 | Docker Compose | **仅作集成验收与专项复现**，日常应用启停见 [原生开发总入口](native-local-development.md) |
+| 标准生产 | Kubernetes + Helm | 领域服务独立扩缩容、滚动发布与高可用。`deploy/helm` 当前只有接入契约文档，**尚无可用 Chart** |
+| 兼容交付 | 虚拟机裸部署文档与 `systemd` 示例 | 适配不使用 Kubernetes 的环境；遵循相同网络、密钥、备份和监控要求。当前只有文档与示例模板，**未验证过完整部署** |
 
 ## Docker Compose
 
@@ -28,7 +30,7 @@ S3 兼容对象存储
 OpenTelemetry Collector
 ```
 
-当前第 1 阶段的最小 Compose 仅包含 Gateway、四个领域服务、PostgreSQL、Redis、Kafka、OpenTelemetry Collector 和各服务的 Flyway 迁移任务。Platform Console 与 Tenant Console Shell 已能生成独立静态制品，但尚未接入 Compose 的受控 TLS Origin；业务 Remote 与 S3 兼容对象存储随对应业务阶段加入，对象存储不早于第 6 阶段。
+当前第 1 阶段的最小 Compose 仅包含 Gateway、四个领域服务、PostgreSQL、Redis、Kafka、OpenTelemetry Collector 和各服务的 Flyway 迁移任务。Platform Console 与 Tenant Console Shell 已能生成独立静态制品，但尚未接入 Compose 的受控 TLS Origin；业务 Remote 未实现，S3 兼容对象存储按 [ADR 0036](adr/0036-tenant-access-owns-controlled-tenant-brand-profiles.md) 随第 4 阶段 Tenant 品牌素材加入，第 6 阶段在分离的存储边界内复用承载 Audit 导出。
 
 本地环境可以使用单节点依赖，但不得把单节点拓扑等同于生产拓扑。
 
@@ -90,11 +92,11 @@ Platform Console 和 Tenant Console Shell 的静态制品分别构建。制品�
 - Gateway 的生产路由只来自随制品发布的版本化 Route Catalog；Nacos 仅为 Catalog 已允许的 `serviceId` 提供健康实例发现，不得成为开放路由的来源。Service Registry、Scope Registry、OpenAPI 与 Catalog 不通过 Nacos 动态刷新，变更须走契约审查、构建门禁和受控发布。
 - Audit 的 Kafka bootstrap、数据库凭据和其他敏感连接材料由部署侧 Secret/环境注入；重试、退避、隔离恢复策略写入 `audit-service` 专属 Nacos 资源并保持 `refreshEnabled=false`。Audit 只有在 Nacos 必需配置已加载、数据库可用且迁移完成、Kafka 连接成功并取得两个消费者的目标分区分配后才 Ready；任一前提失效时退出 Ready，不能以健康 HTTP 进程掩盖无法消费的状态。完整配置矩阵见 [Audit 成功事实消费设计](24-audit-success-fact-consumption.md)。
 - 本地可用 `bash scripts/verify-nacos-failure-recovery.sh` 对上述行为执行隔离的 Compose 故障注入验收；脚本不会停止已有开发栈，并在退出时删除自己的临时容器和卷。
-- API 的凭据型 CORS 仅允许 Platform Console 与 Tenant Console Shell；Remote 静态资源仅允许 Tenant Console Shell 无凭据加载。Remote 的入口和版本由 Manifest 白名单控制。
+- API 的凭据型 CORS 仅允许 Platform Console 与 Tenant Console Shell；Remote 静态资源仅允许 Tenant Console Shell 无凭据加载。**Remote 的入口与版本白名单控制随 Manifest 实现后才成立**，当前只有静态资源域的 CORS 边界。
 
 ## 可观测性、SLO 与容量
 
-所有组件导出 OpenTelemetry 数据到 Collector，并接入 Prometheus、Loki、Tempo 和 Grafana。Gateway 按路由与状态码记录请求成功率、延迟和错误预算消耗；黑盒探针验证登录与关键只读操作。
+所有组件导出 OpenTelemetry 数据到 Collector。**当前 Compose 只部署 `otel/opentelemetry-collector` 且使用 `debug` exporter；Prometheus、Loki、Tempo 与 Grafana 均未部署**，因此以下指标、SLO 与容量口径目前无法从仓库环境核对。Gateway 按路由与状态码记录请求成功率、延迟和错误预算消耗；黑盒探针验证登录与关键只读操作。
 
 每个事件生产服务还必须监控 Outbox 最早待发布年龄、待发布数量、租约/重试、发布成功失败与耗时；消费者监控处理延迟、重复命中、校验拒绝、隔离数量与最早隔离年龄。告警阈值属于环境配置，日志不得输出事件 payload。
 
@@ -102,11 +104,11 @@ Platform Console 和 Tenant Console Shell 的静态制品分别构建。制品�
 
 ## 发布、回滚与变更审计
 
-- GitHub Actions 执行测试、契约、覆盖率、镜像与漏洞扫描、ZAP 基线扫描和 Helm 验证。
+- GitHub Actions 当前执行构建、测试、契约、覆盖率与 Compose/Nacos 配置校验（`verify.yml`、`release.yml`）。**镜像与漏洞扫描、ZAP 基线扫描与 Helm 验证尚未配置**，在补齐前不得声称已通过这些门禁。
 - `master` 必须经 Pull Request 并通过所有自动门禁；单人开发阶段不强制独立批准，团队增加第二位开发者后要求至少一名独立审查者批准。
-- 受保护的 `vX.Y.Z` 标签在 JDK 17 门禁通过后，由 JDK 17向 Maven Central 发布签名的 SDK、Starter 与 BOM；Maven 发布约定见 [Maven 构建与制品发布](21-maven-build-and-release.md)。镜像与 Helm Chart 仍由各自发布流程处理。每次部署记录版本、迁移、配置版本、操作者、开始/完成时间和回滚结果。
+- 受保护的 `vX.Y.Z` 标签在 JDK 17 门禁通过后，由 JDK 17 向 Maven Central 发布签名的 SDK、Starter 与 BOM；Maven 发布约定见 [Maven 构建与制品发布](21-maven-build-and-release.md)。**Helm Chart 发布尚未实现**；镜像由各自发布流程处理。每次部署记录版本、迁移、配置版本、操作者、开始/完成时间和回滚结果。
 - Flyway 迁移随服务版本发布。生产变更先在等效环境验证；失败时回滚应用版本，数据库迁移按事先验证的前向修复或可逆方案处理。
 
 ## 虚拟机裸部署
 
-虚拟机方案以四个独立服务、Gateway、Console 静态资源和受管外部依赖组成。每个服务由独立 `systemd` 单元运行，配置健康检查、受限账号、凭据文件、日志转发和自动重启；不得把所有服务、数据库和 Kafka 压缩为无隔离的单一进程。
+虚拟机方案以四个独立服务、Gateway、Console 静态资源和受管外部依赖组成。每个服务由独立 `systemd` 单元运行，配置健康检查、受限账号、凭据文件、日志转发和自动重启；不得把所有服务、数据库和 Kafka 压缩为无隔离的单一进程。**当前 `deploy/systemd/` 只有说明文档，没有任何单元文件**，本方案尚未实际验证。

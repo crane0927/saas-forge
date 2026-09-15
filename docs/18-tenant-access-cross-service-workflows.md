@@ -1,5 +1,7 @@
 # Tenant Access 跨服务工作流契约
 
+> **状态**：本文是设计基线，描述长期有效的目标与约束，不代表对应功能已实现；当前实现状态见 [README 的当前状态](../README.md#当前状态) 与开放 Issues，进度勾选见 [MVP 开发计划](16-mvp-development-plan.md)。
+
 本文冻结 Tenant 创建与管理员初始化、Invitation 激活、Tenant 切换、成员禁用与 Tenant 冻结的跨服务责任。它补充而不替代[核心领域契约](17-core-domain-contracts.md)：未在本文列出的状态、错误码和恢复动作不得由实现自行推定。
 
 ## 数据所有权与通用规则

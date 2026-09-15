@@ -1,6 +1,6 @@
 # Gateway 通用路由目录与 User/Service Token Scope 策略
 
-**状态：设计已确认，等待最终 `ok` 后实施。**
+> **状态**：本文是设计基线，描述长期有效的目标与约束，不代表对应功能已实现；当前实现状态见 [README 的当前状态](../README.md#当前状态) 与开放 Issues，进度勾选见 [MVP 开发计划](16-mvp-development-plan.md)。
 
 **实施 Issue：[#75](https://github.com/crane0927/saas-forge/issues/75)**
 

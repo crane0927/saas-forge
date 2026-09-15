@@ -1,5 +1,7 @@
 # saas-forge API 设计
 
+> **状态**：本文是设计基线，描述长期有效的目标与约束，不代表对应功能已实现；当前实现状态见 [README 的当前状态](../README.md#当前状态) 与开放 Issues，进度勾选见 [MVP 开发计划](16-mvp-development-plan.md)。涉及前端界面的部分写作于自建 Design System / React Shell 时期，已由 [ADR 0050](adr/0050-consoles-adopt-soybean-element-plus.md) 替代；现行实现是 Vue 3 + Element Plus + Soybean Admin。
+
 ## 集成边界
 
 `saas-forge` 对外提供 REST + JSON API；业务系统也可通过 Java SDK 接入。业务系统禁止直接读取或写入任一平台服务数据库。
