@@ -22,14 +22,16 @@ test('automatically discovers and validates the current Console resources', asyn
 
   assert.ok(
     directories.some((directory) =>
-      directory.endsWith('business-remotes/design-system-consumer-fixture/src/locales'),
+      directory.endsWith('business-remotes/admin-consumer-fixture/src/locales'),
     ),
   );
   assert.ok(directories.some((directory) => directory.endsWith('platform-console/src/messages')));
   assert.ok(
-    directories.some((directory) => directory.endsWith('shared/design-system/src/messages/forms')),
+    directories.some((directory) => directory.endsWith('shared/admin/src/messages/recovery')),
   );
-  assert.ok(directories.some((directory) => directory.endsWith('shared/react-shell/src/messages')));
+  assert.ok(
+    directories.some((directory) => directory.endsWith('shared/admin/src/messages/authentication')),
+  );
   assert.ok(
     directories.some((directory) => directory.endsWith('tenant-console-shell/src/messages')),
   );

@@ -1,4 +1,6 @@
-import react from '@vitejs/plugin-react';
+import vue from '@vitejs/plugin-vue';
+import UnoCSS from '@unocss/vite';
+import presetWind3 from '@unocss/preset-wind3';
 import { defineConfig, type Plugin } from 'vite';
 
 const DEVELOPMENT_API_ORIGIN = 'https://api.saas.forge.test';
@@ -32,7 +34,7 @@ function controlledDevelopmentRuntimeConfig(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [controlledDevelopmentRuntimeConfig(), react()],
+  plugins: [controlledDevelopmentRuntimeConfig(), vue(), UnoCSS({ presets: [presetWind3()] })],
   server: {
     // 正式本地入口只允许经共享 HTTPS Edge 访问，不能把 Vite 暴露到 LAN。
     host: '127.0.0.1',

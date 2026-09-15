@@ -14,7 +14,7 @@ for (const [application, directory, heading] of [
     const root = fileURLToPath(new URL(`../${directory}`, import.meta.url));
     const server = await createServer({
       root,
-      server: { host: '127.0.0.1', port: 0, strictPort: false },
+      server: { host: '127.0.0.1', port: 0, strictPort: false, hmr: false },
     });
     t.after(() => server.close());
     await server.listen();
@@ -103,7 +103,9 @@ for (const [application, directory, heading] of [
     release();
     for (const page of pages) {
       await page.getByRole('heading', { name: heading, exact: true }).waitFor();
-      const localeBounds = await page.locator('.sf-console-locale-control').boundingBox();
+      const localeBounds = await page
+        .getByRole('combobox', { name: 'Language / 语言' })
+        .boundingBox();
       const logoutBounds = await page
         .getByRole('button', { name: '退出登录', exact: true })
         .boundingBox();
@@ -133,7 +135,7 @@ test('Platform 与 Tenant Console 的 Locale 偏好按 Origin 隔离', async (t)
       const root = fileURLToPath(new URL(`../${directory}`, import.meta.url));
       const server = await createServer({
         root,
-        server: { host: '127.0.0.1', port: 0, strictPort: false },
+        server: { host: '127.0.0.1', port: 0, strictPort: false, hmr: false },
       });
       await server.listen();
       return server;
@@ -191,6 +193,6 @@ test('Platform 与 Tenant Console 的 Locale 偏好按 Origin 隔离', async (t)
 
 async function selectConsoleLocale(page, name) {
   const selector = page.getByRole('combobox', { name: 'Language / 语言' });
-  await selector.click();
-  await page.locator('.ant-select-item-option-content', { hasText: name }).click();
+  await selector.press('Enter');
+  await page.getByRole('option', { name, exact: true }).click();
 }

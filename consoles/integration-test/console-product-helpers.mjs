@@ -3,17 +3,27 @@ import assert from 'node:assert/strict';
 const rootDomain = process.env.SF_ACCEPTANCE_ROOT_DOMAIN ?? 'saas.forge.test';
 
 export async function expectRouteAccessibility(page, title, { focusedElementId } = {}) {
-  await page.getByRole('heading', { name: title, exact: true, level: 1 }).waitFor();
-  await page.waitForFunction(
-    ({ expectedTitle, expectedId }) =>
-      expectedId === undefined
-        ? document.activeElement?.textContent === expectedTitle
-        : document.activeElement?.id === expectedId,
-    { expectedTitle: title, expectedId: focusedElementId },
-  );
-  const announcement = page.getByRole('status').and(page.getByText(title, { exact: true }));
-  assert.equal(await announcement.getAttribute('aria-live'), 'polite');
-  assert.equal(await announcement.getAttribute('aria-atomic'), 'true');
+  const dialog = page.getByRole('dialog', { name: title, exact: true });
+  const heading = page.getByRole('heading', { name: title, exact: true, level: 1 });
+  await heading.or(dialog).waitFor();
+  if (await dialog.isVisible()) {
+    await page.waitForFunction(
+      (element) => element.contains(document.activeElement),
+      await dialog.elementHandle(),
+    );
+  } else {
+    await page.waitForFunction(
+      ({ expectedTitle, expectedId }) =>
+        expectedId === undefined
+          ? document.activeElement?.textContent === expectedTitle
+          : document.activeElement?.id === expectedId,
+      { expectedTitle: title, expectedId: focusedElementId },
+    );
+    const announcement = page.getByRole('status').and(page.getByText(title, { exact: true }));
+    assert.equal(await announcement.getAttribute('aria-live'), 'polite');
+    assert.equal(await announcement.getAttribute('aria-atomic'), 'true');
+  }
+
   assert.equal(
     await page.evaluate(() => document.documentElement.scrollWidth <= globalThis.innerWidth),
     true,

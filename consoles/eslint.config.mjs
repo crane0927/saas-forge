@@ -1,30 +1,41 @@
 import eslint from '@eslint/js';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
-
+import vue from 'eslint-plugin-vue';
+const ui = [
+  'shared/admin/**',
+  'platform-console/**',
+  'tenant-console-shell/**',
+  'business-remotes/**',
+  'browser-test/**',
+  'static-remote-acceptance/**',
+];
 export default tseslint.config(
   {
-    ignores: ['**/.generated/**', '**/dist/**', '**/node_modules/**', 'shared/admin/**'],
+    ignores: ['**/.generated/**', '**/dist/**', '**/node_modules/**', 'shared/admin/src/vendor/**'],
   },
   {
     files: ['**/*.{js,mjs,cjs}'],
     ...eslint.configs.recommended,
-    languageOptions: {
-      globals: globals.node,
-    },
+    languageOptions: { globals: globals.node },
   },
-  ...tseslint.configs.strictTypeChecked.map((config) => ({
-    ...config,
-    files: ['**/*.{ts,tsx}'],
+  ...tseslint.configs.strictTypeChecked.map((c) => ({
+    ...c,
+    files: ['shared/{app-runtime,api-client,i18n}/**/*.ts'],
+    languageOptions: {
+      ...c.languageOptions,
+      parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
+    },
   })),
+  ...tseslint.configs.recommended.map((c) => ({ ...c, files: ui.map((p) => p + '/*.{ts,vue}') })),
   {
-    files: ['**/*.{ts,tsx}'],
-    languageOptions: {
-      parserOptions: {
-        projectService: true,
-        tsconfigRootDir: import.meta.dirname,
-      },
-    },
+    files: ['*.ts', 'static-remote-acceptance/**/*.ts'],
+    languageOptions: { parser: tseslint.parser },
+  },
+  ...vue.configs['flat/recommended'],
+  {
+    files: ['**/*.{ts,vue}'],
+    languageOptions: { globals: { ...globals.browser, ...globals.node } },
     rules: {
       'no-restricted-imports': [
         'error',
@@ -32,15 +43,7 @@ export default tseslint.config(
           patterns: [
             {
               group: ['**/.generated', '**/.generated/**'],
-              message: '手写代码必须通过 @saas-forge/api-client 的公开入口消费生成 Client。',
-            },
-            {
-              group: ['antd', 'antd/*'],
-              message: 'Console 必须通过 @saas-forge/design-system 使用 Ant Design。',
-            },
-            {
-              group: ['@saas-forge/design-system/*'],
-              message: '消费者只能从 @saas-forge/design-system 公共根入口导入。',
+              message: '生成 Client 只能通过公共 API 入口消费。',
             },
           ],
         },
@@ -48,29 +51,17 @@ export default tseslint.config(
     },
   },
   {
-    files: ['shared/api-client/src/index.ts'],
+    files: ['**/*.vue'],
+    languageOptions: { parserOptions: { parser: tseslint.parser, extraFileExtensions: ['.vue'] } },
     rules: {
-      'no-restricted-imports': 'off',
+      'vue/multi-word-component-names': 'off',
+      'vue/html-closing-bracket-newline': 'off',
+      'vue/html-indent': 'off',
+      'vue/max-attributes-per-line': 'off',
+      'vue/multiline-html-element-content-newline': 'off',
+      'vue/singleline-html-element-content-newline': 'off',
+      'vue/html-self-closing': 'off',
     },
   },
-  {
-    files: ['shared/design-system/**/*.{ts,tsx}'],
-    rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [
-            {
-              group: ['**/.generated', '**/.generated/**'],
-              message: '手写代码必须通过 @saas-forge/api-client 的公开入口消费生成 Client。',
-            },
-            {
-              group: ['@saas-forge/design-system/*'],
-              message: 'Design System 内部必须使用相对路径，不得反向消费未公开子路径。',
-            },
-          ],
-        },
-      ],
-    },
-  },
+  { files: ['shared/api-client/src/index.ts'], rules: { 'no-restricted-imports': 'off' } },
 );

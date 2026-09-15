@@ -81,7 +81,7 @@ export async function verifyPlan({
     await page.reload();
     await page.getByRole('button', { name: '读取操作记录', exact: true }).click();
     await page
-      .getByRole('listitem')
+      .getByRole('row')
       .filter({ hasText: '创建 Plan' })
       .getByRole('button', { name: '查看套餐' })
       .click();
@@ -107,10 +107,7 @@ export async function verifyPlan({
     await page.goto(`${base}/plans`);
     await page.getByRole('textbox', { name: '编码', exact: true }).fill('browser-plan');
     await page.getByRole('combobox', { name: '状态', exact: true }).press('Enter');
-    await page
-      .locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option')
-      .filter({ hasText: '已激活' })
-      .click();
+    await page.locator('.el-select-dropdown__item:visible').filter({ hasText: '已激活' }).click();
     const query = page.waitForResponse((response) => {
       const url = new URL(response.url());
       return (

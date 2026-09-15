@@ -16,6 +16,7 @@ import AdminLayout from '../vendor/soybean/materials/libs/admin-layout';
 
 defineProps<{
   applicationName: string;
+  logoUrl?: string;
   navigationLabel: string;
   skipLabel: string;
   collapseLabel: string;
@@ -60,7 +61,14 @@ const collapsed = ref(false);
     <template #sider>
       <div class="h-full flex flex-col">
         <div class="console-logo" :title="applicationName">
-          <span v-if="!collapsed">{{ applicationName }}</span>
+          <img
+            v-if="logoUrl"
+            :src="logoUrl"
+            :alt="applicationName"
+            width="32"
+            height="32"
+            class="mr-8px"
+          /><span v-if="!collapsed">{{ applicationName }}</span>
         </div>
         <ElScrollbar class="flex-1">
           <nav :aria-label="navigationLabel">

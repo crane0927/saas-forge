@@ -112,12 +112,10 @@ for (const line of stripVTControlCharacters(log).split('\n')) {
       line,
     );
   if (compatibilitySource) console.info(`AT: ${compatibilitySource[1]}`);
-  const consumer = /\bbrowser-test\/design-system-consumers\.browser\.test\.tsx:\d+:\d+\b/.exec(
-    line,
-  );
+  const consumer = /\bbrowser-test\/admin\.browser\.test\.ts:\d+:\d+\b/.exec(line);
   if (consumer) console.info(`AT: consoles/${consumer[0]}`);
-  const showcase = /\bbrowser-test\/showcase\.browser\.test\.tsx:\d+:\d+\b/.exec(line);
-  if (showcase) console.info(`AT: consoles/shared/design-system/${showcase[0]}`);
+  const showcase = /\btest\/layout\.browser\.mjs:\d+:\d+\b/.exec(line);
+  if (showcase) console.info(`AT: consoles/shared/admin/${showcase[0]}`);
   const failure = /^\s*not ok (\d+)\b/.exec(line);
   if (failure) console.info(`FAIL: test ${failure[1]}`);
   if (/^# (?:tests|pass|fail|cancelled|skipped|todo|duration_ms) \d+(?:\.\d+)?$/.test(line)) {

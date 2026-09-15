@@ -1,5 +1,7 @@
 # 共享响应式布局消费与浏览器验证记录
 
+> 本文保留迁移前的历史证据；当前 Vue 实现及验证入口见 [Console UI 规范](25-design-system.md) 和 [测试基线](console-testing-baseline.md)。
+
 > 当前阶段范围已由 [ADR 0046](adr/0046-development-supports-chrome-and-jdk17.md) 调整为桌面 Chrome 当前稳定版与 JDK 17；Chromium 保留日常功能与视觉测试。本文旧矩阵的执行结果属于历史证据，不作为当前多浏览器或 JDK 21 要求。现行复现入口见 [本地验证说明](local-verification.md)。
 
 **状态：Issue #106 的代表性 Remote 消费、静态边界门禁、四浏览器 CI 行为与 Chromium 视觉证据已建立；本机 Darwin/Chromium 抗锯齿基线已独立校准，两个 Console 尚无最终产品业务路由消费。**

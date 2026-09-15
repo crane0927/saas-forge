@@ -1,38 +1,27 @@
 packages:
-  - business-remotes/design-system-consumer-fixture
+  - business-remotes/admin-consumer-fixture
   - platform-console
   - shared/api-client
   - shared/admin
   - shared/app-runtime
-  - shared/design-system
   - shared/i18n
-  - shared/react-shell
   - tenant-console-shell
 
 verifyDepsBeforeRun: error
 enableGlobalVirtualStore: false
 
 catalog:
-  '@eslint/js': 10.0.1
+  '@eslint/js': 9.39.2
   '@formatjs/icu-messageformat-parser': 3.5.17
-  '@testing-library/react': 16.3.3
   '@types/node': 24.13.3
-  '@types/react': 19.2.18
-  '@types/react-dom': 19.2.5
   '@vitest/browser-playwright': 4.1.11
-  '@vitejs/plugin-react': 6.1.1
-  antd: 6.6.2
   axe-core: 4.13.0
-  eslint: 10.9.1
+  eslint: 9.39.2
   intl-messageformat: 11.2.14
   globals: 17.11.0
   jsdom: 30.0.1
   prettier: 3.9.6
   playwright: 1.62.1
-  react: 19.2.8
-  react-aria-components: 1.20.0
-  react-dom: 19.2.8
-  react-router: 8.3.1
   typescript: 6.0.3
   typescript-eslint: 8.68.0
   vite: 8.1.5

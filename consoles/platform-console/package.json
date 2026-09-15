@@ -5,30 +5,29 @@
   "type": "module",
   "scripts": {
     "dev": "node ../scripts/check-api-client.mjs && vite",
-    "typecheck": "tsc --project tsconfig.json",
+    "typecheck": "vue-tsc --noEmit",
     "lint": "eslint .",
     "format:check": "prettier --check . --ignore-path ../.prettierignore",
-    "test": "vitest run",
+    "test": "node --test ../integration-test/console-vue-products.test.mjs",
     "build": "vite build",
     "verify": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run test && pnpm run build"
   },
   "dependencies": {
     "@saas-forge/app-runtime": "workspace:*",
-    "@saas-forge/design-system": "workspace:*",
     "@saas-forge/i18n": "workspace:*",
-    "@saas-forge/react-shell": "workspace:*",
-    "react": "catalog:",
-    "react-dom": "catalog:",
-    "react-router": "catalog:"
+    "vue": "3.5.31",
+    "vue-router": "5.0.4",
+    "element-plus": "2.13.6",
+    "@element-plus/icons-vue": "2.3.2",
+    "@saas-forge/admin": "workspace:*"
   },
   "devDependencies": {
-    "@testing-library/react": "catalog:",
-    "@types/react": "catalog:",
-    "@types/react-dom": "catalog:",
-    "@vitejs/plugin-react": "catalog:",
-    "jsdom": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "@unocss/vite": "66.6.7",
+    "@unocss/preset-wind3": "66.6.7",
+    "@vitejs/plugin-vue": "6.0.5",
+    "vue-tsc": "3.2.6"
   }
 }

@@ -49,7 +49,7 @@ test('matches exact Password Setup pathnames with queries while keeping other Te
     '/login',
     '/password-setup',
     '/password-setup?lang=zh',
-    '/src/main.tsx',
+    '/src/main.ts',
     '/@vite/client',
     '/password-setup/',
     '/password-setup-extra',

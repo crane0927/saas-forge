@@ -2,7 +2,7 @@
 
 [English](README-en.md)
 
-SaaS Forge 的前端工作区：两个独立部署的 React 控制台，共用认证 Runtime、React 应用壳、Design System 和生成式 API Client。
+SaaS Forge 的前端工作区：两个独立部署的 Vue 3 控制台，采用 Soybean Admin Element Plus，共用认证 Runtime 和生成式 API Client。
 
 - **Platform Console**：面向 SaaS 产品提供方的平台管理入口，固定使用 `PLATFORM` 认证意图。
 - **Tenant Console Shell**：面向租户管理员的应用宿主，固定使用 `TENANT` 认证意图，支持 Membership 选择、Tenant Context 切换与受控品牌展示。
@@ -48,11 +48,7 @@ pnpm run dev:platform
 pnpm run dev:tenant
 ```
 
-两个命令只转发到应用目录的 `pnpm run dev`；启动前校验 Client 是否完整且与正式输入一致，不调用 Maven。契约变化后重新执行 `pnpm run generate:api`。日志在当前终端，使用 Ctrl+C 独立停止。浏览器访问终端标明的受信 HTTPS 入口。仅查看共享组件时，可启动 Design System 展示册：
-
-```bash
-pnpm --filter @saas-forge/design-system run dev:showcase
-```
+两个命令只转发到应用目录的 `pnpm run dev`；启动前校验 Client 是否完整且与正式输入一致，不调用 Maven。契约变化后重新执行 `pnpm run generate:api`。日志在当前终端，使用 Ctrl+C 独立停止。浏览器访问终端标明的受信 HTTPS 入口。共享布局验证执行 `pnpm --filter @saas-forge/admin run test:browser`。
 
 > [!IMPORTANT]
 > 开发服务器只提供前端，不启动 Gateway、IAM 或数据库。它通过 `/runtime-config.json` 提供固定的 `https://api.saas.forge.test` API Origin。真实认证联调还需要受信 HTTPS、正确的域名解析、Gateway 安全配置与已准备的账户；默认 HTTP localhost 页面不能代替受控浏览器入口。环境准备见[原生开发总入口](../docs/native-local-development.md)和 [Console 与独立 HTTPS Edge](../docs/native-console-development.md)。
@@ -158,22 +154,21 @@ pnpm --filter @saas-forge/tenant-console-shell run dev
 
 ## 目录与职责
 
-| 目录                                                                                                            | 职责                                                                    |
-| --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| [`platform-console/`](platform-console/)                                                                        | 独立 Vite + React 平台应用，拥有本地路由和固定认证意图                  |
-| [`tenant-console-shell/`](tenant-console-shell/)                                                                | 独立租户应用宿主，连接 Tenant Context、导航和品牌展示                   |
-| [`shared/api-client/`](shared/api-client/)                                                                      | 无状态 TypeScript REST Client，只公开稳定包入口                         |
-| [`shared/app-runtime/`](shared/app-runtime/README.md)                                                           | 不依赖 React/路由的运行配置、Bootstrap、认证状态机和受控类型化 API 调用 |
-| [`shared/react-shell/`](shared/react-shell/)                                                                    | 共享认证页面、受保护路由、导航、恢复/重试界面及分层错误边界             |
-| [`shared/design-system/`](shared/design-system/README.md)                                                       | 唯一公共 UI 包：主题、语义 Token、布局、表单、表格与交互规则            |
-| [`business-remotes/design-system-consumer-fixture/`](business-remotes/design-system-consumer-fixture/README.md) | 仅用于验证共享 UI 消费边界的 Remote 夹具，不是产品 Remote               |
-| `test/`、`browser-test/`、`integration-test/`                                                                   | 工作区边界、浏览器消费与会话/产品集成测试                               |
+| 目录                                                                                            | 职责                                                                       |
+| ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| [`platform-console/`](platform-console/)                                                        | 独立 Vite + Vue 3 平台应用，拥有本地路由和固定认证意图                     |
+| [`tenant-console-shell/`](tenant-console-shell/)                                                | 独立租户应用宿主，连接 Tenant Context、导航和品牌展示                      |
+| [`shared/api-client/`](shared/api-client/)                                                      | 无状态 TypeScript REST Client，只公开稳定包入口                            |
+| [`shared/app-runtime/`](shared/app-runtime/README.md)                                           | 不依赖 UI 框架或路由的运行配置、Bootstrap、认证状态机和受控类型化 API 调用 |
+| [`shared/admin/`](shared/admin/)                                                                | Soybean 布局、认证界面、语言、受控品牌和操作恢复。                         |
+| [`business-remotes/admin-consumer-fixture/`](business-remotes/admin-consumer-fixture/README.md) | 仅用于验证共享 UI 消费边界的 Remote 夹具，不是产品 Remote                  |
+| `test/`、`browser-test/`、`integration-test/`                                                   | 工作区边界、浏览器消费与会话/产品集成测试                                  |
 
 ### 开发边界
 
 - **API 生成**：Maven/OpenAPI Generator 是唯一生成权威，输入来自 [`saas-forge-contracts/saas-forge-openapi-contracts/`](../saas-forge-contracts/saas-forge-openapi-contracts/)，输出到被 Git 忽略的 `shared/api-client/.generated/`。不要手改生成物或直接导入生成目录；使用 `@saas-forge/api-client` 公开入口。
 - **认证与 HTTP**：页面和 Remote 复用宿主 Runtime，通过其受控类型化 Client 调用正式 API operation；不得创建第二套认证状态、读取 Token 或自行注入 Cookie、Origin、Fetch Metadata、Bearer Token。Access Token 不持久化；生成式 Client 本身不负责会话、CSRF 或 Token 存储。
-- **共享 UI**：每个 Console 入口只安装一个 `DesignSystemProvider`。消费者只从 `@saas-forge/design-system` 根入口导入，不直接依赖 `antd`、导入内部路径、注入全局 CSS、覆盖公共组件内部选择器或复制已有公共组件。领域内容布局可使用 CSS Modules。
+- **共享 UI**：业务页面直接使用 Element Plus。共享 admin 应用拥有全局样式、受控品牌、认证和语言；Remote 继承宿主主题与传入的语言。
 - **配置失败关闭**：先校验 Runtime Config，再进入认证与应用路由。配置加载失败只暴露安全错误码并允许显式重试，不回退到猜测的 API 地址。
 
 ## 常用命令与验证
@@ -249,6 +244,6 @@ pnpm run test:browser:compatibility
 
 - [仓库概览](../README.md)
 - [Console Authentication Runtime 设计](../docs/28-console-authentication-runtime.md)
-- [Design System 公共组件与消费规则](shared/design-system/README.md)
+- [Console 共享基础能力](shared/admin/README.md)
 - [Compose 环境与浏览器访问准备](../deploy/compose/README.md)
 - [Console 认证产品验收记录](../docs/acceptance/issue-115-console-authentication.md)

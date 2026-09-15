@@ -2,7 +2,5 @@
 **/dist/**
 **/node_modules/**
 pnpm-lock.yaml
-# 官方 CLI 校验要求 Skill 与随包文件逐字一致。
-.agents/skills/antd/SKILL.md
 # Retain the pinned upstream Soybean source verbatim.
 shared/admin/src/vendor/soybean/**

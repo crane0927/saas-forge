@@ -29,7 +29,7 @@ export async function verifyBrandRemoteInheritance(page) {
   };
   page.on('request', observe);
   try {
-    await page.getByRole('link', { name: 'Remote acceptance', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Remote acceptance', exact: true }).click();
     const remote = page.getByTestId('brand-remote');
     await remote.waitFor({ state: 'visible' });
     await page.evaluate(
@@ -39,14 +39,14 @@ export async function verifyBrandRemoteInheritance(page) {
         ),
     );
     const inherited = await remote.evaluate((element) => {
-      const shell = element.closest('.sf-design-system-root');
+      const shell = element.closest('html');
       const main = element.closest('main');
       if (!shell || !main) return false;
       return [
-        '--sf-color-primary',
-        '--sf-color-primary-foreground',
-        '--sf-color-accent',
-        '--sf-color-accent-foreground',
+        '--el-color-primary',
+        '--console-primary-foreground',
+        '--console-accent',
+        '--console-accent-foreground',
       ].every(
         (token) =>
           globalThis.getComputedStyle(element).getPropertyValue(token) ===
@@ -55,7 +55,7 @@ export async function verifyBrandRemoteInheritance(page) {
     });
     const observation = {
       inherited,
-      providers: await page.locator('.sf-design-system-root').count(),
+      providers: await page.locator('html').count(),
       images: await remote.locator('img, link[rel~="icon"]').count(),
       faviconUnchanged:
         (await favicon.count()) === 1 &&

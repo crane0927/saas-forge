@@ -357,11 +357,11 @@ export async function runStage2MainChain(consume = async () => {}) {
         await platform.getByRole('combobox', { name: 'Plan', exact: true }).click();
         await platform.getByText('中文主链套餐 (stage2-plan) — 2', { exact: true }).click();
         await platform.locator('#subscription-plan[aria-expanded="false"]').waitFor();
-        await platform.locator('.ant-select-dropdown:visible').waitFor({ state: 'hidden' });
+        await platform.locator('.el-select-dropdown:visible').waitFor({ state: 'hidden' });
         assert.ok(
           (
             await platform
-              .locator('.sf-form-field')
+              .locator('.el-form-item')
               .filter({ has: platform.getByRole('combobox', { name: 'Plan', exact: true }) })
               .innerText()
           ).includes('中文主链套餐 (stage2-plan) — 2'),

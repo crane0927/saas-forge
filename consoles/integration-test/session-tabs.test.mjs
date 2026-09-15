@@ -2,14 +2,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createServer } from 'vite';
-import react from '@vitejs/plugin-react';
+import vue from '@vitejs/plugin-vue';
+import UnoCSS from '@unocss/vite';
+import presetWind3 from '@unocss/preset-wind3';
 import { chromium, firefox, webkit } from 'playwright';
 
 test('native browser tabs share refresh, hide stale Tenant UI, and retry snapshot reads', async (t) => {
   const server = await createServer({
     configFile: false,
-    plugins: [react()],
-    resolve: { dedupe: ['react', 'react-dom'] },
+    plugins: [vue(), UnoCSS({ presets: [presetWind3()] })],
+    resolve: { dedupe: ['vue'] },
     server: { host: '127.0.0.1', port: 0 },
   });
   t.after(() => server.close());
@@ -137,7 +139,7 @@ test('native browser tabs share refresh, hide stale Tenant UI, and retry snapsho
     ? first
     : second;
   const sender = receiver === first ? second : first;
-  await receiver.getByRole('heading', { name: '暂时无法恢复会话' }).waitFor();
+  await receiver.getByRole('alert').filter({ hasText: '暂时无法恢复会话' }).waitFor();
   assert.equal(await receiver.getByRole('heading', { name: '受保护的工作台' }).count(), 0);
   await receiver.getByRole('button', { name: '重试恢复' }).click();
   await receiver.getByRole('heading', { name: '受保护的工作台' }).waitFor();

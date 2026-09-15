@@ -48,10 +48,7 @@ export async function verifyLatestBrandRead(
     await bounded(oldReady.promise, 'old Context response');
     console.info('BRAND: late-context old authoritative response held');
     assert.equal(await peer.title(), 'SaaS Forge Tenant Console');
-    assert.equal(
-      await peer.locator('.sf-design-system-root').getAttribute('data-brand'),
-      'platform',
-    );
+    assert.equal(await peer.locator('html').getAttribute('data-brand'), 'platform');
     await capture(peer, 'context-reading-platform');
     await publishLatest();
     // 验收构建仅暴露原 Runtime 的公开 retryRecovery 操作，不暴露 Runtime、Token 或 Profile。
@@ -85,7 +82,7 @@ export async function verifyLatestBrandRead(
     assert.equal(await latest.count(), 1);
     assert.equal(await peer.title(), 'Acceptance Newest Brand · SaaS Forge Tenant Console');
     assert.equal(
-      await peer.getByRole('img', { name: 'Acceptance Violet Brand Logo', exact: true }).count(),
+      await peer.getByRole('img', { name: 'Acceptance Violet Brand', exact: true }).count(),
       0,
     );
     await capture(peer, 'late-context-newest');

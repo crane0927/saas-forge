@@ -14,11 +14,8 @@ export PATH="$HOME/bin:$PATH"
 pnpm install --frozen-lockfile
 args=()
 [[ "$mode" == --update ]] && args+=(--update)
-# 两个入口分别保存报告；即使组件检查失败，也保留消费者的独立结果。
+# 布局、认证、键盘及无障碍检查共用 Vue 浏览器入口。
 set +e
-pnpm --filter @saas-forge/design-system exec vitest run --config vitest.browser.config.ts \
-  --reporter=default --reporter=json --outputFile=/evidence/components.json "${args[@]}"
-components=$?
 pnpm exec vitest run --config vitest.consumers.browser.config.ts \
   --reporter=default --reporter=json --outputFile=/evidence/consumers.json "${args[@]}"
 consumers=$?
@@ -28,7 +25,7 @@ mkdir -p /evidence/screenshots
 while IFS= read -r -d '' file; do
   mkdir -p "/evidence/screenshots/$(dirname "$file")"
   cp "$file" "/evidence/screenshots/$file"
-done < <(find shared/design-system/browser-test browser-test -type f -name '*.png' -print0)
+done < <(find browser-test -type f -name '*.png' -print0)
 node --version > /evidence/runtime.txt
 pnpm exec playwright --version >> /evidence/runtime.txt
-[[ "$components" -eq 0 && "$consumers" -eq 0 ]]
+[[ "$consumers" -eq 0 ]]

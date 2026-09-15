@@ -2,7 +2,7 @@
 
 [简体中文](README.md)
 
-The SaaS Forge frontend workspace: two independently deployed React consoles sharing an authentication runtime, React shell, Design System, and generated API client.
+The SaaS Forge frontend workspace: two independently deployed Vue 3 consoles using Soybean Admin Element Plus, a shared authentication runtime, and a generated API client.
 
 - **Platform Console**: the platform administration entry point for SaaS providers, with a fixed `PLATFORM` authentication intent.
 - **Tenant Console Shell**: the application host for tenant administrators, with a fixed `TENANT` intent, Membership selection, Tenant Context switching, and controlled branding.
@@ -49,10 +49,6 @@ pnpm run dev:tenant
 ```
 
 Both commands delegate to the application’s `pnpm run dev`. Startup checks that the generated client is complete and matches its formal inputs; it does not run Maven. Run `pnpm run generate:api` again after contract changes. Logs stay in the current terminal; Ctrl+C stops that application independently. Open the trusted HTTPS entry printed in the terminal. To explore shared components separately, start the Design System showcase:
-
-```bash
-pnpm --filter @saas-forge/design-system run dev:showcase
-```
 
 > [!IMPORTANT]
 > Development servers serve only the frontend; they do not start Gateway, IAM, or databases. Their `/runtime-config.json` supplies the fixed API Origin `https://api.saas.forge.test`. Real authentication also requires trusted HTTPS, correct DNS resolution, Gateway security configuration, and provisioned accounts. Default HTTP localhost pages are not a substitute for controlled browser Origins. See the [native development guide](../docs/native-local-development.md) and [Console / independent HTTPS Edge guide](../docs/native-console-development.md) for environment setup.
@@ -158,22 +154,21 @@ Report passed, failed, and blocked checks separately. Script tests or earlier Pl
 
 ## Workspace structure
 
-| Directory                                                                                                       | Responsibility                                                                                                       |
-| --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| [`platform-console/`](platform-console/)                                                                        | Independent Vite + React platform application with local routes and a fixed authentication intent                    |
-| [`tenant-console-shell/`](tenant-console-shell/)                                                                | Independent tenant application host connecting Tenant Context, navigation, and branding                              |
-| [`shared/api-client/`](shared/api-client/)                                                                      | Stateless TypeScript REST client with a stable public package entry                                                  |
-| [`shared/app-runtime/`](shared/app-runtime/README.md)                                                           | React- and router-independent configuration, bootstrap, authentication state machine, and controlled typed API calls |
-| [`shared/react-shell/`](shared/react-shell/)                                                                    | Shared authentication pages, protected routes, navigation, recovery/retry UI, and layered error boundaries           |
-| [`shared/design-system/`](shared/design-system/README.md)                                                       | The sole public UI package: themes, semantic tokens, layouts, forms, tables, and interaction rules                   |
-| [`business-remotes/design-system-consumer-fixture/`](business-remotes/design-system-consumer-fixture/README.md) | A Remote fixture for shared UI consumer verification, not a product Remote                                           |
-| `test/`, `browser-test/`, `integration-test/`                                                                   | Workspace boundary, browser consumer, and session/product integration tests                                          |
+| Directory                                                                                       | Responsibility                                                                                                              |
+| ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| [`platform-console/`](platform-console/)                                                        | Independent Vite + Vue 3 platform application with local routes and a fixed authentication intent                           |
+| [`tenant-console-shell/`](tenant-console-shell/)                                                | Independent tenant application host connecting Tenant Context, navigation, and branding                                     |
+| [`shared/api-client/`](shared/api-client/)                                                      | Stateless TypeScript REST client with a stable public package entry                                                         |
+| [`shared/app-runtime/`](shared/app-runtime/README.md)                                           | UI-framework- and router-independent configuration, bootstrap, authentication state machine, and controlled typed API calls |
+| [`shared/admin/`](shared/admin/)                                                                | Soybean layout, authentication UI, locale, validated branding, and recovery panels.                                         |
+| [`business-remotes/admin-consumer-fixture/`](business-remotes/admin-consumer-fixture/README.md) | A Remote fixture for shared UI consumer verification, not a product Remote                                                  |
+| `test/`, `browser-test/`, `integration-test/`                                                   | Workspace boundary, browser consumer, and session/product integration tests                                                 |
 
 ### Development boundaries
 
 - **API generation**: Maven/OpenAPI Generator is the sole generator. It reads [`saas-forge-contracts/saas-forge-openapi-contracts/`](../saas-forge-contracts/saas-forge-openapi-contracts/) and writes to the Git-ignored `shared/api-client/.generated/`. Do not edit generated files or import that directory directly; use the public `@saas-forge/api-client` entry.
 - **Authentication and HTTP**: pages and Remotes reuse the host runtime and call formal API operations through its controlled typed client. They must not create separate authentication state, read tokens, or inject Cookie, Origin, Fetch Metadata, or Bearer Token headers. Access tokens are not persisted. The generated client itself does not manage sessions, CSRF, or token storage.
-- **Shared UI**: each Console entry installs exactly one `DesignSystemProvider`. Consumers import only from the `@saas-forge/design-system` root. Direct `antd` dependencies, internal imports, global CSS injection, internal selector overrides, and copies of existing public components are prohibited. CSS Modules may arrange domain-specific content.
+- **Shared UI**: use Element Plus directly. The shared admin application owns global styles, validated branding, authentication and locale. Remotes inherit these from their host.
 - **Fail-closed configuration**: Runtime Config is validated before authentication and application routing. Failures expose only safe error codes and explicit retry, never a guessed fallback API address.
 
 ## Commands and verification
@@ -247,6 +242,6 @@ Static hosting must provide SPA fallback for client-side routes while serving `/
 
 - [Repository overview (Chinese)](../README.md)
 - [Console Authentication Runtime design](../docs/28-console-authentication-runtime.md)
-- [Design System components and consumer rules](shared/design-system/README.md)
+- [Shared Console foundation](shared/admin/README.md)
 - [Compose environment and browser setup](../deploy/compose/README-en.md)
 - [Console authentication product acceptance record](../docs/acceptance/issue-115-console-authentication.md)

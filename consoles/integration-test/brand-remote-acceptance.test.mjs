@@ -16,10 +16,10 @@ test('Remote observation starts after the Shell favicon and still rejects Remote
     }
     const mode = new URL(request.url, 'http://localhost').searchParams.get('mode');
     response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    response.end(`<!doctype html><html><head><link rel="icon" href="/brands/blue.svg"></head>
-      <body><div class="sf-design-system-root" style="--sf-color-primary:purple"><main>
+    response.end(`<!doctype html><html style="--el-color-primary:purple"><head><link rel="icon" href="/brands/blue.svg"></head>
+      <body><div class="console-theme"><main>
       <h1>Tenant 工作台</h1><button id="switch">Switch brand</button>
-      <a href="/remote">Remote acceptance</a></main></div><script>
+      <a role="menuitem" href="/remote">Remote acceptance</a></main></div><script>
       const main = document.querySelector('main');
       document.querySelector('button').onclick = () => {
         document.querySelector('link').href = '/brands/violet.svg';

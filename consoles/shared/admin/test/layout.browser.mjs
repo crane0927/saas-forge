@@ -1,3 +1,4 @@
+/* global document, innerWidth */
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';

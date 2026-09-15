@@ -17,75 +17,48 @@ await build({
 });
 
 const tenantRoot = fileURLToPath(new URL('../tenant-console-shell/', import.meta.url));
-const tenantApp = fileURLToPath(new URL('../tenant-console-shell/src/app.tsx', import.meta.url));
-const tenantRoutes = fileURLToPath(
-  new URL('../tenant-console-shell/src/routes.tsx', import.meta.url),
+const tenantMain = fileURLToPath(new URL('../tenant-console-shell/src/main.ts', import.meta.url));
+const application = fileURLToPath(
+  new URL('../shared/admin/src/application/ConsoleApplication.vue', import.meta.url),
 );
-const remote = fileURLToPath(
-  new URL('../business-remotes/design-system-consumer-fixture/src/remote.tsx', import.meta.url),
-);
-const staticRemoteAcceptance = fileURLToPath(
-  new URL('../tenant-console-shell/src/static-remote-acceptance.tsx', import.meta.url),
-);
-const acceptanceRoutes = '\0acceptance-tenant-routes';
-const acceptanceApp = '\0acceptance-tenant-app';
-const acceptanceRuntime = '\0acceptance-tenant-runtime';
 const runtimeEntry = fileURLToPath(new URL('../shared/app-runtime/src/index.ts', import.meta.url));
-const tenantMain = fileURLToPath(new URL('../tenant-console-shell/src/main.tsx', import.meta.url));
-
-// 仅替换验收构建的路由组合，复用真实 Tenant App、认证 Runtime 与共享 Shell。
-// 静态消费夹具验证主题继承，不代表 Module Federation 或网络 Remote 加载。
+const remote = fileURLToPath(
+  new URL('../tenant-console-shell/test/BrandRemoteRoute.vue', import.meta.url),
+);
+const acceptanceRuntime = '\0acceptance-runtime';
+// 只在验收构建注入公开 Runtime 重试入口及静态 Remote 路由。
 await build({
   configFile: fileURLToPath(new URL('../tenant-console-shell/vite.config.ts', import.meta.url)),
   root: tenantRoot,
   mode: 'static-acceptance',
   plugins: [
     {
-      name: 'acceptance-brand-remote-route',
+      name: 'acceptance-routes',
       enforce: 'pre',
       resolveId(source, importer) {
-        if (source === './routes' && importer === tenantApp) return acceptanceRoutes;
-        if (source === './app' && importer === tenantMain) return acceptanceApp;
-        if (source === '@saas-forge/app-runtime' && importer === tenantApp)
+        if (source === '@saas-forge/app-runtime' && importer?.split('?')[0] === application)
           return acceptanceRuntime;
       },
       load(id) {
         if (id === acceptanceRuntime)
-          return `
-          export * from ${JSON.stringify(runtimeEntry)};
-          import { createAuthenticationRuntimeAfterConfig as createRuntime } from ${JSON.stringify(runtimeEntry)};
-          export function createAuthenticationRuntimeAfterConfig(config, options) {
-            const result = createRuntime(config, options);
-            if (result.ok) globalThis.acceptanceRetryContext = () => result.runtime.retryRecovery().then(value => value.ok);
-            return result;
-          }
-        `;
-        if (id === acceptanceApp)
-          return `
-          import { createElement } from 'react';
-          import { TenantConsoleShellApp as App } from ${JSON.stringify(tenantApp)};
-          export function TenantConsoleShellApp(props) {
-            return createElement(App, { ...props, onBrandRejected(reason) {
-              (globalThis.acceptanceBrandReasons ??= []).push(reason);
-            }});
-          }
-        `;
-        if (id !== acceptanceRoutes) return;
-        return `
-        import { createElement } from 'react';
-        import { createTenantAuthenticationRoutes as baseRoutes } from ${JSON.stringify(tenantRoutes)};
-        import { DesignSystemConsumerRemote } from ${JSON.stringify(remote)};
-        import StaticRemoteAcceptance from ${JSON.stringify(staticRemoteAcceptance)};
-        export function createTenantAuthenticationRoutes(locale, runtime) {
-          return [...baseRoutes(locale, runtime), {
-            path: '/acceptance/brand-remote', label: 'Remote acceptance',
-            element: createElement('div', { 'data-testid': 'brand-remote' }, createElement(DesignSystemConsumerRemote, { locale })),
-          }, {
-            path: '/acceptance/static-remote', label: 'Static Remote acceptance',
-            element: createElement(StaticRemoteAcceptance),
-          }];
-        }
-      `;
+          return `export * from ${JSON.stringify(runtimeEntry)};import {createAuthenticationRuntimeAfterConfig as create} from ${JSON.stringify(runtimeEntry)};export function createAuthenticationRuntimeAfterConfig(config,options){const result=create(config,options);if(result.ok)globalThis.acceptanceRetryContext=()=>result.runtime.retryRecovery().then(value=>value.ok);return result;}`;
+      },
+      transform(source, id) {
+        if (id === tenantMain)
+          return source
+            .replace(
+              /routes:\s*\[/,
+              `routes:[{path:'/acceptance/brand-remote',name:'brand-remote',meta:{business:true},component:()=>import(${JSON.stringify(remote)}),props:()=>({locale:document.documentElement.lang})},`,
+            )
+            .replace(
+              /navigation:\s*\(?locale\)?\s*=>\s*\[/,
+              "navigation:locale=>[{path:'/acceptance/brand-remote',label:'Remote acceptance',icon:HomeFilled},",
+            );
+        if (id.endsWith('/brand/resolved-brand.ts'))
+          return source.replace(
+            'options.onRejected?.(reason);',
+            'options.onRejected?.(reason); (globalThis.acceptanceBrandReasons ??= []).push(reason);',
+          );
       },
     },
   ],

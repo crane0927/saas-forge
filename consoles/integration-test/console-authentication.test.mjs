@@ -820,10 +820,10 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         await expectGlobalNavigation(tenant, `${name} 全局导航`);
         assert.equal(new URL(tenant.url()).pathname, '/');
         assert.equal(await tenant.title(), `${name} · SaaS Forge Tenant Console`);
-        const logo = tenant.getByRole('img', { name: `${name} Logo`, exact: true });
+        const logo = tenant.getByRole('img', { name: name, exact: true });
         await logo.waitFor({ state: 'visible' });
-        const brandBounds = await tenant.locator('.sf-application-compact-brand').boundingBox();
-        const localeBounds = await tenant.locator('.sf-console-locale-control').boundingBox();
+        const brandBounds = await tenant.locator('.console-logo').boundingBox();
+        const localeBounds = await tenant.locator('.el-select').boundingBox();
         assert.ok(brandBounds && localeBounds);
         assert.ok(
           localeBounds.x + localeBounds.width <= brandBounds.x ||
@@ -844,23 +844,22 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         for (const scheme of ['light', 'dark']) {
           await tenant.emulateMedia({ colorScheme: scheme });
           await tenant.waitForFunction(
-            (scheme) =>
-              document.querySelector('.sf-design-system-root')?.dataset.colorScheme === scheme,
+            (scheme) => document.querySelector('html')?.dataset.colorScheme === scheme,
             scheme,
           );
           assert.equal(
             await tenant
-              .locator('.sf-design-system-root')
+              .locator('html')
               .evaluate((root) =>
-                globalThis.getComputedStyle(root).getPropertyValue('--sf-color-primary').trim(),
+                globalThis.getComputedStyle(root).getPropertyValue('--el-color-primary').trim(),
               ),
             colors[scheme],
           );
           assert.equal(
             await tenant
-              .locator('.sf-design-system-root')
+              .locator('html')
               .evaluate((root) =>
-                globalThis.getComputedStyle(root).getPropertyValue('--sf-color-accent').trim(),
+                globalThis.getComputedStyle(root).getPropertyValue('--console-accent').trim(),
               ),
             accent,
           );
@@ -923,10 +922,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         await captureBrandEvidence(tenant, 'switch-committed-platform');
         stalledRefresh.resolve();
         await tenant.getByText('目标 Tenant 会话暂时无法恢复', { exact: true }).waitFor();
-        assert.equal(
-          await tenant.locator('.sf-design-system-root').getAttribute('data-brand'),
-          'platform',
-        );
+        assert.equal(await tenant.locator('html').getAttribute('data-brand'), 'platform');
         assert.equal(await tenant.title(), 'SaaS Forge Tenant Console');
         await captureBrandEvidence(tenant, 'switch-refresh-failed-platform');
       } finally {
@@ -1005,7 +1001,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         );
         await expectGlobalNavigation(tenant, 'SaaS Forge 全局导航');
         assert.equal(await tenant.title(), 'SaaS Forge Tenant Console');
-        const logo = tenant.getByRole('img', { name: 'SaaS Forge Logo', exact: true });
+        const logo = tenant.getByRole('img', { name: 'SaaS Forge', exact: true });
         await logo.waitFor({ state: 'visible' });
         assert.match(await logo.getAttribute('src'), /platform-logo/);
         assert.match(
@@ -1015,17 +1011,16 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         for (const scheme of ['light', 'dark']) {
           await tenant.emulateMedia({ colorScheme: scheme });
           await tenant.waitForFunction(
-            (scheme) =>
-              document.querySelector('.sf-design-system-root')?.dataset.colorScheme === scheme,
+            (scheme) => document.querySelector('html')?.dataset.colorScheme === scheme,
             scheme,
           );
-          const tokens = await tenant.locator('.sf-design-system-root').evaluate((root) => ({
+          const tokens = await tenant.locator('html').evaluate((root) => ({
             brand: root.dataset.brand,
             primary: globalThis
               .getComputedStyle(root)
-              .getPropertyValue('--sf-color-primary')
+              .getPropertyValue('--el-color-primary')
               .trim(),
-            accent: globalThis.getComputedStyle(root).getPropertyValue('--sf-color-accent').trim(),
+            accent: globalThis.getComputedStyle(root).getPropertyValue('--console-accent').trim(),
           }));
           assert.deepEqual(tokens, { brand: 'platform', primary: '#2563EB', accent: '#C026D3' });
         }
@@ -1101,7 +1096,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
         /platform-favicon/,
       );
       await tenant
-        .getByRole('img', { name: 'SaaS Forge Logo', exact: true })
+        .getByRole('img', { name: 'SaaS Forge', exact: true })
         .waitFor({ state: 'visible' });
       await recover(platform, 'Platform 总览');
     },
@@ -1202,7 +1197,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
     'protected navigation and a route failure retain the authenticated Shell',
     async () => {
       await openCompactNavigation(platform);
-      const navigation = platform.getByRole('link', { name: 'OAuth Client', exact: true });
+      const navigation = platform.getByRole('menuitem', { name: 'OAuth Client', exact: true });
       await navigation.focus();
       await navigation.press('Enter');
       await expectRouteAccessibility(platform, 'OAuth Clients');
@@ -1248,7 +1243,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
     'Platform Locale switching retains the protected route without an API request and persists through reload and logout',
     async () => {
       await openCompactNavigation(platform);
-      const home = platform.getByRole('link', { name: '首页', exact: true });
+      const home = platform.getByRole('menuitem', { name: '首页', exact: true });
       await home.focus();
       await home.press('Enter');
       await expectRouteAccessibility(platform, 'Platform 总览');
@@ -1274,7 +1269,7 @@ test('Platform and Tenant sessions survive independent recovery and logout after
       );
       await expectRouteAccessibility(platform, 'Platform overview');
       await openCompactNavigation(platform);
-      const navigation = platform.getByRole('link', { name: 'OAuth Client', exact: true });
+      const navigation = platform.getByRole('menuitem', { name: 'OAuth Client', exact: true });
       await navigation.focus();
       await navigation.press('Enter');
       await expectRouteAccessibility(platform, 'OAuth Clients');
@@ -1639,13 +1634,11 @@ async function selectConsoleLocale(page, name) {
     'locale selector opens by keyboard',
   );
   // 页面可同时存在筛选下拉层的退出动画；只等待目标语言选项。
-  const target = page.locator('.ant-select-item-option', { hasText: name });
+  const target = page.locator('.el-select-dropdown__item', { hasText: name });
   await target.waitFor();
   let targetActive = false;
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    targetActive = await target.evaluate((option) =>
-      option.classList.contains('ant-select-item-option-active'),
-    );
+    targetActive = await target.evaluate((option) => option.classList.contains('is-hovering'));
     if (targetActive) break;
     const previousActiveDescendant = await selector.getAttribute('aria-activedescendant');
     await selector.press('ArrowDown');

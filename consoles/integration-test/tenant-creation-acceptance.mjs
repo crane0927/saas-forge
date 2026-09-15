@@ -39,26 +39,27 @@ export async function verifyTenantCreation({
     await page.goto(base);
     await accessibility(page, '登录 SaaS Forge');
     await login(page, email, password, 'zh-CN');
-    await page.getByRole('link', { name: 'Tenant', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Tenant', exact: true }).click();
     await accessibility(page, 'Tenant');
     await page.getByRole('button', { name: '创建 Tenant', exact: true }).click();
     await accessibility(page, '创建 Tenant');
+    const drawer = page.getByRole('dialog', { name: '创建 Tenant', exact: true });
     await page
       .getByRole('form', { name: '创建 Tenant', exact: true })
       .getByRole('textbox', { name: '名称', exact: true })
       .fill('Unsaved draft');
     assert.equal(
-      await page.getByRole('textbox', { name: '名称', exact: true }).inputValue(),
+      await drawer.getByRole('textbox', { name: '名称', exact: true }).inputValue(),
       'Unsaved draft',
     );
-    await page.getByRole('link', { name: '首页', exact: true }).click();
-    await page.getByRole('dialog', { name: '放弃未保存的修改？' }).waitFor();
+    await page.keyboard.press('Escape');
+    await page.getByRole('dialog', { name: '离开页面' }).waitFor();
     await page.getByRole('button', { name: '继续编辑', exact: true }).click();
     assert.equal(
-      await page.getByRole('textbox', { name: '名称', exact: true }).inputValue(),
+      await drawer.getByRole('textbox', { name: '名称', exact: true }).inputValue(),
       'Unsaved draft',
     );
-    await page.getByRole('textbox', { name: '名称', exact: true }).fill(name);
+    await drawer.getByRole('textbox', { name: '名称', exact: true }).fill(name);
     await page.route('**/api/v1/platform/tenants', async (route) => {
       if (route.request().method() !== 'POST') return route.continue();
       creates += 1;
@@ -67,17 +68,17 @@ export async function verifyTenantCreation({
       committedId = (await response.json()).id;
       await route.abort('failed');
     });
-    await page.getByRole('button', { name: '创建 Tenant', exact: true }).dblclick();
+    await drawer.getByRole('button', { name: '创建 Tenant', exact: true }).dblclick();
     await page.getByText('创建结果待确认', { exact: true }).waitFor();
     assert.equal(creates, 1);
     await page.unroute('**/api/v1/platform/tenants');
     await capture(page, 'issue-172-response-lost');
     await safeStorage(page);
     await page.reload();
-    await page.getByRole('textbox', { name: '名称', exact: true }).waitFor();
-    assert.equal(await page.getByRole('textbox', { name: '名称', exact: true }).inputValue(), '');
-    await page.getByRole('button', { name: '读取创建记录', exact: true }).click();
-    const attempt = page.getByRole('listitem').filter({ hasText: name });
+    await drawer.getByRole('textbox', { name: '名称', exact: true }).waitFor();
+    assert.equal(await drawer.getByRole('textbox', { name: '名称', exact: true }).inputValue(), '');
+    await drawer.getByRole('button', { name: '读取创建记录', exact: true }).click();
+    const attempt = drawer.getByRole('row').filter({ hasText: name });
     await attempt.getByRole('button', { name: '查看 Tenant' }).click();
     await accessibility(page, 'Tenant 详情');
     await page.getByText(committedId, { exact: true }).waitFor();
@@ -88,10 +89,7 @@ export async function verifyTenantCreation({
     await page.getByRole('button', { name: '返回 Tenant 列表', exact: true }).click();
     await page.getByRole('textbox', { name: '名称', exact: true }).fill(name);
     await page.getByRole('combobox', { name: '生命周期状态', exact: true }).press('Enter');
-    await page
-      .locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option')
-      .filter({ hasText: '待初始化' })
-      .click();
+    await page.locator('.el-select-dropdown__item:visible').filter({ hasText: '待初始化' }).click();
     const filteredResponse = page.waitForResponse((response) => {
       const url = new URL(response.url());
       return (
@@ -103,14 +101,14 @@ export async function verifyTenantCreation({
     await page.getByRole('button', { name: '查询', exact: true }).click();
     assert.equal((await filteredResponse).status(), 200);
     await page
-      .getByRole('table', { name: 'Tenant', exact: true })
+      .getByRole('region', { name: 'Tenant', exact: true })
       .getByText(name, { exact: true })
       .waitFor();
     await selectLocale(page, 'English');
     await page.getByRole('heading', { name: 'Tenants', exact: true }).waitFor();
     await page.getByRole('button', { name: 'Read creation records', exact: true }).click();
     await page
-      .getByRole('listitem')
+      .getByRole('row')
       .filter({ hasText: name })
       .getByRole('button', { name: 'View Tenant' })
       .click();
@@ -126,7 +124,7 @@ export async function verifyTenantCreation({
     await page.getByRole('heading', { name: 'Tenants', exact: true }).waitFor();
     await page.getByRole('button', { name: 'Read creation records', exact: true }).click();
     await page
-      .getByRole('listitem')
+      .getByRole('row')
       .filter({ hasText: name })
       .getByRole('button', { name: 'View Tenant' })
       .click();
@@ -136,7 +134,7 @@ export async function verifyTenantCreation({
     await page.goto(`${base}/tenants`);
     await page.getByRole('button', { name: 'Read creation records', exact: true }).click();
     await page
-      .getByRole('listitem')
+      .getByRole('row')
       .filter({ hasText: name })
       .getByRole('button', { name: 'View Tenant' })
       .click();
@@ -185,7 +183,7 @@ export async function verifyTenantCreation({
         response.request().method() === 'POST',
     );
     await page
-      .getByRole('listitem')
+      .getByRole('row')
       .filter({ hasText: rollbackName })
       .getByRole('button', { name: 'Continue original creation' })
       .click();

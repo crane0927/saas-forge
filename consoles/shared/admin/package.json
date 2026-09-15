@@ -12,7 +12,7 @@
     "build": "vite build",
     "test": "vitest run",
     "test:browser": "node test/layout.browser.mjs",
-    "lint": "eslint ."
+    "lint": "pnpm --workspace-root exec eslint shared/admin"
   },
   "dependencies": {
     "@saas-forge/app-runtime": "workspace:*",
@@ -20,7 +20,8 @@
     "element-plus": "2.13.6",
     "pinia": "3.0.4",
     "vue": "3.5.31",
-    "vue-router": "5.0.4"
+    "vue-router": "5.0.4",
+    "@saas-forge/i18n": "workspace:*"
   },
   "devDependencies": {
     "@unocss/vite": "66.6.7",

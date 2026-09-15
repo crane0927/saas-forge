@@ -8,15 +8,15 @@
 - 上游源码固定提交及许可证见 [UPSTREAM.md](shared/admin/src/vendor/soybean/UPSTREAM.md)。沿用上游布局和组件范式，业务页面直接使用 Element Plus。已有 UI 偏好及完整迁移范围见 [实施计划](../docs/plans/console-soybean-element-plus-refactoring.md)。
 - 两个 Console 共享基础能力与版本，分别保留入口和浏览器安全边界。纯 TypeScript `api-client` 与 `app-runtime` 复用；React 页面与 Hook 迁移为 Vue SFC 和 Composable。
 - 会话凭据由 Runtime 私有持有。适配模板时保留项目认证、原操作恢复、品牌切换、脏表单退出、国际化与无障碍语义。
-- 旧 UI、React Shell、Ant Design 工具及其专属脚本随消费者和必要验证迁移后清除。正式入口整体切换，最终交付不保留旧页面备用开关或双框架兼容层。
+- 正式入口已使用 Vue；不得重新引入旧 React 页面、旧 UI 包、Ant Design 工具或双框架兼容层。
 
 ## 文档与工具
 
 - 组件 API 从 [Element Plus 官方文档](https://element-plus.org/zh-CN/) 查询，以 [llms.txt](https://element-plus.org/llms.txt) 为文档索引；按需读取具体组件和版本说明。
-- 设计参考采用 [Element Plus 设计原则](https://element-plus.org/zh-CN/guide/design.html) 和 [Soybean 官方文档](https://docs.soybeanjs.cn/zh/)，实际布局以锁定的上游源码为依据。原 Ant Design `design.md` 退出新页面设计依据。
+- 设计参考采用 [Element Plus 设计原则](https://element-plus.org/zh-CN/guide/design.html) 和 [Soybean 官方文档](https://docs.soybeanjs.cn/zh/)，实际布局以锁定的上游源码为依据。本项目的 [design.md](design.md) 和 [llms.txt](llms.txt) 作为本地入口。
 - 在线文档会更新；当前组件版本见 `shared/admin/package.json` 和锁文件。涉及版本差异时核对安装包类型声明与固定提交，避免照搬在线文档中新版本 API。
 - 在 `consoles` 执行 `pnpm install --frozen-lockfile`。新 Vue 模块的类型检查、lint、测试、构建和布局浏览器验证通过 `pnpm --filter @saas-forge/admin run <脚本>` 执行。
-- Vue 模块使用其依赖支持的 ESLint 9；工作区根 lint 命令同时调用 Vue 模块检查。第三方上游源码保留原样，项目适配代码纳入检查。
+- 工作区统一使用 Vue 插件支持的 ESLint 9，根 lint 命令同时检查纯 TypeScript 与 Vue 模块。第三方上游源码保留原样，项目适配代码纳入检查。
 
 ## 验证与交付
 

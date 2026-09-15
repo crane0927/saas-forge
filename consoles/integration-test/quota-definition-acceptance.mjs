@@ -76,7 +76,7 @@ export async function verifyQuotaDefinition({
       await route.abort('failed');
     });
     await page
-      .getByRole('listitem')
+      .getByRole('row')
       .filter({ hasText: label })
       .getByRole('button', { name: '继续原操作' })
       .click();
@@ -130,7 +130,7 @@ export async function verifyQuotaDefinition({
     );
     await page.getByRole('button', { name: '读取操作记录', exact: true }).click();
     await page
-      .getByRole('listitem')
+      .getByRole('row')
       .filter({ hasText: '创建 max_users' })
       .getByRole('button', { name: '查看额度定义' })
       .click();
@@ -169,7 +169,7 @@ export async function verifyQuotaDefinition({
     );
     await page.getByRole('button', { name: '读取操作记录', exact: true }).click();
     await page
-      .getByRole('listitem')
+      .getByRole('row')
       .filter({ hasText: '激活 max_users' })
       .getByText('已提交', { exact: false })
       .waitFor();
@@ -178,10 +178,7 @@ export async function verifyQuotaDefinition({
     await page.getByRole('button', { name: '返回额度定义', exact: true }).click();
     await page.getByRole('textbox', { name: '编码', exact: true }).fill('max_users');
     await page.getByRole('combobox', { name: '状态', exact: true }).press('Enter');
-    await page
-      .locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option')
-      .filter({ hasText: '已激活' })
-      .click();
+    await page.locator('.el-select-dropdown__item:visible').filter({ hasText: '已激活' }).click();
     const query = page.waitForResponse((response) => {
       const url = new URL(response.url());
       return (
@@ -205,7 +202,7 @@ export async function verifyQuotaDefinition({
     await page.goto(`${base}/quota-definitions`);
     await page.getByRole('button', { name: 'Read operation records', exact: true }).click();
     await page
-      .getByRole('listitem')
+      .getByRole('row')
       .filter({ hasText: 'Activate max_users' })
       .getByRole('button', { name: 'View quota definition' })
       .click();

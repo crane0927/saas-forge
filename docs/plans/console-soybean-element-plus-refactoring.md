@@ -1,7 +1,7 @@
 # Console 使用 Soybean Admin Element Plus 重构
 
 日期：2026-09-15。
-状态：全部实施决策已确认，已按用户最新指示切换为 Vue 3 / Element Plus，已接入首批共享布局源码，业务迁移尚未完成。
+状态：全部实施决策已确认，已按用户最新指示切换为 Vue 3 / Element Plus，正式业务入口已切换至 Vue，旧 UI 已清理，本地回归通过；真实后端与四域验收未执行。
 
 ## 已确认决策
 
@@ -17,7 +17,7 @@
 
 - 平台端：会话首页、Tenant、Quota Definition、Plan、OAuth Client，以及对应现有创建、详情和操作恢复流程。
 - 租户端：工作台，以及共享认证中的登录、初始改密、密码设置、公司选择与切换、退出及恢复流程。
-- 当前 Remote 仅有 Design System 消费验收夹具，另有静态 Remote 交付验收入口；按共享边界变化适配并保留验收能力，不将其描述为现有业务模块，也不新增业务 Remote。
+- 当前 Remote 仅有 共享 UI 消费验收夹具，另有静态 Remote 交付验收入口；按共享边界变化适配并保留验收能力，不将其描述为现有业务模块，也不新增业务 Remote。
 
 ## 已确认共享边界
 
@@ -47,24 +47,36 @@
 
 ## 不可回归的业务语义
 
-| 边界            | 必须保留                                                                              | 已有测试入口（consoles 下）                                                                       |
-| --------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Tenant 创建     | 响应丢失后锁定提交和字段；查询原操作，不生成第二次创建                                | platform-console/test/tenants.test.tsx                                                            |
-| Plan 创建       | ACTIVE max_users 前置定义、编码与名称校验、1..2147483647 整数上限；历史零额度仍可读取 | platform-console/test/plans.test.tsx                                                              |
-| Plan 操作 guard | 分页查完相关记录；非 COMMITTED 原操作阻止新 Key；读取或游标异常失败关闭               | platform-console/test/plans.test.tsx                                                              |
-| 原操作恢复      | 仅 NOT_COMMITTED 且 canReplay 可继续；UNKNOWN/PROCESSING/空列表不重放；不暴露 Key     | shared/react-shell/test/operation-recovery.test.tsx                                               |
-| Tenant 局部读取 | 失败不抹掉其他成功区块，不误报无订阅；权威读取不足时禁止初始化                        | platform-console/test/subscriptions.test.tsx、administrator-initialization.test.tsx               |
-| 初始化与通知    | 他人不能接管；重发通知不重新初始化；未知状态沿原操作恢复                              | platform-console/test/administrator-initialization.test.tsx、password-setup-notification.test.tsx |
-| 生命周期        | 未完成冻结不能提供恢复；保留原错误与恢复语义                                          | platform-console/test/tenant-lifecycle.test.tsx                                                   |
-| 导航与并发      | 脏表单退出保护、资源 ID 切换隔离、卸载取消和迟到响应保护                              | platform-console/test/tenants.test.tsx 及相关受影响测试                                           |
+- Tenant 创建未知结果锁定字段和提交；通过原创建记录核查，不创建第二次。
+- Plan 必须引用 ACTIVE max_users，校验正整数范围；历史零额度可读不可激活。guard 分页读完，异常失败关闭，不同编码按关联记录判断。
+- 原操作仅 NOT_COMMITTED 且 canReplay 时继续；保留原对象句柄，UNKNOWN/PROCESSING 不重放。
+- Tenant 各区块独立保留成功快照，权威订阅读取不足不允许初始化；通知重发独立于初始化。
+- 生命周期冻结未完成不提供恢复访问；其他操作者无恢复授权时不出现接管入口。
+- 脏表单、一次性 Secret、资源切换、取消请求与迟到响应继续检查。
 
-已有测试路径只是覆盖线索，尚未执行。若正式改动触及分页 guard 异常、资源切换或迟到响应，应补充针对真实风险的测试；本次已读文件中未确认其专门覆盖。
+上述业务边界由 `integration-test/console-vue-products.test.mjs`、纯 Runtime 测试及相关真实服务验收共同覆盖，具体已执行范围另行记录。
 
 ## 证据与验收原则
 
 - 目标技术栈为 Vue 3、Element Plus、Vue Router、Pinia、TypeScript 和 Vite；实际版本以锁定的官方源码与依赖为准。React 页面和 Hook 重写为 Vue SFC 与 Composable；纯 TypeScript Runtime 和 API Client 复用。
-- 已接入 `shared/admin` 的上游布局源码、Vue 会话状态观察器及固定版本依赖；类型检查、3 项认证投影测试和库构建通过。布局夹具在 Chromium 的 1440/1024 宽度验证导航、折叠、跳转焦点与内容遮挡；这不属于正式业务路由或真实接口验收。两个正式应用入口尚未切换。
-- 业务不可回归清单已迁入本计划，旧原型与旧计划退出工作树。
-- 工作区 `lint`、`build:workspace` 和 113 项边界测试通过；边界测试首次因沙箱禁止监听本机端口失败，放行临时测试端口后全部通过。未进行正式业务路由的真实接口联调。
-- 验证正式产品路由及真实业务状态；模板或原型演示、编译通过不等于业务验收完成。
-- 本次为技术实施决策，未引入新的领域概念，不向 CONTEXT.md 添加技术术语。
+- 两个正式入口已经切换；旧 React 页面、共享 UI 包和 Ant Design 工具退出工作树。
+- 认证、品牌与操作恢复复用既有 Runtime 和公开 Client，未更改后端协议。
+- 现行验证入口见 [测试基线](../console-testing-baseline.md)。本地模拟 HTTP 通过不代表真实业务及四域联调完成。
+
+
+## 本地交付记录（2026-09-15）
+
+两个正式入口已使用 Vue。平台端覆盖 Tenant、额度、套餐、OAuth Client 及其创建、详情和原操作恢复；租户端覆盖工作台与共享认证流程。创建与套餐详情使用抽屉，Tenant 详情保留独立路由。列表操作集中右对齐，关闭和返回使用带可访问名称的图标。
+
+已删除旧 React 页面、React Shell、Design System、旧快照及专属依赖和 Ant Design 工具配置；同步更新设计规范、开发说明、国际化与构建检查。保留纯 TypeScript Runtime、生成 API Client、官方 Soybean 布局源码与许可证，以及仍有效的历史决策证据。
+
+本次执行结果：
+
+- 工作区类型检查、ESLint、Prettier 和 `git diff --check` 通过。
+- 104 项边界测试通过；Runtime 249 项、国际化 15 项、共享 Admin 30 项测试通过。
+- 浏览器会话与 Remote 测试通过；正式业务路由使用模拟 HTTP 的 12 个场景通过，覆盖未知结果锁定、原操作恢复、脏表单、分页保护、订阅不可用、生命周期、通知、一次性 Secret，以及套餐无正额度禁止激活。
+- 正式 Tenant 列表在 1440、1024 像素宽度和创建抽屉的截图已检查。
+- 固定 Linux Playwright 容器的 8 项布局、认证、无障碍和视觉快照检查通过。此次证据目录：`.scratch/issue-180-visual/run.UEY8Pg`（本地临时证据，不作为仓库交付文件）。
+- `validate:i18n`、`build:workspace` 和验收客户端构建通过。构建仍提示公共依赖分块较大，不据此宣称性能优化完成。
+
+未执行真实后端联调、四域浏览器安全验收与 Fresh Compose；模拟 HTTP 和布局夹具结果不能替代这些验收。真实服务验收脚本已适配新组件定位，仍需在实际环境运行确认。未执行 Git 提交或推送。
