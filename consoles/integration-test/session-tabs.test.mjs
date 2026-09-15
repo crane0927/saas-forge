@@ -1,6 +1,7 @@
 /* global window, indexedDB, document */
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import UnoCSS from '@unocss/vite';
@@ -8,8 +9,14 @@ import presetWind3 from '@unocss/preset-wind3';
 import { chromium, firefox, webkit } from 'playwright';
 
 test('native browser tabs share refresh, hide stale Tenant UI, and retry snapshot reads', async (t) => {
+  // root 必须显式指定：默认值是被调用时的 cwd，而下面是绝对路径的 harness 地址。
+  // 从包目录（包级 `pnpm run test` 就是这么调用的）运行时，cwd 会让 harness 落空并
+  // 由 Vite 的 SPA fallback 返回该应用的 index.html——状态码仍是 200，但页面里没有
+  // sessionAcceptance，于是下面的 waitForFunction 静默超时 30s。
+  const root = fileURLToPath(new URL('../tenant-console-shell/', import.meta.url));
   const server = await createServer({
     configFile: false,
+    root,
     plugins: [vue(), UnoCSS({ presets: [presetWind3()] })],
     resolve: { dedupe: ['vue'] },
     server: { host: '127.0.0.1', port: 0 },
@@ -114,7 +121,7 @@ test('native browser tabs share refresh, hide stale Tenant UI, and retry snapsho
   const first = await context.newPage();
   const second = await context.newPage();
   const address = server.httpServer.address();
-  const url = `http://127.0.0.1:${address.port}/tenant-console-shell/test/session-tabs.html`;
+  const url = `http://127.0.0.1:${address.port}/test/session-tabs.html`;
   await Promise.all([first.goto(url), second.goto(url)]);
   await Promise.all(
     [first, second].map((page) =>
