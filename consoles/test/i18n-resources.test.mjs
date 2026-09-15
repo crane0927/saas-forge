@@ -175,6 +175,53 @@ test('rejects resource files for a Locale that is not enabled', async (context) 
   assert.ok(errors.some((error) => error.includes('zh-TW.json: only enabled Locale')));
 });
 
+test('rejects an unreviewed key duplicated across a sibling locales and messages pair', async (context) => {
+  const root = await temporaryDirectory(context, 'saas-forge-i18n-overlap-');
+  // 已登记的重复键必须齐全，否则会先报"已消失"，掩盖新增项。
+  const reviewed = {
+    tenantsTitle: 'Tenant',
+    planDefinitionsTitle: '套餐',
+    quotaDefinitionsTitle: '额度定义',
+  };
+  await writeCatalogs(path.join(root, 'platform-console/src/locales'), {
+    'en-US': { ...reviewed, smuggledTitle: 'Smuggled' },
+    'zh-CN': { ...reviewed, smuggledTitle: '走私' },
+  });
+  await writeCatalogs(path.join(root, 'platform-console/src/messages'), {
+    'en-US': { ...reviewed, smuggledTitle: 'Smuggled' },
+    'zh-CN': { ...reviewed, smuggledTitle: '走私' },
+  });
+
+  const errors = await validateI18nResources(root);
+
+  assert.ok(
+    errors.some(
+      (error) => error.includes('platform-console/src') && error.includes('smuggledTitle'),
+    ),
+    `Expected ${JSON.stringify(errors)} to report the unreviewed duplicate key`,
+  );
+});
+
+test('reports a reviewed cross-directory key that disappeared so the registry cannot rot', async (context) => {
+  const root = await temporaryDirectory(context, 'saas-forge-i18n-overlap-gone-');
+  // 两侧目录都还在，但已不再共享任何键：说明收敛已完成，登记表必须同步。
+  await writeCatalogs(path.join(root, 'platform-console/src/locales'), {
+    'en-US': { tenantsTitle: 'Tenant' },
+    'zh-CN': { tenantsTitle: 'Tenant' },
+  });
+  await writeCatalogs(path.join(root, 'platform-console/src/messages'), {
+    'en-US': { otherTitle: 'Other' },
+    'zh-CN': { otherTitle: '其他' },
+  });
+
+  const errors = await validateI18nResources(root);
+
+  assert.ok(
+    errors.some((error) => error.includes('quotaDefinitionsTitle') && error.includes('已消失')),
+    `Expected ${JSON.stringify(errors)} to report the disappeared reviewed keys`,
+  );
+});
+
 async function temporaryDirectory(context, prefix) {
   const directory = await mkdtemp(path.join(os.tmpdir(), prefix));
   context.after(() => rm(directory, { recursive: true, force: true }));

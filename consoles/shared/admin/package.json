@@ -12,7 +12,8 @@
     "build": "vite build",
     "test": "vitest run",
     "test:browser": "node test/layout.browser.mjs",
-    "lint": "pnpm --workspace-root exec eslint shared/admin"
+    "lint": "pnpm --workspace-root exec eslint shared/admin",
+    "verify": "pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run test:browser && pnpm run build"
   },
   "dependencies": {
     "@saas-forge/app-runtime": "workspace:*",

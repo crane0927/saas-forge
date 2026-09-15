@@ -18,6 +18,18 @@ const localeRegistryFile = path.join(consoleRoot, 'shared/i18n/src/locale-regist
 const localeRegistry = JSON.parse(await readFile(localeRegistryFile, 'utf8'));
 export const enabledLocales = Object.freeze(Object.keys(localeRegistry));
 
+// 同一个 `src` 下的 `locales/` 与 `messages/` 是两套并行资源：前者由模板 shell 的
+// vue-i18n 机制解析，后者由自建 createTranslator 解析。键出现交集就表示同一文案由两套
+// 实现同时负责，一处改动另一处不跟着变也无人发现。除下面已登记的一处，任何新增的跨目录
+// 重复键都必须显式评审；原登记项消失（例如 Issue #199 完成收敛后）同样必须显式评审并
+// 更新此表，避免登记本身腐烂成无人知晓的豁免。
+const reviewedCrossDirectoryOverlaps = new Map([
+  [
+    'platform-console/src',
+    new Set(['tenantsTitle', 'planDefinitionsTitle', 'quotaDefinitionsTitle']),
+  ],
+]);
+
 export async function validateI18nResources(root = consoleRoot, { locales = enabledLocales } = {}) {
   const errors = [];
   const resourceDirectories = await discoverResourceDirectories(root);
@@ -26,6 +38,72 @@ export async function validateI18nResources(root = consoleRoot, { locales = enab
   }
   for (const directory of resourceDirectories) {
     errors.push(...(await validateResourceDirectory(directory, { locales })));
+  }
+  errors.push(...(await validateCrossDirectoryOverlaps(root, resourceDirectories)));
+  return errors;
+}
+
+export async function findCrossDirectoryOverlaps(root, resourceDirectories) {
+  const siblingsByParent = new Map();
+  for (const directory of resourceDirectories) {
+    const parent = path.dirname(directory);
+    siblingsByParent.set(parent, [...(siblingsByParent.get(parent) ?? []), directory]);
+  }
+
+  const keysByDirectory = new Map();
+  for (const directory of resourceDirectories) {
+    try {
+      const parsed = JSON.parse(await readFile(path.join(directory, 'en-US.json'), 'utf8'));
+      keysByDirectory.set(directory, new Set(Object.keys(parsed)));
+    } catch {
+      // 读取或解析失败已由目录级校验报告，这里不重复报错。
+      keysByDirectory.set(directory, undefined);
+    }
+  }
+
+  const overlapsByParent = new Map();
+  for (const [parent, siblings] of siblingsByParent) {
+    const overlaps = new Set();
+    for (let left = 0; left < siblings.length; left += 1) {
+      for (let right = left + 1; right < siblings.length; right += 1) {
+        const leftKeys = keysByDirectory.get(siblings[left]);
+        const rightKeys = keysByDirectory.get(siblings[right]);
+        if (leftKeys === undefined || rightKeys === undefined) continue;
+        for (const key of leftKeys) {
+          if (rightKeys.has(key)) overlaps.add(key);
+        }
+      }
+    }
+    const relativeParent = path.relative(root, parent).split(path.sep).join('/');
+    overlapsByParent.set(relativeParent, overlaps);
+  }
+  return overlapsByParent;
+}
+
+async function validateCrossDirectoryOverlaps(root, resourceDirectories) {
+  const errors = [];
+  const overlapsByParent = await findCrossDirectoryOverlaps(root, resourceDirectories);
+
+  // 只断言本次实际发现的父目录：临时装置或独立模块根不含 platform-console/src 时，
+  // 不能因为该登记项"消失"而失败。反之，只要该父目录仍在（哪怕只剩 locales/ 一侧），
+  // 登记项就必须仍然成立，这样收敛完成后登记会立刻要求同步，不会腐烂成豁免。
+  for (const parent of [...overlapsByParent.keys()].sort()) {
+    const actual = overlapsByParent.get(parent) ?? new Set();
+    const expected = reviewedCrossDirectoryOverlaps.get(parent) ?? new Set();
+    const added = [...actual].filter((key) => !expected.has(key)).sort();
+    const removed = [...expected].filter((key) => !actual.has(key)).sort();
+    if (added.length === 0 && removed.length === 0) continue;
+
+    const details = [
+      added.length > 0 ? `出现未登记的重复键 ${added.join('、')}` : '',
+      removed.length > 0 ? `已登记的重复键 ${removed.join('、')} 已消失` : '',
+    ]
+      .filter(Boolean)
+      .join('；');
+    errors.push(
+      `${parent}: 跨目录重复键集合发生变化（${details}）；同一文案不得由 locales/ 与 messages/ 两套机制同时负责，` +
+        '变化必须显式评审并更新 scripts/validate-i18n-resources.mjs 中的登记表。',
+    );
   }
   return errors;
 }

@@ -98,9 +98,7 @@ for (const [application, directory, heading] of [
     release();
     for (const page of pages) {
       await page.getByRole('heading', { name: heading, exact: true }).waitFor();
-      const localeBounds = await page
-        .getByRole('combobox', { name: 'Language / 语言' })
-        .boundingBox();
+      const localeBounds = await localeControl(page, application).trigger.boundingBox();
       const logoutBounds = await page
         .getByRole('button', { name: '退出登录', exact: true })
         .boundingBox();
@@ -116,7 +114,7 @@ for (const [application, directory, heading] of [
     assert.equal(refreshes, 1, 'one coordinated browser session must perform one refresh');
 
     const [source, peer] = pages;
-    await selectConsoleLocale(source, 'English');
+    await selectConsoleLocale(source, application, 'English');
     await peer.waitForFunction(() => document.documentElement.lang === 'en-US');
     assert.equal(await source.evaluate(() => localStorage.getItem('sf:ui:locale')), 'en-US');
     assert.equal(await peer.evaluate(() => localStorage.getItem('sf:ui:locale')), 'en-US');
@@ -160,30 +158,43 @@ test('Platform 与 Tenant Console 的 Locale 偏好按 Origin 隔离', async (t)
     platform.goto(`http://127.0.0.1:${platformAddress.port}/`),
     tenant.goto(`http://127.0.0.1:${tenantAddress.port}/`),
   ]);
-  await Promise.all(
-    [platform, tenant].map((page) =>
-      page.getByRole('combobox', { name: 'Language / 语言' }).waitFor(),
-    ),
-  );
+  await Promise.all([
+    localeControl(platform, 'Platform').trigger.waitFor(),
+    localeControl(tenant, 'Tenant').trigger.waitFor(),
+  ]);
 
   const tenantInitialLocale = await tenant.evaluate(() => document.documentElement.lang);
-  await selectConsoleLocale(platform, 'English');
+  await selectConsoleLocale(platform, 'Platform', 'English');
   await platform.waitForFunction(() => document.documentElement.lang === 'en-US');
   assert.equal(await platform.evaluate(() => localStorage.getItem('sf:ui:locale')), 'en-US');
   assert.equal(await tenant.evaluate(() => localStorage.getItem('sf:ui:locale')), null);
   assert.equal(await tenant.evaluate(() => document.documentElement.lang), tenantInitialLocale);
 
-  await selectConsoleLocale(tenant, 'English');
+  await selectConsoleLocale(tenant, 'Tenant', 'English');
   await tenant.waitForFunction(() => document.documentElement.lang === 'en-US');
-  await selectConsoleLocale(tenant, '简体中文');
+  await selectConsoleLocale(tenant, 'Tenant', '简体中文');
   await tenant.waitForFunction(() => document.documentElement.lang === 'zh-CN');
   assert.equal(await platform.evaluate(() => localStorage.getItem('sf:ui:locale')), 'en-US');
   assert.equal(await tenant.evaluate(() => localStorage.getItem('sf:ui:locale')), 'zh-CN');
   assert.deepEqual(businessRequests, []);
 });
 
-async function selectConsoleLocale(page, name) {
-  const selector = page.getByRole('combobox', { name: 'Language / 语言' });
-  await selector.press('Enter');
-  await page.getByRole('option', { name, exact: true }).click();
+// 两个 Console 的语言控件形态不同，定位方式必须按 Console 区分，不能把其中一个的
+// 可访问名或选项 role 当成两者共用：platform 是官方壳的图标下拉（触发器为带
+// aria-label 的按钮，选项 role 为 menuitem），tenant 是 ElSelect（触发器 role 为
+// combobox，选项 role 为 option）。platform 的按钮可访问名随当前语言变化（切换语言 /
+// Switch language），因此用正则同时匹配两种语言。
+function localeControl(page, application) {
+  if (application === 'Platform') {
+    const trigger = page.getByRole('button', { name: /^(切换语言|Switch language)$/ });
+    return { trigger, optionRole: 'menuitem', open: () => trigger.click() };
+  }
+  const trigger = page.getByRole('combobox', { name: 'Language / 语言' });
+  return { trigger, optionRole: 'option', open: () => trigger.press('Enter') };
+}
+
+async function selectConsoleLocale(page, application, name) {
+  const { optionRole, open } = localeControl(page, application);
+  await open();
+  await page.getByRole(optionRole, { name, exact: true }).click();
 }

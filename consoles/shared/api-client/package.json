@@ -12,7 +12,8 @@
   "types": "./src/index.ts",
   "sideEffects": false,
   "scripts": {
-    "typecheck": "tsc --project tsconfig.json"
+    "typecheck": "tsc --project tsconfig.json",
+    "verify": "pnpm run typecheck"
   },
   "devDependencies": {
     "typescript": "catalog:"

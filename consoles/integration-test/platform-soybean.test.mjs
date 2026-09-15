@@ -75,7 +75,12 @@ test('platform official login supports theme, language, authentication and logou
   await page.keyboard.press('Escape');
   await searchDialog.waitFor({ state: 'hidden' });
   await page.getByRole('button', { name: '主题配置', exact: true }).click();
-  await page.getByRole('radio', { name: '跟随系统', exact: true }).click();
+  // Element Plus 的 ElRadioButton 把 input 视觉隐藏，点击会被同一 label 内的
+  // span.el-radio-button__inner 拦截；必须点击承载该 input 的 label。
+  await page
+    .getByRole('radio', { name: '跟随系统', exact: true })
+    .locator('xpath=ancestor::label')
+    .click();
   await page.getByRole('button', { name: '主题配置', exact: true }).click();
   await page.getByRole('button', { name: '切换语言', exact: true }).click();
   await page.getByRole('menuitem', { name: 'English', exact: true }).click();
